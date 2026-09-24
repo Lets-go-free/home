@@ -1,3 +1,4 @@
+// Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Kaufpreis-/Ersterwerb-Diagnose und P4 Lifecycle-Timings; Kontrollfälle #38483/#40938 protokollieren Erwerbs-Tx und Zahlungskandidaten. Build 20260924-163030.
 // Phase 6.09 · 24.09.2026 14:22:47 CEST: Audit P3 Cache-Priorität korrigiert: frischer DB-Ownership-Read darf im selben Fresh-Build nicht mehr durch einen älteren Shared-Cache überschrieben werden. Build 20260924-142247.
 // Phase 6.08 · 24.09.2026 12:31:39 CEST: Audit P3 trennt Lifecycle-Besitzabdeckung vom strengeren Ownership-/Erwerbs-Repair; DB-Fresh-Read bleibt als Verifikation aktiv. Build 20260924-123139.
@@ -5737,14 +5738,98 @@ window.DAO1Project = (() => {
     return {system:null,type:null};
   }
 
+  async function dao1PaymentEvidenceForTx(txHash,payer,{fallbackBlock=0,fallbackAt=null}={}){
+    const hash=lower(txHash||""),a=lower(payer||"");
+    if(!/^0x[0-9a-f]{64}$/.test(hash)||!/^0x[0-9a-f]{40}$/.test(a))return {txHash:hash||null,payer:a||null,purchase:null,paymentCandidates:[],txDetail:null,block:Number(fallbackBlock||0)||0,at:fallbackAt||null,purchaseDid:0,purchaseParentDid:0,systemEvidence:null,systemEvidenceType:null};
+    let txDetail=null,block=Number(fallbackBlock||0)||0,at=fallbackAt||null;
+    const transfers=await fetchTransactionTokenTransfers(hash);
+    try{
+      txDetail=await fetchJson(`${EXPLORER_API}/transactions/${hash}`,"DAO1 · NFT-Kauf-Tx");
+      if(!(block>0))block=Number(txDetail?.block_number||txDetail?.block||0)||0;
+      if(!at)at=txDetail?.timestamp||txDetail?.block_timestamp||null;
+    }catch(e){console.warn("DAO1 NFT-Kauf Tx-Detail",hash,e);}
+
+    const evidence=dao1TeamBotSystemEvidenceFromTx(transfers,txDetail);
+    const groups=new Map();
+    for(const t of transfers){
+      const token=t?.token||{},type=String(token.type||t.token_type||t.type||"").toUpperCase();
+      let raw=0n;try{raw=BigInt(tokenTransferRawValue(t)||"0");}catch(_){raw=0n;}
+      if(type!=="ERC-20"||transferFromAddress(t)!==a||raw<=0n)continue;
+      const contract=tokenTransferAddress(t),symbol=String(token.symbol||t.symbol||"TOKEN"),amount=Number(decimalAmount(raw.toString(),tokenTransferDecimals(t)));
+      if(!(amount>0))continue;
+      const key=contract||symbol.toUpperCase(),g=groups.get(key)||{amount:0,symbol,contract,block:Number(t.block_number||block||0),timestamp:t.timestamp||t.block_timestamp||at,evidence:"erc20"};
+      g.amount+=amount;groups.set(key,g);
+    }
+
+    const pays=[...groups.values()];
+    try{
+      const txFrom=lower(H(txDetail?.from)||txDetail?.from_address_hash||txDetail?.from_address||"");
+      const rawNative=txDetail?.value?.value ?? txDetail?.value ?? "0";
+      let nativeAmount=0;try{nativeAmount=Number(BigInt(String(rawNative)))/1e18;}catch(_){nativeAmount=Number(rawNative)||0;}
+      if(txFrom===a&&nativeAmount>0)pays.push({amount:nativeAmount,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"tx_value"});
+    }catch(_){}
+    try{
+      const internals=await fetchAll(`/transactions/${hash}/internal-transactions`);
+      let nativeInternal=0;
+      for(const r of internals||[]){
+        const from=lower(H(r?.from)||r?.from_address||r?.from_address_hash||"");
+        if(from!==a||r?.error||r?.success===false||String(r?.status||"").toLowerCase()==="error")continue;
+        try{const raw=r?.value?.value??r?.value??"0";nativeInternal+=Number(BigInt(String(raw)))/1e18;}catch(_){}
+      }
+      if(nativeInternal>0)pays.push({amount:nativeInternal,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"internal_tx"});
+    }catch(e){console.warn("DAO1 Kaufpreis Internal Transactions",hash,e);}
+
+    const paymentCandidates=pays.map(p=>({amount:Number(p.amount||0),symbol:String(p.symbol||""),contract:p.contract||null,evidence:p.evidence||"erc20",block:Number(p.block||block||0)||null,timestamp:p.timestamp||at||null}));
+    let purchase=null;
+    const wusdt=pays.find(p=>lower(p.contract)===lower(REFERRAL_WUSDT_TOKEN)||String(p.symbol).toUpperCase()==="WUSDT");
+    if(wusdt)purchase=wusdt;
+    else {
+      const byAsset=new Map();
+      for(const p of pays){const k=lower(p.contract)||String(p.symbol||"").toUpperCase();if(!byAsset.has(k))byAsset.set(k,[]);byAsset.get(k).push(p);}
+      if(byAsset.size===1){
+        const candidates=[...byAsset.values()][0];
+        const amounts=[...new Set(candidates.map(p=>Number(p.amount||0)).filter(v=>v>0).map(v=>v.toPrecision(15)))];
+        if(amounts.length===1)purchase=candidates[0];
+      }
+    }
+
+    const parsedPurchaseDid=dao1PurchaseDidFromInput(txDetail?.raw_input||txDetail?.input||txDetail?.data||"");
+    const purchaseParentDid=parsedPurchaseDid?await dao1AptmdaoParentDid(parsedPurchaseDid):0;
+    return {txHash:hash,payer:a,purchase,paymentCandidates,txDetail,block,at,purchaseDid:parsedPurchaseDid||0,purchaseParentDid,systemEvidence:evidence.system,systemEvidenceType:evidence.type};
+  }
+
+  async function dao1HistoricalPurchaseForNft(nft,{beforeBlock=0,excludeTx=""}={}){
+    const contract=lower(nft?.contract||""),id=String(nft?.id??"");
+    if(!contract||!/^\d+$/.test(id))return null;
+    let rows=[];
+    try{const map=await fetchCachedNftHistories(contract,[id]);rows=map.get(id)||[];}catch(e){console.warn("DAO1 NFT historische Kaufkette",contract,id,e);return null;}
+    const zero="0x0000000000000000000000000000000000000000",excluded=lower(excludeTx||"");
+    const candidates=rows.filter(t=>transferTokenIds(t).includes(id)).map(t=>({
+      txHash:String(t.transaction_hash||t.tx_hash||H(t.transaction)||"").toLowerCase(),
+      block:Number(t.block_number||0),at:t.timestamp||t.block_timestamp||null,
+      from:transferFromAddress(t),to:transferToAddress(t)
+    })).filter(x=>/^0x[0-9a-f]{64}$/.test(x.txHash)&&/^0x[0-9a-f]{40}$/.test(x.to)&&x.to!==zero&&x.txHash!==excluded&&(!(Number(beforeBlock)>0)||x.block<=Number(beforeBlock)))
+      .sort((a,b)=>b.block-a.block);
+
+    // Rückwärts durch die echte NFT-Lifecycle-Kette: Der nächstliegende frühere
+    // Transfer mit einer eindeutigen Zahlung des damaligen Empfängers ist die
+    // historische Kauf-Evidenz. Damit bleibt ein späterer eigener Walletwechsel
+    // preisneutral und überschreibt den ursprünglichen Bot-/NFT-Kauf nicht.
+    for(const c of candidates){
+      try{
+        const ev=await dao1PaymentEvidenceForTx(c.txHash,c.to,{fallbackBlock:c.block,fallbackAt:c.at});
+        if(ev?.purchase)return {...ev,sourceWallet:c.from,acquisitionWallet:c.to,acquisitionKind:"purchase_history_tx"};
+      }catch(e){console.warn("DAO1 NFT historische Kauf-Tx",c.txHash,e);}
+    }
+    return null;
+  }
+
   async function dao1TeamAcquisitionForNft(nft,wallet){
-    const a=lower(wallet),cacheKey=`acq:${lower(nft.contract)}:${nft.id}:${a}`;
+    const a=lower(wallet),cacheKey=`acq:v3:${lower(nft.contract)}:${nft.id}:${a}`;
     const cached=dao1TeamPartnerDetailsCache.get(cacheKey);if(cached)return cached;
     let txHash=nft.acquisition_tx_hash||null,at=nft.owned_from_at||null,block=Number(nft.owned_from_block||0)||0,sourceWallet=null,acquisitionKind=nft.acquisition_kind||null;
     if(!txHash&&nft.contract&&nft.id){
       try{
-        // Dieselbe contract-gefilterte Wallet-Historie wie bei der Ownership verwenden:
-        // kein separater Token-Instance-Request pro Bot.
         const rows=await loadWalletNftTransferHistory(a,nft.contract);
         const incoming=rows.filter(t=>transferToAddress(t)===a&&transferTokenIds(t).includes(String(nft.id)))
           .sort((x,y)=>Number(x.block_number||0)-Number(y.block_number||0)||Number(x.log_index??x.index??0)-Number(y.log_index??y.index??0))[0];
@@ -5756,75 +5841,43 @@ window.DAO1Project = (() => {
         }
       }catch(e){console.warn("DAO1 Team Partner-NFT Erwerb",nft,wallet,e);}
     }
-    let purchase=null,txDetail=null,paymentCandidates=[];
-    let systemEvidence=null,systemEvidenceType=null;
+
+    let purchase=null,paymentCandidates=[],purchaseTxHash=null,purchaseWallet=null;
+    let systemEvidence=null,systemEvidenceType=null,purchaseDid=0,purchaseParentDid=0;
     if(txHash){
       try{
-        const transfers=await fetchTransactionTokenTransfers(txHash);
-        try{
-          txDetail=await fetchJson(`${EXPLORER_API}/transactions/${txHash}`,"DAO Team · Bot-Erwerbs-Tx");
-          if(!(block>0))block=Number(txDetail?.block_number||txDetail?.block||0)||0;
-          if(!at)at=txDetail?.timestamp||txDetail?.block_timestamp||null;
-        }catch(e){console.warn("DAO Team Bot-System Tx-Detail",txHash,e);}
-        const evidence=dao1TeamBotSystemEvidenceFromTx(transfers,txDetail);
-        systemEvidence=evidence.system;systemEvidenceType=evidence.type;
-        const groups=new Map();
-        for(const t of transfers){
-          const token=t?.token||{},type=String(token.type||t.token_type||t.type||"").toUpperCase();
-          let raw=0n;try{raw=BigInt(tokenTransferRawValue(t)||"0");}catch(_){raw=0n;}
-          if(type!=="ERC-20"||transferFromAddress(t)!==a||raw<=0n)continue;
-          const contract=tokenTransferAddress(t),symbol=String(token.symbol||t.symbol||"TOKEN"),amount=Number(decimalAmount(raw.toString(),tokenTransferDecimals(t)));
-          if(!(amount>0))continue;
-          const key=contract||symbol.toUpperCase(),g=groups.get(key)||{amount:0,symbol,contract,block:Number(t.block_number||block||0),timestamp:t.timestamp||t.block_timestamp||at};g.amount+=amount;groups.set(key,g);
-        }
-        // ERC-20 ist nur eine von mehreren historischen Kaufarten. Ältere DAO1-/Apertum-
-        // Verträge können die Zahlung als nativen APTM-Value oder über einen internen Call
-        // verbuchen. Alle Kandidaten werden deshalb aus derselben Erwerbs-Tx zusammengeführt.
-        const pays=[...groups.values()];
-        try{
-          const txFrom=lower(H(txDetail?.from)||txDetail?.from_address_hash||txDetail?.from_address||"");
-          const rawNative=txDetail?.value?.value ?? txDetail?.value ?? "0";
-          let nativeAmount=0;try{nativeAmount=Number(BigInt(String(rawNative)))/1e18;}catch(_){nativeAmount=Number(rawNative)||0;}
-          if(txFrom===a&&nativeAmount>0)pays.push({amount:nativeAmount,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"tx_value"});
-        }catch(_){}
-        try{
-          const internals=await fetchAll(`/transactions/${txHash}/internal-transactions`);
-          let nativeInternal=0;
-          for(const r of internals||[]){
-            const from=lower(H(r?.from)||r?.from_address||r?.from_address_hash||"");
-            if(from!==a||r?.error||r?.success===false||String(r?.status||"").toLowerCase()==="error")continue;
-            try{const raw=r?.value?.value??r?.value??"0";nativeInternal+=Number(BigInt(String(raw)))/1e18;}catch(_){}
-          }
-          if(nativeInternal>0)pays.push({amount:nativeInternal,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"internal_tx"});
-        }catch(e){console.warn("DAO1 Kaufpreis Internal Transactions",txHash,e);}
-        paymentCandidates=pays.map(p=>({amount:Number(p.amount||0),symbol:String(p.symbol||""),contract:p.contract||null,evidence:p.evidence||"erc20",block:Number(p.block||block||0)||null,timestamp:p.timestamp||at||null}));
-        // Gleiche Assets aus unterschiedlichen technischen Ebenen nicht doppelt zählen.
-        // Direkter tx.value und Internal-Call können denselben wirtschaftlichen Wert spiegeln;
-        // bei mehreren nativen Kandidaten wird daher nur ein eindeutiger Betrag akzeptiert.
-        const wusdt=pays.find(p=>lower(p.contract)===lower(REFERRAL_WUSDT_TOKEN)||String(p.symbol).toUpperCase()==="WUSDT");
-        if(wusdt)purchase=wusdt;
-        else {
-          const byAsset=new Map();
-          for(const p of pays){const k=lower(p.contract)||String(p.symbol||"").toUpperCase();if(!byAsset.has(k))byAsset.set(k,[]);byAsset.get(k).push(p);}
-          if(byAsset.size===1){
-            const candidates=[...byAsset.values()][0];
-            const amounts=[...new Set(candidates.map(p=>Number(p.amount||0)).filter(v=>v>0).map(v=>v.toPrecision(15)))];
-            if(amounts.length===1)purchase=candidates[0];
-          }
-        }
-        if(purchase)acquisitionKind="purchase";
+        const ev=await dao1PaymentEvidenceForTx(txHash,a,{fallbackBlock:block,fallbackAt:at});
+        block=Number(ev.block||block||0)||0;at=ev.at||at;
+        paymentCandidates=ev.paymentCandidates||[];
+        systemEvidence=ev.systemEvidence;systemEvidenceType=ev.systemEvidenceType;
+        purchaseDid=Number(ev.purchaseDid||0)||0;purchaseParentDid=Number(ev.purchaseParentDid||0)||0;
+        if(ev.purchase){purchase=ev.purchase;purchaseTxHash=ev.txHash;purchaseWallet=a;acquisitionKind="purchase_same_tx";}
       }catch(e){console.warn("DAO1 Team Kaufpreis",txHash,e);}
     }
-    const parsedPurchaseDid=dao1PurchaseDidFromInput(txDetail?.raw_input||txDetail?.input||txDetail?.data||"");
-    const purchaseParentDid=parsedPurchaseDid?await dao1AptmdaoParentDid(parsedPurchaseDid):0;
-    const result={txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid:parsedPurchaseDid||0,purchaseParentDid,paymentCandidates};
+
+    // Phase 6.11: Ein späterer Wallet-Eingang ist nicht automatisch die Kauf-Tx.
+    // Wenn die aktuelle Erwerbs-Tx keine Zahlung enthält, wird die globale NFT-
+    // Transferkette rückwärts nach der letzten belegten Kauf-Tx dieses NFT geprüft.
+    // Separate Kauf- und Mint-Batches werden bewusst NICHT heuristisch zusammengelegt.
+    if(!purchase&&nft.contract&&nft.id){
+      const hist=await dao1HistoricalPurchaseForNft(nft,{beforeBlock:block||0,excludeTx:txHash||""});
+      if(hist?.purchase){
+        purchase=hist.purchase;purchaseTxHash=hist.txHash;purchaseWallet=hist.acquisitionWallet||null;
+        paymentCandidates=hist.paymentCandidates||[];
+        purchaseDid=Number(hist.purchaseDid||0)||0;purchaseParentDid=Number(hist.purchaseParentDid||0)||0;
+        if(hist.systemEvidence){systemEvidence=hist.systemEvidence;systemEvidenceType=hist.systemEvidenceType;}
+        acquisitionKind="purchase_history_tx";
+      }
+    }
+
+    const result={txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid,purchaseParentDid,paymentCandidates,purchaseTxHash,purchaseWallet};
     if(["38483","40938"].includes(String(nft.id))){
       console.info("DAO1 NFT Kaufpreis-Diagnose",{
         nft:`${lower(nft.contract)}#${String(nft.id)}`,
         acquisitionWallet:a,
         inputEvidence:{owned_from_at:nft.owned_from_at||null,owned_from_block:Number(nft.owned_from_block||0)||null,acquisition_tx_hash:nft.acquisition_tx_hash||null,acquisition_kind:nft.acquisition_kind||null},
-        resolved:{txHash,at,block,sourceWallet,acquisitionKind,purchase,paymentCandidates},
-        control38483:String(nft.id)==="38483"?{knownPurchaseTx:"0x31cd019cbba0c36c631debde1d9d3d020cd4671dc39d669a8f489eb026251de2",knownPayment:"10000 wUSDT",txMatchesKnown:lower(txHash||"")==="0x31cd019cbba0c36c631debde1d9d3d020cd4671dc39d669a8f489eb026251de2"}:null
+        resolved:{txHash,at,block,sourceWallet,acquisitionKind,purchase,paymentCandidates,purchaseTxHash,purchaseWallet},
+        control38483:String(nft.id)==="38483"?{knownPurchaseTx:"0x31cd019cbba0c36c631debde1d9d3d020cd4671dc39d669a8f489eb026251de2",knownPayment:"10000 wUSDT",purchaseTxMatchesKnown:lower(purchaseTxHash||"")==="0x31cd019cbba0c36c631debde1d9d3d020cd4671dc39d669a8f489eb026251de2"}:null
       });
     }
     dao1TeamPartnerDetailsCache.set(cacheKey,result);return result;
@@ -7540,20 +7593,23 @@ window.DAO1Project = (() => {
     };
     const acq=await dao1TeamAcquisitionForNft(nft,wallet);
     const txHash=acq?.txHash||nft.acquisition_tx_hash||null;
-    // Ein negativer Preisbefund ist nur endgültig, wenn eine konkrete Erwerbs-Tx
-    // vollständig untersucht werden konnte. Fehlende Tx-Evidence bleibt offen und wird
-    // nicht als "keine Zahlung" dauerhaft eingefroren.
-    const fullyChecked=!!txHash;
+    // Resolver v3: Ein fehlender Same-Tx-Zahlungsfluss ist NICHT automatisch ein
+    // endgültiger Negativbefund. Historisch existieren separate Kauf-/Mint-Batches;
+    // solange dafür keine deterministische Verknüpfung vorliegt, bleibt der Preis offen.
+    // Nur eine tatsächlich gefundene Zahlung gilt hier als final geprüft.
+    const fullyChecked=!!acq?.purchase;
     return {
       purchase:acq?.purchase||null,
       acquisitionKind:acq?.acquisitionKind||null,
       acquisitionTxHash:txHash,
+      purchaseTxHash:acq?.purchaseTxHash||null,
+      purchaseWallet:acq?.purchaseWallet||null,
       acquiredAt:acq?.at||nft.owned_from_at||null,
       acquiredBlock:Number(acq?.block||nft.owned_from_block||0)||null,
       sourceWallet:acq?.sourceWallet||null,
       checked:fullyChecked,
-      resolverVersion:2,
-      status:acq?.purchase?"price_verified":(acq?.acquisitionKind==="transfer"?"transfer_no_purchase_expected":(String(acq?.acquisitionKind||"").startsWith("mint")?"mint_no_purchase_expected":(fullyChecked?"tx_checked_no_unique_payment":"incomplete_missing_acquisition_tx"))),
+      resolverVersion:3,
+      status:acq?.purchase?"price_verified":"incomplete_no_deterministic_payment",
       checkedAt:fullyChecked?new Date().toISOString():null
     };
   }
