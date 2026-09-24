@@ -1,3 +1,4 @@
+// Phase 6.09 · 24.09.2026 14:22:47 CEST: Audit P3 Cache-Priorität korrigiert: frischer DB-Ownership-Read darf im selben Fresh-Build nicht mehr durch einen älteren Shared-Cache überschrieben werden. Build 20260924-142247.
 // Phase 6.08 · 24.09.2026 12:31:39 CEST: Audit P3 trennt Lifecycle-Besitzabdeckung vom strengeren Ownership-/Erwerbs-Repair; DB-Fresh-Read bleibt als Verifikation aktiv. Build 20260924-123139.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 Fresh-Build-Parität: historische NFT-Kandidaten aus Wallet-Transferhistorie bekannter Projekt-Contracts; Ownership deterministisch ohne Alt-Cache-Voraussetzung; Legacy-Self-Heal vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
 // Phase 6.03 · 23.09.2026 01:44:44 CEST: Release-Metadaten mit Audit P2 synchronisiert; DAO1-Lifecycle-Vertrag aus P1 unverändert, wird vom zentralen Fresh-Build-Snapshot-Gate ausgewertet. Build 20260923-014444.
@@ -113,6 +114,8 @@ window.DAO1Project = (() => {
   let miners = [];
   let rewardRows = [];
   let ownershipRows = [];
+  let ownershipRowsSource = "none";
+  let ownershipRowsUserId = "";
   let ownershipLoadPromise=null;
   let selectedWalletId = "";
   let selectedNftId = "";
@@ -655,6 +658,13 @@ window.DAO1Project = (() => {
   async function loadOwnershipCache({preferShared=false,force=false}={}) {
     const ctx = getContext?.();
     if (!sb || !ctx?.currentUser) return;
+    const uid=String(ctx.currentUser.id||"");
+    if(ownershipRowsUserId && ownershipRowsUserId!==uid){
+      ownershipRows=[];
+      ownershipRowsSource="none";
+      ownershipLoadPromise=null;
+    }
+    ownershipRowsUserId=uid;
     // App-Start/Dashboard dürfen die bereits zentral geladene Ownership-Registry verwenden.
     // Nach Mutationen muss force=true dagegen einen garantiert neuen DB-Read auslösen.
     // Ein bereits laufender älterer Read wird zuerst abgewartet, damit er den danach
@@ -662,9 +672,18 @@ window.DAO1Project = (() => {
     if(force && ownershipLoadPromise){
       try{await ownershipLoadPromise;}catch(_e){}
     }
+    // Audit P3 / Phase 6.09: Ein frischer DB-Read ist autoritativer als der zentrale
+    // Shared-Cache derselben Session. Dashboard-/DID-Ladevorgaenge duerfen einen nach
+    // Ownership-Mutationen frisch eingelesenen DB-Stand deshalb nicht wieder mit einem
+    // aelteren (z. B. noch leeren) Shared-Cache ueberschreiben.
+    if(!force && preferShared && ownershipRowsSource==="db")return ownershipRows;
     if(!force && preferShared && window.isCentralNftCacheLoaded?.()){
       const shared=window.getCentralNftOwnershipRows?.();
-      if(Array.isArray(shared)){ownershipRows=shared.map(hydratePrivateWalletAddress);return ownershipRows;}
+      if(Array.isArray(shared)){
+        ownershipRows=shared.map(hydratePrivateWalletAddress);
+        ownershipRowsSource="shared";
+        return ownershipRows;
+      }
     }
     if(!force && ownershipLoadPromise)return ownershipLoadPromise;
     const readPromise=(async()=>{
@@ -675,10 +694,12 @@ window.DAO1Project = (() => {
         .order("owned_from_block", { ascending: true });
       if (error) {
         ownershipRows = [];
+        ownershipRowsSource="db";
         if (!/does not exist|schema cache/i.test(error.message || "")) console.warn("NFT Ownership Cache:", error);
         return ownershipRows;
       }
       ownershipRows = (data || []).map(hydratePrivateWalletAddress);
+      ownershipRowsSource="db";
       return ownershipRows;
     })();
     ownershipLoadPromise=readPromise;
@@ -1228,7 +1249,8 @@ window.DAO1Project = (() => {
       writtenPeriods:saved,
       changedNfts:changedNfts.length,
       totalRows:Array.isArray(readback)?readback.length:0,
-      walletRows:readbackWalletRows.length
+      walletRows:readbackWalletRows.length,
+      source:ownershipRowsSource
     });
     return {nfts:currentByKey.size,historicalCandidates:historicalCandidates.length,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged,readbackRows:readbackWalletRows.length};
   }
