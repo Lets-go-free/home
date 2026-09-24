@@ -1,4 +1,4 @@
-// Phase 6.05 · 24.09.2026 11:12:50 CEST: Audit P3 Nachbesserung: historische Ownership mit belegtem Wallet-Abgang wird als Evidence-only-Periode gespeichert; unbekannter Erwerbsbeginn bleibt bewusst null. Build 20260924-111250.
+// Phase 6.06 · 24.09.2026 11:48:55 CEST: Audit P3 Current-State-Evidenz: aktueller Besitz wird bei fehlendem historischen Eingang als current_state_evidence_only persistiert; Erwerbs-/Preis-Repair bleibt separat offen. Build 20260924-114855.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 Fresh-Build-Parität: historische NFT-Kandidaten aus Wallet-Transferhistorie bekannter Projekt-Contracts; Ownership deterministisch ohne Alt-Cache-Voraussetzung; Legacy-Self-Heal vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
 // Phase 6.03 · 23.09.2026 01:44:44 CEST: Release-Metadaten mit Audit P2 synchronisiert; DAO1-Lifecycle-Vertrag aus P1 unverändert, wird vom zentralen Fresh-Build-Snapshot-Gate ausgewertet. Build 20260923-014444.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build stabilisiert: frisch geladene Apertum-NFTs sofort in DAO1 übernehmen; native Claim-Payouts zusätzlich via RPC-Trace; historische APTM-Preise primär per historischem getReserves statt Log-Massenscan. Build 20260923-001500.
@@ -884,17 +884,18 @@ window.DAO1Project = (() => {
   }
 
   function dao1OwnershipCandidateNeedsRepair(wallet,nft){
+    const walletId=String(wallet?.dbId||wallet?.id||"");
+    const address=lower(walletAddress(wallet)||"");
+    const contract=lower(nft?.contract||""),id=String(nft?.id||"");
+    const rows=ownershipRows.filter(o=>
+      String(o?.chain_key||CHAIN_KEY)===CHAIN_KEY &&
+      lower(o?.nft_contract||"")===contract &&
+      String(o?.nft_id??"")===id &&
+      (String(o?.wallet_id||"")===walletId || (!!address&&lower(o?.wallet_address||"")===address))
+    );
+    if(!rows.length)return true;
+
     if(nft?.historical===true || nft?.current===false){
-      const walletId=String(wallet?.dbId||wallet?.id||"");
-      const address=lower(walletAddress(wallet)||"");
-      const contract=lower(nft?.contract||""),id=String(nft?.id||"");
-      const rows=ownershipRows.filter(o=>
-        String(o?.chain_key||CHAIN_KEY)===CHAIN_KEY &&
-        lower(o?.nft_contract||"")===contract &&
-        String(o?.nft_id??"")===id &&
-        (String(o?.wallet_id||"")===walletId || (!!address&&lower(o?.wallet_address||"")===address))
-      );
-      if(!rows.length)return true;
       // Historische Ownership darf auch dann als belegter Besitz gelten, wenn der
       // Explorer den ursprünglichen Eingang nicht mehr vollständig liefert, aber ein
       // on-chain Abgang AUS der eigenen Wallet vorhanden ist. In diesem Fall bleibt
@@ -906,7 +907,19 @@ window.DAO1Project = (() => {
       });
       return !evidenced;
     }
-    return dao1OwnershipNeedsRepair(wallet,nft);
+
+    // Audit P3: Für CURRENT-State-Konsistenz ist ein expliziter, persistierter
+    // Current-State-Evidence-Datensatz ausreichend. Er beweist den aktuellen Besitz,
+    // NICHT den Erwerbsbeginn. Der normale Repair-Pfad (dao1OwnershipNeedsRepair)
+    // bleibt absichtlich strenger, damit ein später verfügbarer Eingang weiterhin
+    // nachgezogen werden kann.
+    const currentEvidence=rows.some(row=>
+      !!row.is_current && (
+        ((Number(row.owned_from_block||0)>0) && !!row.owned_from_at) ||
+        row.acquisition_kind==="current_state_evidence_only"
+      )
+    );
+    return !currentEvidence;
   }
 
   async function dao1EnsureIntrinsicClassifications(nfts){
@@ -1195,7 +1208,12 @@ window.DAO1Project = (() => {
 
     let saved=0,failed=0;
     for(const n of changedNfts){
-      try{saved+=await discoverOwnershipForNft(n.id,n.contract,n.name);}
+      try{
+        const key=nftOwnershipKey(n.contract,n.id);
+        saved+=await discoverOwnershipForNft(n.id,n.contract,n.name,{
+          currentWallet:currentByKey.has(key)?wallet:null
+        });
+      }
       catch(e){failed++;console.warn("NFT Ownership inkrementell",n,e);}
     }
     selectedWalletId=prev;
@@ -1657,7 +1675,7 @@ window.DAO1Project = (() => {
     });
   }
 
-  async function discoverOwnershipForNft(nftId, nftContract=DEFAULT_MINER_NFT_CONTRACT, knownName="") {
+  async function discoverOwnershipForNft(nftId, nftContract=DEFAULT_MINER_NFT_CONTRACT, knownName="", options={}) {
     const ctx=getContext?.();
     nftContract=lower(nftContract || DEFAULT_MINER_NFT_CONTRACT);
 
@@ -1869,6 +1887,46 @@ window.DAO1Project = (() => {
 
     for(const open of openByWallet.values())ownPeriods.push(open);
 
+    // Audit P3 / Phase 6.06: Der zentrale Current-State ist eine eigene, belastbare
+    // Besitz-Evidenz. Falls die Explorer-Historie den ursprünglichen Eingang eines
+    // HEUTE gehaltenen NFTs nicht mehr liefert, persistieren wir deshalb eine offene
+    // Current-State-Evidence-Periode mit unbekanntem Start. Das schliesst die fachliche
+    // Besitzabdeckung, ohne einen Erwerbsblock/-zeitpunkt zu erfinden. Erwerbs-/Preis-
+    // Evidence bleibt weiterhin offen und kann über den strengeren Repair-Pfad später
+    // nachgezogen werden.
+    const currentEvidenceWallet=options?.currentWallet||null;
+    if(currentEvidenceWallet){
+      const currentWalletId=String(currentEvidenceWallet?.dbId||currentEvidenceWallet?.id||"");
+      const alreadyCurrent=ownPeriods.some(r=>String(r?.wallet_id||"")===currentWalletId && !!r?.is_current);
+      if(!alreadyCurrent){
+        ownPeriods.push({
+          user_id:ctx.currentUser.id,
+          project_key:PROJECT_KEY,
+          chain_key:CHAIN_KEY,
+          nft_contract:nftContract,
+          nft_id:Number(nftId),
+          nft_name:nftName,
+          wallet_id:currentWalletId,
+          owned_from_block:null,
+          owned_from_at:null,
+          owned_to_block:null,
+          owned_to_at:null,
+          is_current:true,
+          entry_from_address:null,
+          entry_tx_hash:null,
+          acquisition_kind:"current_state_evidence_only",
+          acquisition_verified:false,
+          acquisition_tx_hash:null
+        });
+        console.info("DAO1 NFT aktueller Besitz nur durch Current-State belegt",{
+          nft:`${nftContract}#${nftId}`,
+          wallet_id:currentWalletId,
+          wallet:currentEvidenceWallet?.label||lower(walletAddress(currentEvidenceWallet)||""),
+          transfers:normalizedChain.length
+        });
+      }
+    }
+
     // Audit P3 Nachbesserung: Einige historische NFTs sind in der heutigen Explorer-
     // Historie nur noch durch einen belegten Abgang AUS einer eigenen Wallet sichtbar.
     // Das beweist den früheren Besitz, aber NICHT dessen Beginn. Statt den Startzeitpunkt
@@ -1918,7 +1976,13 @@ window.DAO1Project = (() => {
 
     // Deterministischer Neuaufbau aus der vollständigen NFT-Transferhistorie.
     // Alte Cache-Perioden dürfen keinen falschen Ersterwerb konservieren.
-    const rebuilt=ownPeriods.sort((a,b)=>Number(a.owned_from_block||0)-Number(b.owned_from_block||0));
+    const ownershipPeriodSortBlock=row=>{
+      if(row?.acquisition_kind==="current_state_evidence_only" && row?.is_current)return Number.MAX_SAFE_INTEGER;
+      const from=Number(row?.owned_from_block||0); if(from>0)return from;
+      const to=Number(row?.owned_to_block||0); if(to>0)return to;
+      return Number.MAX_SAFE_INTEGER-1;
+    };
+    const rebuilt=ownPeriods.sort((a,b)=>ownershipPeriodSortBlock(a)-ownershipPeriodSortBlock(b));
 
     // "Erstmals von dir erworben" darf nur als verifiziert gelten, wenn wir den
     // wirtschaftlichen Erwerb on-chain belegen können.
@@ -1960,6 +2024,12 @@ window.DAO1Project = (() => {
       }
 
       for(const r of rebuilt){
+        const evidenceKind=String(r.acquisition_kind||"");
+        if(evidenceKind==="outgoing_transfer_evidence_only" || evidenceKind==="current_state_evidence_only"){
+          r.acquisition_verified=false;
+          r.acquisition_tx_hash=null;
+          continue;
+        }
         r.acquisition_kind=acquisitionKind;
         r.acquisition_verified=acquisitionVerified;
         // Phase 5.58: Die Entry-Tx ist auch dann wertvolle Evidence, wenn der wirtschaftliche
