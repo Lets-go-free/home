@@ -5,10 +5,10 @@ Dieses Verzeichnis enthält verschiedene Berechnungstools für neo.FX Trading.
 ## Struktur
 
 ```
-tagmarkets/
+neofx/
 ├── css/
-│   └── style.css           (Gemeinsames Stylesheet für alle neo.FX Seiten)
-├── risiko.html              (Risiko- und Nachzahlungsrechner)
+│   └── neofx-style.css     (Gemeinsames Stylesheet für alle neo.FX Seiten)
+├── neofx-risiko.html        (Risiko- und Nachzahlungsrechner)
 └── README.md
 ```
 
@@ -16,10 +16,10 @@ tagmarkets/
 
 ### Neue Seite hinzufügen
 
-1. Erstelle eine neue HTML-Datei im `tagmarkets/` Verzeichnis
+1. Erstelle eine neue HTML-Datei im `neofx/` Verzeichnis
 2. Binde das gemeinsame CSS ein:
    ```html
-   <link rel="stylesheet" href="css/style.css">
+   <link rel="stylesheet" href="css/neofx-style.css">
    ```
 3. Nutze die bestehenden CSS-Klassen für einheitliches Design
 
@@ -36,4 +36,4 @@ tagmarkets/
 ## Links
 
 - Hauptseite: [letsgofree.me](https://letsgofree.me)
-- neo.FX Risiko-Rechner: [letsgofree.me/tagmarkets/risiko.html](https://letsgofree.me/tagmarkets/risiko.html)
+- neo.FX Risiko-Rechner: [letsgofree.me/neofx/neofx-risiko.html](https://letsgofree.me/neofx/neofx-risiko.html)
