@@ -377,6 +377,7 @@
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;">Gehebelt</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Betrag<br>effektiv</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Saldo</th>
                         </tr>
                     </thead>
                     <tbody id="tradesBody"></tbody>
@@ -1353,8 +1354,24 @@ function displayTrades(selectedAccount) {
         trades = trades.filter(t => t.account === selectedAccount);
     }
 
+    // Saldo: laufende Summe "Betrag effektiv" über alle angezeigten Einträge,
+    // chronologisch (bei gleicher Zeit nach Ticket). Ohne Kommissionen.
+    // Fehlt ein Betrag effektiv (Hebel fehlt), ist der Saldo ab dort unbekannt.
+    const chrono = [...trades].sort((a, b) =>
+        a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
+    const saldoMap = new Map();
+    let laufend = 0;
+    let saldoUnbekannt = false;
+    chrono.forEach(t => {
+        const eff = betragEffektiv(t);
+        if (eff === null) saldoUnbekannt = true;
+        else laufend += eff;
+        saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
+    });
+
     // Neueste zuerst
-    const sorted = [...trades].sort((a, b) => b.openTime.localeCompare(a.openTime));
+    const sorted = [...trades].sort((a, b) =>
+        b.openTime.localeCompare(a.openTime) || (Number(b.ticket) - Number(a.ticket)));
 
     let totalCommission = 0;
     let totalTaxes = 0;
@@ -1469,12 +1486,25 @@ function displayTrades(selectedAccount) {
         } else {
             ck.textContent = '';
         }
+
+        // Saldo (fett)
+        const cs = row.insertCell();
+        cs.style.fontWeight = '700';
+        const saldo = saldoMap.get(tradeKey(t.account, t.ticket));
+        if (saldo === null) {
+            cs.textContent = '–';
+            cs.title = 'Hebel bei einem Konto fehlt';
+        } else {
+            // wie die anderen Beträge ohne $, mit Tausender-Trennzeichen
+            const f = Math.abs(saldo).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+            cs.textContent = (saldo < 0 ? '-' : '') + f;
+        }
     });
 
     // Total-Zeile
     const totalRow = tbody.insertRow();
     totalRow.classList.add('total-row');
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 15; i++) {
         const c = totalRow.insertCell();
         if (i === 0) c.textContent = 'Total';
         if (i === 12) {
