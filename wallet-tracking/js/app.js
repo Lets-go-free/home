@@ -1,4 +1,4 @@
-// Phase 6.13 · 25.09.2026 11:39:16 CEST: P4 6.12-Realtest: Fresh-Import 85 s, assetFlows 1.7 s. 6.13 optimiert die verbleibenden Hotspots Claims (Batch-Upsert statt serieller Einzelupdates) und NFT-Ownership (begrenzte Parallelität). Kaufpreislogik unverändert. Build 20260925-113916.
+// Phase 6.14 · 25.09.2026 13:57:01 CEST: P4 6.13-Realtest: Fresh-Import 37.2 s, DAO1 25.1 s. Ownership nutzt vorgewärmte Historien ohne redundante per-NFT Explorer-Reads; Kaufpreis-Finalisierung wird begrenzt parallel aufgelöst. Fachlogik unverändert. Build 20260925-135701.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen. Persistierte Resolver-v3-Ergebnisse (auch bewusst offene) werden beim NFT-Tab cache-first wiederverwendet; kein erneuter Kaufpreis-Lauf beim ersten Öffnen ohne geänderte Erwerbs-Evidenz. P4 Asset-Flow-Fresh-Build entkoppelt Vollbewertung. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 zentraler NFT-Kaufpreisresolver v3; historische Kauf-Tx bleibt über spätere Walletwechsel erhalten. P4 Messung bestätigt Asset-Flows als Hauptengpass. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Fresh-Build-Finalisierung: Ownership/Global-First/Purchase-Readmodel werden nach DAO1-Aufbau frisch geladen und NFT-UI neu gerendert; P4 erhält Lifecycle-Timings. Build 20260924-163030.
@@ -2119,7 +2119,7 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P1", workStatus:"erledigt", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade konnten intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erschien.", action:"Phase 6.02: Einheitlicher Statusvertrag complete / partial / failed / deferred ist in DAO1 eingeführt und wird bis zum zentralen Wallet-Abschlussstatus propagiert; apertureHandled ist davon getrennt."},
   {priority:"P2", workStatus:"erledigt", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Phase 6.03: Automatischer Fresh-Build-Snapshot ist an den Lifecycle-Statusvertrag gekoppelt; nur complete ist zugelassen, partial/deferred/failed blockieren den finalen Snapshot und werden im Snapshot-Gate protokolliert."},
   {priority:"P3", workStatus:"erledigt", severity:"critical", area:"Fresh-Build-Parität", finding:"6.11-Realtest: Fresh-Build reproduziert den bekannten Entwicklungs-Testuser einschließlich Ownership/Erwerbsdaten und historischer Kaufpreise. Kontrollfall #38483 findet wieder exakt 10’000 wUSDT in Tx 0x31cd…1de2; weitere bekannte Preise (u. a. #31722, #90227, #90289, #37174) sind deckungsgleich. Bewusst nicht deterministisch verknüpfbare Käufe bleiben offen statt geraten zu werden.", action:"Phase 6.12 schließt P3 ab und macht den finalen Resolver-v3-Stand cache-first: auch bewusst offene Ergebnisse werden mit ihrer Erwerbs-Evidenz persistiert und beim ersten NFT-Tab-Öffnen nicht nochmals neu gerechnet, solange sich die zugrunde liegende Ownership-/Erwerbs-Evidenz nicht geändert hat."},
-  {priority:"P4", workStatus:"in Arbeit", severity:"high", area:"Performance Fresh-Import", finding:"6.12-Realtest: Wallet-Erstimport 85'093 ms, DAO1 72'034 ms. Der frühere Hauptengpass assetFlows fiel von 606'115 ms auf 1'706 ms. Verbleibende Hotspots sind Claims 39'819 ms und NFT-Ownership 23'421 ms; Transaktionen 4'072 ms.", action:"Phase 6.13 optimiert nur diese gemessenen Rest-Hotspots: Claim-Marker in project_transactions werden batchweise statt mit 200+ seriellen Updates geschrieben; der Ownership-Rebuild läuft nach contractweisem Prewarm mit begrenzter Parallelität. Kaufpreisresolver und Asset-Flow-Logik bleiben unverändert. Realtest misst Claims, nftOwnership und Gesamtzeit erneut."},
+  {priority:"P4", workStatus:"in Arbeit", severity:"high", area:"Performance Fresh-Import", finding:"6.13-Realtest: Wallet-Erstimport 37'233 ms, DAO1 25'102 ms. Claims fielen von 39'819 auf 3'681 ms, NFT-Ownership von 23'421 auf 13'299 ms; assetFlows blieb mit 1'471 ms schnell. Verbleibender Hauptblock ist Ownership; NFT-Finalisierung lag bei 4'940 ms.", action:"Phase 6.14 entfernt dort nachweisbare Doppelarbeit: Fresh-Build-Ownership nutzt die bereits contractweise vorgewärmten globalen NFT-Historien und Wallet-Transferhistorien direkt; per-NFT Metadata-/Instance-Explorer-Aufrufe erfolgen nur noch als Fallback. Die unveränderte Kaufpreislogik wird in der zentralen NFT-Finalisierung mit maximal vier parallelen Resolvern auf bereits vorbereiteten Daten ausgeführt. Realtest vergleicht nftOwnership, NFT-Finalisierung und Gesamtzeit."},
   {priority:"P5", workStatus:"offen", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Claim-Erkennung, ERC-20-Flows, native Values, Internals, Receipts und Traces bilden heute mehrere sich ergänzende Payout-Pfade.", action:"Eine kanonische Payout-/Asset-Flow-Schicht definieren; Detailansichten und Dashboard ausschließlich daraus lesen lassen."},
   {priority:"P6", workStatus:"offen", severity:"high", area:"NFT / Bot Current State", finding:"nft_cache, project_nft_ownership und DAO1-Runtime-Caches können zeitweise unterschiedliche Zustände liefern.", action:"nft_cache + project_nft_ownership als persistente Wahrheiten definieren; Runtime nur als abgeleitete Session-Sicht verwenden."},
   {priority:"P7", workStatus:"offen", severity:"high", area:"Wallet-ID Lifecycle", finding:"Transiente IDs wie local1 konnten bis in UUID-DB-Filter gelangen (6.00 korrigierter konkreter Fall).", action:"DB-Zugriffe ausschließlich mit persistierter dbId/UUID erlauben; lokale Client-ID nur für UI verwenden."},
@@ -8872,27 +8872,30 @@ async function enrichCentralNftPurchaseEvidence({force=false,walletIds=null}={})
   for(const [walletId,row] of nftCaches){
     if(walletScope&&!walletScope.has(String(walletId)))continue;
     const list=Array.isArray(row?.nfts)?row.nfts:[];let rowChanged=false;
-    for(const n of list){
-      if(String(n?.chain||"")!=="apertum")continue;
-      // Alte 5.56-Negativbefunde ohne konkrete Erwerbs-Tx waren nicht belastbar und
-      // werden in 5.58 automatisch erneut geprüft.
-      const ev=n?.purchaseEvidence||null;
-      const own=nftOwnershipInfo(n);
-      // Resolver-v3 unterscheidet "Preis verifiziert" und "deterministisch noch offen".
-      // Beides ist ein persistierbarer Cache-Stand. Ohne geänderte Erwerbs-Evidenz darf
-      // ein bewusst offener Fall nicht bei jedem NFT-Tab-Einstieg erneut Netzrequests auslösen.
-      if(!force&&centralNftPurchaseEvidenceIsCurrent(n))continue;
-      const acquisitionWallet=own?.firstOwnedWalletAddress||nftWalletAddressById(own?.firstOwnedWalletId,n.chain);
-      if(!acquisitionWallet)continue;
-      try{
-        const ev=await window.DAO1Project.resolveNftPurchaseEvidence({
-          contract:n.tokenAddress,tokenId:n.tokenId,acquisitionWallet,
-          acquiredAt:own?.firstOwnedAt||n.acquiredAt,acquiredBlock:own?.firstOwnedBlock||n.acquiredBlock,
-          acquisitionTxHash:own?.acquisitionTxHash||n.acquisitionTxHash,acquisitionKind:own?.acquisitionKind||null
-        });
-        if(ev){n.purchaseEvidence={...ev,inputEvidenceKey:centralNftPurchaseEvidenceKey(n,own)};rowChanged=true;changed++;}
-      }catch(e){console.warn("NFT Kaufpreis-Evidenz",n?.tokenId,e);}
-    }
+    const pending=list.filter(n=>String(n?.chain||"")==="apertum" && (force||!centralNftPurchaseEvidenceIsCurrent(n)));
+    let cursor=0;
+    const workers=Array.from({length:Math.min(4,pending.length)},async()=>{
+      while(true){
+        const i=cursor++;
+        if(i>=pending.length)return;
+        const n=pending[i];
+        // Resolver-v3 unterscheidet "Preis verifiziert" und "deterministisch noch offen".
+        // Beide Zustände bleiben evidenzgebunden persistent. Phase 6.14 löst mehrere
+        // bereits vorgewärmte NFTs begrenzt parallel auf; der Resolver selbst bleibt gleich.
+        const own=nftOwnershipInfo(n);
+        const acquisitionWallet=own?.firstOwnedWalletAddress||nftWalletAddressById(own?.firstOwnedWalletId,n.chain);
+        if(!acquisitionWallet)continue;
+        try{
+          const ev=await window.DAO1Project.resolveNftPurchaseEvidence({
+            contract:n.tokenAddress,tokenId:n.tokenId,acquisitionWallet,
+            acquiredAt:own?.firstOwnedAt||n.acquiredAt,acquiredBlock:own?.firstOwnedBlock||n.acquiredBlock,
+            acquisitionTxHash:own?.acquisitionTxHash||n.acquisitionTxHash,acquisitionKind:own?.acquisitionKind||null
+          });
+          if(ev){n.purchaseEvidence={...ev,inputEvidenceKey:centralNftPurchaseEvidenceKey(n,own)};rowChanged=true;changed++;}
+        }catch(e){console.warn("NFT Kaufpreis-Evidenz",n?.tokenId,e);}
+      }
+    });
+    if(workers.length)await Promise.all(workers);
     if(rowChanged){
       const w=wallets.find(x=>String(x.dbId||x.id)===String(walletId));
       if(w)await saveNftCacheForWallet(w,list,row.selected_chains||[]);
