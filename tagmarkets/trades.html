@@ -6,6 +6,23 @@
     <title>TagMarkets Trades-Übersicht</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
+        /* Breiter Rahmen nur für diese Seite: Seitenrand 5% der Seitenbreite */
+        body {
+            padding-left: 5vw;
+            padding-right: 5vw;
+        }
+        .container {
+            max-width: none;
+        }
+        .section {
+            padding-left: clamp(15px, 2.5vw, 40px);
+            padding-right: clamp(15px, 2.5vw, 40px);
+        }
+        /* Tabelle "Alle Trades" kompakter: weniger Innenabstand, Datum/Zeit und Typ dürfen umbrechen */
+        #tradesTable thead th { padding: 8px !important; }
+        #tradesTable tbody td { padding: 7px 8px; }
+        #tradesTable tbody td.wrap { white-space: normal; }
+        #tradesTable td:last-child { min-width: 0; }
         .neo-input {
             padding: 9px 10px;
             border: 2px solid #cbd5e0;
@@ -46,7 +63,6 @@
         #accountsTable { width: auto !important; min-width: 600px; }
         #accountsTable th { width: auto !important; text-align: left !important; }
         #accountsTable input.neo-input { min-width: 260px; }
-        #tradesTable td:last-child { min-width: 130px; }
         #accountsTable td.table-center { text-align: center !important; }
         .collapse-toggle {
             display: flex;
@@ -1338,6 +1354,11 @@ function propHinweis(anzahl) {
 }
 
 // ---------- Tabelle "Alle Trades" ----------
+// Datum nicht beim Bindestrich umbrechen, nur zwischen Datum und Zeit
+function zeitUmbruch(zeit) {
+    return String(zeit || '').replace(/-/g, '\u2011');
+}
+
 function formatPlain(value) {
     return String(value);
 }
@@ -1391,15 +1412,17 @@ function displayTrades(selectedAccount) {
         const row = tbody.insertRow();
         // Ausgeblendet: Platform, S/L, T/P, Taxes, Swap (sind weiterhin in der Datenbank)
         const values = [
-            [t.ticket, true], [t.account, true], [t.openTime, true],
+            [t.ticket, true], [t.account, true], [zeitUmbruch(t.openTime), true],
             [t.type, true], [formatPlain(t.volume), false], [t.symbol, true],
             [formatPlain(t.openPrice), false],
-            [t.closedTime, true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false]
+            [zeitUmbruch(t.closedTime), true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false]
         ];
-        values.forEach(([v, left]) => {
+        values.forEach(([v, left], i) => {
             const c = row.insertCell();
             c.textContent = v;
             if (left) c.classList.add('text-left');
+            // Open Time, Type, Closed Time dürfen umbrechen
+            if (i === 2 || i === 3 || i === 7) c.classList.add('wrap');
         });
 
         // Profit/Amount
