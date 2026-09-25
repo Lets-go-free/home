@@ -85,6 +85,61 @@
             font-size: 0.9em;
             color: #4a5568;
         }
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            margin: 25px -10px -40px -10px;
+            padding: 0 10px;
+            scrollbar-width: thin;
+            position: relative;
+        }
+        /* Tabs zentrieren, bei wenig Platz trotzdem scrollbar */
+        .tab-nav::before, .tab-nav::after { content: ''; margin: auto; }
+        .tab-btn {
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.08);
+            color: #cbd5e0;
+            border: none;
+            border-bottom: 3px solid transparent;
+            border-radius: 8px 8px 0 0;
+            padding: 12px 18px;
+            font-size: 0.95em;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+        .tab-btn:hover { color: #ffffff; background: rgba(255,255,255,0.15); }
+        .tab-btn.active {
+            color: #ffffff;
+            background: rgba(16, 185, 129, 0.18);
+            border-bottom-color: #10b981;
+        }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .subtab-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 25px;
+        }
+        .subtab-btn {
+            background: #edf2f7;
+            color: #4a5568;
+            border: 1px solid #cbd5e0;
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 0.9em;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .subtab-btn:hover { background: #e2e8f0; }
+        .subtab-btn.active { background: #2d3748; color: #ffffff; border-color: #2d3748; }
+        .subtab-panel { display: none; }
+        .subtab-panel.active { display: block; }
         .kategorie-select {
             padding: 4px 6px;
             border: 1px solid #cbd5e0;
@@ -105,6 +160,15 @@
     <div class="hero">
         <h1>TagMarkets Trades-Übersicht</h1>
         <p>Live-Performance Tracking</p>
+        <!-- Tab-Navigation -->
+        <nav class="tab-nav" id="tabNav">
+            <button type="button" class="tab-btn" data-tab="proaccount" onclick="showTab('proaccount')">Gewinne pro Account</button>
+            <button type="button" class="tab-btn" data-tab="gewinne" onclick="showTab('gewinne')">Gewinne &amp; Übersicht</button>
+            <button type="button" class="tab-btn" data-tab="woche" onclick="showTab('woche')">Trades je Woche</button>
+            <button type="button" class="tab-btn" data-tab="trades" onclick="showTab('trades')">Alle Trades</button>
+            <button type="button" class="tab-btn" data-tab="wallet" onclick="showTab('wallet')">Wallet-Transaktionen</button>
+            <button type="button" class="tab-btn admin-only" data-tab="admin" onclick="showTab('admin')">Admin</button>
+        </nav>
     </div>
 
     <div class="section" style="padding-top: 20px;">
@@ -123,44 +187,6 @@
 
         <div id="statusBox" style="display: none; margin-bottom: 20px;"></div>
 
-        <!-- Trading-Konten -->
-        <div id="accountsContainer" style="margin-bottom: 30px;">
-            <h3 style="margin-bottom: 0;">
-                <button type="button" id="accountsToggle" class="collapse-toggle" onclick="toggleAccounts()" aria-expanded="false" aria-controls="accountsContent">
-                    <span class="arrow">▶</span>
-                    <span>Trading-Konten</span>
-                </button>
-            </h3>
-            <div id="accountsContent" style="display: none; padding-top: 20px;">
-            <p class="info-box">
-                <strong>Hinweis:</strong> Konten hinzufügen und ändern geht nur, wenn du angemeldet bist.
-            </p>
-            <div class="table-container-small">
-                <table id="accountsTable" style="width: 100%; border-collapse: collapse;">
-                    <thead style="position: sticky; top: 0; z-index: 10;">
-                        <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Strategie</th>
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Hebel</th>
-                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="accountsBody"></tbody>
-                </table>
-            </div>
-            <div class="admin-only flex" style="flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 15px;">
-                <input id="newAccount" type="text" placeholder="Account-Nr." class="neo-input" style="width: 160px;">
-                <input id="newStrategie" type="text" placeholder="Strategie" class="neo-input" style="width: 220px;">
-                <select id="newHebel" class="neo-input" style="width: 110px;">
-                    <option value="">Hebel</option>
-                    <option value="x12">x12</option>
-                    <option value="x24">x24</option>
-                </select>
-                <button type="button" class="neo-btn" onclick="addAccount()">Konto hinzufügen</button>
-                <span id="accountMessage" style="font-size: 0.9em; color: #dc2626;"></span>
-            </div>
-            </div>
-        </div>
 
         <!-- Account Filter -->
         <div id="accountFilterContainer" style="margin-bottom: 30px;">
@@ -172,13 +198,10 @@
             </div>
         </div>
 
-        <!-- Hinweis zu Berechnungen -->
-        <p class="info-box">
-            <strong>Hinweis zu den Berechnungen:</strong> Die Werte in den Tabellen "Gewinne" und "Übersicht Trades" basieren auf den kumulierten Einzahlungen, inklusive Aufstockungen und Re-Investitionen von Gewinnen. Für detaillierte Einzelwerte siehe "Trades-Übersicht je Woche" oder "Alle Trades".
-        </p>
 
+        <div class="tab-panel" id="tab-proaccount">
         <!-- Hinweis zu Tage ohne Trade -->
-        <p class="info-box" style="margin-top: 20px;">
+        <p class="info-box" style="margin-bottom: 20px;">
             <strong>Bemerkung zu "Anzahl Tage ohne Trade":</strong> Gehandelt wird ausschliesslich von Montag bis Freitag, an Feiertagen bleibt die Börse geschlossen. Es kann aber durchaus vorkommen, dass der Broker sich gegen einen Trade entscheidet, weil die Signale unklar sind. Das ist nicht feige, sondern professionell! Lieber kein Trade als ein Verlust. In dieser Zeile werden die Werktage (Montag bis Freitag) ohne Trade aufgeführt. Wochenenden werden nicht gezählt. Feiertage kann die Seite nicht erkennen, sie werden darum vorerst mitgezählt.
         </p>
 
@@ -196,6 +219,18 @@
                 </table>
             </div>
         </div>
+
+        </div>
+        <div class="tab-panel" id="tab-gewinne">
+        <!-- Hinweis zu Berechnungen -->
+        <p class="info-box">
+            <strong>Hinweis zu den Berechnungen:</strong> Die Werte in den Tabellen "Gewinne" und "Übersicht Trades" basieren auf den kumulierten Einzahlungen, inklusive Aufstockungen und Re-Investitionen von Gewinnen. Für detaillierte Einzelwerte siehe "Trades-Übersicht je Woche" oder "Alle Trades".
+        </p>
+
+        <!-- Hinweis zu Tage ohne Trade -->
+        <p class="info-box" style="margin-top: 20px;">
+            <strong>Bemerkung zu "Anzahl Tage ohne Trade":</strong> Gehandelt wird ausschliesslich von Montag bis Freitag, an Feiertagen bleibt die Börse geschlossen. Es kann aber durchaus vorkommen, dass der Broker sich gegen einen Trade entscheidet, weil die Signale unklar sind. Das ist nicht feige, sondern professionell! Lieber kein Trade als ein Verlust. In dieser Zeile werden die Werktage (Montag bis Freitag) ohne Trade aufgeführt. Wochenenden werden nicht gezählt. Feiertage kann die Seite nicht erkennen, sie werden darum vorerst mitgezählt.
+        </p>
 
         <!-- Uebersicht Trades und Gewinne nebeneinander -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
@@ -230,6 +265,8 @@
             </div>
         </div>
 
+        </div>
+        <div class="tab-panel" id="tab-woche">
         <!-- Trades-Übersicht je Woche -->
         <div id="weeklyOverviewContainer" style="margin-bottom: 30px;">
             <h3>Trades-Übersicht je Woche</h3>
@@ -263,19 +300,8 @@
         </div>
 
 
-        <!-- Trades einfügen -->
-        <div id="importContainer" class="admin-only" style="margin-bottom: 30px;">
-            <h3 style="margin-bottom: 20px;">Trades einfügen</h3>
-            <p class="info-box">
-                <strong>So geht's:</strong> Markiere in TagMarkets die Tabelle mit den Trades, kopiere sie und füge sie hier ein. Die Titelzeile darf mit dabei sein. Die Trades werden direkt in der Datenbank gespeichert. Trades, die schon vorhanden sind (gleicher Account und gleiches Ticket), werden übersprungen.
-            </p>
-            <textarea id="importText" class="neo-input" rows="6" style="width: 100%; font-family: monospace; font-size: 0.85em; white-space: pre; resize: vertical;" placeholder="Hier die kopierte Tabelle einfügen..."></textarea>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
-                <button type="button" class="neo-btn" onclick="importTrades()">Trades übernehmen</button>
-                <span id="importMessage" style="font-size: 0.9em;"></span>
-            </div>
         </div>
-
+        <div class="tab-panel" id="tab-trades">
         <!-- Alle Trades (Daten von Tag Markets) -->
         <div id="tradesContainer">
             <h3 style="margin-bottom: 20px;">Alle Trades</h3>
@@ -308,21 +334,10 @@
             </div>
         </div>
 
-        <!-- Wallet-Transaktionen einfügen -->
-        <div id="walletImportContainer" class="admin-only" style="margin: 40px 0 30px 0;">
-            <h3 style="margin-bottom: 20px;">Wallet-Transaktionen einfügen</h3>
-            <p class="info-box">
-                <strong>So geht's:</strong> Markiere in TagMarkets die Tabelle mit den Wallet-Transaktionen, kopiere sie und füge sie hier ein. Die Titelzeile darf mit dabei sein. Transaktionen, die schon vorhanden sind (gleiche ID), werden übersprungen.
-            </p>
-            <textarea id="walletImportText" class="neo-input" rows="6" style="width: 100%; font-family: monospace; font-size: 0.85em; white-space: pre; resize: vertical;" placeholder="Hier die kopierte Tabelle einfügen..."></textarea>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
-                <button type="button" class="neo-btn" onclick="importWallet()">Transaktionen übernehmen</button>
-                <span id="walletImportMessage" style="font-size: 0.9em;"></span>
-            </div>
         </div>
-
+        <div class="tab-panel" id="tab-wallet">
         <!-- Wallet-Transaktionen -->
-        <div id="walletContainer" style="margin-top: 40px;">
+        <div id="walletContainer">
             <h3 style="margin-bottom: 20px;">Wallet-Transaktionen</h3>
             <div class="table-container-small">
                 <table id="walletTable" style="width: 100%; border-collapse: collapse;">
@@ -342,6 +357,78 @@
                     </thead>
                     <tbody id="walletBody"></tbody>
                 </table>
+            </div>
+        </div>
+
+        </div>
+        <div class="tab-panel" id="tab-admin">
+            <nav class="subtab-nav">
+                <button type="button" class="subtab-btn" data-subtab="accounts" onclick="showSubTab('accounts')">Accounts</button>
+                <button type="button" class="subtab-btn" data-subtab="trades" onclick="showSubTab('trades')">Trades</button>
+                <button type="button" class="subtab-btn" data-subtab="wallet" onclick="showSubTab('wallet')">Wallet-Transaktionen</button>
+            </nav>
+            <div class="subtab-panel" id="subtab-accounts">
+        <!-- Trading-Konten -->
+        <div id="accountsContainer" style="margin-bottom: 30px;">
+            <h3 style="margin-bottom: 20px;">Trading-Konten</h3>
+            <div id="accountsContent">
+                        <div class="table-container-small">
+                <table id="accountsTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Strategie</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Hebel</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountsBody"></tbody>
+                </table>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 15px;">
+                <input id="newAccount" type="text" placeholder="Account-Nr." class="neo-input" style="width: 160px;">
+                <input id="newStrategie" type="text" placeholder="Strategie" class="neo-input" style="width: 220px;">
+                <select id="newHebel" class="neo-input" style="width: 110px;">
+                    <option value="">Hebel</option>
+                    <option value="x12">x12</option>
+                    <option value="x24">x24</option>
+                </select>
+                <button type="button" class="neo-btn" onclick="addAccount()">Konto hinzufügen</button>
+                <span id="accountMessage" style="font-size: 0.9em; color: #dc2626;"></span>
+            </div>
+            </div>
+        </div>
+
+            </div>
+            <div class="subtab-panel" id="subtab-trades">
+        <!-- Trades einfügen -->
+        <div id="importContainer" style="margin-bottom: 30px;">
+            <h3 style="margin-bottom: 20px;">Trades einfügen</h3>
+            <p class="info-box">
+                <strong>So geht's:</strong> Markiere in TagMarkets die Tabelle mit den Trades, kopiere sie und füge sie hier ein. Die Titelzeile darf mit dabei sein. Die Trades werden direkt in der Datenbank gespeichert. Trades, die schon vorhanden sind (gleicher Account und gleiches Ticket), werden übersprungen.
+            </p>
+            <textarea id="importText" class="neo-input" rows="6" style="width: 100%; font-family: monospace; font-size: 0.85em; white-space: pre; resize: vertical;" placeholder="Hier die kopierte Tabelle einfügen..."></textarea>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
+                <button type="button" class="neo-btn" onclick="importTrades()">Trades übernehmen</button>
+                <span id="importMessage" style="font-size: 0.9em;"></span>
+            </div>
+        </div>
+
+            </div>
+            <div class="subtab-panel" id="subtab-wallet">
+        <!-- Wallet-Transaktionen einfügen -->
+        <div id="walletImportContainer" style="margin-bottom: 30px;">
+            <h3 style="margin-bottom: 20px;">Wallet-Transaktionen einfügen</h3>
+            <p class="info-box">
+                <strong>So geht's:</strong> Markiere in TagMarkets die Tabelle mit den Wallet-Transaktionen, kopiere sie und füge sie hier ein. Die Titelzeile darf mit dabei sein. Transaktionen, die schon vorhanden sind (gleiche ID), werden übersprungen.
+            </p>
+            <textarea id="walletImportText" class="neo-input" rows="6" style="width: 100%; font-family: monospace; font-size: 0.85em; white-space: pre; resize: vertical;" placeholder="Hier die kopierte Tabelle einfügen..."></textarea>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
+                <button type="button" class="neo-btn" onclick="importWallet()">Transaktionen übernehmen</button>
+                <span id="walletImportMessage" style="font-size: 0.9em;"></span>
+            </div>
+        </div>
+
             </div>
         </div>
 
@@ -479,6 +566,12 @@ async function reloadAll() {
     displayTrades(document.getElementById('accountFilter').value);
 }
 
+// Beim Seitenaufruf bzw. nach dem Anmelden: vorhandene Daten abgleichen
+async function abgleichBeimStart() {
+    const n = await abgleichPropDeposits();
+    if (n) showStatus(propHinweis(n).trim(), false);
+}
+
 function showStatus(text, isError) {
     const box = document.getElementById('statusBox');
     box.textContent = text;
@@ -551,6 +644,8 @@ function setAuth(session) {
     }
     document.body.classList.toggle('is-admin', isAdmin);
     document.getElementById('loginUser').textContent = session ? session.user.email : '';
+    // Admin-Tab nur angemeldet
+    showTab(isAdmin ? tabAusAdresse() : (tabAusAdresse() === 'admin' ? 'proaccount' : tabAusAdresse()));
     displayAccounts();
     displayTrades(document.getElementById('accountFilter').value);
 }
@@ -693,14 +788,6 @@ async function deleteAccount(account) {
     await reloadAll();
 }
 
-function toggleAccounts() {
-    const btn = document.getElementById('accountsToggle');
-    const content = document.getElementById('accountsContent');
-    const open = btn.getAttribute('aria-expanded') === 'true';
-    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-    content.style.display = open ? 'none' : 'block';
-}
-
 // ---------- Trades einfügen ----------
 async function importTrades() {
     const msg = document.getElementById('importMessage');
@@ -767,7 +854,8 @@ async function importTrades() {
     if (doppelt) text2 += ', ' + doppelt + ' schon vorhanden';
     if (invalid) text2 += ', ' + invalid + (invalid === 1 ? ' Zeile ungültig' : ' Zeilen ungültig');
     if (neueAccounts.length) text2 += '. Neue Konten: ' + neueAccounts.join(', ') + ' (Strategie und Hebel bitte ergänzen)';
-    msg.textContent = text2 + '.';
+    const prop = await abgleichPropDeposits();
+    msg.textContent = text2 + '.' + propHinweis(prop);
 }
 
 
@@ -911,10 +999,98 @@ async function importWallet() {
 
     document.getElementById('walletImportText').value = '';
     msg.style.color = '#10b981';
+    const prop = await abgleichPropDeposits();
     let text2 = neue.length + (neue.length === 1 ? ' neue Transaktion gespeichert' : ' neue Transaktionen gespeichert');
     if (doppelt) text2 += ', ' + doppelt + ' schon vorhanden';
     if (invalid) text2 += ', ' + invalid + (invalid === 1 ? ' Zeile ungültig' : ' Zeilen ungültig');
-    msg.textContent = text2 + '.';
+    msg.textContent = text2 + '.' + propHinweis(prop);
+}
+
+
+// ---------- Tabs ----------
+const TABS_MIT_FILTER = ['gewinne', 'woche', 'trades'];
+let aktuellerSubTab = 'accounts';
+
+function showTab(name) {
+    if (name === 'admin' && !isAdmin) name = 'proaccount';
+    if (!document.getElementById('tab-' + name)) name = 'proaccount';
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    document.getElementById('accountFilterContainer').style.display = TABS_MIT_FILTER.includes(name) ? 'block' : 'none';
+    if (name === 'admin') showSubTab(aktuellerSubTab);
+    // Tab in der Adresse merken (bleibt beim Neuladen)
+    const hash = name === 'admin' ? '#admin-' + aktuellerSubTab : '#' + name;
+    if (window.location.hash !== hash) history.replaceState(null, '', hash);
+}
+
+function showSubTab(name) {
+    aktuellerSubTab = name;
+    document.querySelectorAll('.subtab-panel').forEach(p => p.classList.toggle('active', p.id === 'subtab-' + name));
+    document.querySelectorAll('.subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.subtab === name));
+    if (document.getElementById('tab-admin').classList.contains('active')) {
+        history.replaceState(null, '', '#admin-' + name);
+    }
+}
+
+// Tab aus der Adresse lesen, z.B. #trades oder #admin-wallet
+function tabAusAdresse() {
+    const h = window.location.hash.replace('#', '');
+    if (h.startsWith('admin')) {
+        const sub = h.split('-')[1];
+        if (['accounts', 'trades', 'wallet'].includes(sub)) aktuellerSubTab = sub;
+        return 'admin';
+    }
+    return h || 'proaccount';
+}
+
+
+// ---------- Abgleich Wallet "Prop Deposit" -> Trades ----------
+// Wallet-Eintrag mit Type und Sub-Type "Prop Deposit" gefunden:
+// Accounting-Eintrag in den Trades mit gleichem Datum und gleichem Betrag suchen.
+// Ist dessen Kategorie "Gebühren", wird sie auf "Auszahlung" gesetzt. Sonst keine Änderung.
+function istPropDeposit(w) {
+    const norm = v => String(v || '').trim().toLowerCase();
+    return norm(w.type) === 'prop deposit' && norm(w.sub_type) === 'prop deposit';
+}
+
+async function abgleichPropDeposits() {
+    if (!isAdmin) return 0;
+    const cent = v => Math.round(Math.abs(Number(v) || 0) * 100);
+    const benutzt = new Set();
+    const aenderungen = [];
+
+    walletTx.filter(istPropDeposit).forEach(w => {
+        if (!w.date) return;
+        const datum = String(w.date).substring(0, 10);
+        const betrag = cent(w.amount);
+        const treffer = mt5Trades.find(t =>
+            isAccounting(t) &&
+            !benutzt.has(tradeKey(t.account, t.ticket)) &&
+            datumKey(t.openTime) === datum &&
+            cent(t.profit) === betrag);
+        if (!treffer) return;
+        benutzt.add(tradeKey(treffer.account, treffer.ticket));
+        if (getKategorie(treffer) === 'Gebühren') aenderungen.push(treffer);
+    });
+
+    let geaendert = 0;
+    for (const t of aenderungen) {
+        const { error } = await db.from('tm_trades').update({ kategorie: 'Auszahlung' })
+            .eq('account', t.account).eq('ticket', t.ticket);
+        if (error) {
+            showStatus('Kategorie konnte nicht angepasst werden: ' + error.message, true);
+            continue;
+        }
+        t.kategorie = 'Auszahlung';
+        geaendert++;
+    }
+    if (geaendert) displayTrades(document.getElementById('accountFilter').value);
+    return geaendert;
+}
+
+function propHinweis(anzahl) {
+    if (!anzahl) return '';
+    return ' ' + anzahl + (anzahl === 1 ? ' Eintrag' : ' Einträge') + ' in den Trades von Gebühren auf Auszahlung geändert (Prop Deposit).';
 }
 
 // ---------- Tabelle "Alle Trades" ----------
@@ -1736,8 +1912,13 @@ window.onload = async () => {
     isAdmin = !!(data && data.session);
     document.body.classList.toggle('is-admin', isAdmin);
     document.getElementById('loginUser').textContent = isAdmin ? data.session.user.email : '';
-    db.auth.onAuthStateChange((event, session) => setAuth(session));
+    showTab(tabAusAdresse());
+    db.auth.onAuthStateChange((event, session) => {
+        setAuth(session);
+        if (event === 'SIGNED_IN') abgleichBeimStart();
+    });
     await reloadAll();
+    await abgleichBeimStart();
 };
 </script>
 
