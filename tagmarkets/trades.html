@@ -339,6 +339,7 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Taxes</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Swap</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit/Amount</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Betrag<br>effektiv</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
                         </tr>
                     </thead>
@@ -679,6 +680,17 @@ function autoKategorie(trade) {
 
 function getKategorie(trade) {
     return trade.kategorie || autoKategorie(trade);
+}
+
+// Betrag effektiv: Einzahlungen und Auszahlungen sind gehebelt -> durch den Hebel teilen.
+// Alles andere (Trades, Gebühren) 1:1. Ohne Hebel beim Konto: null.
+function betragEffektiv(t) {
+    const kat = isAccounting(t) ? getKategorie(t) : '';
+    if (kat === 'Einzahlung' || kat === 'Auszahlung') {
+        const h = hebelFaktor(t.account);
+        return h ? t.profit / h : null;
+    }
+    return t.profit;
 }
 
 async function setKategorie(account, ticket, value) {
@@ -1061,13 +1073,16 @@ function tabAusAdresse() {
 
 
 // ---------- Abgleich Wallet "Prop Deposit" -> Trades ----------
-// Wallet-Eintrag mit Type und Sub-Type "Prop Deposit":
+// Wallet-Eintrag mit Type und Sub-Type "Prop Deposit" oder "Prop Withdrawal":
 // Accounting-Einträge in den Trades mit gleichem Datum und gleichem Betrag suchen.
 // - Eindeutig (nicht mehr Einträge als Prop Deposits): Kategorie "Gebühren" -> "Auszahlung"
 // - Mehrdeutig (mehr Einträge als Prop Deposits): nichts ändern, im Admin-Bereich melden
+// Zählt als Auszahlung aus einem Prop-Account:
+// Type und Sub-Type beide "Prop Deposit" oder beide "Prop Withdrawal"
 function istPropDeposit(w) {
     const norm = v => String(v || '').trim().toLowerCase();
-    return norm(w.type) === 'prop deposit' && norm(w.sub_type) === 'prop deposit';
+    const t = norm(w.type);
+    return (t === 'prop deposit' || t === 'prop withdrawal') && norm(w.sub_type) === t;
 }
 
 // Toleranz für Rundungsdifferenzen (in USD, auf Wallet-Ebene)
@@ -1168,7 +1183,7 @@ function displayUnstimmigkeiten() {
     box.innerHTML = '';
     const titel = document.createElement('p');
     titel.innerHTML = '<strong>⚠️ ' + konflikte.length + (konflikte.length === 1 ? ' Unstimmigkeit' : ' Unstimmigkeiten') +
-        ' bei Auszahlungen (Prop Deposit):</strong> Am gleichen Tag gibt es in den Trades mehr passende Einträge als Prop Deposits im Wallet. ' +
+        ' bei Auszahlungen (Prop Deposit / Prop Withdrawal):</strong> Am gleichen Tag gibt es in den Trades mehr passende Einträge als Prop-Buchungen im Wallet. ' +
         'Die Seite kann nicht entscheiden, welcher Eintrag die Auszahlung ist. Bitte stelle bei den richtigen Einträgen die Kategorie auf «Auszahlung». Danach verschwindet der Hinweis.';
     box.appendChild(titel);
 
@@ -1178,7 +1193,7 @@ function displayUnstimmigkeiten() {
         const kopf = document.createElement('p');
         kopf.style.cssText = 'margin-bottom: 8px; font-weight: 600;';
         kopf.textContent = formatDateGerman(keyToDate(k.datum)) + ' · Wallet ' + k.betrag.toFixed(2) + ' · ' +
-            k.wallet.length + ' Prop Deposit' + (k.wallet.length === 1 ? '' : 's') + ' im Wallet (ID ' + k.wallet.map(w => w.transaction_id).join(', ') + ') · ' +
+            k.wallet.length + ' Prop-Buchung' + (k.wallet.length === 1 ? '' : 'en') + ' im Wallet (ID ' + k.wallet.map(w => w.transaction_id).join(', ') + ') · ' +
             k.kandidaten.length + ' Einträge in den Trades';
         wrap.appendChild(kopf);
 
@@ -1220,7 +1235,7 @@ function displayUnstimmigkeiten() {
 function propHinweis(anzahl) {
     let text = '';
     if (anzahl) {
-        text += ' ' + anzahl + (anzahl === 1 ? ' Eintrag' : ' Einträge') + ' in den Trades von Gebühren auf Auszahlung geändert (Prop Deposit).';
+        text += ' ' + anzahl + (anzahl === 1 ? ' Eintrag' : ' Einträge') + ' in den Trades von Gebühren auf Auszahlung geändert (Prop Deposit / Prop Withdrawal).';
     }
     const k = isAdmin ? pruefePropDeposits().konflikte.length : 0;
     if (k) {
@@ -1252,12 +1267,16 @@ function displayTrades(selectedAccount) {
     let totalTaxes = 0;
     let totalSwap = 0;
     let totalProfit = 0;
+    let totalEffektiv = 0;
+    let effektivFehlt = false;
 
     sorted.forEach(t => {
         totalCommission += t.commission;
         totalTaxes += t.taxes;
         totalSwap += t.swap;
         totalProfit += t.profit;
+        const eff = betragEffektiv(t);
+        if (eff === null) effektivFehlt = true; else totalEffektiv += eff;
 
         const row = tbody.insertRow();
         const values = [
@@ -1278,6 +1297,17 @@ function displayTrades(selectedAccount) {
         cp.textContent = t.profit.toFixed(2);
         if (t.profit > 0) cp.classList.add('table-positive');
         else if (t.profit < 0) cp.classList.add('table-negative');
+
+        // Betrag effektiv
+        const ce = row.insertCell();
+        if (eff === null) {
+            ce.textContent = '–';
+            ce.title = 'Hebel beim Konto fehlt';
+        } else {
+            ce.textContent = eff.toFixed(2);
+            if (eff > 0) ce.classList.add('table-positive');
+            else if (eff < 0) ce.classList.add('table-negative');
+        }
 
         // Kategorie (nur bei Accounting-Einträgen)
         const ck = row.insertCell();
@@ -1315,9 +1345,14 @@ function displayTrades(selectedAccount) {
     // Total-Zeile
     const totalRow = tbody.insertRow();
     totalRow.classList.add('total-row');
-    for (let i = 0; i < 17; i++) {
+    for (let i = 0; i < 18; i++) {
         const c = totalRow.insertCell();
         if (i === 0) c.textContent = 'Total';
+        if (i === 16) {
+            c.textContent = effektivFehlt ? '–' : totalEffektiv.toFixed(2);
+            if (!effektivFehlt && totalEffektiv > 0) c.classList.add('table-positive');
+            else if (!effektivFehlt && totalEffektiv < 0) c.classList.add('table-negative');
+        }
         if (i === 12) c.textContent = totalCommission.toFixed(5);
         if (i === 13) c.textContent = totalTaxes.toFixed(2);
         if (i === 14) c.textContent = totalSwap.toFixed(2);
