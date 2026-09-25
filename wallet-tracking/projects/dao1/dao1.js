@@ -1,3 +1,4 @@
+// Phase 6.19 · 26.09.2026 01:19:30 CEST: Audit P4 im Realtest abgeschlossen; P5 Claims/Payouts startet mit zentralem asset-flow-first Payout-Readmodel fuer Detailtab, Bot-Summen und Dashboard. Legacy-Felder bleiben nur Fallback. Build 20260926-011930.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: Release-Metadaten synchronisiert; DAO1-Ownership-/Kaufpreis-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
@@ -3399,6 +3400,28 @@ window.DAO1Project = (() => {
     return assetFlowsForTx(row).filter(f=>f.direction==="eingang");
   }
 
+  // Phase 6.19 / Audit P5: kanonische Leseschicht fuer Claim-Auszahlungen.
+  // Persistierte Asset-Flows sind die primaere Wahrheit fuer Asset/Menge/USD.
+  // claim_reward_aptm / claim_reward_usd bleiben ausschliesslich als Legacy-Fallback
+  // fuer historische native Claims ohne bereits persistierten Asset-Flow erhalten.
+  function claimPayoutEntriesForTx(row){
+    const flows=incomingAssetFlowsForTx(row);
+    if(flows.length)return flows.map(f=>({
+      source:"asset_flow",
+      token_address:f.token_address||null,token_symbol:f.token_symbol||f.token_name||"TOKEN",token_name:f.token_name||null,
+      token_decimals:Number(f.token_decimals??18),amount:Number(f.amount||0),
+      price_usd:f.price_usd==null?null:Number(f.price_usd),value_usd:f.value_usd==null?null:Number(f.value_usd),
+      price_source:f.price_source||null,flow:f
+    }));
+    const legacyAmount=Number(row?.claim_reward_aptm);
+    if(Number.isFinite(legacyAmount)&&legacyAmount!==0)return [{
+      source:"legacy_native",token_address:"native",token_symbol:"APTM",token_name:"Apertum",token_decimals:18,
+      amount:legacyAmount,price_usd:row?.aptm_usd==null?null:Number(row.aptm_usd),
+      value_usd:row?.claim_reward_usd==null?null:Number(row.claim_reward_usd),price_source:row?.price_source||"Legacy Claim-Feld",flow:null
+    }];
+    return [];
+  }
+
   function tokenAmount(value,{address=null,symbol="",summary=false}={}){
     const formatter=getContext?.()?.tokenFormat?.amount || window.WalletTokenFormat?.amount;
     if(typeof formatter==="function") return formatter(value,{chain:"apertum",address,symbol},{summary});
@@ -4803,19 +4826,14 @@ window.DAO1Project = (() => {
     }
 
     for(const r of rows){
-      const flows=incomingAssetFlowsForTx(r);
-      if(flows.length){
-        for(const f of flows){
+      const payouts=claimPayoutEntriesForTx(r);
+      if(payouts.length){
+        for(const f of payouts){
           const sym=isWrappedAptmSymbol(f.token_symbol,f.token_name)?"wAPTM":String(f.token_symbol||f.token_name||"TOKEN");
           const hasUsd=f.value_usd!=null && Number.isFinite(Number(f.value_usd));
           add(sym,f.amount,f.value_usd,hasUsd,f.token_address);
         }
-      }else if(r.claim_reward_aptm!=null){
-        const hasUsd=r.claim_reward_usd!=null && Number.isFinite(Number(r.claim_reward_usd));
-        add("APTM",r.claim_reward_aptm,r.claim_reward_usd,hasUsd,"native");
-      }else{
-        unresolvedClaims++;
-      }
+      }else unresolvedClaims++;
     }
     return {byToken,totalUsd,missingUsd,unresolvedClaims};
   }
@@ -4897,7 +4915,7 @@ window.DAO1Project = (() => {
     const unresolvedText=payoutSummary.unresolvedClaims?`<div class="meta" style="margin-top:5px">${payoutSummary.unresolvedClaims.toLocaleString("de-DE")} Claim(s) noch ohne ermittelte Auszahlung.</div>`:"";
     el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot-Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst eine tatsächliche Auszahlung den Claim.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
       <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText,"Bot-Claims",rows.length)}</div>
-      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=incomingAssetFlowsForTx(r);const flowUsd=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=flows.length?flows.map(f=>{const amount=isWrappedAptmSymbol(f.token_symbol,f.token_name)?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:flowDisplay(f);const histUsd=Number(f.value_usd||0);return `<strong>${amount}</strong><div class="meta">${histUsd?usd(histUsd):"USD hist. –"}</div>`;}).join(""):(r.claim_reward_aptm!=null?`<strong>${fmt(r.claim_reward_aptm)} APTM <span class="meta">(Legacy)</span></strong><div class="meta">${r.claim_reward_usd==null?"USD hist. –":usd(Number(r.claim_reward_usd))}</div>`:"–");return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${Number(r.aptm_usd)>0?usd(Number(r.aptm_usd)):"–"}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const payouts=claimPayoutEntriesForTx(r);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=payouts.length?payouts.map(f=>{const isWrapped=isWrappedAptmSymbol(f.token_symbol,f.token_name);const amount=isWrapped?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"TOKEN"})} ${escapeHtml(f.token_symbol||"TOKEN")}`;const histUsd=Number(f.value_usd||0);return `<strong>${amount}${f.source==="legacy_native"?` <span class="meta">(Legacy-Fallback)</span>`:""}</strong><div class="meta">${histUsd?usd(histUsd):"USD hist. –"}</div>`;}).join(""):"–";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${Number(r.aptm_usd)>0?usd(Number(r.aptm_usd)):"–"}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
   }
 
   let dao1TeamTreeMode="wallet";
@@ -5967,13 +5985,10 @@ window.DAO1Project = (() => {
     const groups=new Map();
     for(const r of transactionRows||[]){
       if(String(r.claim_nft_id??"")!==String(nftId))continue;
-      for(const f of incomingAssetFlowsForTx(r)){
+      for(const f of claimPayoutEntriesForTx(r)){
         const symbol=isWrappedAptmSymbol(f.token_symbol,f.token_name)?"wAPTM":String(f.token_symbol||"TOKEN");
-        const key=`${lower(f.token_address||"")}|${symbol}`;
+        const key=`${lower(f.token_address||"")||f.source}|${symbol}`;
         const g=groups.get(key)||{amount:0,symbol,contract:f.token_address||null};g.amount+=Number(f.amount||0);groups.set(key,g);
-      }
-      if(!incomingAssetFlowsForTx(r).length && Number(r.claim_reward_aptm||0)>0){
-        const key="legacy|APTM",g=groups.get(key)||{amount:0,symbol:"APTM",contract:null};g.amount+=Number(r.claim_reward_aptm||0);groups.set(key,g);
       }
     }
     return [...groups.values()].filter(x=>x.amount>0);
@@ -7840,7 +7855,6 @@ window.DAO1Project = (() => {
     const bot=empty(),referral=empty();
     const keysFor=dt=>{const keys=["total"];if(dt.getFullYear()===prevYear)keys.push("previousYear");if(dt.getFullYear()===year){keys.push("year");if(dt.getMonth()===month)keys.push("month");}return keys;};
     const addAsset=(bucket,keys,flow)=>{const amount=Number(flow?.amount||0);if(!Number.isFinite(amount)||amount===0)return;const symbol=String(flow?.token_symbol||flow?.token_name||"TOKEN");const address=lower(flow?.token_address||"")||null;const assetId=address||`symbol:${symbol.toLowerCase()}`;for(const period of keys){const map=bucket[period],id=`${CHAIN_KEY}|${assetId}`,cur=map.get(id)||{chain:CHAIN_KEY,address,assetId,symbol,amount:0};cur.amount+=amount;map.set(id,cur);}};
-    const addLegacyAptm=(bucket,keys,r)=>{const amount=Number(r?.claim_reward_aptm||0);if(!Number.isFinite(amount)||amount===0)return;for(const period of keys){const map=bucket[period],id=`${CHAIN_KEY}|native`,cur=map.get(id)||{chain:CHAIN_KEY,address:"native",assetId:"native",symbol:"APTM",amount:0};cur.amount+=amount;map.set(id,cur);}};
     for(const r of (rows||[])){
       const dt=new Date(r.tx_timestamp||0);if(!Number.isFinite(dt.getTime()))continue;const keys=keysFor(dt);
       const txKey=`${String(r.wallet_id||"")}::${String(r.tx_hash||"").toLowerCase()}`,incoming=(flowByTx.get(txKey)||[]).filter(f=>f.direction==="eingang");
@@ -7848,7 +7862,7 @@ window.DAO1Project = (() => {
       const isVerifiedReferral=wallet===REFERRAL_WALLET&&lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT&&incoming.some(isVerifiedReferralFlow);
       if(isDid){for(const f of incoming)addAsset(referral,keys,f);continue;}
       if(isVerifiedReferral&&!isClaimTxRow(r)){for(const f of incoming.filter(isVerifiedReferralFlow))addAsset(referral,keys,f);continue;}
-      if(isClaimTxRow(r)){if(incoming.length)for(const f of incoming)addAsset(bot,keys,f);else addLegacyAptm(bot,keys,r);}
+      if(isClaimTxRow(r)){for(const f of claimPayoutEntriesForTx(r))addAsset(bot,keys,f);}
     }
     const finish=b=>Object.fromEntries(Object.entries(b).map(([k,map])=>[k,[...map.values()].filter(x=>x.amount!==0)]));
     return {rewards:finish(bot),referralRewards:finish(referral)};
