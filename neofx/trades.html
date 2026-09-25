@@ -3,31 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>neo.FX Trades-Übersicht</title>
+    <title>TagMarkets Trades-Übersicht</title>
     <link rel="stylesheet" href="css/neofx-style.css">
+    <style>
+        .neo-input {
+            padding: 9px 10px;
+            border: 2px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 0.95em;
+            background: white;
+            color: #2d3748;
+            font-family: inherit;
+        }
+        .neo-input:focus {
+            outline: none;
+            border-color: #4a5568;
+        }
+        .neo-btn {
+            padding: 10px 16px;
+            background: #2d3748;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .neo-btn:hover { background: #1a202c; }
+        .neo-btn-small {
+            padding: 4px 10px;
+            background: none;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            color: #4a5568;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-family: inherit;
+        }
+        .neo-btn-small:hover { background: #edf2f7; }
+        #tradesTable td.text-left, #accountsTable td { text-align: left !important; }
+        #accountsTable { width: auto !important; min-width: 600px; }
+        #accountsTable th { width: auto !important; text-align: left !important; }
+        #accountsTable input.neo-input { min-width: 260px; }
+        #tradesTable td:last-child { min-width: 130px; }
+        #accountsTable td.table-center { text-align: center !important; }
+        .collapse-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            background: none;
+            border: none;
+            padding: 0;
+            text-align: left;
+            cursor: pointer;
+            font: inherit;
+            color: inherit;
+        }
+        .collapse-toggle .arrow {
+            display: inline-block;
+            font-size: 0.6em;
+            color: #718096;
+            transition: transform 0.25s ease;
+        }
+        .collapse-toggle[aria-expanded="true"] .arrow {
+            transform: rotate(90deg);
+        }
+        .collapse-toggle:hover { color: #1a202c; }
+        .kategorie-select {
+            padding: 4px 6px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 0.95em;
+            font-family: inherit;
+            background: white;
+        }
+        .kategorie-select.manuell {
+            border-color: #f59e0b;
+            background: #fffbeb;
+        }
+    </style>
 </head>
 <body>
 
 <div class="container">
     <div class="hero">
-        <h1>neo.FX Trades-Übersicht</h1>
+        <h1>TagMarkets Trades-Übersicht</h1>
         <p>Live-Performance Tracking</p>
     </div>
 
     <div class="section" style="padding-top: 20px;">
 
-        <!-- Lade-Indikator -->
-        <div id="loadingIndicator" style="text-align: center; padding: 40px;">
-            <p style="font-size: 1.2em; color: #4a5568;">Lade aktuelle Daten...</p>
-        </div>
-
-        <!-- Fehler-Meldung -->
-        <div id="errorMessage" style="display: none;" class="warning-box">
-            <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden. Bitte versuche es später erneut.</p>
+        <!-- Trading-Konten -->
+        <div id="accountsContainer" style="margin-bottom: 30px;">
+            <h3 style="margin-bottom: 0;">
+                <button type="button" id="accountsToggle" class="collapse-toggle" onclick="toggleAccounts()" aria-expanded="false" aria-controls="accountsContent">
+                    <span class="arrow">▶</span>
+                    <span>Trading-Konten</span>
+                </button>
+            </h3>
+            <div id="accountsContent" style="display: none; padding-top: 20px;">
+            <p class="info-box">
+                <strong>Hinweis:</strong> Die Konten, die eingefügten Trades und die manuell geänderten Kategorien werden vorerst nur in diesem Browser gespeichert. Mit der Umstellung auf Supabase werden sie zentral abgelegt.
+            </p>
+            <div class="table-container-small">
+                <table id="accountsTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Strategie</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Hebel</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountsBody"></tbody>
+                </table>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 15px;">
+                <input id="newAccount" type="text" placeholder="Account-Nr." class="neo-input" style="width: 160px;">
+                <input id="newStrategie" type="text" placeholder="Strategie" class="neo-input" style="width: 220px;">
+                <select id="newHebel" class="neo-input" style="width: 110px;">
+                    <option value="">Hebel</option>
+                    <option value="x12">x12</option>
+                    <option value="x24">x24</option>
+                </select>
+                <button type="button" class="neo-btn" onclick="addAccount()">Konto hinzufügen</button>
+                <span id="accountMessage" style="font-size: 0.9em; color: #dc2626;"></span>
+            </div>
+            </div>
         </div>
 
         <!-- Account Filter -->
-        <div id="accountFilterContainer" style="display: none; margin-bottom: 30px;">
+        <div id="accountFilterContainer" style="margin-bottom: 30px;">
             <div style="background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%); padding: 20px; border-radius: 12px; border-left: 4px solid #4a5568;">
                 <label for="accountFilter" style="display: block; margin-bottom: 10px; font-weight: 600; color: #2d3748;">Account wählen:</label>
                 <select id="accountFilter" style="width: 100%; padding: 12px; border: 2px solid #cbd5e0; border-radius: 8px; font-size: 1em; background: white; cursor: pointer;" onchange="filterByAccount()">
@@ -36,120 +144,48 @@
             </div>
         </div>
 
-        <!-- Hinweis zu Berechnungen -->
-        <p class="info-box">
-            <strong>Hinweis zu den Berechnungen:</strong> Die Werte in den Tabellen "Gewinne" und "Übersicht Trades" basieren auf den kumulierten Einzahlungen, inklusive Aufstockungen und Re-Investitionen von Gewinnen. Für detaillierte Einzelwerte siehe "Trades-Übersicht je Woche" oder "Alle Trades".
-        </p>
-
-        <!-- Hinweis zu Tage ohne Trade -->
-        <p class="info-box" style="margin-top: 20px;">
-            <strong>Bemerkung zu "Anzahl Tage ohne Trade":</strong> Gehandelt wird ausschliesslich von Montag bis Freitag, an Feiertagen bleibt die Börse geschlossen. Es kann aber durchaus vorkommen, dass der Broker sich gegen einen Trade entscheidet, weil die Signale unklar sind. Das ist nicht feige, sondern professionell! Lieber kein Trade als ein Verlust. In dieser Zeile werden genau diese Nicht-Trades aufgeführt, Wochenende und Feiertage werden nicht aufgeführt.
-        </p>
-
-        <!-- Gewinne pro Account Tabelle (alle Accounts) -->
-        <div id="gewinneProAccountContainer" style="display: none; margin-bottom: 30px;">
-            <h3>Gewinne pro Account</h3>
-            <div style="overflow-x: auto; max-width: 100%;">
-                <table id="gewinneProAccountTable" style="width: 100%; border-collapse: collapse;">
-                    <thead id="gewinneProAccountHead">
-                        <!-- Wird dynamisch gefüllt -->
-                    </thead>
-                    <tbody id="gewinneProAccountBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Uebersicht Trades und Gewinne nebeneinander -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
-            <!-- Gewinne Tabelle (jetzt links) -->
-            <div id="gewinneContainer" style="display: none;">
-                <h3>Gewinne</h3>
-                <div style="overflow-x: auto;">
-                    <table id="gewinneTable" style="width: 100%; border-collapse: collapse;">
-                        <thead id="gewinneHead">
-                            <!-- Wird dynamisch gefüllt -->
-                        </thead>
-                        <tbody id="gewinneBody">
-                            <!-- Wird dynamisch gefüllt -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Uebersicht Trades Tabelle (jetzt rechts) -->
-            <div id="uebersichtContainer" style="display: none;">
-                <h3>Übersicht Trades</h3>
-                <div style="overflow-x: auto;">
-                    <table id="uebersichtTable" style="width: 100%; border-collapse: collapse;">
-                        <thead id="uebersichtHead">
-                            <!-- Wird dynamisch gefüllt -->
-                        </thead>
-                        <tbody id="uebersichtBody">
-                            <!-- Wird dynamisch gefüllt -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Trades-Übersicht je Woche -->
-        <div id="weeklyOverviewContainer" style="display: none; margin-bottom: 30px;">
-            <h3>Trades-Übersicht je Woche</h3>
+        <!-- Trades einfügen -->
+        <div id="importContainer" style="margin-bottom: 30px;">
+            <h3 style="margin-bottom: 20px;">Trades einfügen</h3>
             <p class="info-box">
-                <strong>Hinweis:</strong> Gebühren werden üblicherweise am darauffolgenden Montag abgebucht und beeinflussen daher den Netto-Profit % der Folgewoche.
+                <strong>So geht's:</strong> Markiere in TagMarkets die Tabelle mit den Trades, kopiere sie und füge sie hier ein. Die Titelzeile darf mit dabei sein. Trades, die schon vorhanden sind (gleicher Account und gleiches Ticket), werden übersprungen.
             </p>
-            <div class="table-container-small" style="overflow-x: auto;">
-                <table id="weeklyOverviewTable" style="width: 100%; border-collapse: collapse;">
-                    <thead style="position: sticky; top: 0; z-index: 10;">
-                        <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; position: sticky; left: 0; z-index: 20; background: #2d3748; white-space: nowrap;">Woche vom</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Trading-Tage</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">ohne<br>Trade</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>effektiv</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>mit Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Gebühren</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Netto<br>Gewinn $</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Netto<br>Gewinn %</th>
-                        </tr>
-                    </thead>
-                    <tbody id="weeklyOverviewBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
-                </table>
+            <textarea id="importText" class="neo-input" rows="6" style="width: 100%; font-family: monospace; font-size: 0.85em; white-space: pre; resize: vertical;" placeholder="Hier die kopierte Tabelle einfügen..."></textarea>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
+                <button type="button" class="neo-btn" onclick="importTrades()">Trades übernehmen</button>
+                <button type="button" class="neo-btn-small" onclick="clearImportedTrades()">Eingefügte Trades löschen</button>
+                <span id="importMessage" style="font-size: 0.9em;"></span>
             </div>
         </div>
 
-        <!-- Trades Tabelle -->
-        <div id="tradesContainer" style="display: none;">
+        <!-- Alle Trades (Daten von Tag Markets) -->
+        <div id="tradesContainer">
             <h3 style="margin-bottom: 20px;">Alle Trades</h3>
 
             <div class="table-container">
                 <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; width: 80px;">Datum</th>
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; width: 100px;">Account</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Einzahlung<br>$</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">$ mit<br>Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Saldo<br>Einzahlung<br>mit Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Profit</th>
-                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568; width: 80px;">Gewinn/<br>Verlust</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(Hebel)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(effektiv)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Gebühren</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Platform</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Ticket</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Open Time</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Type</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Volume</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Symbol</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Open Price</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">S/L</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">T/P</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Closed Time</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Close Price</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Commission</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Taxes</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Swap</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit/Amount</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
                         </tr>
                     </thead>
-                    <tbody id="tradesBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
+                    <tbody id="tradesBody"></tbody>
                 </table>
             </div>
         </div>
@@ -157,1193 +193,556 @@
     </div>
 
     <div class="footer-link">
-        <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu neo.FX</a>
+        <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
     </div>
 </div>
 
 <script>
-// Google Sheets CSV URLs
-const SHEET_URLS = {
-    trades: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=0&single=true&output=csv'
-};
+function populateAccountFilter() {
+    // Accounts aus den Trades und den Trading-Konten
+    const accounts = [...new Set([
+        ...mt5Trades.map(t => t.account),
+        ...loadAccounts().map(a => a.account)
+    ].filter(a => a && String(a).trim()))].sort();
 
-// Globale Variable für alle Trades
-let allTradesData = [];
-
-async function loadData() {
-    // Zeige Lade-Indikator
-    document.getElementById('loadingIndicator').style.display = 'block';
-    document.getElementById('errorMessage').style.display = 'none';
-    document.getElementById('uebersichtContainer').style.display = 'none';
-    document.getElementById('gewinneContainer').style.display = 'none';
-    document.getElementById('tradesContainer').style.display = 'none';
-
-    try {
-        // Lade nur noch Trades-Daten
-        const tradesData = await loadSheet(SHEET_URLS.trades);
-        
-        console.log('Trades:', tradesData);
-        
-        // Speichere alle Trades global
-        allTradesData = tradesData;
-        
-        // Erstelle Account-Filter
-        populateAccountFilter(tradesData);
-        
-        // Zeige alle Daten (kein Filter aktiv)
-        filterByAccount();
-        
-        // Verstecke Lade-Indikator, zeige Filter und Daten
-        document.getElementById('loadingIndicator').style.display = 'none';
-        document.getElementById('accountFilterContainer').style.display = 'block';
-        document.getElementById('gewinneProAccountContainer').style.display = 'block';
-        document.getElementById('uebersichtContainer').style.display = 'block';
-        document.getElementById('gewinneContainer').style.display = 'block';
-        document.getElementById('weeklyOverviewContainer').style.display = 'block';
-        document.getElementById('tradesContainer').style.display = 'block';
-        
-    } catch (error) {
-        console.error('Fehler beim Laden:', error);
-        document.getElementById('loadingIndicator').style.display = 'none';
-        document.getElementById('errorMessage').innerHTML = `
-            <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden.</p>
-            <p style="font-size: 0.9em; margin-top: 10px;">Fehlerdetails: ${error.message}</p>
-            <p style="font-size: 0.9em; margin-top: 10px;">Stelle sicher, dass alle Tabellenblätter "Im Web veröffentlicht" sind.</p>
-        `;
-        document.getElementById('errorMessage').style.display = 'block';
-    }
-}
-
-async function loadSheet(url) {
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-        throw new Error('Netzwerk-Fehler beim Laden der Daten');
-    }
-    
-    const csvText = await response.text();
-    console.log('CSV Raw:', url, csvText.substring(0, 200)); // Debug
-    
-    // Parse CSV
-    const rows = csvText.split('\n').filter(row => row.trim());
-    
-    if (rows.length === 0) {
-        return [];
-    }
-    
-    const headers = parseCSVRow(rows[0]);
-    console.log('Headers:', headers); // Debug
-    
-    const data = [];
-    for (let i = 1; i < rows.length; i++) {
-        const values = parseCSVRow(rows[i]);
-        console.log('Row', i, ':', values); // Debug
-        
-        if (values.length > 0 && values[0] && values[0].trim()) {
-            const row = {};
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-            data.push(row);
-        }
-    }
-    
-    console.log('Parsed data:', data); // Debug
-    return data;
-}
-
-function parseCSVRow(row) {
-    const values = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < row.length; i++) {
-        const char = row[i];
-        
-        if (char === '"') {
-            inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-            values.push(current.trim().replace(/^"|"$/g, ''));
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    
-    values.push(current.trim().replace(/^"|"$/g, ''));
-    return values;
-}
-
-function populateAccountFilter(trades) {
-    // Hole eindeutige Account-Werte
-    const accounts = [...new Set(trades.map(t => t.Account).filter(a => a && a.trim()))].sort();
-    
     const select = document.getElementById('accountFilter');
-    // Behalte "Alle Accounts" Option
+    const previous = select.value;
     select.innerHTML = '<option value="">Alle Accounts</option>';
-    
+
     accounts.forEach(account => {
         const option = document.createElement('option');
         option.value = account;
         option.textContent = account;
         select.appendChild(option);
     });
+    if (accounts.includes(previous)) select.value = previous;
 }
 
 function filterByAccount() {
-    const selectedAccount = document.getElementById('accountFilter').value;
-    
-    // Filtere Trades
-    let filteredTrades = allTradesData;
-    if (selectedAccount) {
-        filteredTrades = allTradesData.filter(t => t.Account === selectedAccount);
+    displayTrades(document.getElementById('accountFilter').value);
+}
+
+// ============================================================
+// Trades von Tag Markets (vom Screenshot abgetippt)
+// Später: Daten kommen aus Supabase
+// ============================================================
+const TAGMARKETS_TRADES = [
+    // platform, ticket, account, openTime, type, volume, symbol, openPrice, sl, tp, closedTime, closePrice, commission, taxes, swap, profit
+    ['MT5', '125935879', '50988820', '2026-07-12 21:53:12', 'Accounting (Balance)', 0, '', 0, 0, 0, '2026-07-12 21:53:12', 0, 0, 0, 0, 240.00],
+    ['MT5', '126576084', '50988820', '2026-07-13 08:16:27', 'Buy', 0.0001, 'XAUUSD.f', 4066.64, 0, 0, '2026-07-13 08:29:25', 4058.35, -0.00183, 0, 0, 0.15],
+    ['MT5', '127385866', '50988820', '2026-07-13 15:43:27', 'Buy', 0.0001, 'XAUUSD.f', 4063.5, 0, 0, '2026-07-13 15:49:24', 4066.94, -0.00183, 0, 0, -0.06],
+    ['MT5', '128141014', '50988820', '2026-07-14 07:51:04', 'Buy', 0.0001, 'XAUUSD.f', 4017.7, 0, 0, '2026-07-14 07:55:55', 4019.29, -0.00183, 0, 0, -0.03],
+    ['MT5', '128761403', '50988820', '2026-07-14 08:30:53', 'Sell', 0.0001, 'XAUUSD.f', 4024.24, 0, 0, '2026-07-14 09:08:09', 4031.42, -0.00183, 0, 0, 0.13],
+    ['MT5', '129615880', '50988820', '2026-07-15 08:31:12', 'Sell', 0.0001, 'XAUUSD.f', 4025.35, 0, 0, '2026-07-15 08:41:16', 4032.65, -0.00183, 0, 0, 0.13],
+    ['MT5', '130355409', '50988820', '2026-07-15 15:13:35', 'Sell', 0.0001, 'XAUUSD.f', 4036.97, 0, 0, '2026-07-15 15:24:38', 4038.43, -0.00183, 0, 0, 0.03],
+    ['MT5', '131189185', '50988820', '2026-07-16 08:45:23', 'Buy', 0.0001, 'XAUUSD.f', 4032.12, 0, 0, '2026-07-16 08:57:20', 4029.38, -0.00183, 0, 0, 0.05],
+    ['MT5', '132136306', '50988820', '2026-07-17 09:35:22', 'Buy', 0.0001, 'XAUUSD.f', 4003.55, 0, 0, '2026-07-17 10:48:29', 3998.12, -0.00183, 0, 0, 0.10],
+    ['MT5', '132681900', '50988820', '2026-07-18 09:16:07', 'Accounting (Balance)', 0, '', 0, 0, 0, '2026-07-18 09:16:07', 0, 0, 0, 0, -0.15],
+    ['MT5', '133446884', '50988820', '2026-07-20 11:10:48', 'Sell', 0.0001, 'XAUUSD.f', 4020.21, 0, 0, '2026-07-20 11:19:04', 4025.69, -0.00183, 0, 0, 0.10],
+    ['MT5', '134216116', '50988820', '2026-07-20 17:51:46', 'Buy', 0.0001, 'XAUUSD.f', 4010.12, 0, 0, '2026-07-20 17:59:42', 4006.31, -0.00183, 0, 0, 0.07],
+    ['MT5', '135087985', '50988820', '2026-07-21 09:41:33', 'Sell', 0.0001, 'XAUUSD.f', 4075.28, 0, 0, '2026-07-21 09:54:41', 4080.12, -0.00183, 0, 0, 0.09],
+    ['MT5', '135971604', '50988820', '2026-07-21 19:41:05', 'Buy', 0.0001, 'XAUUSD.f', 4074.65, 0, 0, '2026-07-21 19:44:14', 4072.23, -0.00183, 0, 0, 0.04],
+    ['MT5', '136793517', '50988820', '2026-07-22 07:00:59', 'Buy', 0.0001, 'XAUUSD.f', 4130.33, 0, 0, '2026-07-22 08:02:01', 4128.13, -0.00183, 0, 0, 0.04],
+    ['MT5', '137632755', '50988820', '2026-07-22 22:54:35', 'Sell', 0.0001, 'XAUUSD.f', 4129.52, 0, 0, '2026-07-22 23:03:30', 4130.76, -0.00183, 0, 0, 0.02],
+    ['MT5', '138388883', '50988820', '2026-07-23 07:48:08', 'Sell', 0.0001, 'XAUUSD.f', 4123.62, 0, 0, '2026-07-23 08:07:30', 4121.62, -0.00183, 0, 0, -0.04],
+    ['MT5', '139071014', '50988820', '2026-07-23 12:20:23', 'Buy', 0.0001, 'XAUUSD.f', 4096.12, 0, 0, '2026-07-23 13:30:45', 4093.06, -0.00183, 0, 0, 0.06],
+    ['MT5', '139979582', '50988820', '2026-07-24 08:50:08', 'Buy', 0.0001, 'XAUUSD.f', 4028.48, 0, 0, '2026-07-24 09:00:10', 4024.09, -0.00183, 0, 0, 0.08]
+];
+
+// Trades als Text (direkt aus TagMarkets kopiert, mit Tabulatoren getrennt)
+// Neue Daten einfach unten anfügen. Doppelte Einträge (Account + Ticket) werden übersprungen.
+const TAGMARKETS_TSV = `
+Platform	Ticket	Account	Open Time	Type	Volume	Symbol	Open Price	S/L	T/P	Closed Time	Close Price	Commission	Taxes	Swap	Profit/Amount
+MT5	126576084	50988820	2026-07-13 08:16:27	Buy	0.0001	XAUUSD.f	4066.64	0	0	2026-07-13 08:29:25	4058.35	-0.00183	0	0	0.15
+MT5	127385866	50988820	2026-07-13 15:43:27	Buy	0.0001	XAUUSD.f	4063.5	0	0	2026-07-13 15:49:24	4066.94	-0.00183	0	0	-0.06
+MT5	128141014	50988820	2026-07-14 07:51:04	Buy	0.0001	XAUUSD.f	4017.7	0	0	2026-07-14 07:55:55	4019.29	-0.00183	0	0	-0.03
+MT5	128761403	50988820	2026-07-14 08:30:53	Sell	0.0001	XAUUSD.f	4024.24	0	0	2026-07-14 09:08:09	4031.42	-0.00183	0	0	0.13
+MT5	129615880	50988820	2026-07-15 08:31:12	Sell	0.0001	XAUUSD.f	4025.35	0	0	2026-07-15 08:41:16	4032.65	-0.00183	0	0	0.13
+MT5	130355409	50988820	2026-07-15 15:13:35	Sell	0.0001	XAUUSD.f	4036.97	0	0	2026-07-15 15:24:38	4038.43	-0.00183	0	0	0.03
+MT5	131189185	50988820	2026-07-16 08:45:23	Buy	0.0001	XAUUSD.f	4032.12	0	0	2026-07-16 08:57:20	4029.38	-0.00183	0	0	0.05
+MT5	132136306	50988820	2026-07-17 09:35:22	Buy	0.0001	XAUUSD.f	4003.55	0	0	2026-07-17 10:48:29	3998.12	-0.00183	0	0	0.10
+MT5	133446884	50988820	2026-07-20 11:10:48	Sell	0.0001	XAUUSD.f	4020.21	0	0	2026-07-20 11:19:04	4025.69	-0.00183	0	0	0.10
+MT5	134216116	50988820	2026-07-20 17:51:46	Buy	0.0001	XAUUSD.f	4010.12	0	0	2026-07-20 17:59:42	4006.31	-0.00183	0	0	0.07
+MT5	135087985	50988820	2026-07-21 09:41:33	Sell	0.0001	XAUUSD.f	4075.28	0	0	2026-07-21 09:54:41	4080.12	-0.00183	0	0	0.09
+MT5	135971604	50988820	2026-07-21 19:41:05	Buy	0.0001	XAUUSD.f	4074.65	0	0	2026-07-21 19:44:14	4072.23	-0.00183	0	0	0.04
+MT5	136793517	50988820	2026-07-22 07:00:59	Buy	0.0001	XAUUSD.f	4130.33	0	0	2026-07-22 08:02:01	4128.13	-0.00183	0	0	0.04
+MT5	137632755	50988820	2026-07-22 22:54:35	Sell	0.0001	XAUUSD.f	4129.52	0	0	2026-07-22 23:03:30	4130.76	-0.00183	0	0	0.02
+MT5	138388883	50988820	2026-07-23 07:48:08	Sell	0.0001	XAUUSD.f	4123.62	0	0	2026-07-23 08:07:30	4121.62	-0.00183	0	0	-0.04
+MT5	139071014	50988820	2026-07-23 12:20:23	Buy	0.0001	XAUUSD.f	4096.12	0	0	2026-07-23 13:30:45	4093.06	-0.00183	0	0	0.06
+MT5	139979582	50988820	2026-07-24 08:50:08	Buy	0.0001	XAUUSD.f	4028.48	0	0	2026-07-24 09:00:10	4024.09	-0.00183	0	0	0.08
+MT5	140685198	50988820	2026-07-24 10:35:14	Buy	0.0001	XAUUSD.f	4052.29	0	0	2026-07-24 11:26:33	4048.41	-0.00183	0	0	0.07
+MT5	142054469	50988820	2026-07-27 07:18:11	Sell	0.0001	XAUUSD.f	4087.56	0	0	2026-07-27 08:11:22	4093.24	-0.00183	0	0	0.10
+MT5	142876191	50988820	2026-07-27 16:33:09	Sell	0.0001	XAUUSD.f	4078.44	0	0	2026-07-27 16:45:17	4087.83	-0.00183	0	0	0.17
+MT5	143888068	50988820	2026-07-28 07:47:22	Buy	0.0001	XAUUSD.f	4046.03	0	0	2026-07-28 08:28:37	4041.86	-0.00183	0	0	0.08
+MT5	144857063	50988820	2026-07-29 07:20:48	Sell	0.0001	XAUUSD.f	4022.45	0	0	2026-07-29 07:53:59	4025.4	-0.00183	0	0	0.05
+MT5	145781844	50988820	2026-07-29 23:00:54	Sell	0.0001	XAUUSD.f	4047.81	0	0	2026-07-29 23:08:41	4051.78	-0.00183	0	0	0.07
+MT5	146672646	50988820	2026-07-30 12:32:41	Sell	0.0001	XAUUSD.f	4062.11	0	0	2026-07-30 12:36:57	4067.49	-0.00183	0	0	0.10
+MT5	147682068	50988820	2026-07-31 07:51:51	Sell	0.0001	XAUUSD.f	4076.89	0	0	2026-07-31 08:24:09	4081.75	-0.00183	0	0	0.09
+MT5	149222453	50988820	2026-08-03 08:03:06	Buy	0.0001	XAUUSD.f	4063.33	0	0	2026-08-03 08:16:22	4057.73	-0.00183	0	0	0.10
+MT5	150269263	50988820	2026-08-04 08:06:17	Buy	0.0001	XAUUSD.f	4061.67	0	0	2026-08-04 08:17:10	4058.91	-0.00183	0	0	0.05
+MT5	151216813	50988820	2026-08-04 21:47:35	Buy	0.0028	XAUUSD.f	4076.22	0	0	2026-08-04 21:59:40	4080.12	-0.02862	0	0	-1.12
+MT5	151992017	50988820	2026-08-05 07:50:18	Sell	0.0028	XAUUSD.f	4133.53	0	0	2026-08-05 08:20:38	4137.67	-0.0286	0	0	1.18
+MT5	152759847	50988820	2026-08-05 11:44:22	Buy	0.0028	XAUUSD.f	4165.21	0	0	2026-08-05 11:52:17	4161.88	-0.0286	0	0	0.95
+MT5	153815337	50988820	2026-08-06 07:35:50	Sell	0.0028	XAUUSD.f	4258.33	0	0	2026-08-06 08:04:52	4259.53	-0.02861	0	0	0.34
+MT5	154727759	50988820	2026-08-06 20:23:51	Sell	0.0028	XAUUSD.f	4239.76	0	0	2026-08-06 20:55:52	4245.46	-0.0286	0	0	1.63
+MT5	155686882	50988820	2026-08-07 08:08:00	Sell	0.0028	XAUUSD.f	4263.68	0	0	2026-08-07 08:17:20	4268.52	-0.0286	0	0	1.38
+MT5	156845471	50988820	2026-08-10 07:10:04	Sell	0.0029	XAUUSD.f	4328.99	0	0	2026-08-10 07:22:20	4336.55	-0.02932	0	0	2.22
+MT5	158119970	50988820	2026-08-11 07:58:04	Buy	0.0029	XAUUSD.f	4405.96	0	0	2026-08-11 07:59:58	4409.44	-0.02934	0	0	-1.02
+MT5	158924826	50988820	2026-08-11 11:51:13	Buy	0.0029	XAUUSD.f	4375.16	0	0	2026-08-11 12:01:18	4368.36	-0.02932	0	0	1.99
+MT5	160028091	50988820	2026-08-12 15:00:05	Buy	0.0029	XAUUSD.f	4412.26	0	0	2026-08-12 15:07:11	4408.62	-0.02933	0	0	1.07
+MT5	161113840	50988820	2026-08-13 08:13:29	Sell	0.0029	XAUUSD.f	4402.6	0	0	2026-08-13 08:15:27	4404.94	-0.02933	0	0	0.69
+MT5	162237398	50988820	2026-08-14 08:00:52	Buy	0.0029	XAUUSD.f	4324.79	0	0	2026-08-14 08:19:37	4318.65	-0.02932	0	0	1.80
+MT5	163055853	50988820	2026-08-14 08:50:02	Sell	0.0029	XAUUSD.f	4326.97	0	0	2026-08-14 10:10:43	4333.77	-0.02932	0	0	1.99
+MT5	164711675	50988820	2026-08-17 07:49:26	Buy	0.003	XAUUSD.f	4395.88	0	0	2026-08-17 08:04:50	4393.35	-0.03035	0	0	0.77
+MT5	165810780	50988820	2026-08-18 06:00:51	Buy	0.003	XAUUSD.f	4399.36	0	0	2026-08-18 08:14:35	4392.34	-0.03034	0	0	2.13
+MT5	167003988	50988820	2026-08-19 08:06:43	Buy	0.006	XAUUSD.f	4343.53	0	0	2026-08-19 08:14:58	4339.43	-0.06068	0	0	2.49
+MT5	168207123	50988820	2026-08-20 08:03:17	Buy	0.003	XAUUSD.f	4490.48	0	0	2026-08-20 08:27:21	4485.73	-0.03034	0	0	1.44
+MT5	169506699	50988820	2026-08-21 08:11:26	Sell	0.0031	XAUUSD.f	4536.82	0	0	2026-08-21 08:15:14	4537.94	-0.03117	0	0	0.35
+MT5	171136136	50988820	2026-08-24 07:34:43	Sell	0.0031	XAUUSD.f	4635.03	0	0	2026-08-24 08:07:05	4641.85	-0.03114	0	0	2.12
+MT5	172423378	50988820	2026-08-25 08:04:19	Sell	0.0212	XAUUSD.f	4629.55	0	0	2026-08-25 08:10:16	4635.58	-0.21266	0	0	12.82
+MT5	173571775	50988820	2026-08-25 20:27:24	Sell	0.0212	XAUUSD.f	4640.95	0	0	2026-08-25 20:35:19	4639.96	-0.21277	0	0	-2.11
+MT5	174541531	50988820	2026-08-26 07:57:51	Sell	0.0425	XAUUSD.f	4640.61	0	0	2026-08-26 08:09:09	4643.24	-0.42534	0	0	11.19
+MT5	175853576	50988820	2026-08-27 11:17:10	Buy	0.0425	XAUUSD.f	4604.68	0	0	2026-08-27 11:30:12	4601.92	-0.42534	0	0	11.74
+MT5	177087983	50988820	2026-08-28 08:18:43	Sell	0.0427	XAUUSD.f	4580.67	0	0	2026-08-28 08:25:37	4583.52	-0.42706	0	0	12.17
+MT5	178948881	50988820	2026-08-31 08:03:50	Buy	0.0217	XAUUSD.f	4425.37	0	0	2026-08-31 08:09:37	4419.78	-0.21791	0	0	12.18
+MT5	180293656	50988820	2026-09-01 09:00:02	Buy	0.0217	XAUUSD.f	4440.12	0	0	2026-09-01 09:05:54	4438.12	-0.21797	0	0	4.36
+MT5	181629715	50988820	2026-09-02 09:04:25	Sell	0.0217	XAUUSD.f	4319.11	0	0	2026-09-02 11:50:28	4320.49	-0.21798	0	0	3.01
+MT5	182715997	50988820	2026-09-02 18:21:55	Sell	0.0217	XAUUSD.f	4366.67	0	0	2026-09-02 18:25:56	4369.27	-0.21796	0	0	5.67
+MT5	183919388	50988820	2026-09-03 08:48:56	Buy	0.0218	XAUUSD.f	4434.66	0	0	2026-09-03 08:52:15	4438.31	-0.21806	0	0	-7.96
+MT5	184867330	50988820	2026-09-03 12:36:09	Buy	0.0217	XAUUSD.f	4434.76	0	0	2026-09-03 12:57:10	4427.47	-0.21788	0	0	15.88
+MT5	186264038	50988820	2026-09-04 15:43:11	Buy	0.0217	XAUUSD.f	4401.75	0	0	2026-09-04 15:48:05	4383.98	-0.21771	0	0	38.69
+MT5	188159073	50988820	2026-09-07 10:01:54	Sell	0.0221	XAUUSD.f	4394.74	0	0	2026-09-07 10:05:53	4399.23	-0.22163	0	0	9.95
+MT5	189994437	50988820	2026-09-08 20:07:06	Buy	0.0221	XAUUSD.f	4399.59	0	0	2026-09-08 20:29:05	4395.21	-0.22163	0	0	9.71
+MT5	191487685	50988820	2026-09-09 16:01:58	Sell	0.0221	XAUUSD.f	4404.63	0	0	2026-09-09 16:15:54	4412.51	-0.22157	0	0	17.46
+MT5	193250158	50988820	2026-09-10 22:27:09	Buy	0.0221	XAUUSD.f	4329.05	0	0	2026-09-10 23:02:43	4323.24	-0.22161	0	0	12.88
+MT5	194560333	50988820	2026-09-11 07:57:55	Sell	0.0221	XAUUSD.f	4333.59	0	0	2026-09-11 08:02:21	4328.72	-0.22179	0	0	-10.80
+MT5	195624361	50988820	2026-09-11 18:20:15	Sell	0.0221	XAUUSD.f	4363.75	0	0	2026-09-11 18:30:18	4370.49	-0.22159	0	0	14.94
+MT5	197837172	50988820	2026-09-15 08:52:49	Buy	0.0221	XAUUSD.f	4298.08	0	0	2026-09-15 08:58:55	4292.18	-0.22101	0	0	13.04
+MT5	199580239	50988820	2026-09-16 09:36:42	Sell	0.022	XAUUSD.f	4325.5	0	0	2026-09-16 10:00:07	4332.34	-0.22099	0	0	15.12
+MT5	201131917	50988820	2026-09-17 06:00:33	Sell	0.0221	XAUUSD.f	4279.11	0	0	2026-09-17 06:21:35	4284.41	-0.22102	0	0	11.71
+MT5	202202663	50988820	2026-09-17 09:20:36	Buy	0.0221	XAUUSD.f	4306.96	0	0	2026-09-17 09:22:53	4308.3	-0.22113	0	0	-2.96
+MT5	203533297	50988820	2026-09-17 16:21:20	Buy	0.022	XAUUSD.f	4373.27	0	0	2026-09-17 16:29:43	4366.64	-0.22092	0	0	14.65
+MT5	205003792	50988820	2026-09-18 06:25:04	Sell	0.022	XAUUSD.f	4336.1	0	0	2026-09-18 06:33:14	4344.46	-0.22089	0	0	18.47
+MT5	207119063	50988820	2026-09-21 11:42:25	Buy	0.022	XAUUSD.f	4355.56	0	0	2026-09-21 11:56:26	4351.66	-0.22053	0	0	8.60
+MT5	208684823	50988820	2026-09-22 10:33:57	Sell	0.022	XAUUSD.f	4310.18	0	0	2026-09-22 10:37:01	4313.76	-0.22053	0	0	7.89
+MT5	209987651	50988820	2026-09-22 15:42:52	Buy	0.022	XAUUSD.f	4340.52	0	0	2026-09-22 15:55:48	4336.37	-0.22052	0	0	9.15
+MT5	211602752	50988820	2026-09-23 09:49:38	Buy	0.022	XAUUSD.f	4336.26	0	0	2026-09-23 09:56:42	4332.89	-0.22053	0	0	7.43
+MT5	213182327	50988820	2026-09-24 08:29:32	Buy	0.022	XAUUSD.f	4290.27	0	0	2026-09-24 08:34:28	4287.13	-0.22054	0	0	6.92
+MT5	214344000	50988820	2026-09-24 11:14:52	Buy	0.022	XAUUSD.f	4277.38	0	0	2026-09-24 11:24:43	4267.57	-0.22043	0	0	21.62
+`;
+
+// Text in Zeilen umwandeln (gleiches Format wie TAGMARKETS_TRADES)
+function parseTSV(text) {
+    const numCols = [5, 7, 8, 9, 11, 12, 13, 14, 15];
+    return text.split('\n')
+        .map(line => line.replace(/\r$/, ''))
+        .filter(line => line.trim() && !line.startsWith('Platform'))
+        .map(line => line.split('\t').map(x => x.trim()))
+        // Nur Zeilen mit mind. 16 Spalten, Ticket und Account
+        .filter(v => v.length >= 16 && v[1] && v[2])
+        .map(v => {
+            v = v.slice(0, 16);
+            numCols.forEach(i => { v[i] = parseFloat(String(v[i]).replace(/[',\s]/g, '')) || 0; });
+            return v;
+        });
+}
+
+const KATEGORIEN = ['Einzahlung', 'Gebühren', 'Auszahlung'];
+const STORAGE_KATEGORIE = 'neofx_kategorie_overrides';
+const STORAGE_ACCOUNTS = 'neofx_accounts';
+
+// Eindeutiger Schlüssel: Kombination Account + Ticket
+function tradeKey(account, ticket) {
+    return String(account).trim() + '|' + String(ticket).trim();
+}
+
+// Trades einlesen - jede Kombination Account/Ticket nur 1x
+function buildTrades(rows) {
+    const map = new Map();
+    let skipped = 0;
+    rows.forEach(r => {
+        const t = {
+            platform: r[0], ticket: String(r[1]), account: String(r[2]),
+            openTime: r[3], type: r[4], volume: r[5], symbol: r[6],
+            openPrice: r[7], sl: r[8], tp: r[9], closedTime: r[10], closePrice: r[11],
+            commission: r[12], taxes: r[13], swap: r[14], profit: r[15]
+        };
+        const key = tradeKey(t.account, t.ticket);
+        if (map.has(key)) {
+            skipped++;
+            return;
+        }
+        map.set(key, t);
+    });
+    if (skipped) console.log('Doppelte Einträge übersprungen:', skipped);
+    return [...map.values()];
+}
+
+const STORAGE_IMPORT = 'neofx_trades_import';
+
+// Fest hinterlegte Trades + im Browser eingefügte Trades
+function loadAllTrades() {
+    const imported = storageGet(STORAGE_IMPORT, []);
+    return buildTrades([...TAGMARKETS_TRADES, ...parseTSV(TAGMARKETS_TSV), ...imported]);
+}
+
+let mt5Trades = [];
+
+// ---------- Speicher (vorerst Browser, später Supabase) ----------
+function storageGet(key, fallback) {
+    try {
+        const v = localStorage.getItem(key);
+        return v ? JSON.parse(v) : fallback;
+    } catch (e) {
+        return fallback;
     }
-    
-    // Verarbeite gefilterte Daten
-    const uebersichtCalculated = calculateUebersicht(filteredTrades);
-    const gewinneCalculated = calculateGewinne(filteredTrades);
-    const weeklyOverview = calculateWeeklyOverview(filteredTrades);
-    
-    // Gewinne pro Account (immer alle Accounts, unabhängig vom Filter)
-    const gewinneProAccount = calculateGewinneProAccount(allTradesData);
-    
-    displayGenericTable(uebersichtCalculated, 'uebersichtHead', 'uebersichtBody');
-    displayGenericTable(gewinneCalculated, 'gewinneHead', 'gewinneBody');
-    displayGewinneProAccount(gewinneProAccount);
-    displayWeeklyOverview(weeklyOverview);
-    displayTrades(filteredTrades);
 }
 
-function calculateUebersicht(trades) {
-    // Filtere nur Trades mit Datum <= heute
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const validTrades = trades.filter(trade => {
-        const tradeDate = parseDate(trade.Datum);
-        return tradeDate <= today;
-    });
-    
-    let anzahlGewinne = 0;
-    let anzahlVerluste = 0;
-    let anzahlOhneTrade = 0;
-    let nettoGewinnProzentSum = 0;
-    
-    validTrades.forEach(trade => {
-        const profitValue = parseNumber(trade.Profit);
-        const profitRaw = trade.Profit;
-        
-        // Prüfe ob Profit-Zelle leer ist (null, undefined, leerer String)
-        const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
-        
-        if (!isEmpty) {
-            if (profitValue > 0) {
-                anzahlGewinne++;
-            } else if (profitValue < 0) {
-                anzahlVerluste++;
-            } else if (profitValue === 0) {
-                anzahlOhneTrade++;
-            }
-        }
-        
-        // Summiere Netto-Gewinn % für Durchschnittsberechnung
-        nettoGewinnProzentSum += parseNumber(trade['Netto-Profit % auf effektive Einzahlung']);
-    });
-    
-    const totalTrades = anzahlGewinne + anzahlVerluste;
-    const totalMitOhneTrade = totalTrades + anzahlOhneTrade;
-    
-    // Berechne Prozente - Basis ist Summe aller Einträge mit Wert (inkl. ohne Trade)
-    const gewinneProcessent = totalMitOhneTrade > 0 ? (anzahlGewinne / totalMitOhneTrade) * 100 : 0;
-    const verlusteProcessent = totalMitOhneTrade > 0 ? (anzahlVerluste / totalMitOhneTrade) * 100 : 0;
-    const ohneTradeProcessent = totalMitOhneTrade > 0 ? (anzahlOhneTrade / totalMitOhneTrade) * 100 : 0;
-    
-    // Durchschnittlicher Nettogewinn je Trade
-    const avgNettoGewinnJeTrade = totalTrades > 0 ? nettoGewinnProzentSum / totalTrades : 0;
-    
-    // Anzahl Trades um Einsatz als Gewinn zu erreichen
-    const tradesForBreakeven = avgNettoGewinnJeTrade > 0 ? Math.ceil(100 / avgNettoGewinnJeTrade) : 0;
-    
-    return [
-        { 'Typ': 'Anzahl Gewinn-Trades', 'Anzahl': anzahlGewinne, 'in %': gewinneProcessent },
-        { 'Typ': 'Anzahl Verlust-Trades', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
-        { 'Typ': 'Anzahl Tage ohne Trade', 'Anzahl': anzahlOhneTrade, 'in %': ohneTradeProcessent },
-        { 'Typ': 'Anzahl Trading-Tage', 'Anzahl': totalMitOhneTrade, 'in %': 100, 'isTotal': true },
-        { 'Typ': 'Ø Nettogewinn je Trade', 'Anzahl': '', 'in %': avgNettoGewinnJeTrade },
-        { 'Typ': 'Anz. Trades, um den Einsatz<br>als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': null }
-    ];
+function storageSet(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+        console.error('Speichern nicht möglich:', e);
+    }
 }
 
-function calculateWeeklyOverview(trades) {
-    // Filtere nur Trades mit Datum <= heute
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const validTrades = trades.filter(trade => {
-        const tradeDate = parseDate(trade.Datum);
-        return tradeDate <= today;
-    });
-    
-    // Gruppiere nach Wochen (Montag als Wochenstart)
-    const weeklyData = {};
-    
-    validTrades.forEach(trade => {
-        const tradeDate = parseDate(trade.Datum);
-        const monday = getMonday(tradeDate);
-        const weekKey = formatDate(monday);
-        
-        if (!weeklyData[weekKey]) {
-            weeklyData[weekKey] = {
-                weekStart: monday,
-                trades: [],
-                anzahlTrades: 0,
-                anzahlGewinne: 0,
-                anzahlVerluste: 0,
-                anzahlOhneTrade: 0,
-                saldoEinzahlungEffektiv: null,
-                saldoEinzahlungMitHebel: null,
-                bruttoGewinn: 0,
-                bruttoGewinnProzentSum: 0,
-                nettoGewinnProzentSum: 0,
-                gebuehren: 0,
-                kommissionen: 0
-            };
-        }
-        
-        const week = weeklyData[weekKey];
-        week.trades.push({ date: tradeDate, trade: trade });
-        
-        const profitValue = parseNumber(trade.Profit);
-        const profitRaw = trade.Profit;
-        
-        // Prüfe ob Profit-Zelle leer ist
-        const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
-        
-        if (!isEmpty) {
-            if (profitValue > 0) {
-                week.anzahlGewinne++;
-            } else if (profitValue < 0) {
-                week.anzahlVerluste++;
-            } else if (profitValue === 0) {
-                week.anzahlOhneTrade++;
-            }
-        }
-        
-        week.anzahlTrades = week.anzahlGewinne + week.anzahlVerluste + week.anzahlOhneTrade;
-        
-        week.bruttoGewinn += parseNumber(trade.Profit);
-        
-        // Brutto-Gewinn % aus Google Sheets summieren
-        week.bruttoGewinnProzentSum += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        
-        // Netto-Gewinn % aus Google Sheets summieren
-        week.nettoGewinnProzentSum += parseNumber(trade['Netto-Profit % auf effektive Einzahlung']);
-        
-        week.gebuehren += parseNumber(trade['Gebühren']);
-        
-        // Kommissionen
-        const keys = Object.keys(trade);
-        const kommissionenKey = keys.find(k => {
-            const normalized = k.toLowerCase().trim();
-            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
+// ---------- Kategorie ----------
+function isAccounting(trade) {
+    return trade.type.toLowerCase().startsWith('accounting');
+}
+
+function autoKategorie(trade) {
+    if (!isAccounting(trade)) return '';
+    if (trade.profit > 0) return 'Einzahlung';
+    if (trade.profit < 0) return 'Gebühren';
+    return '';
+}
+
+function getKategorie(trade) {
+    const overrides = storageGet(STORAGE_KATEGORIE, {});
+    const key = tradeKey(trade.account, trade.ticket);
+    return overrides[key] || autoKategorie(trade);
+}
+
+function setKategorie(account, ticket, value) {
+    const overrides = storageGet(STORAGE_KATEGORIE, {});
+    const key = tradeKey(account, ticket);
+    const trade = mt5Trades.find(t => tradeKey(t.account, t.ticket) === key);
+    // Entspricht der Wert der Automatik, wird die manuelle Änderung entfernt
+    if (!value || (trade && value === autoKategorie(trade))) {
+        delete overrides[key];
+    } else {
+        overrides[key] = value;
+    }
+    storageSet(STORAGE_KATEGORIE, overrides);
+    displayTrades(document.getElementById('accountFilter').value);
+}
+
+// ---------- Trading-Konten ----------
+// Bekannte Konten (Startwerte)
+const ACCOUNTS_START = [
+    { account: '50988820', strategie: '', hebel: 'x24' }
+];
+
+function loadAccounts() {
+    const saved = storageGet(STORAGE_ACCOUNTS, null);
+    if (saved) {
+        // Leere Felder mit bekannten Startwerten ergänzen
+        let changed = false;
+        ACCOUNTS_START.forEach(start => {
+            const acc = saved.find(a => a.account === start.account);
+            if (!acc) return;
+            if (!acc.hebel && start.hebel) { acc.hebel = start.hebel; changed = true; }
+            if (!acc.strategie && start.strategie) { acc.strategie = start.strategie; changed = true; }
         });
-        week.kommissionen += kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
+        if (changed) storageSet(STORAGE_ACCOUNTS, saved);
+        return saved;
+    }
+    // Startwert: bekannte Konten + Accounts aus den Trades
+    const start = ACCOUNTS_START.map(a => ({ ...a }));
+    [...new Set(mt5Trades.map(t => t.account))].forEach(acc => {
+        if (!start.some(a => a.account === acc)) start.push({ account: acc, strategie: '', hebel: '' });
     });
-    
-    // Konvertiere zu Array und berechne finale Werte
-    const result = Object.keys(weeklyData)
-        .map(key => {
-            const week = weeklyData[key];
-            
-            // Sortiere Trades der Woche nach Datum
-            week.trades.sort((a, b) => a.date - b.date);
-            
-            // Nimm Saldo Einzahlung vom ersten Eintrag der Woche pro Account
-            let saldoEinzahlungEffektiv = 0;
-            let saldoEinzahlungMitHebel = 0;
-            const accountsProcessed = new Set(); // Track welche Accounts bereits verarbeitet wurden
-            
-            week.trades.forEach(t => {
-                const profitRaw = t.trade.Profit;
-                const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
-                const account = t.trade.Account;
-                
-                // Nur erster Eintrag pro Account mit Profit-Wert
-                if (!isEmpty && !accountsProcessed.has(account)) {
-                    const effektiv = parseNumber(t.trade['Saldo Einzahlung effektiv']);
-                    const mitHebel = parseNumber(t.trade['Saldo Einzahlung mit Hebel']);
-                    saldoEinzahlungEffektiv += effektiv;
-                    saldoEinzahlungMitHebel += mitHebel;
-                    accountsProcessed.add(account); // Markiere Account als verarbeitet
-                }
-            });
-            
-            const nettoGewinn = week.bruttoGewinn - week.gebuehren - week.kommissionen;
-            
-            return {
-                weekStart: week.weekStart,
-                'Woche vom': formatDateGerman(week.weekStart),
-                'Anz. Trading-Tage': week.anzahlTrades,
-                'Anz. Gewinne': week.anzahlGewinne,
-                'Anz. Verluste': week.anzahlVerluste,
-                'ohne Trade': week.anzahlOhneTrade,
-                'Saldo Einzahlung effektiv': saldoEinzahlungEffektiv,
-                'Saldo Einzahlung mit Hebel': saldoEinzahlungMitHebel,
-                'Brutto-Gewinn $': week.bruttoGewinn,
-                'Brutto-Gewinn %': week.bruttoGewinnProzentSum, // Summe der % aus Google Sheets
-                'Gebühren': week.gebuehren,
-                'Kommissionen': week.kommissionen,
-                'Netto Gewinn $': nettoGewinn,
-                'Netto Gewinn %': week.nettoGewinnProzentSum // Summe der % aus Google Sheets
-            };
-        })
-        .sort((a, b) => b.weekStart - a.weekStart); // Neueste zuerst (absteigend)
-    
-    return result;
+    storageSet(STORAGE_ACCOUNTS, start);
+    return start;
 }
 
-function getMonday(date) {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Montag = 1
-    return new Date(d.setDate(diff));
+function saveAccounts(accounts) {
+    storageSet(STORAGE_ACCOUNTS, accounts);
 }
 
-function formatDate(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-function formatDateGerman(date) {
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}.${month}.${year}`;
-}
-
-function displayWeeklyOverview(data) {
-    const tbody = document.getElementById('weeklyOverviewBody');
+function displayAccounts() {
+    const tbody = document.getElementById('accountsBody');
     tbody.innerHTML = '';
-    
-    // Initialisiere Summen für Total-Zeile
-    let totalAnzahlTrades = 0;
-    let totalAnzahlGewinne = 0;
-    let totalAnzahlVerluste = 0;
-    let totalAnzahlOhneTrade = 0;
-    let totalBruttoGewinn = 0;
-    let totalBruttoGewinnProzent = 0;
-    let totalGebuehren = 0;
-    let totalKommissionen = 0;
-    let totalNettoGewinn = 0;
-    let totalNettoGewinnProzent = 0;
-    
-    data.forEach((week, index) => {
+    const accounts = loadAccounts().sort((a, b) => a.account.localeCompare(b.account));
+
+    accounts.forEach(acc => {
         const row = tbody.insertRow();
-        row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
-        
-        // Sammle Werte für Total-Zeile
-        totalAnzahlTrades += week['Anz. Trading-Tage'];
-        totalAnzahlGewinne += week['Anz. Gewinne'];
-        totalAnzahlVerluste += week['Anz. Verluste'];
-        totalAnzahlOhneTrade += week['ohne Trade'];
-        totalBruttoGewinn += week['Brutto-Gewinn $'];
-        totalBruttoGewinnProzent += week['Brutto-Gewinn %'];
-        totalGebuehren += week['Gebühren'];
-        totalKommissionen += week['Kommissionen'];
-        totalNettoGewinn += week['Netto Gewinn $'];
-        totalNettoGewinnProzent += week['Netto Gewinn %'];
-        
-        // Woche vom (fixiert)
-        const cell0 = row.insertCell(0);
-        cell0.textContent = week['Woche vom'];
-        cell0.style.cssText = 'position: sticky; left: 0; z-index: 10; background: ' + (index % 2 === 0 ? '#f7fafc' : 'white') + '; white-space: nowrap;';
-        
-        // Anz. Trading-Tage
-        const cell1 = row.insertCell(1);
-        cell1.textContent = week['Anz. Trading-Tage'];
-        
-        // Anz. Gewinne
-        const cell2 = row.insertCell(2);
-        cell2.textContent = week['Anz. Gewinne'];
-        cell2.classList.add('table-positive');
-        
-        // Anz. Verluste
-        const cell3 = row.insertCell(3);
-        cell3.textContent = week['Anz. Verluste'];
-        if (week['Anz. Verluste'] > 0) cell3.classList.add('table-negative');
-        
-        // ohne Trade
-        const cell3a = row.insertCell(4);
-        cell3a.textContent = week['ohne Trade'];
-        
-        // Saldo Einzahlung effektiv
-        const cell4 = row.insertCell(5);
-        cell4.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung effektiv']);
-        
-        // Saldo Einzahlung mit Hebel
-        const cell5 = row.insertCell(6);
-        cell5.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel']);
-        
-        // Brutto-Gewinn $
-        const cell6 = row.insertCell(7);
-        cell6.textContent = formatCurrency(week['Brutto-Gewinn $']);
-        if (week['Brutto-Gewinn $'] > 0) cell6.classList.add('table-positive');
-        else if (week['Brutto-Gewinn $'] < 0) cell6.classList.add('table-negative');
-        
-        // Brutto-Gewinn %
-        const cell7 = row.insertCell(8);
-        cell7.textContent = week['Brutto-Gewinn %'].toFixed(3) + '%';
-        if (week['Brutto-Gewinn %'] > 0) cell7.classList.add('table-positive');
-        else if (week['Brutto-Gewinn %'] < 0) cell7.classList.add('table-negative');
-        
-        // Gebühren
-        const cell8 = row.insertCell(9);
-        cell8.textContent = formatCurrency(week['Gebühren']);
-        
-        // Kommissionen
-        const cell9 = row.insertCell(10);
-        cell9.textContent = formatCurrency(week['Kommissionen']);
-        
-        // Netto Gewinn $
-        const cell10 = row.insertCell(11);
-        cell10.textContent = formatCurrency(week['Netto Gewinn $']);
-        if (week['Netto Gewinn $'] > 0) cell10.classList.add('table-positive');
-        else if (week['Netto Gewinn $'] < 0) cell10.classList.add('table-negative');
-        
-        // Netto Gewinn %
-        const cell11 = row.insertCell(12);
-        cell11.textContent = week['Netto Gewinn %'].toFixed(3) + '%';
-        if (week['Netto Gewinn %'] > 0) cell11.classList.add('table-positive');
-        else if (week['Netto Gewinn %'] < 0) cell11.classList.add('table-negative');
+
+        const c0 = row.insertCell();
+        c0.textContent = acc.account;
+
+        const c1 = row.insertCell();
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'neo-input';
+        inp.style.width = '100%';
+        inp.value = acc.strategie;
+        inp.placeholder = 'Strategie eingeben';
+        inp.onchange = () => updateAccount(acc.account, 'strategie', inp.value.trim());
+        c1.appendChild(inp);
+
+        const c2 = row.insertCell();
+        const sel = document.createElement('select');
+        sel.className = 'neo-input';
+        ['', 'x12', 'x24'].forEach(h => {
+            const o = document.createElement('option');
+            o.value = h;
+            o.textContent = h || '–';
+            if (h === acc.hebel) o.selected = true;
+            sel.appendChild(o);
+        });
+        sel.onchange = () => updateAccount(acc.account, 'hebel', sel.value);
+        c2.appendChild(sel);
+
+        const c3 = row.insertCell();
+        c3.classList.add('table-center');
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'neo-btn-small';
+        del.textContent = 'Löschen';
+        del.onclick = () => deleteAccount(acc.account);
+        c3.appendChild(del);
     });
-    
-    // Füge Total-Zeile hinzu
-    const totalRow = tbody.insertRow();
-    totalRow.classList.add('total-row');
-    
-    // Woche vom (fixiert)
-    const tcell0 = totalRow.insertCell(0);
-    tcell0.textContent = 'Total';
-    tcell0.style.cssText = 'position: sticky; left: 0; z-index: 10; background: #cbd5e0; white-space: nowrap;';
-    
-    // Anz. Trading-Tage
-    const tcell1 = totalRow.insertCell(1);
-    tcell1.textContent = totalAnzahlTrades;
-    
-    // Anz. Gewinne
-    const tcell2 = totalRow.insertCell(2);
-    tcell2.textContent = totalAnzahlGewinne;
-    tcell2.classList.add('table-positive');
-    
-    // Anz. Verluste
-    const tcell3 = totalRow.insertCell(3);
-    tcell3.textContent = totalAnzahlVerluste;
-    if (totalAnzahlVerluste > 0) tcell3.classList.add('table-negative');
-    
-    // ohne Trade
-    const tcell3a = totalRow.insertCell(4);
-    tcell3a.textContent = totalAnzahlOhneTrade;
-    
-    // Total einbezahlter Betrag $ - leer
-    const tcell4 = totalRow.insertCell(5);
-    tcell4.textContent = '';
-    
-    // Gehebelter Wert $ - leer
-    const tcell5 = totalRow.insertCell(6);
-    tcell5.textContent = '';
-    
-    // Brutto-Gewinn $
-    const tcell6 = totalRow.insertCell(7);
-    tcell6.textContent = formatCurrency(totalBruttoGewinn);
-    if (totalBruttoGewinn > 0) tcell6.classList.add('table-positive');
-    else if (totalBruttoGewinn < 0) tcell6.classList.add('table-negative');
-    
-    // Brutto-Gewinn %
-    const tcell7 = totalRow.insertCell(8);
-    tcell7.textContent = totalBruttoGewinnProzent.toFixed(3) + '%';
-    if (totalBruttoGewinnProzent > 0) tcell7.classList.add('table-positive');
-    else if (totalBruttoGewinnProzent < 0) tcell7.classList.add('table-negative');
-    
-    // Gebühren
-    const tcell8 = totalRow.insertCell(9);
-    tcell8.textContent = formatCurrency(totalGebuehren);
-    
-    // Kommissionen
-    const tcell9 = totalRow.insertCell(10);
-    tcell9.textContent = formatCurrency(totalKommissionen);
-    
-    // Netto Gewinn $
-    const tcell10 = totalRow.insertCell(11);
-    tcell10.textContent = formatCurrency(totalNettoGewinn);
-    if (totalNettoGewinn > 0) tcell10.classList.add('table-positive');
-    else if (totalNettoGewinn < 0) tcell10.classList.add('table-negative');
-    
-    // Netto Gewinn %
-    const tcell11 = totalRow.insertCell(12);
-    tcell11.textContent = totalNettoGewinnProzent.toFixed(3) + '%';
-    if (totalNettoGewinnProzent > 0) tcell11.classList.add('table-positive');
-    else if (totalNettoGewinnProzent < 0) tcell11.classList.add('table-negative');
 }
 
-function calculateGewinneProAccount(trades) {
-    // Hole alle eindeutigen Accounts
-    const accounts = [...new Set(trades.map(t => t.Account).filter(a => a && a.trim()))].sort();
-    
-    if (accounts.length === 0) return { accounts: [], data: [] };
-    
-    // Filtere nur Trades mit Datum <= heute
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Berechne Daten für jeden Account
-    const accountData = {};
-    
-    accounts.forEach(account => {
-        const accountTrades = trades.filter(t => t.Account === account);
-        const validTrades = accountTrades.filter(trade => {
-            const tradeDate = parseDate(trade.Datum);
-            return tradeDate <= today;
-        });
-        
-        // Zähle Gewinn/Verlust Trades nach Profit-Wert
-        let anzahlGewinne = 0;
-        let anzahlVerluste = 0;
-        let anzahlOhneTrade = 0;
-        
-        validTrades.forEach(trade => {
-            const profitValue = parseNumber(trade.Profit);
-            const profitRaw = trade.Profit;
-            
-            // Prüfe ob Profit-Zelle leer ist (null, undefined, leerer String)
-            const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
-            
-            if (!isEmpty) {
-                if (profitValue > 0) {
-                    anzahlGewinne++;
-                } else if (profitValue < 0) {
-                    anzahlVerluste++;
-                } else if (profitValue === 0) {
-                    anzahlOhneTrade++;
-                }
-            }
-        });
-        
-        const anzahlTradesTotal = anzahlGewinne + anzahlVerluste;
-        
-        // Finde ersten Trade (erster Eintrag mit Profit-Wert)
-        let erstesTradesDatum = '-';
-        for (let trade of validTrades) {
-            const profitValue = parseNumber(trade.Profit);
-            if (profitValue !== 0) {
-                erstesTradesDatum = trade.Datum || '-';
-                break;
-            }
+function addAccount() {
+    const msg = document.getElementById('accountMessage');
+    msg.textContent = '';
+    const account = document.getElementById('newAccount').value.trim();
+    const strategie = document.getElementById('newStrategie').value.trim();
+    const hebel = document.getElementById('newHebel').value;
+
+    if (!account) {
+        msg.textContent = 'Bitte Account-Nr. eingeben.';
+        return;
+    }
+    const accounts = loadAccounts();
+    if (accounts.some(a => a.account === account)) {
+        msg.textContent = 'Diesen Account gibt es schon.';
+        return;
+    }
+    accounts.push({ account, strategie, hebel });
+    saveAccounts(accounts);
+
+    document.getElementById('newAccount').value = '';
+    document.getElementById('newStrategie').value = '';
+    document.getElementById('newHebel').value = '';
+    displayAccounts();
+    populateAccountFilter();
+}
+
+function updateAccount(account, field, value) {
+    const accounts = loadAccounts();
+    const acc = accounts.find(a => a.account === account);
+    if (!acc) return;
+    acc[field] = value;
+    saveAccounts(accounts);
+}
+
+function deleteAccount(account) {
+    if (!confirm('Account ' + account + ' wirklich löschen?')) return;
+    saveAccounts(loadAccounts().filter(a => a.account !== account));
+    displayAccounts();
+}
+
+function toggleAccounts() {
+    const btn = document.getElementById('accountsToggle');
+    const content = document.getElementById('accountsContent');
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    content.style.display = open ? 'none' : 'block';
+}
+
+// ---------- Trades einfügen ----------
+function importTrades() {
+    const msg = document.getElementById('importMessage');
+    const text = document.getElementById('importText').value;
+    msg.style.color = '#dc2626';
+
+    if (!text.trim()) {
+        msg.textContent = 'Bitte zuerst die Tabelle einfügen.';
+        return;
+    }
+
+    // Zeilen prüfen
+    const lines = text.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim() && !l.startsWith('Platform'));
+    const rows = parseTSV(text);
+    const invalid = lines.length - rows.length;
+
+    if (rows.length === 0) {
+        msg.textContent = 'Keine gültigen Zeilen gefunden. Es braucht 16 Spalten, getrennt mit Tabulator (so wie beim Kopieren aus der Tabelle).';
+        return;
+    }
+
+    // Nur wirklich neue Trades übernehmen
+    const existing = new Set(mt5Trades.map(t => tradeKey(t.account, t.ticket)));
+    const imported = storageGet(STORAGE_IMPORT, []);
+    let neu = 0;
+    let doppelt = 0;
+    rows.forEach(r => {
+        const key = tradeKey(r[2], r[1]);
+        if (existing.has(key)) {
+            doppelt++;
+        } else {
+            existing.add(key);
+            imported.push(r);
+            neu++;
         }
-        
-        const gewinneData = calculateGewinne(accountTrades);
-        
-        accountData[account] = {
-            anzahlGewinne,
-            anzahlVerluste,
-            anzahlOhneTrade,
-            anzahlTradesTotal,
-            erstesTradesDatum,
-            gewinneData
-        };
     });
-    
-    // Erstelle Datenstruktur: Zeilen mit Werten für jeden Account
-    const rows = [
-        { name: 'Anzahl Gewinn-Trades', type: 'count' },
-        { name: 'Anzahl Verlust-Trades', type: 'count' },
-        { name: 'Anzahl Tage ohne Trade', type: 'count' },
-        { name: 'Anzahl Trading-Tage', type: 'count', isTotal: true },
-        { name: '1. Trade', type: 'date' },
-        { name: 'Einzahlung effektiv', type: 'currency' },
-        { name: 'Einzahlung mit Hebel', type: 'currency' },
-        { name: 'Brutto-Gewinn', type: 'currency' },
-        { name: 'Gebühren', type: 'currency' },
-        { name: 'Kommissionen', type: 'currency' },
-        { name: 'Netto-Gewinn', type: 'currency', isTotal: true }
-    ];
-    
-    const result = rows.map(rowDef => {
-        const rowData = { 
-            'Typ': rowDef.name,
-            'type': rowDef.type,
-            'isTotal': rowDef.isTotal || false
-        };
-        
-        accounts.forEach(account => {
-            const accountInfo = accountData[account];
-            
-            switch(rowDef.type) {
-                case 'count':
-                    if (rowDef.name === 'Anzahl Gewinn-Trades') {
-                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
-                        const gewinneProcessent = totalMitOhneTrade > 0 ? (accountInfo.anzahlGewinne / totalMitOhneTrade) * 100 : 0;
-                        rowData[`${account}_Betrag`] = accountInfo.anzahlGewinne;
-                        rowData[`${account}_Prozent`] = gewinneProcessent;
-                    } else if (rowDef.name === 'Anzahl Verlust-Trades') {
-                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
-                        const verlusteProcessent = totalMitOhneTrade > 0 ? (accountInfo.anzahlVerluste / totalMitOhneTrade) * 100 : 0;
-                        rowData[`${account}_Betrag`] = accountInfo.anzahlVerluste;
-                        rowData[`${account}_Prozent`] = verlusteProcessent;
-                    } else if (rowDef.name === 'Anzahl Tage ohne Trade') {
-                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
-                        const ohneTradeProcessent = totalMitOhneTrade > 0 ? (accountInfo.anzahlOhneTrade / totalMitOhneTrade) * 100 : 0;
-                        rowData[`${account}_Betrag`] = accountInfo.anzahlOhneTrade;
-                        rowData[`${account}_Prozent`] = ohneTradeProcessent;
-                    } else if (rowDef.name === 'Anzahl Trading-Tage') {
-                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
-                        rowData[`${account}_Betrag`] = totalMitOhneTrade;
-                        rowData[`${account}_Prozent`] = 100;
-                    }
-                    break;
-                    
-                case 'date':
-                    rowData[`${account}_Betrag`] = accountInfo.erstesTradesDatum;
-                    rowData[`${account}_Prozent`] = null;
-                    break;
-                    
-                case 'currency':
-                    const item = accountInfo.gewinneData.find(g => g.Typ === rowDef.name);
-                    if (item) {
-                        rowData[`${account}_Betrag`] = item['Betrag $'];
-                        rowData[`${account}_Prozent`] = item['in %'];
-                    }
-                    break;
-            }
-        });
-        
-        return rowData;
-    });
-    
-    return { accounts, data: result };
-}
+    storageSet(STORAGE_IMPORT, imported);
 
-function displayGewinneProAccount(accountsData) {
-    const { accounts, data } = accountsData;
-    
-    if (accounts.length === 0 || data.length === 0) return;
-    
-    const thead = document.getElementById('gewinneProAccountHead');
-    const tbody = document.getElementById('gewinneProAccountBody');
-    
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-    
-    // Erstelle Header mit 2 Zeilen
-    // Erste Zeile: Account-Namen
-    const headerRow1 = document.createElement('tr');
-    
-    // Erste Spalte (Typ) - dynamische Breite
-    const th0 = document.createElement('th');
-    th0.textContent = 'Typ';
-    th0.rowSpan = 2;
-    th0.style.cssText = 'vertical-align: middle; position: sticky; left: 0; z-index: 20; background: #2d3748; white-space: nowrap;';
-    headerRow1.appendChild(th0);
-    
-    // Für jeden Account: colspan 2 für Betrag $ und in %
-    accounts.forEach(account => {
-        const thAccount = document.createElement('th');
-        thAccount.textContent = account;
-        thAccount.colSpan = 2;
-        thAccount.style.cssText = 'text-align: center; width: 200px; min-width: 200px;';
-        headerRow1.appendChild(thAccount);
-    });
-    
-    thead.appendChild(headerRow1);
-    
-    // Zweite Zeile: "Betrag $" und "in %" für jeden Account
-    const headerRow2 = document.createElement('tr');
-    
-    accounts.forEach(account => {
-        const thBetrag = document.createElement('th');
-        thBetrag.textContent = 'Betrag $';
-        thBetrag.style.cssText = 'text-align: right; width: 100px; min-width: 100px;';
-        headerRow2.appendChild(thBetrag);
-        
-        const thProzent = document.createElement('th');
-        thProzent.textContent = 'in %';
-        thProzent.style.cssText = 'text-align: right; width: 100px; min-width: 100px;';
-        headerRow2.appendChild(thProzent);
-    });
-    
-    thead.appendChild(headerRow2);
-    
-    // Fülle Daten
-    data.forEach(row => {
-        const tr = tbody.insertRow();
-        
-        // Total-Zeile hervorheben
-        if (row.isTotal) {
-            tr.classList.add('total-row');
+    // Neue Accounts auch bei den Trading-Konten ergänzen
+    const accounts = loadAccounts();
+    rows.forEach(r => {
+        const acc = String(r[2]).trim();
+        if (acc && !accounts.some(a => a.account === acc)) {
+            accounts.push({ account: acc, strategie: '', hebel: '' });
         }
-        
-        // Typ-Spalte (fixiert, dynamische Breite)
-        const cellTyp = tr.insertCell();
-        cellTyp.textContent = row.Typ;
-        cellTyp.style.cssText = 'position: sticky; left: 0; z-index: 10; background: ' + (row.isTotal ? '#cbd5e0' : (data.indexOf(row) % 2 === 0 ? '#f7fafc' : 'white')) + '; white-space: nowrap;';
-        
-        // Für jeden Account: Betrag $ und in %
-        accounts.forEach(account => {
-            const betragValue = row[`${account}_Betrag`];
-            const prozentValue = row[`${account}_Prozent`];
-            
-            // Betrag $ (kann Anzahl, Datum oder Währung sein)
-            const cellBetrag = tr.insertCell();
-            cellBetrag.style.width = '100px';
-            cellBetrag.style.minWidth = '100px';
-            
-            if (row.type === 'count') {
-                // Anzahl
-                cellBetrag.textContent = betragValue || 0;
-            } else if (row.type === 'date') {
-                // Datum
-                cellBetrag.textContent = betragValue || '-';
-            } else {
-                // Währung
-                cellBetrag.textContent = formatCurrency(betragValue || 0);
-                
-                // Prüfe ob Gebühren/Kommissionen
-                const isKosten = row.Typ.toLowerCase().includes('gebühr') || row.Typ.toLowerCase().includes('kommission');
-                
-                if (!isKosten) {
-                    if (betragValue > 0) cellBetrag.classList.add('table-positive');
-                    else if (betragValue < 0) cellBetrag.classList.add('table-negative');
-                }
-            }
-            
-            // in % (nur bei currency-Zeilen)
-            const cellProzent = tr.insertCell();
-            cellProzent.style.width = '100px';
-            cellProzent.style.minWidth = '100px';
-            
-            if (prozentValue === null || prozentValue === undefined) {
-                cellProzent.textContent = '';
-            } else {
-                cellProzent.textContent = prozentValue.toFixed(2) + '%';
-                
-                // Färbung bei Anzahl-Zeilen
-                if (row.type === 'count') {
-                    if (row.Typ === 'Anzahl Gewinn-Trades') {
-                        cellProzent.classList.add('table-positive');
-                    } else if (row.Typ === 'Anzahl Verlust-Trades' && prozentValue > 0) {
-                        cellProzent.classList.add('table-negative');
-                    }
-                } else {
-                    // Färbung bei Währungs-Zeilen
-                    const isKosten = row.Typ.toLowerCase().includes('gebühr') || row.Typ.toLowerCase().includes('kommission');
-                    
-                    if (!isKosten) {
-                        if (prozentValue > 0) cellProzent.classList.add('table-positive');
-                        else if (prozentValue < 0) cellProzent.classList.add('table-negative');
-                    }
-                }
-            }
-        });
     });
+    saveAccounts(accounts);
+
+    mt5Trades = loadAllTrades();
+    displayAccounts();
+    populateAccountFilter();
+    displayTrades(document.getElementById('accountFilter').value);
+
+    document.getElementById('importText').value = '';
+    msg.style.color = '#10b981';
+    let text2 = neu + (neu === 1 ? ' neuer Trade übernommen' : ' neue Trades übernommen');
+    if (doppelt) text2 += ', ' + doppelt + ' schon vorhanden';
+    if (invalid) text2 += ', ' + invalid + (invalid === 1 ? ' Zeile ungültig' : ' Zeilen ungültig');
+    msg.textContent = text2 + '.';
 }
 
-function calculateGewinne(trades) {
-    // Filtere nur Trades mit Datum <= heute
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const validTrades = trades.filter(trade => {
-        const tradeDate = parseDate(trade.Datum);
-        return tradeDate <= today;
-    });
-    
-    // Berechne Summen
-    let einzahlungEffektiv = 0;
-    let einzahlungMitHebel = 0;
-    let bruttoGewinn = 0;
-    let bruttoGewinnProzentHebel = 0; // Neue Variable für Summe aus Google Sheets
-    let gebuehren = 0;
-    let summeKommissionen = 0;
-    
-    validTrades.forEach(trade => {
-        einzahlungEffektiv += parseNumber(trade['Einzahlung $']);
-        
-        // $ mit Hebel - Spaltenname geändert, Fallback für alte Daten
-        const hebelValue = parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']);
-        einzahlungMitHebel += hebelValue;
-        
-        bruttoGewinn += parseNumber(trade.Profit);
-        
-        gebuehren += parseNumber(trade['Gebühren']);
-        
-        // Summe Kommissionen (nicht MAX!) - flexible Spaltensuche
-        // Verwende "Kommissionen" (nicht "Kommissionen Total")
-        const keys = Object.keys(trade);
-        const kommissionenKey = keys.find(k => {
-            const normalized = k.toLowerCase().trim();
-            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
-        });
-        const kommission = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
-        summeKommissionen += kommission;
-    });
-    
-    const nettoGewinn = bruttoGewinn - gebuehren - summeKommissionen;
-    
-    // Berechne Prozente
-    const bruttoGewinnProzent = einzahlungEffektiv > 0 ? (bruttoGewinn / einzahlungEffektiv) * 100 : 0;
-    const gebuehrenProzent = einzahlungEffektiv > 0 ? (gebuehren / einzahlungEffektiv) * 100 : 0;
-    const kommissionenProzent = einzahlungEffektiv > 0 ? (summeKommissionen / einzahlungEffektiv) * 100 : 0;
-    const nettoGewinnProzent = einzahlungEffektiv > 0 ? (nettoGewinn / einzahlungEffektiv) * 100 : 0;
-    
-    return [
-        { 'Typ': 'Einzahlung effektiv', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
-        { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': einzahlungEffektiv > 0 ? (einzahlungMitHebel / einzahlungEffektiv) * 100 : 0 },
-        { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzent },
-        { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': gebuehrenProzent },
-        { 'Typ': 'Kommissionen', 'Betrag $': summeKommissionen, 'in %': kommissionenProzent },
-        { 'Typ': 'Netto-Gewinn', 'Betrag $': nettoGewinn, 'in %': nettoGewinnProzent, 'isTotal': true }
-    ];
+function clearImportedTrades() {
+    const imported = storageGet(STORAGE_IMPORT, []);
+    if (imported.length === 0) {
+        document.getElementById('importMessage').textContent = 'Es sind keine eingefügten Trades vorhanden.';
+        return;
+    }
+    if (!confirm(imported.length + ' eingefügte Trades wirklich löschen? Die fest hinterlegten Trades bleiben.')) return;
+    storageSet(STORAGE_IMPORT, []);
+    mt5Trades = loadAllTrades();
+    populateAccountFilter();
+    displayTrades(document.getElementById('accountFilter').value);
+    document.getElementById('importMessage').style.color = '#10b981';
+    document.getElementById('importMessage').textContent = 'Eingefügte Trades gelöscht.';
 }
 
-function displayGenericTable(data, headId, bodyId) {
-    if (!data || data.length === 0) return;
-    
-    const thead = document.getElementById(headId);
-    const tbody = document.getElementById(bodyId);
-    
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-    
-    // Hole die Spaltennamen aus dem ersten Datensatz
-    const firstRow = data[0];
-    const columns = Object.keys(firstRow).filter(col => col !== 'isTotal'); // Entferne Hilfsfelder
-    
-    // Erstelle Header
-    const headerRow = document.createElement('tr');
-    
-    columns.forEach(col => {
-        const th = document.createElement('th');
-        th.textContent = col;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-    
-    // Fülle Daten
-    data.forEach(row => {
-        const tr = tbody.insertRow();
-        
-        // Total-Zeile hervorheben
-        const isTotal = row.isTotal || false;
-        if (isTotal) {
-            tr.classList.add('total-row');
-        }
-        
-        columns.forEach((col, colIndex) => {
-            const cell = tr.insertCell();
-            const value = row[col] || '';
-            const colName = col.toLowerCase();
-            
-            // Erste Spalte = Text (Typ) - erlaubt HTML für Zeilenumbrüche
-            if (colIndex === 0 || colName.includes('typ')) {
-                cell.innerHTML = value;
-            }
-            // Anzahl-Spalte
-            else if (colName.includes('anzahl')) {
-                // Prüfe ob Wert leer ist
-                if (value === null || value === undefined || value === '') {
-                    cell.textContent = '';
-                } else {
-                    cell.textContent = value;
-                }
-            }
-            // Prozent-Spalte
-            else if (colName.includes('%') || colName.includes('prozent') || colName.includes('in %')) {
-                const numValue = parseNumber(value);
-                
-                // Prüfe ob Wert null oder undefined ist - dann nichts anzeigen
-                if (value === null || value === undefined || value === '') {
-                    cell.textContent = '';
-                } else {
-                    cell.textContent = numValue.toFixed(2) + '%';
-                    
-                    // Prüfe ob es sich um Gebühren oder Kommissionen handelt
-                    const typ = data[data.indexOf(row)]?.Typ?.toLowerCase() || '';
-                    const isKosten = typ.includes('gebühr') || typ.includes('kommission');
-                    
-                    // Färbe nur wenn es KEIN Kosten-Eintrag ist
-                    if (!isKosten) {
-                        if (numValue > 0) cell.classList.add('table-positive');
-                        else if (numValue < 0) cell.classList.add('table-negative');
-                    }
-                }
-            }
-            // Dollar-Spalte (Betrag $)
-            else if (colName.includes('$') || colName.includes('betrag') || colName.includes('dollar')) {
-                const numValue = parseNumber(value);
-                cell.textContent = formatCurrency(numValue);
-                
-                // Prüfe ob es sich um Gebühren oder Kommissionen handelt
-                const typ = data[data.indexOf(row)]?.Typ?.toLowerCase() || '';
-                const isKosten = typ.includes('gebühr') || typ.includes('kommission');
-                
-                // Färbe nur wenn es KEIN Kosten-Eintrag ist
-                if (!isKosten) {
-                    if (numValue > 0) cell.classList.add('table-positive');
-                    else if (numValue < 0) cell.classList.add('table-negative');
-                }
-            }
-            // Fallback
-            else {
-                cell.textContent = value;
-            }
-        });
-    });
+// ---------- Tabelle "Alle Trades" ----------
+function formatPlain(value) {
+    return String(value);
 }
 
-function displayTrades(trades) {
+function displayTrades(selectedAccount) {
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
 
-    // Heutiges Datum (ohne Uhrzeit)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Sortiere Trades nach Datum absteigend (neueste zuerst)
-    const sortedTrades = [...trades].sort((a, b) => {
-        const dateA = parseDate(a.Datum);
-        const dateB = parseDate(b.Datum);
-        return dateB - dateA; // Absteigend
-    });
-    
-    // Initialisiere Summen für Total-Zeile
-    let totalEinzahlung = 0;
-    let totalMitHebel = 0;
+    let trades = mt5Trades;
+    if (selectedAccount) {
+        trades = trades.filter(t => t.account === selectedAccount);
+    }
+
+    // Neueste zuerst
+    const sorted = [...trades].sort((a, b) => b.openTime.localeCompare(a.openTime));
+
+    let totalCommission = 0;
+    let totalTaxes = 0;
+    let totalSwap = 0;
     let totalProfit = 0;
-    let totalBruttoGewinnProzentHebel = 0;
-    let totalBruttoGewinnProzentEffektiv = 0;
-    let totalGebuehren = 0;
-    let totalKommissionen = 0;
 
-    sortedTrades.forEach((trade) => {
-        // Parse Datum
-        const tradeDate = parseDate(trade.Datum);
-        
-        // Überspringe Trades mit Datum > heute
-        if (tradeDate > today) {
-            return;
-        }
-        
-        // Überspringe leere Zeilen - mind. eine dieser Spalten muss befüllt sein
-        const einzahlung = parseNumber(trade['Einzahlung $']);
-        const profit = parseNumber(trade.Profit);
-        const gebuehren = parseNumber(trade['Gebühren']);
-        
-        // Kommissionen - flexible Spaltensuche (nicht "Kommissionen Total")
-        const keys = Object.keys(trade);
-        const kommissionenKey = keys.find(k => {
-            const normalized = k.toLowerCase().trim();
-            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
-        });
-        const kommissionen = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
-        
-        if (einzahlung === 0 && profit === 0 && gebuehren === 0 && kommissionen === 0) {
-            return; // Zeile überspringen
-        }
-        
-        // Sammle Werte für Total-Zeile
-        totalEinzahlung += parseNumber(trade['Einzahlung $']);
-        totalMitHebel += parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']);
-        totalProfit += parseNumber(trade.Profit);
-        totalBruttoGewinnProzentHebel += parseNumber(trade['Brutto Profit in % auf Hebel']);
-        totalBruttoGewinnProzentEffektiv += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        totalGebuehren += parseNumber(trade['Gebühren']);
-        totalKommissionen += kommissionen;
-        
+    sorted.forEach(t => {
+        totalCommission += t.commission;
+        totalTaxes += t.taxes;
+        totalSwap += t.swap;
+        totalProfit += t.profit;
+
         const row = tbody.insertRow();
-
-        // Parse Gewinn/Verlust Text
-        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
-        const isGewinn = gewinnVerlustText.includes('gewinn');
-        const isVerlust = gewinnVerlustText.includes('verlust');
-        
-        // Färbe Zeile bei Gewinn/Verlust
-        if (isVerlust) {
-            row.classList.add('verlust-row');
-        } else if (isGewinn) {
-            row.classList.add('gewinn-row');
-        }
-
-        // Datum
-        const cell0 = row.insertCell(0);
-        cell0.textContent = trade.Datum || '-';
-        
-        // Account
-        const cell1 = row.insertCell(1);
-        cell1.textContent = trade.Account || '-';
-        
-        // Einzahlung $ (ohne Kommastellen)
-        const cell2 = row.insertCell(2);
-        cell2.textContent = formatCurrencyNoDecimals(parseNumber(trade['Einzahlung $']));
-        
-        // $ mit Hebel (ohne Kommastellen) - Spaltenname geändert
-        const cell3 = row.insertCell(3);
-        const hebelValue = parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']); // Fallback für alte Daten
-        cell3.textContent = formatCurrencyNoDecimals(hebelValue);
-        
-        // Saldo Einzahlung mit Hebel (ohne Kommastellen)
-        const cell4 = row.insertCell(4);
-        cell4.textContent = formatCurrencyNoDecimals(parseNumber(trade['Saldo Einzahlung mit Hebel']));
-        
-        // Profit
-        const cell5 = row.insertCell(5);
-        const profitValue = parseNumber(trade.Profit);
-        cell5.textContent = formatCurrency(profitValue);
-        if (profitValue > 0) cell5.classList.add('table-positive');
-        else if (profitValue < 0) cell5.classList.add('table-negative');
-        
-        // Gewinn oder Verlust (TEXT)
-        const cell6 = row.insertCell(6);
-        cell6.classList.add('table-center');
-        cell6.textContent = trade['Gewinn oder Verlust'] || '-';
-        if (isGewinn) cell6.classList.add('table-positive');
-        else if (isVerlust) cell6.classList.add('table-negative');
-        
-        // Brutto Profit % (Hebel)
-        const profit24x = parseNumber(trade['Brutto Profit in % auf Hebel']);
-        const cell7 = row.insertCell(7);
-        cell7.textContent = profit24x.toFixed(3) + '%';
-        if (profit24x > 0) cell7.classList.add('table-positive');
-        else if (profit24x < 0) cell7.classList.add('table-negative');
-        
-        // Brutto Profit % (effektiv)
-        const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        const cell8 = row.insertCell(8);
-        cell8.textContent = profitEffektiv.toFixed(3) + '%';
-        if (profitEffektiv > 0) cell8.classList.add('table-positive');
-        else if (profitEffektiv < 0) cell8.classList.add('table-negative');
-        
-        // Gebühren (jetzt VOR Kommissionen)
-        const cell9 = row.insertCell(9);
-        cell9.textContent = formatCurrency(parseNumber(trade['Gebühren']));
-        
-        // Kommissionen - jetzt an letzter Stelle
-        // Verwende "Kommissionen" (nicht "Kommissionen Total")
-        const cell10 = row.insertCell(10);
-        const tradeKeys2 = Object.keys(trade);
-        // Suche exakt nach "Kommissionen" (ohne "Total")
-        const kommissionenKey2 = tradeKeys2.find(k => {
-            const normalized = k.toLowerCase().trim();
-            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
+        const values = [
+            [t.platform, true], [t.ticket, true], [t.account, true], [t.openTime, true],
+            [t.type, true], [formatPlain(t.volume), false], [t.symbol, true],
+            [formatPlain(t.openPrice), false], [formatPlain(t.sl), false], [formatPlain(t.tp), false],
+            [t.closedTime, true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false],
+            [formatPlain(t.taxes), false], [formatPlain(t.swap), false]
+        ];
+        values.forEach(([v, left]) => {
+            const c = row.insertCell();
+            c.textContent = v;
+            if (left) c.classList.add('text-left');
         });
-        const kommissionenValue = kommissionenKey2 ? parseNumber(trade[kommissionenKey2]) : 0;
-        cell10.textContent = formatCurrency(kommissionenValue);
+
+        // Profit/Amount
+        const cp = row.insertCell();
+        cp.textContent = t.profit.toFixed(2);
+        if (t.profit > 0) cp.classList.add('table-positive');
+        else if (t.profit < 0) cp.classList.add('table-negative');
+
+        // Kategorie (nur bei Accounting-Einträgen)
+        const ck = row.insertCell();
+        ck.classList.add('text-left');
+        if (isAccounting(t)) {
+            const kat = getKategorie(t);
+            const sel = document.createElement('select');
+            sel.className = 'kategorie-select';
+            if (kat !== autoKategorie(t)) {
+                sel.classList.add('manuell');
+                sel.title = 'Manuell geändert (automatisch wäre: ' + (autoKategorie(t) || 'keine') + ')';
+            }
+            if (!kat) {
+                const o = document.createElement('option');
+                o.value = '';
+                o.textContent = '–';
+                sel.appendChild(o);
+            }
+            KATEGORIEN.forEach(k => {
+                const o = document.createElement('option');
+                o.value = k;
+                o.textContent = k;
+                if (k === kat) o.selected = true;
+                sel.appendChild(o);
+            });
+            sel.onchange = () => setKategorie(t.account, t.ticket, sel.value);
+            ck.appendChild(sel);
+        } else {
+            ck.textContent = '';
+        }
     });
-    
-    // Füge Total-Zeile hinzu
+
+    // Total-Zeile
     const totalRow = tbody.insertRow();
     totalRow.classList.add('total-row');
-    
-    // Datum
-    const tcell0 = totalRow.insertCell(0);
-    tcell0.textContent = 'Total';
-    
-    // Account
-    const tcell1 = totalRow.insertCell(1);
-    tcell1.textContent = '';
-    
-    // Einzahlung $
-    const tcell2 = totalRow.insertCell(2);
-    tcell2.textContent = formatCurrencyNoDecimals(totalEinzahlung);
-    
-    // $ mit Hebel
-    const tcell3 = totalRow.insertCell(3);
-    tcell3.textContent = formatCurrencyNoDecimals(totalMitHebel);
-    
-    // Saldo Einzahlung mit Hebel
-    const tcell4 = totalRow.insertCell(4);
-    tcell4.textContent = '';
-    
-    // Profit
-    const tcell5 = totalRow.insertCell(5);
-    tcell5.textContent = formatCurrency(totalProfit);
-    if (totalProfit > 0) tcell5.classList.add('table-positive');
-    else if (totalProfit < 0) tcell5.classList.add('table-negative');
-    
-    // Gewinn/Verlust
-    const tcell6 = totalRow.insertCell(6);
-    tcell6.textContent = '';
-    
-    // Brutto Profit % (Hebel)
-    const tcell7 = totalRow.insertCell(7);
-    tcell7.textContent = totalBruttoGewinnProzentHebel.toFixed(3) + '%';
-    if (totalBruttoGewinnProzentHebel > 0) tcell7.classList.add('table-positive');
-    else if (totalBruttoGewinnProzentHebel < 0) tcell7.classList.add('table-negative');
-    
-    // Brutto Profit % (effektiv)
-    const tcell8 = totalRow.insertCell(8);
-    tcell8.textContent = totalBruttoGewinnProzentEffektiv.toFixed(3) + '%';
-    if (totalBruttoGewinnProzentEffektiv > 0) tcell8.classList.add('table-positive');
-    else if (totalBruttoGewinnProzentEffektiv < 0) tcell8.classList.add('table-negative');
-    
-    // Gebühren
-    const tcell9 = totalRow.insertCell(9);
-    tcell9.textContent = formatCurrency(totalGebuehren);
-    
-    // Kommissionen
-    const tcell10 = totalRow.insertCell(10);
-    tcell10.textContent = formatCurrency(totalKommissionen);
-}
-
-function parseDate(dateString) {
-    if (!dateString) return new Date(0); // Sehr altes Datum falls leer
-    
-    // Unterstütze verschiedene Datumsformate
-    // z.B. "31.12.2024", "2024-12-31", "12/31/2024"
-    
-    // Versuche ISO-Format (YYYY-MM-DD)
-    if (dateString.includes('-')) {
-        return new Date(dateString);
-    }
-    
-    // Versuche DD.MM.YYYY
-    if (dateString.includes('.')) {
-        const parts = dateString.split('.');
-        if (parts.length === 3) {
-            const day = parseInt(parts[0]);
-            const month = parseInt(parts[1]) - 1; // Monat ist 0-basiert
-            const year = parseInt(parts[2]);
-            return new Date(year, month, day);
+    for (let i = 0; i < 17; i++) {
+        const c = totalRow.insertCell();
+        if (i === 0) c.textContent = 'Total';
+        if (i === 12) c.textContent = totalCommission.toFixed(5);
+        if (i === 13) c.textContent = totalTaxes.toFixed(2);
+        if (i === 14) c.textContent = totalSwap.toFixed(2);
+        if (i === 15) {
+            c.textContent = totalProfit.toFixed(2);
+            if (totalProfit > 0) c.classList.add('table-positive');
+            else if (totalProfit < 0) c.classList.add('table-negative');
         }
     }
-    
-    // Versuche MM/DD/YYYY
-    if (dateString.includes('/')) {
-        return new Date(dateString);
-    }
-    
-    // Fallback
-    return new Date(dateString);
 }
 
-function parseNumber(value) {
-    if (!value) return 0;
-    const cleaned = value.toString().replace(/[$,\s']/g, '').trim();
-    return parseFloat(cleaned) || 0;
-}
-
-function formatCurrency(value) {
-    const formatted = Math.abs(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-    return value < 0 ? '-$' + formatted : '$' + formatted;
-}
-
-function formatCurrencyNoDecimals(value) {
-    const formatted = Math.abs(Math.round(value)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-    return value < 0 ? '-$' + formatted : '$' + formatted;
-}
-
-// Lade Daten beim Seitenaufruf
-window.onload = loadData;
+// Beim Seitenaufruf: Konten und Trades anzeigen
+window.onload = () => {
+    mt5Trades = loadAllTrades();
+    displayAccounts();
+    populateAccountFilter();
+    displayTrades('');
+};
 </script>
 
 </body>
