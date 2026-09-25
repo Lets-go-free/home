@@ -59,6 +59,26 @@
             color: #2f855a;
             font-size: 1em;
         }
+        .trades-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 10px;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+        }
+        .trades-toolbar label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-weight: 600;
+            color: #4a5568;
+        }
+        .trades-toolbar select.neo-input { padding: 6px 8px; min-width: 170px; }
+        #tradesTable th.sortierbar { cursor: pointer; user-select: none; }
+        #tradesTable th.sortierbar:hover { background: #1a202c; }
+        #tradesTable th.sortierbar .sort-pfeil { font-size: 0.8em; color: #a0aec0; }
+        #tradesTable th.sortierbar.aktiv .sort-pfeil { color: #10b981; }
         .neo-input {
             padding: 9px 10px;
             border: 2px solid #cbd5e0;
@@ -410,9 +430,25 @@
         <!-- Alle Trades (Daten von Tag Markets) -->
         <div id="tradesContainer">
             <h3 style="margin-bottom: 20px;">Alle Trades</h3>
-            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 10px; font-size: 0.9em;">
-                <button type="button" class="neo-btn-small" onclick="alleWalletZeilen(true)">▾ Wallet-Zeilen alle aufklappen</button>
-                <button type="button" class="neo-btn-small" onclick="alleWalletZeilen(false)">▸ alle zuklappen</button>
+            <div class="trades-toolbar">
+                <label>Type
+                    <select id="filterType" class="neo-input" onchange="filterTrades()">
+                        <option value="">Alle</option>
+                    </select>
+                </label>
+                <label>Kategorie
+                    <select id="filterKategorie" class="neo-input" onchange="filterTrades()">
+                        <option value="">Alle</option>
+                        <option value="Einzahlung">Einzahlung</option>
+                        <option value="Gebühren">Gebühren</option>
+                        <option value="Auszahlung">Auszahlung</option>
+                        <option value="-">ohne Kategorie (Trades)</option>
+                    </select>
+                </label>
+                <button type="button" class="neo-btn-small" onclick="resetTradeFilter()">Filter zurücksetzen</button>
+                <span style="flex: 1;"></span>
+                <button type="button" class="neo-btn-small admin-only" onclick="alleWalletZeilen(true)">▾ Wallet-Zeilen alle aufklappen</button>
+                <button type="button" class="neo-btn-small admin-only" onclick="alleWalletZeilen(false)">▸ alle zuklappen</button>
             </div>
 
             <div class="table-container">
@@ -421,7 +457,7 @@
                         <tr style="background: #2d3748; color: white;">
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Ticket</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Open Time</th>
+                            <th class="sortierbar" data-sort="open" onclick="sortiereTrades()" style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Open Time <span class="sort-pfeil"></span></th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Type</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Volume</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Symbol</th>
@@ -1496,6 +1532,49 @@ function formatPlain(value) {
     return String(value);
 }
 
+// ---------- Filter und Sortierung "Alle Trades" ----------
+let tradesSort = { feld: 'open', richtung: 'desc' };
+
+function filterTrades() {
+    displayTrades(document.getElementById('accountFilter').value);
+}
+
+function resetTradeFilter() {
+    document.getElementById('filterType').value = '';
+    document.getElementById('filterKategorie').value = '';
+    filterTrades();
+}
+
+// Klick auf Open Time: Richtung wechseln (auf-/absteigend)
+function sortiereTrades() {
+    tradesSort.richtung = tradesSort.richtung === 'desc' ? 'asc' : 'desc';
+    filterTrades();
+}
+
+function zeigeSortPfeile() {
+    document.querySelectorAll('#tradesTable th.sortierbar').forEach(th => {
+        const aktiv = th.dataset.sort === tradesSort.feld;
+        th.classList.toggle('aktiv', aktiv);
+        th.querySelector('.sort-pfeil').textContent = aktiv ? (tradesSort.richtung === 'desc' ? '▼' : '▲') : '⇅';
+        th.title = 'Sortieren (' + (aktiv && tradesSort.richtung === 'desc' ? 'aufsteigend' : 'absteigend') + ')';
+    });
+}
+
+// Type-Auswahl aus den vorhandenen Daten füllen, Auswahl behalten
+function fuelleTypeFilter() {
+    const sel = document.getElementById('filterType');
+    const vorher = sel.value;
+    const typen = [...new Set(mt5Trades.map(t => t.type).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Alle</option>';
+    typen.forEach(ty => {
+        const o = document.createElement('option');
+        o.value = ty;
+        o.textContent = ty;
+        sel.appendChild(o);
+    });
+    if (typen.includes(vorher)) sel.value = vorher;
+}
+
 function displayTrades(selectedAccount) {
     berechnePropWithdrawalKeys();
     berechneWalletZuordnung();
@@ -1504,9 +1583,21 @@ function displayTrades(selectedAccount) {
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
 
+    fuelleTypeFilter();
+    zeigeSortPfeile();
+    const fType = document.getElementById('filterType').value;
+    const fKat = document.getElementById('filterKategorie').value;
+
     let trades = mt5Trades;
     if (selectedAccount) {
         trades = trades.filter(t => t.account === selectedAccount);
+    }
+    if (fType) trades = trades.filter(t => t.type === fType);
+    if (fKat) {
+        trades = trades.filter(t => {
+            const kat = isAccounting(t) ? getKategorie(t) : '';
+            return fKat === '-' ? !kat : kat === fKat;
+        });
     }
 
     // Saldo: laufende Summe "Betrag effektiv" über alle angezeigten Einträge,
@@ -1524,17 +1615,19 @@ function displayTrades(selectedAccount) {
         saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
     });
 
-    // Neueste zuerst. Nicht zugeordnete Wallet-Transaktionen (nur bei "Alle Accounts")
+    // Sortierung nach Open Time, auf- oder absteigend.
+    // Nicht zugeordnete Wallet-Transaktionen (nur für Admin, unabhängig von den Filtern)
     // werden nach Datum dazwischen eingereiht, jeweils am Ende ihres Tages.
     const eintraege = trades.map(t => ({ art: 'trade', sort: t.openTime, t }));
-    if (!selectedAccount) {
+    if (isAdmin) {
         walletTx.filter(w => !walletZugeordnet.has(String(w.transaction_id))).forEach(w => {
             eintraege.push({ art: 'wallet', sort: String(w.date || '').substring(0, 10) + ' 99', w });
         });
     }
+    const dir = tradesSort.richtung === 'desc' ? -1 : 1;
     const sorted = eintraege.sort((a, b) =>
-        b.sort.localeCompare(a.sort) ||
-        (a.art === 'trade' && b.art === 'trade' ? Number(b.t.ticket) - Number(a.t.ticket) : 0));
+        dir * (a.sort.localeCompare(b.sort) ||
+        (a.art === 'trade' && b.art === 'trade' ? Number(a.t.ticket) - Number(b.t.ticket) : 0)));
     const SPALTEN = 15;
 
     let totalCommission = 0;
@@ -1571,7 +1664,7 @@ function displayTrades(selectedAccount) {
             [zahl(t.openPrice), false],
             [zeitUmbruch(t.closedTime), true], [zahl(t.closePrice), false], [zahl(t.commission), false]
         ];
-        const zugeordnet = walletZuTrade.get(tradeKey(t.account, t.ticket)) || [];
+        const zugeordnet = isAdmin ? (walletZuTrade.get(tradeKey(t.account, t.ticket)) || []) : [];
         values.forEach(([v, left], i) => {
             const c = row.insertCell();
             c.textContent = v;
