@@ -1,4 +1,4 @@
-// Phase 6.14 · 25.09.2026 13:57:01 CEST: P4 6.13-Realtest: Fresh-Import 37.2 s, DAO1 25.1 s. Fresh-Build-Ownership nutzt vorgewärmte globale/Wallet-Historien zuerst; per-NFT Metadata/Instance-Explorer nur noch als Fallback. Kaufpreis-/Asset-Flow-Logik unverändert. Build 20260925-135701.
+// Phase 6.15 · 25.09.2026 14:10:35 CEST: P4: 6.14-Prewarm-First-Regression verworfen; Ownership-Rebuild wieder exakt auf 6.13-Verhalten. Nur sichtbare Feintimings prewarm/rebuild/readback ergänzt. Build 20260925-141035.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Kaufpreis-/Ersterwerb-Diagnose und P4 Lifecycle-Timings; Kontrollfälle #38483/#40938 protokollieren Erwerbs-Tx und Zahlungskandidaten. Build 20260924-163030.
@@ -1230,24 +1230,22 @@ window.DAO1Project = (() => {
     const changedNfts=[...affected.values()];
     invalidateOwnershipRuntimeCaches(changedNfts);
     setTransactionStatus("loading",`${statusPrefix}${wallet.label}: ${changedNfts.length} NFT-Besitzänderung(en) werden geprüft…`,`${unchanged} unverändert · nur betroffene Transferketten werden aktualisiert.`);
-    const ownershipPerf={prewarmMs:0,rebuildMs:0,readbackMs:0,changedNfts:changedNfts.length};
-    let perfStarted=performance.now();
+    const ownershipPerfStarted=performance.now();
+    let ownershipPerfMark=ownershipPerfStarted;
     await prewarmCachedNftOwnership(changedNfts,`${statusPrefix}${wallet.label}: `);
-    ownershipPerf.prewarmMs=Math.round(performance.now()-perfStarted);
+    const ownershipPrewarmMs=Math.round(performance.now()-ownershipPerfMark);
 
     let saved=0,failed=0;
-    // Phase 6.14 / P4: Fresh-Build hat globale NFT-Historien und Wallet-Transferhistorien
-    // bereits vorgewärmt. Der Rebuild verwendet genau diese Quellen zuerst. Einzelne
-    // Explorer-Instance-/Metadata-Requests sind nur noch Fallback, falls der Prewarm
-    // für ein NFT tatsächlich keine verwertbare Historie liefert.
-    perfStarted=performance.now();
+    ownershipPerfMark=performance.now();
+    // Phase 6.13 / P4: Die Historien sind oben bereits contractweise vorgewärmt.
+    // Der anschließende Rebuild war trotzdem NFT für NFT seriell und kostete im
+    // 6.12-Realtest ~23 s. Begrenzte Parallelität hält Explorer/Supabase moderat,
+    // ohne die fachliche Ownership-Rekonstruktion oder Kaufpreis-Evidenz zu ändern.
     await mapLimited(changedNfts,4,async(n)=>{
       try{
         const key=nftOwnershipKey(n.contract,n.id);
         const count=await discoverOwnershipForNft(n.id,n.contract,n.name,{
-          currentWallet:currentByKey.has(key)?wallet:null,
-          preferPrewarmedHistory:true,
-          skipMetadataFetch:true
+          currentWallet:currentByKey.has(key)?wallet:null
         });
         saved+=Number(count||0);
       }catch(e){
@@ -1255,11 +1253,11 @@ window.DAO1Project = (() => {
         console.warn("NFT Ownership inkrementell",n,e);
       }
     });
-    ownershipPerf.rebuildMs=Math.round(performance.now()-perfStarted);
+    const ownershipRebuildMs=Math.round(performance.now()-ownershipPerfMark);
     selectedWalletId=prev;
-    perfStarted=performance.now();
+    ownershipPerfMark=performance.now();
     const readback=await loadOwnershipCache({force:true});
-    ownershipPerf.readbackMs=Math.round(performance.now()-perfStarted);
+    const ownershipReadbackMs=Math.round(performance.now()-ownershipPerfMark);
     const readbackWalletRows=(readback||[]).filter(o=>
       String(o?.wallet_id||"")===walletId || lower(o?.wallet_address||"")===lower(address)
     );
@@ -1272,7 +1270,8 @@ window.DAO1Project = (() => {
       walletRows:readbackWalletRows.length,
       source:ownershipRowsSource
     });
-    console.info("DAO1 NFT Ownership Performance",ownershipPerf);
+    const ownershipTotalMs=Math.round(performance.now()-ownershipPerfStarted);
+    console.info(`DAO1 NFT Ownership Performance · changedNfts=${changedNfts.length} · prewarmMs=${ownershipPrewarmMs} · rebuildMs=${ownershipRebuildMs} · readbackMs=${ownershipReadbackMs} · totalMs=${ownershipTotalMs} · savedPeriods=${saved} · failed=${failed}`);
     return {nfts:currentByKey.size,historicalCandidates:historicalCandidates.length,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged,readbackRows:readbackWalletRows.length};
   }
 
@@ -1735,34 +1734,24 @@ window.DAO1Project = (() => {
     nftContract=lower(nftContract || DEFAULT_MINER_NFT_CONTRACT);
 
     let nftName=knownName || nftMetaById.get(`${nftContract}|${String(nftId)}`)?.name || `NFT #${nftId}`;
-    if(!options?.skipMetadataFetch){
-      try{
-        const instance=await fetchJson(`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}`,"Apertum Explorer · NFT-Metadaten");
-        const token=instance?.token || {};
-        const spam=[token.is_spam,token.isSpam,instance?.is_spam,instance?.isSpam]
-          .some(v=>v===true || v===1 || String(v).toLowerCase()==="true");
-        const reputation=String(token.reputation || instance?.reputation || "").toLowerCase();
-        if(spam || ["spam","scam","malicious","suspicious"].includes(reputation)){
-          throw new Error(`NFT #${nftId} ist im Explorer als Spam/verdächtig markiert.`);
-        }
-        nftName=token.name || token.symbol || instance?.name || nftName;
-        nftMetaById.set(`${nftContract}|${String(nftId)}`,{name:nftName});
-      }catch(e){
-        if(/Spam|verdächtig/.test(e.message||"")) throw e;
-        console.warn("NFT-Metadaten:",e);
+    try{
+      const instance=await fetchJson(`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}`,"Apertum Explorer · NFT-Metadaten");
+      const token=instance?.token || {};
+      const spam=[token.is_spam,token.isSpam,instance?.is_spam,instance?.isSpam]
+        .some(v=>v===true || v===1 || String(v).toLowerCase()==="true");
+      const reputation=String(token.reputation || instance?.reputation || "").toLowerCase();
+      if(spam || ["spam","scam","malicious","suspicious"].includes(reputation)){
+        throw new Error(`NFT #${nftId} ist im Explorer als Spam/verdächtig markiert.`);
       }
-    }else if(nftName){
+      nftName=token.name || token.symbol || instance?.name || nftName;
       nftMetaById.set(`${nftContract}|${String(nftId)}`,{name:nftName});
+    }catch(e){
+      if(/Spam|verdächtig/.test(e.message||"")) throw e;
+      console.warn("NFT-Metadaten:",e);
     }
 
-    // Phase 6.14: Im Fresh-Build ist der globale Historiencache bereits contractweise
-    // vorgewärmt. Diesen zuerst übernehmen; der direkte Instance-Endpunkt bleibt ein
-    // Vollständigkeits-Fallback für leere Prewarm-/Wallet-Historien.
-    let cachedHistoryRows=[];
-    try{
-      const cached=await fetchCachedNftHistories(nftContract,[String(nftId)]);
-      cachedHistoryRows=cached.get(String(nftId))||[];
-    }catch(e){console.warn("Apertum globaler NFT-Historiencache",nftContract,nftId,e);}
+    const url=`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}/transfers`;
+    const primary=(await fetchPagedUrl(url)).filter(isNonSpamNftTransfer);
 
     // Zweite unabhängige Quelle: Transfers aus der Historie ALLER eigenen Wallets.
     // Das ist wichtig bei Wallet 1 -> Wallet 2, falls der Instance-Endpoint ältere
@@ -1773,13 +1762,8 @@ window.DAO1Project = (() => {
         walletFallback.push(...await fetchWalletNftTransfersForOwnership(walletAddress(w),nftContract,nftId));
       }catch(e){console.warn("NFT Wallet-Historie",w?.label||walletAddress(w),e);}
     }
-    let primary=[];
-    if(!options?.preferPrewarmedHistory || (!cachedHistoryRows.length && !walletFallback.length)){
-      const url=`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}/transfers`;
-      primary=(await fetchPagedUrl(url)).filter(isNonSpamNftTransfer);
-    }
     const transferMap=new Map();
-    for(const t of [...cachedHistoryRows,...walletFallback,...primary])transferMap.set(nftTransferDedupeKey(t),t);
+    for(const t of [...primary,...walletFallback])transferMap.set(nftTransferDedupeKey(t),t);
     if(String(nftId)==="7993" || String(nftId)==="7994"){
       console.info("DAO1 NFT Solar Quellen",{
         nft:`${nftContract}#${nftId}`,
@@ -1797,6 +1781,15 @@ window.DAO1Project = (() => {
         }))
       });
     }
+
+    // Dritte Quelle: globaler serverseitiger Transfercache. Beim ersten Abruf wird
+    // ausschließlich die indexierte Transferhistorie dieses NFT geladen; kein Chain-Vollscan.
+    let cachedHistoryRows=[];
+    try{
+      const cached=await fetchCachedNftHistories(nftContract,[String(nftId)]);
+      cachedHistoryRows=cached.get(String(nftId))||[];
+      for(const t of cachedHistoryRows)transferMap.set(nftTransferDedupeKey(t),t);
+    }catch(e){console.warn("Apertum globaler NFT-Historiencache",nftContract,nftId,e);}
 
     // Verifizierter Kontrollfall: #38483 wurde laut Apertum Explorer am 24.02.2025
     // in Tx 0x31cd...1de2 zusammen mit 10'000 wUSDT erworben. Die Diagnose prüft
