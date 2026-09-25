@@ -1,4 +1,4 @@
-// Phase 6.17 · 25.09.2026 17:57:49 CEST: P4: Ownership-Inventar-Hotspot wird mit zusätzlicher App-Feinmessung untersucht; DAO1-Fachlogik unverändert gegenüber 6.16. Build 20260925-175749.
+// Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: Release-Metadaten synchronisiert; DAO1-Ownership-/Kaufpreis-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Kaufpreis-/Ersterwerb-Diagnose und P4 Lifecycle-Timings; Kontrollfälle #38483/#40938 protokollieren Erwerbs-Tx und Zahlungskandidaten. Build 20260924-163030.

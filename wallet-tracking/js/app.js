@@ -1,4 +1,4 @@
-// Phase 6.17 · 25.09.2026 17:57:49 CEST: P4: NFT-Inventarabgleich wird in Owner-/Collections-Endpoint, Merge/Namensauflösung und Cache-Write zerlegt; keine Fachlogik-/Performanceänderung. Build 20260925-175749.
+// Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: unabhängige Apertum-Owner-/Collections-Abfragen werden parallel geladen; Ownership-, Kaufpreis- und Cache-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen. Persistierte Resolver-v3-Ergebnisse (auch bewusst offene) werden beim NFT-Tab cache-first wiederverwendet; kein erneuter Kaufpreis-Lauf beim ersten Öffnen ohne geänderte Erwerbs-Evidenz. P4 Asset-Flow-Fresh-Build entkoppelt Vollbewertung. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 zentraler NFT-Kaufpreisresolver v3; historische Kauf-Tx bleibt über spätere Walletwechsel erhalten. P4 Messung bestätigt Asset-Flows als Hauptengpass. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Fresh-Build-Finalisierung: Ownership/Global-First/Purchase-Readmodel werden nach DAO1-Aufbau frisch geladen und NFT-UI neu gerendert; P4 erhält Lifecycle-Timings. Build 20260924-163030.
@@ -2119,7 +2119,7 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P1", workStatus:"erledigt", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade konnten intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erschien.", action:"Phase 6.02: Einheitlicher Statusvertrag complete / partial / failed / deferred ist in DAO1 eingeführt und wird bis zum zentralen Wallet-Abschlussstatus propagiert; apertureHandled ist davon getrennt."},
   {priority:"P2", workStatus:"erledigt", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Phase 6.03: Automatischer Fresh-Build-Snapshot ist an den Lifecycle-Statusvertrag gekoppelt; nur complete ist zugelassen, partial/deferred/failed blockieren den finalen Snapshot und werden im Snapshot-Gate protokolliert."},
   {priority:"P3", workStatus:"erledigt", severity:"critical", area:"Fresh-Build-Parität", finding:"6.11-Realtest: Fresh-Build reproduziert den bekannten Entwicklungs-Testuser einschließlich Ownership/Erwerbsdaten und historischer Kaufpreise. Kontrollfall #38483 findet wieder exakt 10’000 wUSDT in Tx 0x31cd…1de2; weitere bekannte Preise (u. a. #31722, #90227, #90289, #37174) sind deckungsgleich. Bewusst nicht deterministisch verknüpfbare Käufe bleiben offen statt geraten zu werden.", action:"Phase 6.12 schließt P3 ab und macht den finalen Resolver-v3-Stand cache-first: auch bewusst offene Ergebnisse werden mit ihrer Erwerbs-Evidenz persistiert und beim ersten NFT-Tab-Öffnen nicht nochmals neu gerechnet, solange sich die zugrunde liegende Ownership-/Erwerbs-Evidenz nicht geändert hat."},
-  {priority:"P4", workStatus:"in Arbeit", severity:"high", area:"Performance Fresh-Import", finding:"6.13-Realtest: Wallet-Erstimport 37'233 ms, DAO1 25'103 ms. 6.15 zeigte starke Laufzeitschwankung (94'049 / 59'250 ms). Phase 6.16 schloss die zuvor unsichtbare Ownership-Lücke: im Realtest waren lifecycleMs 15'060 vollständig erklärt, davon inventoryMs 9'052, prewarm 3'172, rebuild 2'767 und readback 68 ms; unaccountedMs=0. Damit ist der Current-NFT-Inventarabgleich der größte verbleibende Ownership-Hotspot.", action:"Phase 6.17 ändert keine Fach- oder Performance-Logik. Der Inventarabgleich wird zusätzlich zerlegt: Owner-Endpoint, Collections-Endpoint, Merge, kanonische Namensauflösung, Cache-Flag-Merge und Supabase-nft_cache-Write. Erst danach wird entschieden, welche Teilphase optimiert werden darf."},
+  {priority:"P4", workStatus:"in Arbeit", severity:"high", area:"Performance Fresh-Import", finding:"6.13-Realtest: Wallet-Erstimport 37'233 ms, DAO1 25'103 ms. Phase 6.16 erklärte den Ownership-Lifecycle vollständig. Phase 6.17 lokalisierte den verbleibenden Inventar-Hotspot: fetchMs 10'360 ms, davon Owner-Endpoint 5'528 ms und Collections-Endpoint 4'737 ms; Merge 0 ms, kanonische Namen 95 ms, Cache-Write 428 ms. Die beiden Netzwerkquellen liefen damit praktisch vollständig seriell.", action:"Phase 6.18 lädt Owner- und Collections-Endpoint parallel, weil beide fachlich unabhängig sind. Erwartung im Realtest: Apertum-NFT-Fetch nähert sich dem langsameren Einzelendpoint statt deren Summe. Ownership-, Kaufpreis-, Claim- und Cache-Fachlogik bleiben unverändert."},
   {priority:"P5", workStatus:"offen", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Claim-Erkennung, ERC-20-Flows, native Values, Internals, Receipts und Traces bilden heute mehrere sich ergänzende Payout-Pfade.", action:"Eine kanonische Payout-/Asset-Flow-Schicht definieren; Detailansichten und Dashboard ausschließlich daraus lesen lassen."},
   {priority:"P6", workStatus:"offen", severity:"high", area:"NFT / Bot Current State", finding:"nft_cache, project_nft_ownership und DAO1-Runtime-Caches können zeitweise unterschiedliche Zustände liefern.", action:"nft_cache + project_nft_ownership als persistente Wahrheiten definieren; Runtime nur als abgeleitete Session-Sicht verwenden."},
   {priority:"P7", workStatus:"offen", severity:"high", area:"Wallet-ID Lifecycle", finding:"Transiente IDs wie local1 konnten bis in UUID-DB-Filter gelangen (6.00 korrigierter konkreter Fall).", action:"DB-Zugriffe ausschließlich mit persistierter dbId/UUID erlauben; lokale Client-ID nur für UI verwenden."},
@@ -7844,30 +7844,46 @@ async function fetchApertumCollectionNfts(chain,address,onProgress){
 
 async function fetchApertumNfts(chain,address,onProgress){
   const perfStarted=performance.now();
-  let mark=perfStarted;
   let owned=[],collections=[],errors=[];
-  try{
-    owned=await fetchApertumOwnedNfts(chain,address,onProgress);
-  }catch(e){
-    errors.push(e);
-    console.warn("Apertum NFT Owner-Endpoint:",e);
-  }
-  const ownedMs=Math.round(performance.now()-mark);
 
-  // Collections is kept as a supplement because some Apertum/Blockscout
-  // installations index metadata differently between both endpoints.
-  mark=performance.now();
-  try{
-    collections=await fetchApertumCollectionNfts(chain,address,onProgress);
-  }catch(e){
-    errors.push(e);
-    console.warn("Apertum NFT Collections-Endpoint:",e);
+  // Phase 6.18: Beide Apertum-Quellen sind fachlich voneinander unabhängig.
+  // Deshalb parallel laden statt Owner -> Collections seriell abzuwarten.
+  const ownedTask=(async()=>{
+    const started=performance.now();
+    try{
+      const items=await fetchApertumOwnedNfts(chain,address,onProgress);
+      return {items,ms:Math.round(performance.now()-started),error:null};
+    }catch(error){
+      return {items:[],ms:Math.round(performance.now()-started),error};
+    }
+  })();
+  const collectionsTask=(async()=>{
+    const started=performance.now();
+    try{
+      const items=await fetchApertumCollectionNfts(chain,address,onProgress);
+      return {items,ms:Math.round(performance.now()-started),error:null};
+    }catch(error){
+      return {items:[],ms:Math.round(performance.now()-started),error};
+    }
+  })();
+
+  const [ownedResult,collectionsResult]=await Promise.all([ownedTask,collectionsTask]);
+  owned=ownedResult.items||[];
+  collections=collectionsResult.items||[];
+  const ownedMs=ownedResult.ms;
+  const collectionsMs=collectionsResult.ms;
+  if(ownedResult.error){
+    errors.push(ownedResult.error);
+    console.warn("Apertum NFT Owner-Endpoint:",ownedResult.error);
   }
-  const collectionsMs=Math.round(performance.now()-mark);
+  if(collectionsResult.error){
+    errors.push(collectionsResult.error);
+    console.warn("Apertum NFT Collections-Endpoint:",collectionsResult.error);
+  }
 
   if(!owned.length && !collections.length && errors.length) throw errors[0];
 
-  mark=performance.now();
+  let mark=performance.now();
   const merged=new Map();
   for(const nft of [...owned,...collections]){
     const key=`${lowerAddressForNft(nft.tokenAddress)}|${String(nft.tokenId)}`;
@@ -7891,7 +7907,7 @@ async function fetchApertumNfts(chain,address,onProgress){
   await applyApertureCanonicalNames(result);
   const canonicalNamesMs=Math.round(performance.now()-mark);
   const totalMs=Math.round(performance.now()-perfStarted);
-  console.info(`Apertum NFT Fetch Performance · ownedMs=${ownedMs} · collectionsMs=${collectionsMs} · mergeMs=${mergeMs} · canonicalNamesMs=${canonicalNamesMs} · totalMs=${totalMs} · owned=${owned.length} · collections=${collections.length} · result=${result.length}`);
+  console.info(`Apertum NFT Fetch Performance · mode=parallel · ownedMs=${ownedMs} · collectionsMs=${collectionsMs} · mergeMs=${mergeMs} · canonicalNamesMs=${canonicalNamesMs} · totalMs=${totalMs} · owned=${owned.length} · collections=${collections.length} · result=${result.length}`);
   return result;
 }
 
