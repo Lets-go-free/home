@@ -1,4 +1,4 @@
-// Phase 6.15 · 25.09.2026 14:10:35 CEST: P4: 6.14-Prewarm-First-Regression verworfen; Ownership-Rebuild wieder exakt auf 6.13-Verhalten. Nur sichtbare Feintimings prewarm/rebuild/readback ergänzt. Build 20260925-141035.
+// Phase 6.16 · 25.09.2026 17:00:28 CEST: P4: Ownership-Lifecycle vollständig instrumentiert; Inventory/Prepare/Prewarm/Rebuild/Readback getrennt messbar. Fachlogik unverändert gegenüber 6.15. Build 20260925-170028.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Kaufpreis-/Ersterwerb-Diagnose und P4 Lifecycle-Timings; Kontrollfälle #38483/#40938 protokollieren Erwerbs-Tx und Zahlungskandidaten. Build 20260924-163030.
@@ -1153,6 +1153,8 @@ window.DAO1Project = (() => {
   }
 
   async function refreshWalletNftsAndOwnership(wallet,statusPrefix="",options={}){
+    const lifecyclePerfStarted=performance.now();
+    let lifecyclePerfMark=lifecyclePerfStarted;
     const ctx=getContext?.(),address=walletAddress(wallet);if(!ctx?.currentUser||!address)return {nfts:0,ownership:0,failed:0,changed:0,skipped:0};
     const walletId=String(wallet.dbId||wallet.id||"");
 
@@ -1182,6 +1184,8 @@ window.DAO1Project = (() => {
     }else{
       await loadCurrentApertumNfts();
     }
+    const ownershipInventoryMs=Math.round(performance.now()-lifecyclePerfMark);
+    lifecyclePerfMark=performance.now();
 
     const currentByKey=new Map(currentApertumNfts.map(n=>[nftOwnershipKey(n.contract,n.id),n]));
     const dbCurrent=ownershipRows.filter(r=>
@@ -1230,6 +1234,7 @@ window.DAO1Project = (() => {
     const changedNfts=[...affected.values()];
     invalidateOwnershipRuntimeCaches(changedNfts);
     setTransactionStatus("loading",`${statusPrefix}${wallet.label}: ${changedNfts.length} NFT-Besitzänderung(en) werden geprüft…`,`${unchanged} unverändert · nur betroffene Transferketten werden aktualisiert.`);
+    const ownershipPrepareMs=Math.round(performance.now()-lifecyclePerfMark);
     const ownershipPerfStarted=performance.now();
     let ownershipPerfMark=ownershipPerfStarted;
     await prewarmCachedNftOwnership(changedNfts,`${statusPrefix}${wallet.label}: `);
@@ -1270,8 +1275,10 @@ window.DAO1Project = (() => {
       walletRows:readbackWalletRows.length,
       source:ownershipRowsSource
     });
-    const ownershipTotalMs=Math.round(performance.now()-ownershipPerfStarted);
-    console.info(`DAO1 NFT Ownership Performance · changedNfts=${changedNfts.length} · prewarmMs=${ownershipPrewarmMs} · rebuildMs=${ownershipRebuildMs} · readbackMs=${ownershipReadbackMs} · totalMs=${ownershipTotalMs} · savedPeriods=${saved} · failed=${failed}`);
+    const ownershipCoreMs=Math.round(performance.now()-ownershipPerfStarted);
+    const ownershipLifecycleMs=Math.round(performance.now()-lifecyclePerfStarted);
+    const ownershipUnaccountedMs=Math.max(0,ownershipLifecycleMs-(ownershipInventoryMs+ownershipPrepareMs+ownershipPrewarmMs+ownershipRebuildMs+ownershipReadbackMs));
+    console.info(`DAO1 NFT Ownership Performance · changedNfts=${changedNfts.length} · inventoryMs=${ownershipInventoryMs} · prepareMs=${ownershipPrepareMs} · prewarmMs=${ownershipPrewarmMs} · rebuildMs=${ownershipRebuildMs} · readbackMs=${ownershipReadbackMs} · coreMs=${ownershipCoreMs} · lifecycleMs=${ownershipLifecycleMs} · unaccountedMs=${ownershipUnaccountedMs} · savedPeriods=${saved} · failed=${failed}`);
     return {nfts:currentByKey.size,historicalCandidates:historicalCandidates.length,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged,readbackRows:readbackWalletRows.length};
   }
 
