@@ -323,7 +323,6 @@
                 <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Platform</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Ticket</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Open Time</th>
@@ -331,13 +330,9 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Volume</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Symbol</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Open Price</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">S/L</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">T/P</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Closed Time</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Close Price</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Commission</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Taxes</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Swap</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit/Amount</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Betrag<br>effektiv</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
@@ -682,11 +677,43 @@ function getKategorie(trade) {
     return trade.kategorie || autoKategorie(trade);
 }
 
-// Betrag effektiv: Einzahlungen und Auszahlungen sind gehebelt -> durch den Hebel teilen.
-// Alles andere (Trades, Gebühren) 1:1. Ohne Hebel beim Konto: null.
+// Auszahlungen, die zu einem "Prop Withdrawal" im Wallet gehören (gehebelt gebucht).
+// Wird bei jeder Anzeige neu bestimmt.
+let propWithdrawalKeys = new Set();
+
+function istPropWithdrawal(w) {
+    const norm = v => String(v || '').trim().toLowerCase();
+    return norm(w.type) === 'prop withdrawal' && norm(w.sub_type) === 'prop withdrawal';
+}
+
+// Paart jede Prop-Withdrawal-Transaktion mit höchstens einer Auszahlung
+// (gleiches Datum, Betrag / Hebel = Wallet-Betrag, Rundung bis PROP_TOLERANZ)
+function berechnePropWithdrawalKeys() {
+    const keys = new Set();
+    walletTx.filter(w => istPropWithdrawal(w) && w.date).forEach(w => {
+        const datum = String(w.date).substring(0, 10);
+        const wb = Math.abs(Number(w.amount) || 0);
+        const t = mt5Trades.find(t => {
+            if (!isAccounting(t) || getKategorie(t) !== 'Auszahlung') return false;
+            if (keys.has(tradeKey(t.account, t.ticket)) || datumKey(t.openTime) !== datum) return false;
+            const h = hebelFaktor(t.account);
+            return !!h && Math.abs(Math.abs(t.profit) / h - wb) <= PROP_TOLERANZ;
+        });
+        if (t) keys.add(tradeKey(t.account, t.ticket));
+    });
+    propWithdrawalKeys = keys;
+}
+
+// Betrag effektiv:
+// - Einzahlungen: gehebelt -> durch den Hebel teilen
+// - Auszahlungen mit "Prop Withdrawal" im Wallet: gehebelt -> durch den Hebel teilen
+// - alles andere (übrige Auszahlungen, Gebühren, Trades): 1:1
+// Fehlt der Hebel beim Konto, wo er gebraucht wird: null
 function betragEffektiv(t) {
     const kat = isAccounting(t) ? getKategorie(t) : '';
-    if (kat === 'Einzahlung' || kat === 'Auszahlung') {
+    const gehebelt = kat === 'Einzahlung' ||
+        (kat === 'Auszahlung' && propWithdrawalKeys.has(tradeKey(t.account, t.ticket)));
+    if (gehebelt) {
         const h = hebelFaktor(t.account);
         return h ? t.profit / h : null;
     }
@@ -1250,6 +1277,7 @@ function formatPlain(value) {
 }
 
 function displayTrades(selectedAccount) {
+    berechnePropWithdrawalKeys();
     renderAuswertungen(selectedAccount);
     displayUnstimmigkeiten();
     const tbody = document.getElementById('tradesBody');
@@ -1279,12 +1307,12 @@ function displayTrades(selectedAccount) {
         if (eff === null) effektivFehlt = true; else totalEffektiv += eff;
 
         const row = tbody.insertRow();
+        // Ausgeblendet: Platform, S/L, T/P, Taxes, Swap (sind weiterhin in der Datenbank)
         const values = [
-            [t.platform, true], [t.ticket, true], [t.account, true], [t.openTime, true],
+            [t.ticket, true], [t.account, true], [t.openTime, true],
             [t.type, true], [formatPlain(t.volume), false], [t.symbol, true],
-            [formatPlain(t.openPrice), false], [formatPlain(t.sl), false], [formatPlain(t.tp), false],
-            [t.closedTime, true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false],
-            [formatPlain(t.taxes), false], [formatPlain(t.swap), false]
+            [formatPlain(t.openPrice), false],
+            [t.closedTime, true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false]
         ];
         values.forEach(([v, left]) => {
             const c = row.insertCell();
@@ -1345,18 +1373,16 @@ function displayTrades(selectedAccount) {
     // Total-Zeile
     const totalRow = tbody.insertRow();
     totalRow.classList.add('total-row');
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 13; i++) {
         const c = totalRow.insertCell();
         if (i === 0) c.textContent = 'Total';
-        if (i === 16) {
+        if (i === 11) {
             c.textContent = effektivFehlt ? '–' : totalEffektiv.toFixed(2);
             if (!effektivFehlt && totalEffektiv > 0) c.classList.add('table-positive');
             else if (!effektivFehlt && totalEffektiv < 0) c.classList.add('table-negative');
         }
-        if (i === 12) c.textContent = totalCommission.toFixed(5);
-        if (i === 13) c.textContent = totalTaxes.toFixed(2);
-        if (i === 14) c.textContent = totalSwap.toFixed(2);
-        if (i === 15) {
+        if (i === 9) c.textContent = totalCommission.toFixed(5);
+        if (i === 10) {
             c.textContent = totalProfit.toFixed(2);
             if (totalProfit > 0) c.classList.add('table-positive');
             else if (totalProfit < 0) c.classList.add('table-negative');
@@ -1369,9 +1395,9 @@ function displayTrades(selectedAccount) {
 // Grundlage: TagMarkets-Daten
 // - Trades = Einträge vom Typ Buy/Sell
 // - Einzahlungen, Auszahlungen, Gebühren = Accounting-Einträge (Kategorie)
-// - Einzahlungen/Auszahlungen in den Trades sind bereits gehebelt
-// - Saldo Einzahlung mit Hebel = Einzahlungen - Auszahlungen (wie in den Trades)
-// - Saldo Einzahlung effektiv = Saldo mit Hebel / Hebel des Kontos
+// - Saldo Einzahlung effektiv = Summe "Betrag effektiv" der Einzahlungen und Auszahlungen
+//   (Einzahlungen und Prop-Withdrawal-Auszahlungen sind gehebelt gebucht -> durch Hebel geteilt)
+// - Saldo Einzahlung mit Hebel = Saldo effektiv x Hebel des Kontos
 // - Kommissionen = Spalte Commission
 // - Netto = Brutto - Gebühren - Kommissionen
 // ============================================================
@@ -1385,17 +1411,21 @@ function hebelFaktor(account) {
     return parseInt(acc.hebel.replace('x', ''), 10) || null;
 }
 
-// Saldo eines Accounts bis zu einem Zeitpunkt (inkl.), so wie in den Trades (gehebelt)
+// Saldo effektiv = Summe "Betrag effektiv" aller Einzahlungen und Auszahlungen.
+// null, wenn der Hebel fehlt und gebraucht wird.
 function saldoEffektiv(trades, account, bisZeit) {
     let saldo = 0;
+    let fehlt = false;
     trades.forEach(t => {
         if (t.account !== account || !isAccounting(t)) return;
         if (bisZeit && t.openTime > bisZeit) return;
         const kat = getKategorie(t);
-        if (kat === 'Einzahlung') saldo += Math.abs(t.profit);
-        if (kat === 'Auszahlung') saldo -= Math.abs(t.profit);
+        if (kat !== 'Einzahlung' && kat !== 'Auszahlung') return;
+        const eff = betragEffektiv(t);
+        if (eff === null) fehlt = true;
+        else saldo += kat === 'Einzahlung' ? Math.abs(eff) : -Math.abs(eff);
     });
-    return saldo;
+    return fehlt ? null : saldo;
 }
 
 function datumKey(zeit) {
@@ -1452,11 +1482,11 @@ function calculateGewinne(trades) {
     let einzahlungMitHebel = 0;
     let hebelFehlt = false;
     accounts.forEach(acc => {
-        const saldo = saldoEffektiv(trades, acc, null);   // gehebelt
-        einzahlungMitHebel += saldo;
+        const eff = saldoEffektiv(trades, acc, null);
         const h = hebelFaktor(acc);
-        if (h) einzahlungEffektiv += saldo / h;
-        else if (saldo !== 0) hebelFehlt = true;
+        if (eff === null || (!h && eff !== 0)) { hebelFehlt = true; return; }
+        einzahlungEffektiv += eff;
+        einzahlungMitHebel += eff * (h || 0);
     });
 
     let bruttoGewinn = 0;
@@ -1477,7 +1507,7 @@ function calculateGewinne(trades) {
 
     return [
         { 'Typ': 'Einzahlung effektiv', 'Betrag $': hebelFehlt ? null : einzahlungEffektiv, 'in %': hebelFehlt ? null : 100 },
-        { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': pct(einzahlungMitHebel) },
+        { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': hebelFehlt ? null : einzahlungMitHebel, 'in %': pct(einzahlungMitHebel) },
         { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': pct(bruttoGewinn) },
         { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': pct(gebuehren) },
         { 'Typ': 'Kommissionen', 'Betrag $': kommissionen, 'in %': pct(kommissionen) },
@@ -1634,11 +1664,11 @@ function calculateWeeklyOverview(trades) {
         sorted.forEach(t => {
             if (done.has(t.account)) return;
             done.add(t.account);
-            const saldo = saldoEffektiv(trades, t.account, t.openTime);   // gehebelt
-            saldoHebel += saldo;
+            const eff = saldoEffektiv(trades, t.account, t.openTime);
             const h = hebelFaktor(t.account);
-            if (h) saldoEff += saldo / h;
-            else if (saldo !== 0) hebelFehlt = true;
+            if (eff === null || (!h && eff !== 0)) { hebelFehlt = true; return; }
+            saldoEff += eff;
+            saldoHebel += eff * (h || 0);
         });
 
         const netto = w.brutto - w.gebuehren - w.kommissionen;
@@ -1652,7 +1682,7 @@ function calculateWeeklyOverview(trades) {
             'Anz. Verluste': w.verluste,
             'ohne Trade': w.ohneTrade,
             'Saldo Einzahlung effektiv': hebelFehlt ? null : saldoEff,
-            'Saldo Einzahlung mit Hebel': saldoHebel,
+            'Saldo Einzahlung mit Hebel': hebelFehlt ? null : saldoHebel,
             'Brutto-Gewinn $': w.brutto,
             'Brutto-Gewinn %': pct(w.brutto),
             'Gebühren': w.gebuehren,
@@ -1726,7 +1756,7 @@ function displayWeeklyOverview(data) {
         
         // Saldo Einzahlung mit Hebel
         const cell5 = row.insertCell(6);
-        cell5.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel']);
+        cell5.textContent = week['Saldo Einzahlung mit Hebel'] === null ? '–' : formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel']);
         
         // Brutto-Gewinn $
         const cell6 = row.insertCell(7);
