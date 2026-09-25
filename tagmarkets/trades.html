@@ -42,7 +42,7 @@
             font-family: inherit;
         }
         .neo-btn-small:hover { background: #edf2f7; }
-        #tradesTable td.text-left, #accountsTable td { text-align: left !important; }
+        #tradesTable td.text-left, #accountsTable td, #walletTable td.text-left { text-align: left !important; }
         #accountsTable { width: auto !important; min-width: 600px; }
         #accountsTable th { width: auto !important; text-align: left !important; }
         #accountsTable input.neo-input { min-width: 260px; }
@@ -308,6 +308,43 @@
             </div>
         </div>
 
+        <!-- Wallet-Transaktionen einfügen -->
+        <div id="walletImportContainer" class="admin-only" style="margin: 40px 0 30px 0;">
+            <h3 style="margin-bottom: 20px;">Wallet-Transaktionen einfügen</h3>
+            <p class="info-box">
+                <strong>So geht's:</strong> Markiere in TagMarkets die Tabelle mit den Wallet-Transaktionen, kopiere sie und füge sie hier ein. Die Titelzeile darf mit dabei sein. Transaktionen, die schon vorhanden sind (gleiche ID), werden übersprungen.
+            </p>
+            <textarea id="walletImportText" class="neo-input" rows="6" style="width: 100%; font-family: monospace; font-size: 0.85em; white-space: pre; resize: vertical;" placeholder="Hier die kopierte Tabelle einfügen..."></textarea>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
+                <button type="button" class="neo-btn" onclick="importWallet()">Transaktionen übernehmen</button>
+                <span id="walletImportMessage" style="font-size: 0.9em;"></span>
+            </div>
+        </div>
+
+        <!-- Wallet-Transaktionen -->
+        <div id="walletContainer" style="margin-top: 40px;">
+            <h3 style="margin-bottom: 20px;">Wallet-Transaktionen</h3>
+            <div class="table-container-small">
+                <table id="walletTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">ID</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Date</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Approved Date</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Type</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Details</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Transaction Sub-Type</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Method</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Status</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Amount</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Net Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="walletBody"></tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <div class="footer-link">
@@ -429,6 +466,14 @@ async function reloadAll() {
     } catch (e) {
         showStatus('Daten konnten nicht geladen werden: ' + (e.message || e), true);
     }
+    // Wallet separat laden, damit ein Fehler dort die Trades nicht blockiert
+    try {
+        await loadWallet();
+    } catch (e) {
+        walletTx = [];
+        showStatus('Wallet-Transaktionen konnten nicht geladen werden: ' + (e.message || e), true);
+    }
+    displayWallet();
     displayAccounts();
     populateAccountFilter();
     displayTrades(document.getElementById('accountFilter').value);
@@ -722,6 +767,153 @@ async function importTrades() {
     if (doppelt) text2 += ', ' + doppelt + ' schon vorhanden';
     if (invalid) text2 += ', ' + invalid + (invalid === 1 ? ' Zeile ungültig' : ' Zeilen ungültig');
     if (neueAccounts.length) text2 += '. Neue Konten: ' + neueAccounts.join(', ') + ' (Strategie und Hebel bitte ergänzen)';
+    msg.textContent = text2 + '.';
+}
+
+
+// ---------- Wallet-Transaktionen (tm_wallet_transactions) ----------
+let walletTx = [];
+
+// "17.78 USD" -> { value: 17.78, currency: 'USD' }
+function parseAmount(text) {
+    const t = String(text || '').trim();
+    const num = parseFloat(t.replace(/[^0-9.\-]/g, ''));
+    const cur = (t.match(/[A-Za-z]{3}/) || [''])[0].toUpperCase();
+    return { value: isNaN(num) ? null : num, currency: cur || null };
+}
+
+// "N/A" oder leer -> null
+function cleanText(v) {
+    const t = String(v || '').trim();
+    return (t === '' || t.toUpperCase() === 'N/A') ? null : t;
+}
+
+// Kopierten Text in Datensätze umwandeln (10 Spalten, mit Tabulator getrennt)
+function parseWalletTSV(text) {
+    return text.split('\n')
+        .map(line => line.replace(/\r$/, ''))
+        .filter(line => line.trim() && !/^ID\t/i.test(line))
+        .map(line => line.split('\t').map(x => x.trim()))
+        .filter(v => v.length >= 10 && /^\d+$/.test(v[0]))
+        .map(v => {
+            const amount = parseAmount(v[8]);
+            const net = parseAmount(v[9]);
+            return {
+                transaction_id: v[0],
+                date: cleanText(v[1]),
+                approved_date: cleanText(v[2]),
+                type: cleanText(v[3]),
+                details: cleanText(v[4]),
+                sub_type: cleanText(v[5]),
+                method: cleanText(v[6]),
+                status: cleanText(v[7]),
+                amount: amount.value,
+                net_amount: net.value,
+                currency: amount.currency || net.currency
+            };
+        });
+}
+
+async function loadWallet() {
+    const all = [];
+    const size = 1000;
+    for (let from = 0; ; from += size) {
+        const res = await db.from('tm_wallet_transactions').select('*').order('id').range(from, from + size - 1);
+        if (res.error) throw res.error;
+        all.push(...res.data);
+        if (res.data.length < size) break;
+    }
+    walletTx = all;
+}
+
+function displayWallet() {
+    const tbody = document.getElementById('walletBody');
+    tbody.innerHTML = '';
+    const sorted = [...walletTx].sort((a, b) =>
+        String(b.date || '').localeCompare(String(a.date || '')) || Number(b.transaction_id) - Number(a.transaction_id));
+
+    let totalAmount = 0;
+    let totalNet = 0;
+    const withCur = (v, c) => v === null || v === undefined ? '' : Number(v).toFixed(2) + (c ? ' ' + c : '');
+
+    sorted.forEach(w => {
+        totalAmount += Number(w.amount) || 0;
+        totalNet += Number(w.net_amount) || 0;
+        const row = tbody.insertRow();
+        [w.transaction_id, w.date, w.approved_date || 'N/A', w.type, w.details, w.sub_type, w.method, w.status].forEach(v => {
+            const c = row.insertCell();
+            c.textContent = v || '';
+            c.classList.add('text-left');
+        });
+        row.insertCell().textContent = withCur(w.amount, w.currency);
+        row.insertCell().textContent = withCur(w.net_amount, w.currency);
+    });
+
+    const totalRow = tbody.insertRow();
+    totalRow.classList.add('total-row');
+    for (let i = 0; i < 10; i++) {
+        const c = totalRow.insertCell();
+        if (i === 0) { c.textContent = 'Total'; c.classList.add('text-left'); }
+        if (i === 8) c.textContent = totalAmount.toFixed(2);
+        if (i === 9) c.textContent = totalNet.toFixed(2);
+    }
+}
+
+async function importWallet() {
+    const msg = document.getElementById('walletImportMessage');
+    const text = document.getElementById('walletImportText').value;
+    msg.style.color = '#dc2626';
+
+    if (!text.trim()) {
+        msg.textContent = 'Bitte zuerst die Tabelle einfügen.';
+        return;
+    }
+
+    const lines = text.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim() && !/^ID\t/i.test(l));
+    const rows = parseWalletTSV(text);
+    const invalid = lines.length - rows.length;
+
+    if (rows.length === 0) {
+        msg.textContent = 'Keine gültigen Zeilen gefunden. Es braucht 10 Spalten, getrennt mit Tabulator (so wie beim Kopieren aus der Tabelle).';
+        return;
+    }
+
+    const existing = new Set(walletTx.map(w => String(w.transaction_id)));
+    const neue = [];
+    let doppelt = 0;
+    rows.forEach(r => {
+        if (existing.has(r.transaction_id)) {
+            doppelt++;
+        } else {
+            existing.add(r.transaction_id);
+            neue.push(r);
+        }
+    });
+
+    msg.style.color = '#4a5568';
+    msg.textContent = 'Wird gespeichert...';
+
+    if (neue.length) {
+        const res = await db.from('tm_wallet_transactions').upsert(neue, { onConflict: 'transaction_id', ignoreDuplicates: true });
+        if (res.error) {
+            msg.style.color = '#dc2626';
+            msg.textContent = 'Speichern hat nicht geklappt: ' + res.error.message;
+            return;
+        }
+    }
+
+    try {
+        await loadWallet();
+    } catch (e) {
+        showStatus('Wallet-Transaktionen konnten nicht geladen werden: ' + (e.message || e), true);
+    }
+    displayWallet();
+
+    document.getElementById('walletImportText').value = '';
+    msg.style.color = '#10b981';
+    let text2 = neue.length + (neue.length === 1 ? ' neue Transaktion gespeichert' : ' neue Transaktionen gespeichert');
+    if (doppelt) text2 += ', ' + doppelt + ' schon vorhanden';
+    if (invalid) text2 += ', ' + invalid + (invalid === 1 ? ' Zeile ungültig' : ' Zeilen ungültig');
     msg.textContent = text2 + '.';
 }
 
