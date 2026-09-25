@@ -1,3 +1,4 @@
+// Phase 6.13 · 25.09.2026 11:39:16 CEST: P4 Rest-Hotspots nach 6.12-Realtest: Claim-TX-Markierungen werden batchweise statt mit 200+ seriellen Supabase-Updates gespeichert; NFT-Ownership-Rebuild läuft mit begrenzter Parallelität über bereits vorgewärmte Historien. Kaufpreis-/Asset-Flow-Logik unverändert. Build 20260925-113916.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Kaufpreis-/Ersterwerb-Diagnose und P4 Lifecycle-Timings; Kontrollfälle #38483/#40938 protokollieren Erwerbs-Tx und Zahlungskandidaten. Build 20260924-163030.
@@ -1232,15 +1233,22 @@ window.DAO1Project = (() => {
     await prewarmCachedNftOwnership(changedNfts,`${statusPrefix}${wallet.label}: `);
 
     let saved=0,failed=0;
-    for(const n of changedNfts){
+    // Phase 6.13 / P4: Die Historien sind oben bereits contractweise vorgewärmt.
+    // Der anschließende Rebuild war trotzdem NFT für NFT seriell und kostete im
+    // 6.12-Realtest ~23 s. Begrenzte Parallelität hält Explorer/Supabase moderat,
+    // ohne die fachliche Ownership-Rekonstruktion oder Kaufpreis-Evidenz zu ändern.
+    await mapLimited(changedNfts,4,async(n)=>{
       try{
         const key=nftOwnershipKey(n.contract,n.id);
-        saved+=await discoverOwnershipForNft(n.id,n.contract,n.name,{
+        const count=await discoverOwnershipForNft(n.id,n.contract,n.name,{
           currentWallet:currentByKey.has(key)?wallet:null
         });
+        saved+=Number(count||0);
+      }catch(e){
+        failed++;
+        console.warn("NFT Ownership inkrementell",n,e);
       }
-      catch(e){failed++;console.warn("NFT Ownership inkrementell",n,e);}
-    }
+    });
     selectedWalletId=prev;
     const readback=await loadOwnershipCache({force:true});
     const readbackWalletRows=(readback||[]).filter(o=>
@@ -3838,6 +3846,20 @@ window.DAO1Project = (() => {
     if(error)throw error;
   }
 
+  async function saveTransactionClaimPatches(rows){
+    if(!rows?.length)return;
+    const BATCH=500;
+    for(let i=0;i<rows.length;i+=BATCH){
+      const part=rows.slice(i,i+BATCH);
+      const {error}=await sb.from("project_transactions")
+        .upsert(part,{onConflict:"user_id,project_key,chain_key,wallet_id,tx_hash"});
+      if(error)throw error;
+    }
+    const changedWalletIds=new Set(rows.map(r=>String(r?.wallet_id||"")).filter(Boolean));
+    for(const id of changedWalletIds)daoHistoryTxCache.delete(`wallet:${id}`);
+    daoHistoryTxCache.delete("all");
+  }
+
   async function saveTransactionPricePatches(rows,status,label="Historische USD-Werte"){
     const BATCH=500;
     for(let i=0;i<rows.length;i+=BATCH){
@@ -4308,11 +4330,14 @@ window.DAO1Project = (() => {
   }
 
   async function enrichTransactionsWithClaims(address,status=null,jobToken=transactionJobToken,options={}){
+    const claimPerf={startedAt:performance.now(),loadBaseMs:0,detailFlowsMs:0,valuationMs:0,nativeFallbackMs:0,rowBuildMs:0,saveClaimsMs:0,saveTxPatchesMs:0};
+    const baseStarted=performance.now();
     const txs=await loadTransactionRows(address,null);
     // v53: Claims verwenden direkt den persistenten NFT-Cache DES betreffenden Wallets.
     // Dadurch ist die Zuordnung unabhängig davon, welches Wallet im NFT-Tab ausgewählt ist.
     const nftMap=await loadWalletNftMap(address);
     const cachedClaims=await loadCachedClaims(address,null);
+    claimPerf.loadBaseMs=Math.round(performance.now()-baseStarted);
     const claimByHash=new Map(cachedClaims.map(c=>[String(c.tx_hash||"").toLowerCase(),c]));
 
     // v47: Zuerst nur aus den bereits vorhandenen Transaktionen Claim-Kandidaten bilden.
@@ -4366,6 +4391,7 @@ window.DAO1Project = (() => {
       if(t.claim_nft_id!=null && c?.reward_asset_symbol)return false;
       return !cachedFlowHashes.has(h);
     });
+    const detailStarted=performance.now();
     for(let i=0;i<detailTargets.length;i++){
       if(jobToken!==transactionJobToken)return;
       const t=detailTargets[i];
@@ -4373,6 +4399,7 @@ window.DAO1Project = (() => {
       try{await cacheAssetFlowsForTransaction(t.tx_hash,address,t);}catch(e){console.warn("DAO1 Claim Detail-Flow",t.tx_hash,e);}
     }
 
+    claimPerf.detailFlowsMs=Math.round(performance.now()-detailStarted);
     allFlows=await loadAssetFlowRows(address);
 
     // v49: Bereits gecachte Claim-Flows mit fehlendem historischen Preis werden
@@ -4381,11 +4408,13 @@ window.DAO1Project = (() => {
     const candidateHashes=new Set(candidateByHash.keys());
     const needsValuation=allFlows.filter(f=>candidateHashes.has(String(f.tx_hash||"").toLowerCase())
       && f.direction==="eingang" && (f.price_usd==null || f.value_usd==null));
+    const valuationStarted=performance.now();
     if(needsValuation.length){
       await valueAssetFlows(needsValuation);
       await saveAssetFlowRows(needsValuation);
       allFlows=await loadAssetFlowRows(address);
     }
+    claimPerf.valuationMs=Math.round(performance.now()-valuationStarted);
 
     const flowsByTx=new Map();
     for(const f of allFlows){
@@ -4410,6 +4439,7 @@ window.DAO1Project = (() => {
     const allClaimTxs=txs.filter(t=>{const ev=claimEvidence(t);if(ev)evidenceByHash.set(String(t.tx_hash||"").toLowerCase(),ev);return !!ev;});
     const claimTxs=allClaimTxs.filter(t=>{const c=claimByHash.get(String(t.tx_hash||"").toLowerCase());return t.claim_nft_id==null || !c?.reward_asset_symbol;});
     if(!claimTxs.length){
+      console.info("DAO1 Claim Performance",{...claimPerf,totalMs:Math.round(performance.now()-claimPerf.startedAt),claimTxs:0,detailTargets:detailTargets.length,nativeTargets:0});
       setTransactionStatus("ready",`Keine neuen Claims anzureichern.`,`${allClaimTxs.length.toLocaleString("de-DE")} Claim-Transaktionen (Legacy + neue Mining-Bot-Evidenz) sind bereits assetgenau verarbeitet.`);
       return {updatedClaims:0,detailTargets:detailTargets.length};
     }
@@ -4419,6 +4449,7 @@ window.DAO1Project = (() => {
     // Bei 200+ historischen Claims verursachte das mehrere Minuten Wartezeit.
     // Max. 8 parallele, deduplizierte Requests halten Explorer/RPC moderat belastet.
     const nativeFallbackByHash=new Map();
+    const nativeStarted=performance.now();
     const nativeTargets=claimTxs.filter(t=>{
       const h=String(t.tx_hash||"").toLowerCase();
       return !(flowsByTx.get(h)||[]).some(f=>f.direction==="eingang");
@@ -4443,7 +4474,9 @@ window.DAO1Project = (() => {
       });
       if(jobToken!==transactionJobToken)return;
     }
+    claimPerf.nativeFallbackMs=Math.round(performance.now()-nativeStarted);
 
+    const rowBuildStarted=performance.now();
     const claimRows=[];
     for(let i=0;i<claimTxs.length;i++){
       if(jobToken!==transactionJobToken)return;
@@ -4522,29 +4555,40 @@ window.DAO1Project = (() => {
       });
     }
 
+    claimPerf.rowBuildMs=Math.round(performance.now()-rowBuildStarted);
     if(claimRows.length){
+      const saveClaimsStarted=performance.now();
       await saveClaimRows(claimRows);
-      for(let ri=0;ri<claimRows.length;ri++){
-        if(jobToken!==transactionJobToken)return;
-        const r=claimRows[ri];
-        const tx=txs.find(t=>t.tx_hash===r.tx_hash);
-        const {error}=await sb.from("project_transactions")
-          .update({
-            claim_nft_id:r.nft_id,
-            claim_nft_name:r.nft_name,
-            claim_nft_subtype:r.nft_subtype,
-            // Legacy-Feld nur noch für native/wAPTM-kompatible Rewards.
-            claim_reward_aptm:r.reward_aptm,
-            claim_reward_usd:r.reward_asset_usd,
-            updated_at:new Date().toISOString()
-          })
-          .eq("user_id",getContext?.().currentUser.id)
-          .eq("wallet_id",walletIdForAddress(address))
-          .eq("tx_hash",r.tx_hash);
-        if(error)console.warn("Tx Claim asset enrichment:",error);
+      claimPerf.saveClaimsMs=Math.round(performance.now()-saveClaimsStarted);
+      if(jobToken!==transactionJobToken)return;
+      // Phase 6.13 / P4: Bis 6.12 wurde jede Claim-TX einzeln per UPDATE
+      // geschrieben (im Realtest 266 Claims, ~40 s Gesamt-Claimteiljob).
+      // Dieselben Marker werden jetzt in einem Upsert-Batch gespeichert.
+      const claimTxPatches=claimRows.map(r=>({
+        user_id:getContext?.().currentUser.id,
+        project_key:PROJECT_KEY,
+        chain_key:CHAIN_KEY,
+        wallet_id:walletIdForAddress(address),
+        tx_hash:r.tx_hash,
+        claim_nft_id:r.nft_id,
+        claim_nft_name:r.nft_name,
+        claim_nft_subtype:r.nft_subtype,
+        // Legacy-Feld nur noch für native/wAPTM-kompatible Rewards.
+        claim_reward_aptm:r.reward_aptm,
+        claim_reward_usd:r.reward_asset_usd,
+        updated_at:new Date().toISOString()
+      }));
+      const saveTxStarted=performance.now();
+      try{
+        await saveTransactionClaimPatches(claimTxPatches);
+        claimPerf.saveTxPatchesMs=Math.round(performance.now()-saveTxStarted);
+      }catch(error){
+        console.warn("Tx Claim asset enrichment batch:",error);
+        throw error;
       }
       setTransactionStatus("ready",`${claimRows.length.toLocaleString("de-DE")} Claim(s) assetgenau angereichert und gespeichert.`);
     }
+    console.info("DAO1 Claim Performance",{...claimPerf,totalMs:Math.round(performance.now()-claimPerf.startedAt),claimTxs:claimTxs.length,detailTargets:detailTargets.length,nativeTargets:nativeTargets.length,updatedClaims:claimRows.length});
     return {updatedClaims:claimRows.length,detailTargets:detailTargets.length};
   }
 
