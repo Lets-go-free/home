@@ -117,6 +117,19 @@
             background: rgba(16, 185, 129, 0.18);
             border-bottom-color: #10b981;
         }
+        .tab-badge {
+            display: inline-block;
+            min-width: 20px;
+            padding: 1px 6px;
+            margin-left: 6px;
+            border-radius: 10px;
+            background: #f59e0b;
+            color: #1a202c;
+            font-size: 0.8em;
+            font-weight: 700;
+            text-align: center;
+        }
+        #unstimmigkeitenBox table th, #unstimmigkeitenBox table td { padding: 6px 12px; }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
         .subtab-nav {
@@ -167,7 +180,7 @@
             <button type="button" class="tab-btn" data-tab="woche" onclick="showTab('woche')">Trades je Woche</button>
             <button type="button" class="tab-btn" data-tab="trades" onclick="showTab('trades')">Alle Trades</button>
             <button type="button" class="tab-btn" data-tab="wallet" onclick="showTab('wallet')">Wallet-Transaktionen</button>
-            <button type="button" class="tab-btn admin-only" data-tab="admin" onclick="showTab('admin')">Admin</button>
+            <button type="button" class="tab-btn admin-only" data-tab="admin" onclick="showTab('admin')">Admin <span id="adminBadge" class="tab-badge" style="display: none;"></span></button>
         </nav>
     </div>
 
@@ -362,6 +375,7 @@
 
         </div>
         <div class="tab-panel" id="tab-admin">
+            <div id="unstimmigkeitenBox" class="warning-box" style="display: none; margin-bottom: 25px;"></div>
             <nav class="subtab-nav">
                 <button type="button" class="subtab-btn" data-subtab="accounts" onclick="showSubTab('accounts')">Accounts</button>
                 <button type="button" class="subtab-btn" data-subtab="trades" onclick="showSubTab('trades')">Trades</button>
@@ -569,7 +583,8 @@ async function reloadAll() {
 // Beim Seitenaufruf bzw. nach dem Anmelden: vorhandene Daten abgleichen
 async function abgleichBeimStart() {
     const n = await abgleichPropDeposits();
-    if (n) showStatus(propHinweis(n).trim(), false);
+    const text = propHinweis(n).trim();
+    if (text) showStatus(text, false);
 }
 
 function showStatus(text, isError) {
@@ -915,6 +930,7 @@ async function loadWallet() {
 }
 
 function displayWallet() {
+    displayUnstimmigkeiten();
     const tbody = document.getElementById('walletBody');
     tbody.innerHTML = '';
     const sorted = [...walletTx].sort((a, b) =>
@@ -1045,34 +1061,79 @@ function tabAusAdresse() {
 
 
 // ---------- Abgleich Wallet "Prop Deposit" -> Trades ----------
-// Wallet-Eintrag mit Type und Sub-Type "Prop Deposit" gefunden:
-// Accounting-Eintrag in den Trades mit gleichem Datum und gleichem Betrag suchen.
-// Ist dessen Kategorie "Gebühren", wird sie auf "Auszahlung" gesetzt. Sonst keine Änderung.
+// Wallet-Eintrag mit Type und Sub-Type "Prop Deposit":
+// Accounting-Einträge in den Trades mit gleichem Datum und gleichem Betrag suchen.
+// - Eindeutig (nicht mehr Einträge als Prop Deposits): Kategorie "Gebühren" -> "Auszahlung"
+// - Mehrdeutig (mehr Einträge als Prop Deposits): nichts ändern, im Admin-Bereich melden
 function istPropDeposit(w) {
     const norm = v => String(v || '').trim().toLowerCase();
     return norm(w.type) === 'prop deposit' && norm(w.sub_type) === 'prop deposit';
 }
 
-async function abgleichPropDeposits() {
-    if (!isAdmin) return 0;
-    const cent = v => Math.round(Math.abs(Number(v) || 0) * 100);
-    const benutzt = new Set();
-    const aenderungen = [];
+// Toleranz für Rundungsdifferenzen (in USD, auf Wallet-Ebene)
+const PROP_TOLERANZ = 0.02;
 
-    walletTx.filter(istPropDeposit).forEach(w => {
-        if (!w.date) return;
+// Passt ein Accounting-Eintrag zu einer Wallet-Transaktion?
+// Verglichen wird der Betrag direkt und geteilt durch den Hebel des Accounts
+// (falls die Buchung in den Trades gehebelt ist). Rundungsdifferenz bis PROP_TOLERANZ.
+function propPasst(w, t) {
+    const wb = Math.abs(Number(w.amount) || 0);
+    const tb = Math.abs(t.profit);
+    if (Math.abs(tb - wb) <= PROP_TOLERANZ) return true;
+    const h = hebelFaktor(t.account);
+    return !!h && Math.abs(tb / h - wb) <= PROP_TOLERANZ;
+}
+
+// Ergebnis: { aenderungen: [Trades], konflikte: [{ datum, betrag, wallet: [...], kandidaten: [...] }] }
+// Zusammengehörige Wallet- und Trades-Einträge (gleicher Tag, Betrag passt) werden gruppiert.
+function pruefePropDeposits() {
+    const wallets = walletTx.filter(w => istPropDeposit(w) && w.date);
+    const accounting = mt5Trades.filter(isAccounting);
+
+    // Gruppen bilden (Union-Find über alle Verbindungen)
+    const parent = {};
+    const find = x => (parent[x] === x ? x : (parent[x] = find(parent[x])));
+    const union = (x, y) => { parent[find(x)] = find(y); };
+    const links = [];
+    wallets.forEach((w, i) => {
         const datum = String(w.date).substring(0, 10);
-        const betrag = cent(w.amount);
-        const treffer = mt5Trades.find(t =>
-            isAccounting(t) &&
-            !benutzt.has(tradeKey(t.account, t.ticket)) &&
-            datumKey(t.openTime) === datum &&
-            cent(t.profit) === betrag);
-        if (!treffer) return;
-        benutzt.add(tradeKey(treffer.account, treffer.ticket));
-        if (getKategorie(treffer) === 'Gebühren') aenderungen.push(treffer);
+        accounting.forEach((t, j) => {
+            if (datumKey(t.openTime) === datum && propPasst(w, t)) links.push(['w' + i, 't' + j]);
+        });
+    });
+    links.forEach(([x, y]) => { parent[x] = parent[x] || x; parent[y] = parent[y] || y; union(x, y); });
+
+    const gruppen = {};
+    Object.keys(parent).forEach(k => {
+        const root = find(k);
+        const g = gruppen[root] = gruppen[root] || { wallet: [], kandidaten: [] };
+        if (k[0] === 'w') g.wallet.push(wallets[Number(k.slice(1))]);
+        else g.kandidaten.push(accounting[Number(k.slice(1))]);
     });
 
+    const aenderungen = [];
+    const konflikte = [];
+    Object.values(gruppen).forEach(g => {
+        const bereitsAuszahlung = g.kandidaten.filter(t => getKategorie(t) === 'Auszahlung').length;
+        if (g.kandidaten.length <= g.wallet.length) {
+            // Eindeutig: alle Kandidaten sind Auszahlungen
+            g.kandidaten.filter(t => getKategorie(t) === 'Gebühren').forEach(t => aenderungen.push(t));
+        } else if (bereitsAuszahlung < g.wallet.length) {
+            // Mehrdeutig und noch nicht von Hand erledigt
+            konflikte.push({
+                datum: String(g.wallet[0].date).substring(0, 10),
+                betrag: Math.abs(Number(g.wallet[0].amount) || 0),
+                wallet: g.wallet,
+                kandidaten: g.kandidaten
+            });
+        }
+    });
+    return { aenderungen, konflikte };
+}
+
+async function abgleichPropDeposits() {
+    if (!isAdmin) return 0;
+    const { aenderungen } = pruefePropDeposits();
     let geaendert = 0;
     for (const t of aenderungen) {
         const { error } = await db.from('tm_trades').update({ kategorie: 'Auszahlung' })
@@ -1084,13 +1145,88 @@ async function abgleichPropDeposits() {
         t.kategorie = 'Auszahlung';
         geaendert++;
     }
-    if (geaendert) displayTrades(document.getElementById('accountFilter').value);
+    displayTrades(document.getElementById('accountFilter').value);
     return geaendert;
 }
 
+// Hinweis im Admin-Bereich und Zähler am Admin-Tab
+function displayUnstimmigkeiten() {
+    const box = document.getElementById('unstimmigkeitenBox');
+    const badge = document.getElementById('adminBadge');
+    if (!box || !badge) return;
+    const konflikte = isAdmin ? pruefePropDeposits().konflikte : [];
+
+    badge.textContent = konflikte.length ? String(konflikte.length) : '';
+    badge.style.display = konflikte.length ? 'inline-block' : 'none';
+    if (!konflikte.length) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+    }
+
+    box.style.display = 'block';
+    box.innerHTML = '';
+    const titel = document.createElement('p');
+    titel.innerHTML = '<strong>⚠️ ' + konflikte.length + (konflikte.length === 1 ? ' Unstimmigkeit' : ' Unstimmigkeiten') +
+        ' bei Auszahlungen (Prop Deposit):</strong> Am gleichen Tag gibt es in den Trades mehr passende Einträge als Prop Deposits im Wallet. ' +
+        'Die Seite kann nicht entscheiden, welcher Eintrag die Auszahlung ist. Bitte stelle bei den richtigen Einträgen die Kategorie auf «Auszahlung». Danach verschwindet der Hinweis.';
+    box.appendChild(titel);
+
+    konflikte.forEach(k => {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'margin-top: 15px;';
+        const kopf = document.createElement('p');
+        kopf.style.cssText = 'margin-bottom: 8px; font-weight: 600;';
+        kopf.textContent = formatDateGerman(keyToDate(k.datum)) + ' · Wallet ' + k.betrag.toFixed(2) + ' · ' +
+            k.wallet.length + ' Prop Deposit' + (k.wallet.length === 1 ? '' : 's') + ' im Wallet (ID ' + k.wallet.map(w => w.transaction_id).join(', ') + ') · ' +
+            k.kandidaten.length + ' Einträge in den Trades';
+        wrap.appendChild(kopf);
+
+        const tabelle = document.createElement('table');
+        tabelle.style.cssText = 'width: auto; border-collapse: collapse; background: white;';
+        tabelle.innerHTML = '<thead><tr><th style="text-align:left">Account</th><th style="text-align:left">Ticket</th><th style="text-align:left">Zeit</th><th style="text-align:right">Profit/Amount</th><th style="text-align:left">Kategorie</th></tr></thead>';
+        const tb = document.createElement('tbody');
+        k.kandidaten.forEach(t => {
+            const tr = tb.insertRow();
+            [t.account, t.ticket, t.openTime].forEach(v => {
+                const c = tr.insertCell();
+                c.textContent = v;
+                c.style.textAlign = 'left';
+            });
+            tr.insertCell().textContent = t.profit.toFixed(2);
+            const ck = tr.insertCell();
+            ck.style.textAlign = 'left';
+            const sel = document.createElement('select');
+            sel.className = 'kategorie-select';
+            KATEGORIEN.forEach(kat => {
+                const o = document.createElement('option');
+                o.value = kat;
+                o.textContent = kat;
+                if (kat === getKategorie(t)) o.selected = true;
+                sel.appendChild(o);
+            });
+            sel.onchange = () => setKategorie(t.account, t.ticket, sel.value);
+            ck.appendChild(sel);
+        });
+        tabelle.appendChild(tb);
+        const scroll = document.createElement('div');
+        scroll.style.cssText = 'overflow-x: auto;';
+        scroll.appendChild(tabelle);
+        wrap.appendChild(scroll);
+        box.appendChild(wrap);
+    });
+}
+
 function propHinweis(anzahl) {
-    if (!anzahl) return '';
-    return ' ' + anzahl + (anzahl === 1 ? ' Eintrag' : ' Einträge') + ' in den Trades von Gebühren auf Auszahlung geändert (Prop Deposit).';
+    let text = '';
+    if (anzahl) {
+        text += ' ' + anzahl + (anzahl === 1 ? ' Eintrag' : ' Einträge') + ' in den Trades von Gebühren auf Auszahlung geändert (Prop Deposit).';
+    }
+    const k = isAdmin ? pruefePropDeposits().konflikte.length : 0;
+    if (k) {
+        text += ' Achtung: ' + k + (k === 1 ? ' Unstimmigkeit' : ' Unstimmigkeiten') + ', bitte im Admin-Bereich prüfen.';
+    }
+    return text;
 }
 
 // ---------- Tabelle "Alle Trades" ----------
@@ -1100,6 +1236,7 @@ function formatPlain(value) {
 
 function displayTrades(selectedAccount) {
     renderAuswertungen(selectedAccount);
+    displayUnstimmigkeiten();
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
 
@@ -1197,8 +1334,9 @@ function displayTrades(selectedAccount) {
 // Grundlage: TagMarkets-Daten
 // - Trades = Einträge vom Typ Buy/Sell
 // - Einzahlungen, Auszahlungen, Gebühren = Accounting-Einträge (Kategorie)
-// - Saldo Einzahlung effektiv = Einzahlungen - Auszahlungen
-// - Saldo Einzahlung mit Hebel = Saldo effektiv x Hebel des Kontos
+// - Einzahlungen/Auszahlungen in den Trades sind bereits gehebelt
+// - Saldo Einzahlung mit Hebel = Einzahlungen - Auszahlungen (wie in den Trades)
+// - Saldo Einzahlung effektiv = Saldo mit Hebel / Hebel des Kontos
 // - Kommissionen = Spalte Commission
 // - Netto = Brutto - Gebühren - Kommissionen
 // ============================================================
@@ -1212,7 +1350,7 @@ function hebelFaktor(account) {
     return parseInt(acc.hebel.replace('x', ''), 10) || null;
 }
 
-// Saldo effektiv eines Accounts bis zu einem Zeitpunkt (inkl.)
+// Saldo eines Accounts bis zu einem Zeitpunkt (inkl.), so wie in den Trades (gehebelt)
 function saldoEffektiv(trades, account, bisZeit) {
     let saldo = 0;
     trades.forEach(t => {
@@ -1279,10 +1417,10 @@ function calculateGewinne(trades) {
     let einzahlungMitHebel = 0;
     let hebelFehlt = false;
     accounts.forEach(acc => {
-        const saldo = saldoEffektiv(trades, acc, null);
-        einzahlungEffektiv += saldo;
+        const saldo = saldoEffektiv(trades, acc, null);   // gehebelt
+        einzahlungMitHebel += saldo;
         const h = hebelFaktor(acc);
-        if (h) einzahlungMitHebel += saldo * h;
+        if (h) einzahlungEffektiv += saldo / h;
         else if (saldo !== 0) hebelFehlt = true;
     });
 
@@ -1299,11 +1437,12 @@ function calculateGewinne(trades) {
     });
 
     const nettoGewinn = bruttoGewinn - gebuehren - kommissionen;
-    const pct = v => einzahlungEffektiv > 0 ? (v / einzahlungEffektiv) * 100 : 0;
+    // Ohne Hebel kein effektiver Saldo -> keine Prozente
+    const pct = v => hebelFehlt ? null : (einzahlungEffektiv > 0 ? (v / einzahlungEffektiv) * 100 : 0);
 
     return [
-        { 'Typ': 'Einzahlung effektiv', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
-        { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': hebelFehlt ? null : einzahlungMitHebel, 'in %': hebelFehlt ? null : pct(einzahlungMitHebel) },
+        { 'Typ': 'Einzahlung effektiv', 'Betrag $': hebelFehlt ? null : einzahlungEffektiv, 'in %': hebelFehlt ? null : 100 },
+        { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': pct(einzahlungMitHebel) },
         { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': pct(bruttoGewinn) },
         { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': pct(gebuehren) },
         { 'Typ': 'Kommissionen', 'Betrag $': kommissionen, 'in %': pct(kommissionen) },
@@ -1318,8 +1457,8 @@ function calculateUebersicht(trades) {
     const nettoProzent = gewinne.find(g => g.Typ === 'Netto-Gewinn')['in %'];
 
     // Ø Nettogewinn je Trade in % der effektiven Einzahlung
-    const avgNetto = z.total > 0 ? nettoProzent / z.total : 0;
-    const tradesForBreakeven = avgNetto > 0 ? Math.ceil(100 / avgNetto) : 0;
+    const avgNetto = (z.total > 0 && nettoProzent !== null) ? nettoProzent / z.total : null;
+    const tradesForBreakeven = avgNetto > 0 ? Math.ceil(100 / avgNetto) : '';
     const p = v => z.total > 0 ? (v / z.total) * 100 : 0;
 
     const rows = [
@@ -1460,15 +1599,15 @@ function calculateWeeklyOverview(trades) {
         sorted.forEach(t => {
             if (done.has(t.account)) return;
             done.add(t.account);
-            const saldo = saldoEffektiv(trades, t.account, t.openTime);
-            saldoEff += saldo;
+            const saldo = saldoEffektiv(trades, t.account, t.openTime);   // gehebelt
+            saldoHebel += saldo;
             const h = hebelFaktor(t.account);
-            if (h) saldoHebel += saldo * h;
+            if (h) saldoEff += saldo / h;
             else if (saldo !== 0) hebelFehlt = true;
         });
 
         const netto = w.brutto - w.gebuehren - w.kommissionen;
-        const pct = v => saldoEff > 0 ? (v / saldoEff) * 100 : 0;
+        const pct = v => hebelFehlt ? null : (saldoEff > 0 ? (v / saldoEff) * 100 : 0);
 
         return {
             weekStart: w.weekStart,
@@ -1477,8 +1616,8 @@ function calculateWeeklyOverview(trades) {
             'Anz. Gewinne': w.gewinne,
             'Anz. Verluste': w.verluste,
             'ohne Trade': w.ohneTrade,
-            'Saldo Einzahlung effektiv': saldoEff,
-            'Saldo Einzahlung mit Hebel': hebelFehlt ? null : saldoHebel,
+            'Saldo Einzahlung effektiv': hebelFehlt ? null : saldoEff,
+            'Saldo Einzahlung mit Hebel': saldoHebel,
             'Brutto-Gewinn $': w.brutto,
             'Brutto-Gewinn %': pct(w.brutto),
             'Gebühren': w.gebuehren,
@@ -1504,6 +1643,7 @@ function displayWeeklyOverview(data) {
     let totalKommissionen = 0;
     let totalNettoGewinn = 0;
     let totalNettoGewinnProzent = 0;
+    let prozentFehlt = false;
     
     data.forEach((week, index) => {
         const row = tbody.insertRow();
@@ -1515,11 +1655,12 @@ function displayWeeklyOverview(data) {
         totalAnzahlVerluste += week['Anz. Verluste'];
         totalAnzahlOhneTrade += week['ohne Trade'];
         totalBruttoGewinn += week['Brutto-Gewinn $'];
-        totalBruttoGewinnProzent += week['Brutto-Gewinn %'];
+        if (week['Brutto-Gewinn %'] === null) prozentFehlt = true;
+        totalBruttoGewinnProzent += week['Brutto-Gewinn %'] || 0;
         totalGebuehren += week['Gebühren'];
         totalKommissionen += week['Kommissionen'];
         totalNettoGewinn += week['Netto Gewinn $'];
-        totalNettoGewinnProzent += week['Netto Gewinn %'];
+        totalNettoGewinnProzent += week['Netto Gewinn %'] || 0;
         
         // Woche vom (fixiert)
         const cell0 = row.insertCell(0);
@@ -1546,11 +1687,11 @@ function displayWeeklyOverview(data) {
         
         // Saldo Einzahlung effektiv
         const cell4 = row.insertCell(5);
-        cell4.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung effektiv']);
+        cell4.textContent = week['Saldo Einzahlung effektiv'] === null ? '–' : formatCurrencyNoDecimals(week['Saldo Einzahlung effektiv']);
         
         // Saldo Einzahlung mit Hebel
         const cell5 = row.insertCell(6);
-        cell5.textContent = week['Saldo Einzahlung mit Hebel'] === null ? '–' : formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel']);
+        cell5.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel']);
         
         // Brutto-Gewinn $
         const cell6 = row.insertCell(7);
@@ -1560,7 +1701,7 @@ function displayWeeklyOverview(data) {
         
         // Brutto-Gewinn %
         const cell7 = row.insertCell(8);
-        cell7.textContent = week['Brutto-Gewinn %'].toFixed(3) + '%';
+        cell7.textContent = week['Brutto-Gewinn %'] === null ? '–' : week['Brutto-Gewinn %'].toFixed(3) + '%';
         if (week['Brutto-Gewinn %'] > 0) cell7.classList.add('table-positive');
         else if (week['Brutto-Gewinn %'] < 0) cell7.classList.add('table-negative');
         
@@ -1580,7 +1721,7 @@ function displayWeeklyOverview(data) {
         
         // Netto Gewinn %
         const cell11 = row.insertCell(12);
-        cell11.textContent = week['Netto Gewinn %'].toFixed(3) + '%';
+        cell11.textContent = week['Netto Gewinn %'] === null ? '–' : week['Netto Gewinn %'].toFixed(3) + '%';
         if (week['Netto Gewinn %'] > 0) cell11.classList.add('table-positive');
         else if (week['Netto Gewinn %'] < 0) cell11.classList.add('table-negative');
     });
@@ -1628,7 +1769,7 @@ function displayWeeklyOverview(data) {
     
     // Brutto-Gewinn %
     const tcell7 = totalRow.insertCell(8);
-    tcell7.textContent = totalBruttoGewinnProzent.toFixed(3) + '%';
+    tcell7.textContent = prozentFehlt ? '–' : totalBruttoGewinnProzent.toFixed(3) + '%';
     if (totalBruttoGewinnProzent > 0) tcell7.classList.add('table-positive');
     else if (totalBruttoGewinnProzent < 0) tcell7.classList.add('table-negative');
     
@@ -1648,7 +1789,7 @@ function displayWeeklyOverview(data) {
     
     // Netto Gewinn %
     const tcell11 = totalRow.insertCell(12);
-    tcell11.textContent = totalNettoGewinnProzent.toFixed(3) + '%';
+    tcell11.textContent = prozentFehlt ? '–' : totalNettoGewinnProzent.toFixed(3) + '%';
     if (totalNettoGewinnProzent > 0) tcell11.classList.add('table-positive');
     else if (totalNettoGewinnProzent < 0) tcell11.classList.add('table-negative');
 }
