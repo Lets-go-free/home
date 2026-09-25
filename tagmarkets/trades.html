@@ -746,8 +746,14 @@ async function logout() {
     await db.auth.signOut();
 }
 
-function setAuth(session) {
-    isAdmin = !!session;
+// Angemeldet UND Admin-E-Mail? (Login von wallet-tracking auf derselben Domain teilt sich die Sitzung)
+async function pruefeAdmin(session) {
+    const email = session && session.user && session.user.email;
+    return !!email && (await sha256(email.trim().toLowerCase())) === ADMIN_EMAIL_HASH;
+}
+
+async function setAuth(session) {
+    isAdmin = await pruefeAdmin(session);
     if (isAdmin) {
         document.getElementById('loginForm').style.display = 'none';
         document.getElementById('loginMessage').textContent = '';
@@ -1099,13 +1105,13 @@ function displayWallet() {
 
     let totalAmount = 0;
     let totalNet = 0;
-    const withCur = (v, c) => v === null || v === undefined ? '' : Number(v).toFixed(2) + (c ? ' ' + c : '');
+    const withCur = (v, c) => v === null || v === undefined ? '' : zahl(v, 2) + (c ? ' ' + c : '');
 
     sorted.forEach(w => {
         totalAmount += Number(w.amount) || 0;
         totalNet += Number(w.net_amount) || 0;
         const row = tbody.insertRow();
-        [w.transaction_id, w.date, w.approved_date || 'N/A', w.type, w.details, w.sub_type, w.method, w.status].forEach(v => {
+        [w.transaction_id, datumZeit(w.date), w.approved_date ? datumZeit(w.approved_date) : 'N/A', w.type, w.details, w.sub_type, w.method, w.status].forEach(v => {
             const c = row.insertCell();
             c.textContent = v || '';
             c.classList.add('text-left');
@@ -1119,8 +1125,8 @@ function displayWallet() {
     for (let i = 0; i < 10; i++) {
         const c = totalRow.insertCell();
         if (i === 0) { c.textContent = 'Total'; c.classList.add('text-left'); }
-        if (i === 8) c.textContent = totalAmount.toFixed(2);
-        if (i === 9) c.textContent = totalNet.toFixed(2);
+        if (i === 8) c.textContent = zahl(totalAmount, 2);
+        if (i === 9) c.textContent = zahl(totalNet, 2);
     }
 }
 
@@ -1372,7 +1378,7 @@ function displayUnstimmigkeiten() {
         wrap.style.cssText = 'margin-top: 15px;';
         const kopf = document.createElement('p');
         kopf.style.cssText = 'margin-bottom: 8px; font-weight: 600;';
-        kopf.textContent = formatDateGerman(keyToDate(k.datum)) + ' · Wallet ' + k.betrag.toFixed(2) + ' · ' +
+        kopf.textContent = formatDateGerman(keyToDate(k.datum)) + ' · Wallet ' + zahl(k.betrag, 2) + ' · ' +
             k.wallet.length + ' Prop-Buchung' + (k.wallet.length === 1 ? '' : 'en') + ' im Wallet (ID ' + k.wallet.map(w => w.transaction_id).join(', ') + ') · ' +
             k.kandidaten.length + ' Einträge in den Trades';
         wrap.appendChild(kopf);
@@ -1383,12 +1389,12 @@ function displayUnstimmigkeiten() {
         const tb = document.createElement('tbody');
         k.kandidaten.forEach(t => {
             const tr = tb.insertRow();
-            [t.account, t.ticket, t.openTime].forEach(v => {
+            [t.account, t.ticket, datumZeit(t.openTime)].forEach(v => {
                 const c = tr.insertCell();
                 c.textContent = v;
                 c.style.textAlign = 'left';
             });
-            tr.insertCell().textContent = t.profit.toFixed(2);
+            tr.insertCell().textContent = zahl(t.profit, 2);
             const ck = tr.insertCell();
             ck.style.textAlign = 'left';
             const sel = document.createElement('select');
@@ -1428,7 +1434,7 @@ function propHinweis(anzahl) {
 // Kurzbeschreibung einer Wallet-Transaktion
 function walletText(w) {
     const teile = [];
-    const betrag = v => (v === null || v === undefined) ? '' : Number(v).toFixed(2) + (w.currency ? ' ' + w.currency : '');
+    const betrag = v => (v === null || v === undefined) ? '' : zahl(v, 2) + (w.currency ? ' ' + w.currency : '');
     teile.push('ID ' + w.transaction_id);
     let datum = w.date ? formatDateGerman(keyToDate(String(w.date).substring(0, 10))) : '';
     if (w.approved_date) datum += ' (genehmigt ' + formatDateGerman(keyToDate(String(w.approved_date).substring(0, 10))) + ')';
@@ -1461,9 +1467,29 @@ function alleWalletZeilen(offen) {
     });
 }
 
-// Datum nicht beim Bindestrich umbrechen, nur zwischen Datum und Zeit
+// Zahl mit Tausender-Hochkomma, z.B. -10851.12 -> -10'851.12
+// dezimalen: feste Anzahl Nachkommastellen, oder weglassen = so wie die Zahl ist
+function zahl(v, dezimalen) {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    if (isNaN(n)) return String(v);
+    const text = dezimalen === undefined ? String(Math.abs(n)) : Math.abs(n).toFixed(dezimalen);
+    const [ganz, rest] = text.split('.');
+    const mitHochkomma = ganz.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    return (n < 0 ? '-' : '') + mitHochkomma + (rest !== undefined ? '.' + rest : '');
+}
+
+// "2026-09-24 08:29:32" -> "24.09.2026 08:29:32", "2026-09-24" -> "24.09.2026"
+function datumZeit(v) {
+    const t = String(v || '').replace('T', ' ');
+    const m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
+    if (!m) return t;
+    return m[3] + '.' + m[2] + '.' + m[1] + (m[4] ? ' ' + m[4] : '');
+}
+
+// Für die Tabelle: Datum und Zeit, Umbruch nur zwischen Datum und Zeit
 function zeitUmbruch(zeit) {
-    return String(zeit || '').replace(/-/g, '\u2011');
+    return datumZeit(zeit);
 }
 
 function formatPlain(value) {
@@ -1541,9 +1567,9 @@ function displayTrades(selectedAccount) {
         // Ausgeblendet: Platform, S/L, T/P, Taxes, Swap (sind weiterhin in der Datenbank)
         const values = [
             [t.ticket, true], [t.account, true], [zeitUmbruch(t.openTime), true],
-            [t.type, true], [formatPlain(t.volume), false], [t.symbol, true],
-            [formatPlain(t.openPrice), false],
-            [zeitUmbruch(t.closedTime), true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false]
+            [t.type, true], [zahl(t.volume), false], [t.symbol, true],
+            [zahl(t.openPrice), false],
+            [zeitUmbruch(t.closedTime), true], [zahl(t.closePrice), false], [zahl(t.commission), false]
         ];
         const zugeordnet = walletZuTrade.get(tradeKey(t.account, t.ticket)) || [];
         values.forEach(([v, left], i) => {
@@ -1566,7 +1592,7 @@ function displayTrades(selectedAccount) {
 
         // Profit/Amount
         const cp = row.insertCell();
-        cp.textContent = t.profit.toFixed(2);
+        cp.textContent = zahl(t.profit, 2);
         if (t.profit > 0) cp.classList.add('table-positive');
         else if (t.profit < 0) cp.classList.add('table-negative');
 
@@ -1612,7 +1638,7 @@ function displayTrades(selectedAccount) {
             ce.textContent = '–';
             ce.title = 'Hebel beim Konto fehlt';
         } else {
-            ce.textContent = eff.toFixed(2);
+            ce.textContent = zahl(eff, 2);
             if (eff > 0) ce.classList.add('table-positive');
             else if (eff < 0) ce.classList.add('table-negative');
         }
@@ -1658,8 +1684,7 @@ function displayTrades(selectedAccount) {
             cs.title = 'Hebel bei einem Konto fehlt';
         } else {
             // wie die anderen Beträge ohne $, mit Tausender-Trennzeichen
-            const f = Math.abs(saldo).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-            cs.textContent = (saldo < 0 ? '-' : '') + f;
+            cs.textContent = zahl(saldo, 2);
         }
 
         // Aufklappbare Zeile mit der zugeordneten Wallet-Transaktion
@@ -1687,13 +1712,13 @@ function displayTrades(selectedAccount) {
         const c = totalRow.insertCell();
         if (i === 0) c.textContent = 'Total';
         if (i === 12) {
-            c.textContent = effektivFehlt ? '–' : totalEffektiv.toFixed(2);
+            c.textContent = effektivFehlt ? '–' : zahl(totalEffektiv, 2);
             if (!effektivFehlt && totalEffektiv > 0) c.classList.add('table-positive');
             else if (!effektivFehlt && totalEffektiv < 0) c.classList.add('table-negative');
         }
-        if (i === 9) c.textContent = totalCommission.toFixed(5);
+        if (i === 9) c.textContent = zahl(totalCommission, 5);
         if (i === 10) {
-            c.textContent = totalProfit.toFixed(2);
+            c.textContent = zahl(totalProfit, 2);
             if (totalProfit > 0) c.classList.add('table-positive');
             else if (totalProfit < 0) c.classList.add('table-negative');
         }
@@ -2427,12 +2452,12 @@ function renderAuswertungen(selectedAccount) {
 window.onload = async () => {
     showStatus('Daten werden geladen...', false);
     const { data } = await db.auth.getSession();
-    isAdmin = !!(data && data.session);
+    isAdmin = await pruefeAdmin(data && data.session);
     document.body.classList.toggle('is-admin', isAdmin);
     document.getElementById('loginUser').textContent = isAdmin ? data.session.user.email : '';
     showTab(tabAusAdresse());
-    db.auth.onAuthStateChange((event, session) => {
-        setAuth(session);
+    db.auth.onAuthStateChange(async (event, session) => {
+        await setAuth(session);
         if (event === 'SIGNED_IN') abgleichBeimStart();
     });
     await reloadAll();
