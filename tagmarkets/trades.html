@@ -20,9 +20,65 @@
         }
         /* Tabelle "Alle Trades" kompakter: weniger Innenabstand, Datum/Zeit und Typ dürfen umbrechen */
         #tradesTable thead th { padding: 8px !important; }
+        /* Spaltenbreiten nach Inhalt verteilen (sonst nimmt die erste Spalte allen freien Platz) */
+        #tradesTable thead th { width: auto !important; }
         #tradesTable tbody td { padding: 7px 8px; }
         #tradesTable tbody td.wrap { white-space: normal; }
         #tradesTable td:last-child { min-width: 0; }
+        #tradesTable tr.wallet-row td {
+            background: #eef6ff;
+            color: #2c5282;
+            text-align: left !important;
+            white-space: normal;
+            font-size: 0.95em;
+        }
+        #tradesTable tr.wallet-detail td {
+            background: #f0fff4;
+            color: #276749;
+            text-align: left !important;
+            white-space: normal;
+            padding-left: 34px;
+            font-size: 0.95em;
+        }
+        .wallet-badge {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 10px;
+            background: #bee3f8;
+            color: #2a4365;
+            font-size: 0.85em;
+            font-weight: 700;
+        }
+        #tradesTable tr.wallet-detail .wallet-badge { background: #c6f6d5; color: #22543d; }
+        .wallet-hinweis { font-style: italic; color: #718096; margin-right: 6px; }
+        .wallet-toggle {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0 6px 0 0;
+            color: #2f855a;
+            font-size: 1em;
+        }
+        .trades-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 10px;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+        }
+        .trades-toolbar label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-weight: 600;
+            color: #4a5568;
+        }
+        .trades-toolbar select.neo-input { padding: 6px 8px; min-width: 170px; }
+        #tradesTable th.sortierbar { cursor: pointer; user-select: none; }
+        #tradesTable th.sortierbar:hover { background: #1a202c; }
+        #tradesTable th.sortierbar .sort-pfeil { font-size: 0.8em; color: #a0aec0; }
+        #tradesTable th.sortierbar.aktiv .sort-pfeil { color: #10b981; }
         .neo-input {
             padding: 9px 10px;
             border: 2px solid #cbd5e0;
@@ -374,6 +430,26 @@
         <!-- Alle Trades (Daten von Tag Markets) -->
         <div id="tradesContainer">
             <h3 style="margin-bottom: 20px;">Alle Trades</h3>
+            <div class="trades-toolbar">
+                <label>Type
+                    <select id="filterType" class="neo-input" onchange="filterTrades()">
+                        <option value="">Alle</option>
+                    </select>
+                </label>
+                <label>Kategorie
+                    <select id="filterKategorie" class="neo-input" onchange="filterTrades()">
+                        <option value="">Alle</option>
+                        <option value="Einzahlung">Einzahlung</option>
+                        <option value="Gebühren">Gebühren</option>
+                        <option value="Auszahlung">Auszahlung</option>
+                        <option value="-">ohne Kategorie (Trades)</option>
+                    </select>
+                </label>
+                <button type="button" class="neo-btn-small" onclick="resetTradeFilter()">Filter zurücksetzen</button>
+                <span style="flex: 1;"></span>
+                <button type="button" class="neo-btn-small admin-only" onclick="alleWalletZeilen(true)">▾ Wallet-Zeilen alle aufklappen</button>
+                <button type="button" class="neo-btn-small admin-only" onclick="alleWalletZeilen(false)">▸ alle zuklappen</button>
+            </div>
 
             <div class="table-container">
                 <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
@@ -381,7 +457,7 @@
                         <tr style="background: #2d3748; color: white;">
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Ticket</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Open Time</th>
+                            <th class="sortierbar" data-sort="open" onclick="sortiereTrades()" style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Open Time <span class="sort-pfeil"></span></th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Type</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Volume</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Symbol</th>
@@ -706,8 +782,14 @@ async function logout() {
     await db.auth.signOut();
 }
 
-function setAuth(session) {
-    isAdmin = !!session;
+// Angemeldet UND Admin-E-Mail? (Login von wallet-tracking auf derselben Domain teilt sich die Sitzung)
+async function pruefeAdmin(session) {
+    const email = session && session.user && session.user.email;
+    return !!email && (await sha256(email.trim().toLowerCase())) === ADMIN_EMAIL_HASH;
+}
+
+async function setAuth(session) {
+    isAdmin = await pruefeAdmin(session);
     if (isAdmin) {
         document.getElementById('loginForm').style.display = 'none';
         document.getElementById('loginMessage').textContent = '';
@@ -1059,13 +1141,13 @@ function displayWallet() {
 
     let totalAmount = 0;
     let totalNet = 0;
-    const withCur = (v, c) => v === null || v === undefined ? '' : Number(v).toFixed(2) + (c ? ' ' + c : '');
+    const withCur = (v, c) => v === null || v === undefined ? '' : zahl(v, 2) + (c ? ' ' + c : '');
 
     sorted.forEach(w => {
         totalAmount += Number(w.amount) || 0;
         totalNet += Number(w.net_amount) || 0;
         const row = tbody.insertRow();
-        [w.transaction_id, w.date, w.approved_date || 'N/A', w.type, w.details, w.sub_type, w.method, w.status].forEach(v => {
+        [w.transaction_id, datumZeit(w.date), w.approved_date ? datumZeit(w.approved_date) : 'N/A', w.type, w.details, w.sub_type, w.method, w.status].forEach(v => {
             const c = row.insertCell();
             c.textContent = v || '';
             c.classList.add('text-left');
@@ -1079,8 +1161,8 @@ function displayWallet() {
     for (let i = 0; i < 10; i++) {
         const c = totalRow.insertCell();
         if (i === 0) { c.textContent = 'Total'; c.classList.add('text-left'); }
-        if (i === 8) c.textContent = totalAmount.toFixed(2);
-        if (i === 9) c.textContent = totalNet.toFixed(2);
+        if (i === 8) c.textContent = zahl(totalAmount, 2);
+        if (i === 9) c.textContent = zahl(totalNet, 2);
     }
 }
 
@@ -1210,7 +1292,7 @@ function propPasst(w, t) {
 
 // Ergebnis: { aenderungen: [Trades], konflikte: [{ datum, betrag, wallet: [...], kandidaten: [...] }] }
 // Zusammengehörige Wallet- und Trades-Einträge (gleicher Tag, Betrag passt) werden gruppiert.
-function pruefePropDeposits() {
+function propGruppen() {
     const wallets = walletTx.filter(w => istPropDeposit(w) && w.date);
     const accounting = mt5Trades.filter(isAccounting);
 
@@ -1234,10 +1316,41 @@ function pruefePropDeposits() {
         if (k[0] === 'w') g.wallet.push(wallets[Number(k.slice(1))]);
         else g.kandidaten.push(accounting[Number(k.slice(1))]);
     });
+    return Object.values(gruppen);
+}
 
+// Zuordnung Trades <-> Wallet-Transaktionen (für die Anzeige)
+// - eindeutige Gruppen: Einträge der Reihe nach paaren
+// - mehrdeutige Gruppen: nur Einträge, die (von Hand) auf "Auszahlung" stehen
+let walletZuTrade = new Map();
+let walletZugeordnet = new Set();
+
+function berechneWalletZuordnung() {
+    const map = new Map();
+    const ids = new Set();
+    const nachZeit = (a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket));
+    const nachId = (a, b) => Number(a.transaction_id) - Number(b.transaction_id);
+    propGruppen().forEach(g => {
+        const wallets = [...g.wallet].sort(nachId);
+        let trades = [...g.kandidaten].sort(nachZeit);
+        if (trades.length > wallets.length) {
+            trades = trades.filter(t => getKategorie(t) === 'Auszahlung');
+        }
+        trades.slice(0, wallets.length).forEach((t, i) => {
+            const k = tradeKey(t.account, t.ticket);
+            map.set(k, (map.get(k) || []).concat([wallets[i]]));
+            ids.add(String(wallets[i].transaction_id));
+        });
+    });
+    walletZuTrade = map;
+    walletZugeordnet = ids;
+}
+
+function pruefePropDeposits() {
+    const gruppen = propGruppen();
     const aenderungen = [];
     const konflikte = [];
-    Object.values(gruppen).forEach(g => {
+    gruppen.forEach(g => {
         const bereitsAuszahlung = g.kandidaten.filter(t => getKategorie(t) === 'Auszahlung').length;
         if (g.kandidaten.length <= g.wallet.length) {
             // Eindeutig: alle Kandidaten sind Auszahlungen
@@ -1301,7 +1414,7 @@ function displayUnstimmigkeiten() {
         wrap.style.cssText = 'margin-top: 15px;';
         const kopf = document.createElement('p');
         kopf.style.cssText = 'margin-bottom: 8px; font-weight: 600;';
-        kopf.textContent = formatDateGerman(keyToDate(k.datum)) + ' · Wallet ' + k.betrag.toFixed(2) + ' · ' +
+        kopf.textContent = formatDateGerman(keyToDate(k.datum)) + ' · Wallet ' + zahl(k.betrag, 2) + ' · ' +
             k.wallet.length + ' Prop-Buchung' + (k.wallet.length === 1 ? '' : 'en') + ' im Wallet (ID ' + k.wallet.map(w => w.transaction_id).join(', ') + ') · ' +
             k.kandidaten.length + ' Einträge in den Trades';
         wrap.appendChild(kopf);
@@ -1312,12 +1425,12 @@ function displayUnstimmigkeiten() {
         const tb = document.createElement('tbody');
         k.kandidaten.forEach(t => {
             const tr = tb.insertRow();
-            [t.account, t.ticket, t.openTime].forEach(v => {
+            [t.account, t.ticket, datumZeit(t.openTime)].forEach(v => {
                 const c = tr.insertCell();
                 c.textContent = v;
                 c.style.textAlign = 'left';
             });
-            tr.insertCell().textContent = t.profit.toFixed(2);
+            tr.insertCell().textContent = zahl(t.profit, 2);
             const ck = tr.insertCell();
             ck.style.textAlign = 'left';
             const sel = document.createElement('select');
@@ -1354,25 +1467,137 @@ function propHinweis(anzahl) {
 }
 
 // ---------- Tabelle "Alle Trades" ----------
-// Datum nicht beim Bindestrich umbrechen, nur zwischen Datum und Zeit
+// Kurzbeschreibung einer Wallet-Transaktion
+function walletText(w) {
+    const teile = [];
+    const betrag = v => (v === null || v === undefined) ? '' : zahl(v, 2) + (w.currency ? ' ' + w.currency : '');
+    teile.push('ID ' + w.transaction_id);
+    let datum = w.date ? formatDateGerman(keyToDate(String(w.date).substring(0, 10))) : '';
+    if (w.approved_date) datum += ' (genehmigt ' + formatDateGerman(keyToDate(String(w.approved_date).substring(0, 10))) + ')';
+    if (datum) teile.push(datum);
+    const typ = [w.type, w.sub_type && w.sub_type !== w.type ? w.sub_type : null].filter(Boolean).join(' / ');
+    if (typ) teile.push(typ);
+    if (w.details) teile.push(w.details);
+    if (w.method) teile.push(w.method);
+    if (w.status) teile.push(w.status);
+    let b = betrag(w.amount);
+    if (w.net_amount !== null && w.net_amount !== undefined && Number(w.net_amount) !== Number(w.amount)) b += ' (netto ' + betrag(w.net_amount) + ')';
+    if (b) teile.push(b);
+    return teile.join(' · ');
+}
+
+// Wallet-Zeilen auf-/zuklappen
+function toggleWalletZeile(btn) {
+    const zeile = btn.closest('tr').nextElementSibling;
+    const offen = zeile.style.display !== 'none';
+    zeile.style.display = offen ? 'none' : 'table-row';
+    btn.textContent = offen ? '▸' : '▾';
+    btn.setAttribute('aria-expanded', offen ? 'false' : 'true');
+}
+
+function alleWalletZeilen(offen) {
+    document.querySelectorAll('#tradesBody tr.wallet-detail').forEach(z => { z.style.display = offen ? 'table-row' : 'none'; });
+    document.querySelectorAll('#tradesBody .wallet-toggle').forEach(b => {
+        b.textContent = offen ? '▾' : '▸';
+        b.setAttribute('aria-expanded', offen ? 'true' : 'false');
+    });
+}
+
+// Zahl mit Tausender-Hochkomma, z.B. -10851.12 -> -10'851.12
+// dezimalen: feste Anzahl Nachkommastellen, oder weglassen = so wie die Zahl ist
+function zahl(v, dezimalen) {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    if (isNaN(n)) return String(v);
+    const text = dezimalen === undefined ? String(Math.abs(n)) : Math.abs(n).toFixed(dezimalen);
+    const [ganz, rest] = text.split('.');
+    const mitHochkomma = ganz.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    return (n < 0 ? '-' : '') + mitHochkomma + (rest !== undefined ? '.' + rest : '');
+}
+
+// "2026-09-24 08:29:32" -> "24.09.2026 08:29:32", "2026-09-24" -> "24.09.2026"
+function datumZeit(v) {
+    const t = String(v || '').replace('T', ' ');
+    const m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
+    if (!m) return t;
+    return m[3] + '.' + m[2] + '.' + m[1] + (m[4] ? ' ' + m[4] : '');
+}
+
+// Für die Tabelle: Datum und Zeit, Umbruch nur zwischen Datum und Zeit
 function zeitUmbruch(zeit) {
-    return String(zeit || '').replace(/-/g, '\u2011');
+    return datumZeit(zeit);
 }
 
 function formatPlain(value) {
     return String(value);
 }
 
+// ---------- Filter und Sortierung "Alle Trades" ----------
+let tradesSort = { feld: 'open', richtung: 'desc' };
+
+function filterTrades() {
+    displayTrades(document.getElementById('accountFilter').value);
+}
+
+function resetTradeFilter() {
+    document.getElementById('filterType').value = '';
+    document.getElementById('filterKategorie').value = '';
+    filterTrades();
+}
+
+// Klick auf Open Time: Richtung wechseln (auf-/absteigend)
+function sortiereTrades() {
+    tradesSort.richtung = tradesSort.richtung === 'desc' ? 'asc' : 'desc';
+    filterTrades();
+}
+
+function zeigeSortPfeile() {
+    document.querySelectorAll('#tradesTable th.sortierbar').forEach(th => {
+        const aktiv = th.dataset.sort === tradesSort.feld;
+        th.classList.toggle('aktiv', aktiv);
+        th.querySelector('.sort-pfeil').textContent = aktiv ? (tradesSort.richtung === 'desc' ? '▼' : '▲') : '⇅';
+        th.title = 'Sortieren (' + (aktiv && tradesSort.richtung === 'desc' ? 'aufsteigend' : 'absteigend') + ')';
+    });
+}
+
+// Type-Auswahl aus den vorhandenen Daten füllen, Auswahl behalten
+function fuelleTypeFilter() {
+    const sel = document.getElementById('filterType');
+    const vorher = sel.value;
+    const typen = [...new Set(mt5Trades.map(t => t.type).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Alle</option>';
+    typen.forEach(ty => {
+        const o = document.createElement('option');
+        o.value = ty;
+        o.textContent = ty;
+        sel.appendChild(o);
+    });
+    if (typen.includes(vorher)) sel.value = vorher;
+}
+
 function displayTrades(selectedAccount) {
     berechnePropWithdrawalKeys();
+    berechneWalletZuordnung();
     renderAuswertungen(selectedAccount);
     displayUnstimmigkeiten();
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
 
+    fuelleTypeFilter();
+    zeigeSortPfeile();
+    const fType = document.getElementById('filterType').value;
+    const fKat = document.getElementById('filterKategorie').value;
+
     let trades = mt5Trades;
     if (selectedAccount) {
         trades = trades.filter(t => t.account === selectedAccount);
+    }
+    if (fType) trades = trades.filter(t => t.type === fType);
+    if (fKat) {
+        trades = trades.filter(t => {
+            const kat = isAccounting(t) ? getKategorie(t) : '';
+            return fKat === '-' ? !kat : kat === fKat;
+        });
     }
 
     // Saldo: laufende Summe "Betrag effektiv" über alle angezeigten Einträge,
@@ -1390,9 +1615,20 @@ function displayTrades(selectedAccount) {
         saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
     });
 
-    // Neueste zuerst
-    const sorted = [...trades].sort((a, b) =>
-        b.openTime.localeCompare(a.openTime) || (Number(b.ticket) - Number(a.ticket)));
+    // Sortierung nach Open Time, auf- oder absteigend.
+    // Nicht zugeordnete Wallet-Transaktionen (nur für Admin, unabhängig von den Filtern)
+    // werden nach Datum dazwischen eingereiht, jeweils am Ende ihres Tages.
+    const eintraege = trades.map(t => ({ art: 'trade', sort: t.openTime, t }));
+    if (isAdmin) {
+        walletTx.filter(w => !walletZugeordnet.has(String(w.transaction_id))).forEach(w => {
+            eintraege.push({ art: 'wallet', sort: String(w.date || '').substring(0, 10) + ' 99', w });
+        });
+    }
+    const dir = tradesSort.richtung === 'desc' ? -1 : 1;
+    const sorted = eintraege.sort((a, b) =>
+        dir * (a.sort.localeCompare(b.sort) ||
+        (a.art === 'trade' && b.art === 'trade' ? Number(a.t.ticket) - Number(b.t.ticket) : 0)));
+    const SPALTEN = 15;
 
     let totalCommission = 0;
     let totalTaxes = 0;
@@ -1401,7 +1637,18 @@ function displayTrades(selectedAccount) {
     let totalEffektiv = 0;
     let effektivFehlt = false;
 
-    sorted.forEach(t => {
+    sorted.forEach(e => {
+        // Nicht zugeordnete Wallet-Transaktion: eigene Zeile, zählt nicht in Totals und Saldo
+        if (e.art === 'wallet') {
+            const wr = tbody.insertRow();
+            wr.className = 'wallet-row';
+            const c = wr.insertCell();
+            c.colSpan = SPALTEN;
+            c.innerHTML = '<span class="wallet-badge">Wallet</span> <span class="wallet-hinweis">nicht zugeordnet</span> ';
+            c.appendChild(document.createTextNode(walletText(e.w)));
+            return;
+        }
+        const t = e.t;
         totalCommission += t.commission;
         totalTaxes += t.taxes;
         totalSwap += t.swap;
@@ -1413,13 +1660,24 @@ function displayTrades(selectedAccount) {
         // Ausgeblendet: Platform, S/L, T/P, Taxes, Swap (sind weiterhin in der Datenbank)
         const values = [
             [t.ticket, true], [t.account, true], [zeitUmbruch(t.openTime), true],
-            [t.type, true], [formatPlain(t.volume), false], [t.symbol, true],
-            [formatPlain(t.openPrice), false],
-            [zeitUmbruch(t.closedTime), true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false]
+            [t.type, true], [zahl(t.volume), false], [t.symbol, true],
+            [zahl(t.openPrice), false],
+            [zeitUmbruch(t.closedTime), true], [zahl(t.closePrice), false], [zahl(t.commission), false]
         ];
+        const zugeordnet = isAdmin ? (walletZuTrade.get(tradeKey(t.account, t.ticket)) || []) : [];
         values.forEach(([v, left], i) => {
             const c = row.insertCell();
             c.textContent = v;
+            if (i === 0 && zugeordnet.length) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'wallet-toggle';
+                btn.textContent = '▸';
+                btn.title = 'Zugehörige Wallet-Transaktion anzeigen';
+                btn.setAttribute('aria-expanded', 'false');
+                btn.onclick = () => toggleWalletZeile(btn);
+                c.prepend(btn);
+            }
             if (left) c.classList.add('text-left');
             // Open Time, Type, Closed Time dürfen umbrechen
             if (i === 2 || i === 3 || i === 7) c.classList.add('wrap');
@@ -1427,7 +1685,7 @@ function displayTrades(selectedAccount) {
 
         // Profit/Amount
         const cp = row.insertCell();
-        cp.textContent = t.profit.toFixed(2);
+        cp.textContent = zahl(t.profit, 2);
         if (t.profit > 0) cp.classList.add('table-positive');
         else if (t.profit < 0) cp.classList.add('table-negative');
 
@@ -1473,7 +1731,7 @@ function displayTrades(selectedAccount) {
             ce.textContent = '–';
             ce.title = 'Hebel beim Konto fehlt';
         } else {
-            ce.textContent = eff.toFixed(2);
+            ce.textContent = zahl(eff, 2);
             if (eff > 0) ce.classList.add('table-positive');
             else if (eff < 0) ce.classList.add('table-negative');
         }
@@ -1519,8 +1777,24 @@ function displayTrades(selectedAccount) {
             cs.title = 'Hebel bei einem Konto fehlt';
         } else {
             // wie die anderen Beträge ohne $, mit Tausender-Trennzeichen
-            const f = Math.abs(saldo).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-            cs.textContent = (saldo < 0 ? '-' : '') + f;
+            cs.textContent = zahl(saldo, 2);
+        }
+
+        // Aufklappbare Zeile mit der zugeordneten Wallet-Transaktion
+        if (zugeordnet.length) {
+            const dz = tbody.insertRow();
+            dz.className = 'wallet-detail';
+            dz.style.display = 'none';
+            const dc = dz.insertCell();
+            dc.colSpan = SPALTEN;
+            zugeordnet.forEach((w, i) => {
+                if (i) dc.appendChild(document.createElement('br'));
+                const badge = document.createElement('span');
+                badge.className = 'wallet-badge';
+                badge.textContent = 'Wallet';
+                dc.appendChild(badge);
+                dc.appendChild(document.createTextNode(' ' + walletText(w)));
+            });
         }
     });
 
@@ -1531,13 +1805,13 @@ function displayTrades(selectedAccount) {
         const c = totalRow.insertCell();
         if (i === 0) c.textContent = 'Total';
         if (i === 12) {
-            c.textContent = effektivFehlt ? '–' : totalEffektiv.toFixed(2);
+            c.textContent = effektivFehlt ? '–' : zahl(totalEffektiv, 2);
             if (!effektivFehlt && totalEffektiv > 0) c.classList.add('table-positive');
             else if (!effektivFehlt && totalEffektiv < 0) c.classList.add('table-negative');
         }
-        if (i === 9) c.textContent = totalCommission.toFixed(5);
+        if (i === 9) c.textContent = zahl(totalCommission, 5);
         if (i === 10) {
-            c.textContent = totalProfit.toFixed(2);
+            c.textContent = zahl(totalProfit, 2);
             if (totalProfit > 0) c.classList.add('table-positive');
             else if (totalProfit < 0) c.classList.add('table-negative');
         }
@@ -2271,12 +2545,12 @@ function renderAuswertungen(selectedAccount) {
 window.onload = async () => {
     showStatus('Daten werden geladen...', false);
     const { data } = await db.auth.getSession();
-    isAdmin = !!(data && data.session);
+    isAdmin = await pruefeAdmin(data && data.session);
     document.body.classList.toggle('is-admin', isAdmin);
     document.getElementById('loginUser').textContent = isAdmin ? data.session.user.email : '';
     showTab(tabAusAdresse());
-    db.auth.onAuthStateChange((event, session) => {
-        setAuth(session);
+    db.auth.onAuthStateChange(async (event, session) => {
+        await setAuth(session);
         if (event === 'SIGNED_IN') abgleichBeimStart();
     });
     await reloadAll();
