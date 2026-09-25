@@ -153,6 +153,46 @@
         .subtab-btn.active { background: #2d3748; color: #ffffff; border-color: #2d3748; }
         .subtab-panel { display: none; }
         .subtab-panel.active { display: block; }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 38px;
+            height: 22px;
+            vertical-align: middle;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch .slider {
+            position: absolute;
+            inset: 0;
+            background: #cbd5e0;
+            border-radius: 22px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .switch .slider::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            left: 3px;
+            top: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s ease;
+        }
+        .switch input:checked + .slider { background: #10b981; }
+        .switch input:checked + .slider::before { transform: translateX(16px); }
+        .switch.manuell .slider { box-shadow: 0 0 0 2px #f59e0b; }
+        .reset-btn {
+            margin-left: 6px;
+            background: none;
+            border: none;
+            color: #718096;
+            cursor: pointer;
+            font-size: 1em;
+            padding: 0 2px;
+        }
+        .reset-btn:hover { color: #1a202c; }
         .kategorie-select {
             padding: 4px 6px;
             border: 1px solid #cbd5e0;
@@ -334,6 +374,7 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Close Price</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Commission</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit/Amount</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;">Gehebelt</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Betrag<br>effektiv</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
                         </tr>
@@ -533,7 +574,8 @@ function dbToTrade(d) {
         openTime: dbTime(d.open_time), type: d.type || '', volume: n(d.volume), symbol: d.symbol || '',
         openPrice: n(d.open_price), sl: n(d.sl), tp: n(d.tp), closedTime: dbTime(d.closed_time),
         closePrice: n(d.close_price), commission: n(d.commission), taxes: n(d.taxes),
-        swap: n(d.swap), profit: n(d.profit), kategorie: d.kategorie || null
+        swap: n(d.swap), profit: n(d.profit), kategorie: d.kategorie || null,
+        gehebelt: (d.gehebelt === true || d.gehebelt === false) ? d.gehebelt : null
     };
 }
 
@@ -704,16 +746,39 @@ function berechnePropWithdrawalKeys() {
     propWithdrawalKeys = keys;
 }
 
-// Betrag effektiv:
-// - Einzahlungen: gehebelt -> durch den Hebel teilen
-// - Auszahlungen mit "Prop Withdrawal" im Wallet: gehebelt -> durch den Hebel teilen
-// - alles andere (übrige Auszahlungen, Gebühren, Trades): 1:1
+// Automatisch gehebelt?
+// - Einzahlungen: ja
+// - Auszahlungen mit "Prop Withdrawal" im Wallet: ja
+// - alles andere (übrige Auszahlungen, Gebühren, Trades): nein
+function autoGehebelt(t) {
+    if (!isAccounting(t)) return false;
+    const kat = getKategorie(t);
+    return kat === 'Einzahlung' ||
+        (kat === 'Auszahlung' && propWithdrawalKeys.has(tradeKey(t.account, t.ticket)));
+}
+
+// Manuell gesetzter Schalter hat Vorrang, sonst automatisch
+function istGehebelt(t) {
+    return (t.gehebelt === true || t.gehebelt === false) ? t.gehebelt : autoGehebelt(t);
+}
+
+// Schalter "gehebelt" von Hand setzen (bleibt so, bis er zurückgesetzt wird)
+// wert: true / false, oder null = wieder automatisch
+async function setGehebelt(account, ticket, wert) {
+    const t = mt5Trades.find(x => tradeKey(x.account, x.ticket) === tradeKey(account, ticket));
+    const { error } = await db.from('tm_trades').update({ gehebelt: wert }).eq('account', account).eq('ticket', ticket);
+    if (error) {
+        showStatus('Schalter «gehebelt» konnte nicht gespeichert werden: ' + error.message, true);
+    } else if (t) {
+        t.gehebelt = wert;
+    }
+    displayTrades(document.getElementById('accountFilter').value);
+}
+
+// Betrag effektiv: gehebelte Beträge durch den Hebel teilen, alles andere 1:1.
 // Fehlt der Hebel beim Konto, wo er gebraucht wird: null
 function betragEffektiv(t) {
-    const kat = isAccounting(t) ? getKategorie(t) : '';
-    const gehebelt = kat === 'Einzahlung' ||
-        (kat === 'Auszahlung' && propWithdrawalKeys.has(tradeKey(t.account, t.ticket)));
-    if (gehebelt) {
+    if (istGehebelt(t)) {
         const h = hebelFaktor(t.account);
         return h ? t.profit / h : null;
     }
@@ -1326,6 +1391,42 @@ function displayTrades(selectedAccount) {
         if (t.profit > 0) cp.classList.add('table-positive');
         else if (t.profit < 0) cp.classList.add('table-negative');
 
+        // Schalter "gehebelt" (nur bei Accounting-Einträgen)
+        const cg = row.insertCell();
+        cg.style.textAlign = 'center';
+        cg.style.whiteSpace = 'nowrap';
+        if (isAccounting(t)) {
+            const an = istGehebelt(t);
+            const manuell = t.gehebelt === true || t.gehebelt === false;
+            if (!isAdmin) {
+                cg.textContent = an ? '✓' : '–';
+            } else {
+                const label = document.createElement('label');
+                label.className = 'switch' + (manuell ? ' manuell' : '');
+                label.title = manuell
+                    ? 'Manuell gesetzt (automatisch wäre: ' + (autoGehebelt(t) ? 'gehebelt' : 'nicht gehebelt') + ')'
+                    : 'Automatisch';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = an;
+                cb.onchange = () => setGehebelt(t.account, t.ticket, cb.checked);
+                const slider = document.createElement('span');
+                slider.className = 'slider';
+                label.appendChild(cb);
+                label.appendChild(slider);
+                cg.appendChild(label);
+                if (manuell) {
+                    const reset = document.createElement('button');
+                    reset.type = 'button';
+                    reset.className = 'reset-btn';
+                    reset.textContent = '↺';
+                    reset.title = 'Zurück auf automatisch';
+                    reset.onclick = () => setGehebelt(t.account, t.ticket, null);
+                    cg.appendChild(reset);
+                }
+            }
+        }
+
         // Betrag effektiv
         const ce = row.insertCell();
         if (eff === null) {
@@ -1373,10 +1474,10 @@ function displayTrades(selectedAccount) {
     // Total-Zeile
     const totalRow = tbody.insertRow();
     totalRow.classList.add('total-row');
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 14; i++) {
         const c = totalRow.insertCell();
         if (i === 0) c.textContent = 'Total';
-        if (i === 11) {
+        if (i === 12) {
             c.textContent = effektivFehlt ? '–' : totalEffektiv.toFixed(2);
             if (!effektivFehlt && totalEffektiv > 0) c.classList.add('table-positive');
             else if (!effektivFehlt && totalEffektiv < 0) c.classList.add('table-negative');
@@ -1497,7 +1598,8 @@ function calculateGewinne(trades) {
             bruttoGewinn += t.profit;
             kommissionen += Math.abs(t.commission);
         } else if (getKategorie(t) === 'Gebühren') {
-            gebuehren += Math.abs(t.profit);
+            const eff = betragEffektiv(t);
+            gebuehren += Math.abs(eff === null ? t.profit : eff);
         }
     });
 
@@ -1639,7 +1741,8 @@ function calculateWeeklyOverview(trades) {
             w.brutto += t.profit;
             w.kommissionen += Math.abs(t.commission);
         } else if (getKategorie(t) === 'Gebühren') {
-            w.gebuehren += Math.abs(t.profit);
+            const eff = betragEffektiv(t);
+            w.gebuehren += Math.abs(eff === null ? t.profit : eff);
         }
     });
 
