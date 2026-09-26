@@ -1759,30 +1759,18 @@ function displayTrades(selectedAccount) {
         });
     }
 
-    // Saldo: laufende Summe "Betrag effektiv" der angezeigten Accounting-Einträge
-    // (Einzahlungen, Auszahlungen, Gebühren), chronologisch (bei gleicher Zeit nach Ticket).
-    // Gewinne/Verluste der Trades zählen NICHT, die werden separat ausbezahlt oder reinvestiert.
-    // Die Commission der Trades wird abgezogen. Fehlt ein Betrag effektiv (Hebel fehlt), ist der Saldo ab dort unbekannt.
+    // Saldo: laufende Summe über alle angezeigten Einträge (Trades und Accounting),
+    // jeweils "Betrag effektiv" plus Commission (negativ), chronologisch (bei gleicher Zeit nach Ticket).
+    // Fehlt ein Betrag effektiv (Hebel fehlt), ist der Saldo ab dort unbekannt.
     const chrono = [...trades].sort((a, b) =>
         a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
     const saldoMap = new Map();
     let laufend = 0;
     let saldoUnbekannt = false;
     chrono.forEach(t => {
-        if (!isAccounting(t)) {
-            // Trade: Gewinn/Verlust zählt nicht, die Commission (negativ) schon
-            laufend += Number(t.commission) || 0;
-            saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
-            return;
-        }
-        // Balance Adjust (Re-Invest): Gewinn wird ins Kapital umgebucht, zählt nicht im Saldo
-        if (getKategorie(t) === 'Balance Adjust') {
-            saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
-            return;
-        }
         const eff = betragEffektiv(t);
         if (eff === null) saldoUnbekannt = true;
-        else laufend += eff;
+        else laufend += eff + (Number(t.commission) || 0);
         saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
     });
 
