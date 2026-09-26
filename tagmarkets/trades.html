@@ -113,6 +113,15 @@
             color: #718096;
             margin-top: 15px;
         }
+        .dash-bereich { margin-bottom: 28px; }
+        .dash-bereich h4 {
+            font-size: 1.1em;
+            color: #2d3748;
+            margin: 0 0 12px 0;
+        }
+        .dash-hinweis { font-size: 0.75em; font-weight: 400; color: #718096; margin-left: 8px; }
+        .sum-sub { font-size: 0.8em; color: #718096; }
+        .sum-card.sum-saldo .sum-sub { color: #cbd5e0; }
         .neo-input {
             padding: 9px 10px;
             border: 2px solid #cbd5e0;
@@ -321,9 +330,7 @@
         <p>Live-Performance Tracking</p>
         <!-- Tab-Navigation -->
         <nav class="tab-nav" id="tabNav">
-            <button type="button" class="tab-btn" data-tab="proaccount" onclick="showTab('proaccount')">Gewinne pro Account</button>
-            <button type="button" class="tab-btn" data-tab="gewinne" onclick="showTab('gewinne')">Gewinne &amp; Übersicht</button>
-            <button type="button" class="tab-btn" data-tab="woche" onclick="showTab('woche')">Trades je Woche</button>
+            <button type="button" class="tab-btn" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
             <button type="button" class="tab-btn" data-tab="trades" onclick="showTab('trades')">Alle Trades</button>
             <button type="button" class="tab-btn" data-tab="wallet" onclick="showTab('wallet')">Wallet-Transaktionen</button>
             <button type="button" class="tab-btn admin-only" data-tab="admin" onclick="showTab('admin')">Admin <span id="adminBadge" class="tab-badge" style="display: none;"></span></button>
@@ -358,107 +365,48 @@
         </div>
 
 
-        <div class="tab-panel" id="tab-proaccount">
-        <!-- Hinweis zu Tage ohne Trade -->
-        <p class="info-box" style="margin-bottom: 20px;">
-            <strong>Bemerkung zu "Anzahl Tage ohne Trade":</strong> Gehandelt wird ausschliesslich von Montag bis Freitag, an Feiertagen bleibt die Börse geschlossen. Es kann aber durchaus vorkommen, dass der Broker sich gegen einen Trade entscheidet, weil die Signale unklar sind. Das ist nicht feige, sondern professionell! Lieber kein Trade als ein Verlust. In dieser Zeile werden die Werktage (Montag bis Freitag) ohne Trade aufgeführt. Wochenenden werden nicht gezählt. Feiertage kann die Seite nicht erkennen, sie werden darum vorerst mitgezählt.
-        </p>
-
-        <!-- Gewinne pro Account Tabelle (alle Accounts) -->
-        <div id="gewinneProAccountContainer" style="margin-bottom: 30px;">
-            <h3>Gewinne pro Account</h3>
-            <div style="overflow-x: auto; max-width: 100%;">
-                <table id="gewinneProAccountTable" style="width: 100%; border-collapse: collapse;">
-                    <thead id="gewinneProAccountHead">
-                        <!-- Wird dynamisch gefüllt -->
-                    </thead>
-                    <tbody id="gewinneProAccountBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        </div>
-        <div class="tab-panel" id="tab-gewinne">
-        <!-- Hinweis zu Berechnungen -->
-        <p class="info-box">
-            <strong>Hinweis zu den Berechnungen:</strong> Die Werte in den Tabellen "Gewinne" und "Übersicht Trades" basieren auf den kumulierten Einzahlungen, inklusive Aufstockungen und Re-Investitionen von Gewinnen. Für detaillierte Einzelwerte siehe "Trades-Übersicht je Woche" oder "Alle Trades".
-        </p>
-
-        <!-- Hinweis zu Tage ohne Trade -->
-        <p class="info-box" style="margin-top: 20px;">
-            <strong>Bemerkung zu "Anzahl Tage ohne Trade":</strong> Gehandelt wird ausschliesslich von Montag bis Freitag, an Feiertagen bleibt die Börse geschlossen. Es kann aber durchaus vorkommen, dass der Broker sich gegen einen Trade entscheidet, weil die Signale unklar sind. Das ist nicht feige, sondern professionell! Lieber kein Trade als ein Verlust. In dieser Zeile werden die Werktage (Montag bis Freitag) ohne Trade aufgeführt. Wochenenden werden nicht gezählt. Feiertage kann die Seite nicht erkennen, sie werden darum vorerst mitgezählt.
-        </p>
-
-        <!-- Uebersicht Trades und Gewinne nebeneinander -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
-            <!-- Gewinne Tabelle (jetzt links) -->
-            <div id="gewinneContainer">
-                <h3>Gewinne</h3>
-                <div style="overflow-x: auto;">
-                    <table id="gewinneTable" style="width: 100%; border-collapse: collapse;">
-                        <thead id="gewinneHead">
-                            <!-- Wird dynamisch gefüllt -->
-                        </thead>
-                        <tbody id="gewinneBody">
-                            <!-- Wird dynamisch gefüllt -->
-                        </tbody>
-                    </table>
+        <div class="tab-panel" id="tab-dashboard">
+            <div class="dash-bereich">
+                <h4>Konto <span class="dash-hinweis">aus den Wallet-Transaktionen: Geld von aussen und aus dem System heraus</span></h4>
+                <div class="trades-summary">
+                    <div class="sum-card"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="dKontoEin">–</span><span class="sum-sub" id="dKontoEinSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Auszahlungen</span><span class="sum-wert" id="dKontoAus">–</span><span class="sum-sub" id="dKontoAusSub"></span></div>
+                    <div class="sum-card" title="Einzahlungen minus Auszahlungen"><span class="sum-label">Netto-Einzahlungen</span><span class="sum-wert" id="dKontoNetto">–</span><span class="sum-sub" id="dKontoNettoSub"></span></div>
                 </div>
             </div>
-
-            <!-- Uebersicht Trades Tabelle (jetzt rechts) -->
-            <div id="uebersichtContainer">
-                <h3>Übersicht Trades</h3>
-                <div style="overflow-x: auto;">
-                    <table id="uebersichtTable" style="width: 100%; border-collapse: collapse;">
-                        <thead id="uebersichtHead">
-                            <!-- Wird dynamisch gefüllt -->
-                        </thead>
-                        <tbody id="uebersichtBody">
-                            <!-- Wird dynamisch gefüllt -->
-                        </tbody>
-                    </table>
+            <div class="dash-bereich">
+                <h4>Strategien <span class="dash-hinweis">aus «Alle Trades», alle Accounts, Betrag effektiv</span></h4>
+                <div class="trades-summary">
+                    <div class="sum-card"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="dStratEin">–</span><span class="sum-sub" id="dStratEinSub"></span></div>
+                    <div class="sum-card" title="inkl. Balance Adjust"><span class="sum-label">Auszahlungen</span><span class="sum-wert" id="dStratAus">–</span><span class="sum-sub" id="dStratAusSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Gewinne/Verluste aus Trades</span><span class="sum-wert" id="dStratGew">–</span><span class="sum-sub" id="dStratGewSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Gebühren</span><span class="sum-wert" id="dStratGeb">–</span><span class="sum-sub" id="dStratGebSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Kommissionen</span><span class="sum-wert" id="dStratKomm">–</span><span class="sum-sub" id="dStratKommSub"></span></div>
+                    <div class="sum-card sum-saldo"><span class="sum-label">Saldo</span><span class="sum-wert" id="dStratSaldo">–</span><span class="sum-sub" id="dStratSaldoSub"></span></div>
                 </div>
             </div>
-        </div>
-
-        </div>
-        <div class="tab-panel" id="tab-woche">
-        <!-- Trades-Übersicht je Woche -->
-        <div id="weeklyOverviewContainer" style="margin-bottom: 30px;">
-            <h3>Trades-Übersicht je Woche</h3>
-            <p class="info-box">
-                <strong>Hinweis:</strong> Gebühren werden üblicherweise am darauffolgenden Montag abgebucht und beeinflussen daher den Netto-Profit % der Folgewoche.
-            </p>
-            <div class="table-container-small" style="overflow-x: auto;">
-                <table id="weeklyOverviewTable" style="width: 100%; border-collapse: collapse;">
-                    <thead style="position: sticky; top: 0; z-index: 10;">
-                        <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; position: sticky; left: 0; z-index: 20; background: #2d3748; white-space: nowrap;">Woche vom</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Trades</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">ohne<br>Trade</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>effektiv</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>mit Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Gebühren</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Netto<br>Gewinn $</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Netto<br>Gewinn %</th>
-                        </tr>
-                    </thead>
-                    <tbody id="weeklyOverviewBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
-                </table>
+            <div class="dash-bereich">
+                <h4>Effektiver Gewinn/Verlust <span class="dash-hinweis">Saldo Strategien minus Netto-Einzahlungen Konto</span></h4>
+                <div class="trades-summary">
+                    <div class="sum-card"><span class="sum-label">in USD</span><span class="sum-wert" id="dEffGV">–</span><span class="sum-sub" id="dEffGVSub"></span></div>
+                    <div class="sum-card" title="bezogen auf die Netto-Einzahlungen"><span class="sum-label">in %</span><span class="sum-wert" id="dEffGVPct">–</span><span class="sum-sub" id="dEffGVPctSub"></span></div>
+                </div>
             </div>
-        </div>
-
-
+            <div class="dash-bereich">
+                <h4>Trades</h4>
+                <div class="trades-summary">
+                    <div class="sum-card"><span class="sum-label">Anzahl Trades</span><span class="sum-wert" id="dAnzahl">–</span><span class="sum-sub" id="dAnzahlSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">davon mit Gewinn</span><span class="sum-wert" id="dGewinn">–</span><span class="sum-sub" id="dGewinnSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">davon mit Verlust</span><span class="sum-wert" id="dVerlust">–</span><span class="sum-sub" id="dVerlustSub"></span></div>
+                </div>
+            </div>
+            <div class="dash-bereich">
+                <h4>Bester und schlechtester Trade <span class="dash-hinweis">Gewinn/Verlust in % vom Saldo des Accounts vor dem Trade</span></h4>
+                <div class="trades-summary">
+                    <div class="sum-card"><span class="sum-label">Bester Trade</span><span class="sum-wert" id="dBester">–</span><span class="sum-sub" id="dBesterSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Schlechtester Trade</span><span class="sum-wert" id="dSchlechtester">–</span><span class="sum-sub" id="dSchlechtesterSub"></span></div>
+                </div>
+            </div>
         </div>
         <div class="tab-panel" id="tab-trades">
         <!-- Alle Trades (Daten von Tag Markets) -->
@@ -510,6 +458,7 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Close Price</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Commission</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit/Amount</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;" title="Gewinn/Verlust in % vom Saldo des Accounts vor dem Trade">G/V %</th>
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;">Gehebelt</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Betrag<br>effektiv</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
@@ -641,12 +590,18 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 26.09.2026 22:17:17</div>
+        <div class="version-info">Version: 26.09.2026 23:12:31</div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+// Strategie und Hebel eines Accounts als kurzer Text, z.B. "neo.FX · x24"
+function accountZusatz(account) {
+    const acc = loadAccounts().find(a => a.account === String(account));
+    return acc ? [acc.strategie, acc.hebel].filter(Boolean).join(' · ') : '';
+}
+
 function populateAccountFilter() {
     // Accounts aus den Trades und den Trading-Konten
     const accounts = [...new Set([
@@ -661,7 +616,8 @@ function populateAccountFilter() {
     accounts.forEach(account => {
         const option = document.createElement('option');
         option.value = account;
-        option.textContent = account;
+        const zusatz = accountZusatz(account);
+        option.textContent = account + (zusatz ? ' – ' + zusatz : '');
         select.appendChild(option);
     });
     if (accounts.includes(previous)) select.value = previous;
@@ -860,7 +816,7 @@ async function setAuth(session) {
     document.body.classList.toggle('is-admin', isAdmin);
     document.getElementById('loginUser').textContent = session ? session.user.email : '';
     // Admin-Tab nur angemeldet
-    showTab(isAdmin ? tabAusAdresse() : (tabAusAdresse() === 'admin' ? 'proaccount' : tabAusAdresse()));
+    showTab(isAdmin ? tabAusAdresse() : (tabAusAdresse() === 'admin' ? 'dashboard' : tabAusAdresse()));
     displayAccounts();
     displayTrades(document.getElementById('accountFilter').value);
 }
@@ -1242,15 +1198,9 @@ function walletRegelPasst(w, regeln) {
 }
 
 function zeigeWalletSummary() {
-    let ein = 0, aus = 0;
-    walletTx.forEach(w => {
-        if (String(w.status || '').trim().toLowerCase() !== 'approved') return;
-        const betrag = Math.abs(Number(w.amount) || 0);
-        if (walletRegelPasst(w, WALLET_EINZAHLUNG)) ein += betrag;
-        else if (walletRegelPasst(w, WALLET_AUSZAHLUNG)) aus += betrag;
-    });
-    document.getElementById('walletSumEin').textContent = zahl(ein, 2);
-    document.getElementById('walletSumAus').textContent = zahl(-aus, 2);
+    const w = walletSummen();
+    document.getElementById('walletSumEin').textContent = zahl(w.ein, 2);
+    document.getElementById('walletSumAus').textContent = zahl(-w.aus, 2);
 }
 
 function displayWallet() {
@@ -1349,12 +1299,12 @@ async function importWallet() {
 
 
 // ---------- Tabs ----------
-const TABS_MIT_FILTER = ['gewinne', 'woche', 'trades'];
+const TABS_MIT_FILTER = ['trades'];
 let aktuellerSubTab = 'accounts';
 
 function showTab(name) {
-    if (name === 'admin' && !isAdmin) name = 'proaccount';
-    if (!document.getElementById('tab-' + name)) name = 'proaccount';
+    if (name === 'admin' && !isAdmin) name = 'dashboard';
+    if (!document.getElementById('tab-' + name)) name = 'dashboard';
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     document.getElementById('accountFilterContainer').style.display = TABS_MIT_FILTER.includes(name) ? 'block' : 'none';
@@ -1381,7 +1331,7 @@ function tabAusAdresse() {
         if (['accounts', 'trades', 'wallet'].includes(sub)) aktuellerSubTab = sub;
         return 'admin';
     }
-    return h || 'proaccount';
+    return h || 'dashboard';
 }
 
 
@@ -1765,9 +1715,37 @@ function formatPlain(value) {
     return String(value);
 }
 
-// ---------- Summary über der Tabelle "Alle Trades" ----------
-// Summen über die angezeigten Einträge, jeweils "Betrag effektiv"
-function zeigeSummary(trades, saldo) {
+// ---------- Gewinn/Verlust in % pro Trade ----------
+// Basis: Saldo des Accounts direkt vor dem Trade (alle Einträge dieses Accounts,
+// Betrag effektiv inkl. Commission, chronologisch). Unabhängig von Filtern.
+let tradeProzente = new Map();
+
+function berechneTradeProzente() {
+    const map = new Map();
+    const proAccount = {};
+    mt5Trades.forEach(t => { (proAccount[t.account] = proAccount[t.account] || []).push(t); });
+    Object.values(proAccount).forEach(liste => {
+        liste.sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
+        let saldo = 0;
+        let unbekannt = false;
+        liste.forEach(t => {
+            const eff = betragEffektiv(t);
+            if (!isAccounting(t)) {
+                const basis = unbekannt ? null : saldo;
+                map.set(tradeKey(t.account, t.ticket), {
+                    basis,
+                    pct: (basis !== null && basis > 0 && eff !== null) ? eff / basis * 100 : null
+                });
+            }
+            if (eff === null) unbekannt = true;
+            else saldo += eff + (Number(t.commission) || 0);
+        });
+    });
+    tradeProzente = map;
+}
+
+// Summen über Einträge (Betrag effektiv); saldo = Summe aller Beträge effektiv + Commission
+function tradeSummen(trades) {
     let einz = 0, ausz = 0, gew = 0, geb = 0, komm = 0;
     let fehlt = false;
     trades.forEach(t => {
@@ -1780,6 +1758,87 @@ function zeigeSummary(trades, saldo) {
         else if (kat === 'Gebühren') geb += eff;
         else if (kat === 'Auszahlung' || kat === 'Balance Adjust') ausz += eff;
     });
+    return { einz, ausz, gew, geb, komm, fehlt, saldo: fehlt ? null : einz + ausz + gew + geb + komm };
+}
+
+// Wallet: Einzahlungen von aussen / Auszahlungen aus dem System (Status Approved)
+function walletSummen() {
+    let ein = 0, aus = 0;
+    walletTx.forEach(w => {
+        if (String(w.status || '').trim().toLowerCase() !== 'approved') return;
+        const betrag = Math.abs(Number(w.amount) || 0);
+        if (walletRegelPasst(w, WALLET_EINZAHLUNG)) ein += betrag;
+        else if (walletRegelPasst(w, WALLET_AUSZAHLUNG)) aus += betrag;
+    });
+    return { ein, aus };
+}
+
+// ---------- Dashboard ----------
+function setzeKachel(id, wert, opt) {
+    opt = opt || {};
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = (wert === null || wert === undefined) ? '–' : (typeof wert === 'string' ? wert : zahl(wert, opt.dez === undefined ? 2 : opt.dez) + (opt.suffix || ''));
+    el.classList.remove('table-positive', 'table-negative');
+    if (opt.farbig && typeof wert === 'number') {
+        if (wert > 0) el.classList.add('table-positive');
+        else if (wert < 0) el.classList.add('table-negative');
+    }
+    const sub = document.getElementById(id + 'Sub');
+    if (sub) sub.textContent = opt.sub || '';
+}
+
+function renderDashboard() {
+    // Konto (Wallet)
+    const w = walletSummen();
+    const netto = w.ein - w.aus;
+    setzeKachel('dKontoEin', w.ein);
+    setzeKachel('dKontoAus', -w.aus);
+    setzeKachel('dKontoNetto', netto);
+
+    // Strategien (alle Trades, alle Accounts)
+    const sum = tradeSummen(mt5Trades);
+    setzeKachel('dStratEin', sum.fehlt ? null : sum.einz);
+    setzeKachel('dStratAus', sum.fehlt ? null : sum.ausz);
+    setzeKachel('dStratGew', sum.fehlt ? null : sum.gew, { farbig: true });
+    setzeKachel('dStratGeb', sum.fehlt ? null : sum.geb);
+    setzeKachel('dStratKomm', sum.komm);
+    setzeKachel('dStratSaldo', sum.saldo, { sub: sum.fehlt ? 'Hebel bei einem Konto fehlt' : '' });
+
+    // Effektiver Gewinn/Verlust
+    const eff = sum.saldo === null ? null : sum.saldo - netto;
+    setzeKachel('dEffGV', eff, { farbig: true });
+    setzeKachel('dEffGVPct', (eff !== null && netto > 0) ? eff / netto * 100 : null, { farbig: true, suffix: '%' });
+
+    // Anzahl Trades
+    const trades = mt5Trades.filter(t => !isAccounting(t));
+    const gewinne = trades.filter(t => t.profit > 0).length;
+    const verluste = trades.filter(t => t.profit < 0).length;
+    const pct = n => trades.length ? zahl(n / trades.length * 100, 2) + '%' : '';
+    setzeKachel('dAnzahl', zahl(trades.length));
+    setzeKachel('dGewinn', zahl(gewinne), { sub: pct(gewinne) });
+    setzeKachel('dVerlust', zahl(verluste), { sub: pct(verluste) });
+
+    // Bester / schlechtester Trade (nach %)
+    let best = null, worst = null;
+    trades.forEach(t => {
+        const pr = tradeProzente.get(tradeKey(t.account, t.ticket));
+        if (!pr || pr.pct === null) return;
+        if (!best || pr.pct > best.pct) best = { t, pct: pr.pct };
+        if (!worst || pr.pct < worst.pct) worst = { t, pct: pr.pct };
+    });
+    const info = x => {
+        const strat = accountZusatz(x.t.account) || 'Account ' + x.t.account;
+        return datumZeit(datumKey(x.t.openTime)) + ' · ' + strat + ' (' + x.t.account + ') · ' + zahl(x.t.profit, 2);
+    };
+    setzeKachel('dBester', best ? best.pct : null, { farbig: true, dez: 3, suffix: '%', sub: best ? info(best) : '' });
+    setzeKachel('dSchlechtester', worst ? worst.pct : null, { farbig: true, dez: 3, suffix: '%', sub: worst ? info(worst) : '' });
+}
+
+// ---------- Summary über der Tabelle "Alle Trades" ----------
+// Summen über die angezeigten Einträge, jeweils "Betrag effektiv"
+function zeigeSummary(trades, saldo) {
+    const sum = tradeSummen(trades);
     const setze = (id, v, farbig) => {
         const el = document.getElementById(id);
         el.textContent = v === null ? '–' : zahl(v, 2);
@@ -1787,11 +1846,11 @@ function zeigeSummary(trades, saldo) {
         if (farbig && v !== null && v > 0) el.classList.add('table-positive');
         if (farbig && v !== null && v < 0) el.classList.add('table-negative');
     };
-    setze('sumEinzahlungen', fehlt ? null : einz, false);
-    setze('sumAuszahlungen', fehlt ? null : ausz, false);
-    setze('sumGewinne', fehlt ? null : gew, true);
-    setze('sumGebuehren', fehlt ? null : geb, false);
-    setze('sumKommissionen', komm, false);
+    setze('sumEinzahlungen', sum.fehlt ? null : sum.einz, false);
+    setze('sumAuszahlungen', sum.fehlt ? null : sum.ausz, false);
+    setze('sumGewinne', sum.fehlt ? null : sum.gew, true);
+    setze('sumGebuehren', sum.fehlt ? null : sum.geb, false);
+    setze('sumKommissionen', sum.komm, false);
     setze('sumSaldo', saldo, false);
 }
 
@@ -1842,7 +1901,8 @@ function displayTrades(selectedAccount) {
     berechneWalletZuordnung();
     berechneCapitalWithdrawals();
     findeReinvests();
-    renderAuswertungen(selectedAccount);
+    berechneTradeProzente();
+    renderDashboard();
     displayUnstimmigkeiten();
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
@@ -1893,7 +1953,7 @@ function displayTrades(selectedAccount) {
     const sorted = eintraege.sort((a, b) =>
         dir * (a.sort.localeCompare(b.sort) ||
         (a.art === 'trade' && b.art === 'trade' ? Number(a.t.ticket) - Number(b.t.ticket) : 0)));
-    const SPALTEN = 15;
+    const SPALTEN = 16;
 
     let totalCommission = 0;
     let totalTaxes = 0;
@@ -1946,6 +2006,16 @@ function displayTrades(selectedAccount) {
             if (left) c.classList.add('text-left');
             // Open Time, Type, Closed Time dürfen umbrechen
             if (i === 2 || i === 3 || i === 7) c.classList.add('wrap');
+            // Account: Strategie/Hebel als 2. Zeile
+            if (i === 1) {
+                const zusatz = accountZusatz(t.account);
+                if (zusatz) {
+                    const span = document.createElement('span');
+                    span.className = 'type-sub';
+                    span.textContent = zusatz;
+                    c.appendChild(span);
+                }
+            }
             // Type: Unterzeile in kleinerer Schrift
             if (i === 3) {
                 const sub = untertyp(t);
@@ -1965,6 +2035,16 @@ function displayTrades(selectedAccount) {
         cp.textContent = zahl(t.profit, 2);
         if (t.profit > 0) cp.classList.add('table-positive');
         else if (t.profit < 0) cp.classList.add('table-negative');
+
+        // Gewinn/Verlust in % (nur Trades): Basis = Saldo des Accounts vor diesem Trade
+        const cpct = row.insertCell();
+        const pr = tradeProzente.get(tradeKey(t.account, t.ticket));
+        if (pr) {
+            cpct.textContent = pr.pct === null ? '–' : zahl(pr.pct, 3) + '%';
+            cpct.title = pr.basis === null ? 'Saldo vor dem Trade unbekannt' : 'Basis: Saldo ' + t.account + ' vor dem Trade = ' + zahl(pr.basis, 2);
+            if (pr.pct > 0) cpct.classList.add('table-positive');
+            else if (pr.pct < 0) cpct.classList.add('table-negative');
+        }
 
         // Schalter "gehebelt" (nur bei Accounting-Einträgen)
         const cg = row.insertCell();
@@ -2092,10 +2172,10 @@ function displayTrades(selectedAccount) {
     // Total-Zeile
     const totalRow = tbody.insertRow();
     totalRow.classList.add('total-row');
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 16; i++) {
         const c = totalRow.insertCell();
         if (i === 0) c.textContent = 'Total';
-        if (i === 12) {
+        if (i === 13) {
             c.textContent = effektivFehlt ? '–' : zahl(totalEffektiv, 2);
             if (!effektivFehlt && totalEffektiv > 0) c.classList.add('table-positive');
             else if (!effektivFehlt && totalEffektiv < 0) c.classList.add('table-negative');
@@ -2821,16 +2901,6 @@ function formatCurrencyNoDecimals(value) {
 }
 
 
-function renderAuswertungen(selectedAccount) {
-    let trades = mt5Trades;
-    if (selectedAccount) trades = trades.filter(t => t.account === selectedAccount);
-
-    displayGenericTable(calculateUebersicht(trades), 'uebersichtHead', 'uebersichtBody');
-    displayGenericTable(calculateGewinne(trades), 'gewinneHead', 'gewinneBody');
-    // Gewinne pro Account: immer alle Accounts, unabhängig vom Filter
-    displayGewinneProAccount(calculateGewinneProAccount(mt5Trades));
-    displayWeeklyOverview(calculateWeeklyOverview(trades));
-}
 
 // Beim Seitenaufruf: Login-Status prüfen und Daten aus Supabase laden
 window.onload = async () => {
