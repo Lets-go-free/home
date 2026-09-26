@@ -546,6 +546,17 @@
             </div>
             <div class="subtab-panel" id="subtab-trades">
         <!-- Trades einfügen -->
+        <div id="ermittelnContainer" style="margin-bottom: 30px;">
+            <h3 style="margin-bottom: 20px;">Kategorien neu ermitteln</h3>
+            <p class="info-box">
+                Rechnet die Kategorie aller Accounting-Einträge neu aus: Plus = Einzahlung, Minus = Gebühren. Ein Minus wird zur Auszahlung, wenn im Wallet eine passende «Prop Deposit»/«Prop Withdrawal» steht oder wenn innert 60 Sekunden im gleichen Account der gleiche Betrag wieder einbezahlt wird (Re-Invest). Am Samstag gilt pro Account nur der erste übrige Minus-Betrag als Gebühr, alle weiteren sind Auszahlungen. Von Hand gesetzte Kategorien (oranger Rand) werden nicht verändert.
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                <button type="button" class="neo-btn" onclick="neuErmitteln()">Kategorien neu ermitteln</button>
+                <span id="ermittelnMessage" style="font-size: 0.9em;"></span>
+            </div>
+        </div>
+
         <div id="importContainer" style="margin-bottom: 30px;">
             <h3 style="margin-bottom: 20px;">Trades einfügen</h3>
             <p class="info-box">
@@ -668,6 +679,7 @@ function dbToTrade(d) {
         openPrice: n(d.open_price), sl: n(d.sl), tp: n(d.tp), closedTime: dbTime(d.closed_time),
         closePrice: n(d.close_price), commission: n(d.commission), taxes: n(d.taxes),
         swap: n(d.swap), profit: n(d.profit), kategorie: d.kategorie || null,
+        kategorieManuell: d.kategorie_manuell === true,
         gehebelt: (d.gehebelt === true || d.gehebelt === false) ? d.gehebelt : null
     };
 }
@@ -713,7 +725,7 @@ async function reloadAll() {
 
 // Beim Seitenaufruf bzw. nach dem Anmelden: vorhandene Daten abgleichen
 async function abgleichBeimStart() {
-    const n = await abgleichPropDeposits();
+    const n = await ermittleKategorien();
     const text = propHinweis(n).trim();
     if (text) showStatus(text, false);
 }
@@ -884,17 +896,34 @@ function betragEffektiv(t) {
     return t.profit;
 }
 
+// Kategorie von Hand setzen: wird fest gespeichert und bei "Neu ermitteln" nicht mehr verändert
 async function setKategorie(account, ticket, value) {
     const trade = mt5Trades.find(t => tradeKey(t.account, t.ticket) === tradeKey(account, ticket));
-    // Entspricht der Wert der Automatik, wird die manuelle Änderung entfernt (null)
-    const neu = (!value || (trade && value === autoKategorie(trade))) ? null : value;
-    const { error } = await db.from('tm_trades').update({ kategorie: neu }).eq('account', account).eq('ticket', ticket);
+    const { error } = await db.from('tm_trades').update({ kategorie: value || null, kategorie_manuell: true })
+        .eq('account', account).eq('ticket', ticket);
     if (error) {
         showStatus('Kategorie konnte nicht gespeichert werden: ' + error.message, true);
     } else if (trade) {
-        trade.kategorie = neu;
+        trade.kategorie = value || null;
+        trade.kategorieManuell = true;
     }
     displayTrades(document.getElementById('accountFilter').value);
+}
+
+// Kategorie wieder der Automatik überlassen (↺)
+async function resetKategorie(account, ticket) {
+    const trade = mt5Trades.find(t => tradeKey(t.account, t.ticket) === tradeKey(account, ticket));
+    const { error } = await db.from('tm_trades').update({ kategorie: null, kategorie_manuell: false })
+        .eq('account', account).eq('ticket', ticket);
+    if (error) {
+        showStatus('Kategorie konnte nicht zurückgesetzt werden: ' + error.message, true);
+        return;
+    }
+    if (trade) {
+        trade.kategorie = null;
+        trade.kategorieManuell = false;
+    }
+    await ermittleKategorien();
 }
 
 // ---------- Trading-Konten ----------
@@ -1072,7 +1101,7 @@ async function importTrades() {
     if (doppelt) text2 += ', ' + doppelt + ' schon vorhanden';
     if (invalid) text2 += ', ' + invalid + (invalid === 1 ? ' Zeile ungültig' : ' Zeilen ungültig');
     if (neueAccounts.length) text2 += '. Neue Konten: ' + neueAccounts.join(', ') + ' (Strategie und Hebel bitte ergänzen)';
-    const prop = await abgleichPropDeposits();
+    const prop = await ermittleKategorien();
     msg.textContent = text2 + '.' + propHinweis(prop);
 }
 
@@ -1218,7 +1247,7 @@ async function importWallet() {
 
     document.getElementById('walletImportText').value = '';
     msg.style.color = '#10b981';
-    const prop = await abgleichPropDeposits();
+    const prop = await ermittleKategorien();
     let text2 = neue.length + (neue.length === 1 ? ' neue Transaktion gespeichert' : ' neue Transaktionen gespeichert');
     if (doppelt) text2 += ', ' + doppelt + ' schon vorhanden';
     if (invalid) text2 += ', ' + invalid + (invalid === 1 ? ' Zeile ungültig' : ' Zeilen ungültig');
@@ -1368,22 +1397,116 @@ function pruefePropDeposits() {
     return { aenderungen, konflikte };
 }
 
-async function abgleichPropDeposits() {
+// ---------- Kategorien automatisch ermitteln ----------
+// Gilt nur für Accounting-Einträge, die nicht von Hand gesetzt wurden:
+// 1. Grundregel: Betrag > 0 = Einzahlung, Betrag < 0 = Gebühren
+// 2. Minus-Betrag mit passender "Prop Deposit"/"Prop Withdrawal" im Wallet (eindeutig) = Auszahlung
+// 3. Re-Invest: Minus-Betrag und innert REINVEST_SEKUNDEN im gleichen Account ein Plus-Betrag
+//    mit gleichem Betrag (direkt oder geteilt durch den Hebel) = Auszahlung
+// 4. Samstag: Gebühren fallen am Samstag an. Pro Account ist der erste übrige Minus-Betrag
+//    am Samstag die Gebühr, alle weiteren Minus-Beträge an diesem Samstag = Auszahlung
+//    (von Hand als Auszahlung/Einzahlung gesetzte Einträge zählen dabei nicht)
+const REINVEST_SEKUNDEN = 60;
+let kategorieGrund = new Map();   // tradeKey -> 'Prop' | 'Reinvest' (für den Hinweis in der Tabelle)
+
+function zeitMs(zeit) {
+    return Date.parse(String(zeit).replace(' ', 'T'));
+}
+
+function findeReinvests() {
+    const keys = new Set();
+    const benutzt = new Set();
+    const acc = mt5Trades.filter(isAccounting);
+    acc.filter(t => t.profit < 0).sort((a, b) => a.openTime.localeCompare(b.openTime)).forEach(minus => {
+        const tm = zeitMs(minus.openTime);
+        const betrag = Math.abs(minus.profit);
+        const plus = acc.find(p => {
+            if (p.profit <= 0 || p.account !== minus.account || benutzt.has(tradeKey(p.account, p.ticket))) return false;
+            const dt = (zeitMs(p.openTime) - tm) / 1000;
+            if (isNaN(dt) || dt < 0 || dt > REINVEST_SEKUNDEN) return false;
+            const h = hebelFaktor(p.account);
+            return Math.abs(p.profit - betrag) <= PROP_TOLERANZ ||
+                (!!h && Math.abs(p.profit / h - betrag) <= PROP_TOLERANZ);
+        });
+        if (plus) {
+            benutzt.add(tradeKey(plus.account, plus.ticket));
+            keys.add(tradeKey(minus.account, minus.ticket));
+        }
+    });
+    return keys;
+}
+
+// Rechnet alle automatischen Kategorien neu und speichert Änderungen.
+// Rückgabe: Anzahl geänderter Einträge
+async function ermittleKategorien() {
     if (!isAdmin) return 0;
-    const { aenderungen } = pruefePropDeposits();
+
+    // Prop-Regel: alle Einträge aus eindeutigen Gruppen
+    const propKeys = new Set();
+    propGruppen().forEach(g => {
+        if (g.kandidaten.length <= g.wallet.length) {
+            g.kandidaten.forEach(t => propKeys.add(tradeKey(t.account, t.ticket)));
+        }
+    });
+    const reinvestKeys = findeReinvests();
+
+    // Samstag-Regel: pro Account und Samstag den ersten Minus-Betrag als Gebühr behalten,
+    // die weiteren als Auszahlung (Einträge aus Prop- und Re-Invest-Regel zählen nicht mit)
+    const samstagKeys = new Set();
+    const proTag = {};
+    mt5Trades.filter(t => isAccounting(t) && t.profit < 0).forEach(t => {
+        const key = tradeKey(t.account, t.ticket);
+        if (propKeys.has(key) || reinvestKeys.has(key)) return;
+        // Von Hand als Auszahlung/Einzahlung gesetzte Einträge belegen den Gebühren-Platz nicht
+        if (t.kategorieManuell && t.kategorie !== 'Gebühren') return;
+        const tag = datumKey(t.openTime);
+        if (keyToDate(tag).getDay() !== 6) return;
+        (proTag[t.account + '|' + tag] = proTag[t.account + '|' + tag] || []).push(t);
+    });
+    Object.values(proTag).forEach(liste => {
+        liste.sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
+        liste.slice(1).forEach(t => samstagKeys.add(tradeKey(t.account, t.ticket)));
+    });
+
+    const grund = new Map();
+    const aenderungen = [];
+    mt5Trades.filter(t => isAccounting(t) && !t.kategorieManuell).forEach(t => {
+        const key = tradeKey(t.account, t.ticket);
+        const basis = autoKategorie(t);
+        let ziel = basis;
+        if (basis === 'Gebühren' && propKeys.has(key)) { ziel = 'Auszahlung'; grund.set(key, 'Prop'); }
+        else if (basis === 'Gebühren' && reinvestKeys.has(key)) { ziel = 'Auszahlung'; grund.set(key, 'Reinvest'); }
+        else if (basis === 'Gebühren' && samstagKeys.has(key)) { ziel = 'Auszahlung'; grund.set(key, 'Samstag'); }
+        const speichern = ziel === basis ? null : ziel;
+        if ((t.kategorie || null) !== speichern) aenderungen.push({ t, speichern });
+    });
+    kategorieGrund = grund;
+
     let geaendert = 0;
-    for (const t of aenderungen) {
-        const { error } = await db.from('tm_trades').update({ kategorie: 'Auszahlung' })
+    for (const { t, speichern } of aenderungen) {
+        const { error } = await db.from('tm_trades').update({ kategorie: speichern, kategorie_manuell: false })
             .eq('account', t.account).eq('ticket', t.ticket);
         if (error) {
             showStatus('Kategorie konnte nicht angepasst werden: ' + error.message, true);
             continue;
         }
-        t.kategorie = 'Auszahlung';
+        t.kategorie = speichern;
         geaendert++;
     }
     displayTrades(document.getElementById('accountFilter').value);
     return geaendert;
+}
+
+// Button im Admin-Bereich
+async function neuErmitteln() {
+    const msg = document.getElementById('ermittelnMessage');
+    msg.style.color = '#4a5568';
+    msg.textContent = 'Wird ermittelt...';
+    const n = await ermittleKategorien();
+    const manuell = mt5Trades.filter(t => isAccounting(t) && t.kategorieManuell).length;
+    msg.style.color = '#10b981';
+    msg.textContent = (n === 0 ? 'Keine Änderungen.' : n + (n === 1 ? ' Kategorie geändert.' : ' Kategorien geändert.')) +
+        ' ' + manuell + ' von Hand gesetzte ' + (manuell === 1 ? 'Kategorie wurde' : 'Kategorien wurden') + ' nicht verändert.' + propHinweis(0);
 }
 
 // Hinweis im Admin-Bereich und Zähler am Admin-Tab
@@ -1457,7 +1580,7 @@ function displayUnstimmigkeiten() {
 function propHinweis(anzahl) {
     let text = '';
     if (anzahl) {
-        text += ' ' + anzahl + (anzahl === 1 ? ' Eintrag' : ' Einträge') + ' in den Trades von Gebühren auf Auszahlung geändert (Prop Deposit / Prop Withdrawal).';
+        text += ' ' + anzahl + (anzahl === 1 ? ' Kategorie' : ' Kategorien') + ' in den Trades automatisch angepasst.';
     }
     const k = isAdmin ? pruefePropDeposits().konflikte.length : 0;
     if (k) {
@@ -1751,9 +1874,13 @@ function displayTrades(selectedAccount) {
             const kat = getKategorie(t);
             const sel = document.createElement('select');
             sel.className = 'kategorie-select';
-            if (kat !== autoKategorie(t)) {
+            const grund = kategorieGrund.get(tradeKey(t.account, t.ticket));
+            if (t.kategorieManuell) {
                 sel.classList.add('manuell');
-                sel.title = 'Manuell geändert (automatisch wäre: ' + (autoKategorie(t) || 'keine') + ')';
+                sel.title = 'Von Hand gesetzt, wird bei «Neu ermitteln» nicht verändert';
+            } else {
+                sel.title = 'Automatisch' + (grund === 'Reinvest' ? ' (Re-Invest erkannt)' : grund === 'Prop' ? ' (Prop-Buchung im Wallet)' :
+                    grund === 'Samstag' ? ' (weiterer Minus-Betrag am Samstag, Gebühr ist der erste)' : '');
             }
             if (!kat) {
                 const o = document.createElement('option');
@@ -1769,7 +1896,17 @@ function displayTrades(selectedAccount) {
                 sel.appendChild(o);
             });
             sel.onchange = () => setKategorie(t.account, t.ticket, sel.value);
+            ck.style.whiteSpace = 'nowrap';
             ck.appendChild(sel);
+            if (t.kategorieManuell) {
+                const reset = document.createElement('button');
+                reset.type = 'button';
+                reset.className = 'reset-btn';
+                reset.textContent = '↺';
+                reset.title = 'Zurück auf automatisch';
+                reset.onclick = () => resetKategorie(t.account, t.ticket);
+                ck.appendChild(reset);
+            }
         } else {
             ck.textContent = '';
         }
