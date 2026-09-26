@@ -148,6 +148,8 @@
             white-space: nowrap;
             z-index: 5;
         }
+        .schloss { font-size: 0.8em; margin-left: 2px; opacity: 0.85; }
+        #commTable td.text-left { text-align: left !important; }
         .neo-input {
             padding: 9px 10px;
             border: 2px solid #cbd5e0;
@@ -357,9 +359,10 @@
         <!-- Tab-Navigation -->
         <nav class="tab-nav" id="tabNav">
             <button type="button" class="tab-btn" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
-            <button type="button" class="tab-btn" data-tab="trades" onclick="showTab('trades')">Alle Trades</button>
-            <button type="button" class="tab-btn" data-tab="wallet" onclick="showTab('wallet')">Wallet-Transaktionen</button>
-            <button type="button" class="tab-btn admin-only" data-tab="admin" onclick="showTab('admin')">Admin <span id="adminBadge" class="tab-badge" style="display: none;"></span></button>
+            <button type="button" class="tab-btn" data-tab="trades" onclick="showTab('trades')">Trades</button>
+            <button type="button" class="tab-btn admin-only" data-tab="wallet" onclick="showTab('wallet')">Wallet-Transaktionen <span class="schloss" title="nur für Admin">🔒</span></button>
+            <button type="button" class="tab-btn admin-only" data-tab="commissions" onclick="showTab('commissions')">Commissions <span class="schloss" title="nur für Admin">🔒</span></button>
+            <button type="button" class="tab-btn admin-only" data-tab="admin" onclick="showTab('admin')">Admin <span class="schloss" title="nur für Admin">🔒</span> <span id="adminBadge" class="tab-badge" style="display: none;"></span></button>
         </nav>
     </div>
 
@@ -444,7 +447,7 @@
         <div class="tab-panel" id="tab-trades">
         <!-- Alle Trades (Daten von Tag Markets) -->
         <div id="tradesContainer">
-            <h3 style="margin-bottom: 20px;">Alle Trades</h3>
+            <h3 style="margin-bottom: 20px;">Trades</h3>
             <!-- Summary (Betrag effektiv, angezeigte Einträge) -->
             <div class="trades-summary" id="tradesSummary">
                 <div class="sum-card"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="sumEinzahlungen">–</span></div>
@@ -513,6 +516,13 @@
                 <div class="sum-card" title="Frisches Geld von aussen (Status Approved)"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="walletSumEin">–</span></div>
                 <div class="sum-card" title="Auszahlungen aus dem System heraus (Status Approved)"><span class="sum-label">Auszahlungen</span><span class="sum-wert" id="walletSumAus">–</span></div>
             </div>
+            <div class="trades-toolbar">
+                <label>Type
+                    <select id="walletFilterType" class="neo-input" onchange="displayWallet()">
+                        <option value="">Alle</option>
+                    </select>
+                </label>
+            </div>
             <div class="table-container-small">
                 <table id="walletTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
@@ -535,6 +545,32 @@
         </div>
 
         </div>
+        <div class="tab-panel" id="tab-commissions">
+            <h3 style="margin-bottom: 20px;">Commissions <span class="dash-hinweis">IBPortal CommissionsDeposit aus den Wallet-Transaktionen, pro Woche (Montag bis Sonntag)</span></h3>
+            <div class="trades-toolbar">
+                <label>Jahr
+                    <select id="commJahr" class="neo-input" onchange="renderCommissions()"></select>
+                </label>
+            </div>
+            <div class="trades-summary">
+                <div class="sum-card"><span class="sum-label">Total im Jahr</span><span class="sum-wert" id="commTotal">–</span><span class="sum-sub" id="commTotalSub"></span></div>
+                <div class="sum-card"><span class="sum-label">Ø pro Woche</span><span class="sum-wert" id="commSchnitt">–</span><span class="sum-sub" id="commSchnittSub"></span></div>
+            </div>
+            <div class="twr-chart" id="commChart" style="margin-bottom: 20px;"></div>
+            <div class="table-container-small">
+                <table id="commTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Woche vom</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Anzahl</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Summe</th>
+                        </tr>
+                    </thead>
+                    <tbody id="commBody"></tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="tab-panel" id="tab-admin">
             <div id="unstimmigkeitenBox" class="warning-box" style="display: none; margin-bottom: 25px;"></div>
             <nav class="subtab-nav">
@@ -623,7 +659,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 26.09.2026 23:44:41</div>
+        <div class="version-info">Version: 27.09.2026 00:03:29</div>
     </div>
 </div>
 
@@ -849,7 +885,7 @@ async function setAuth(session) {
     document.body.classList.toggle('is-admin', isAdmin);
     document.getElementById('loginUser').textContent = session ? session.user.email : '';
     // Admin-Tab nur angemeldet
-    showTab(isAdmin ? tabAusAdresse() : (tabAusAdresse() === 'admin' ? 'dashboard' : tabAusAdresse()));
+    showTab(tabAusAdresse());
     displayAccounts();
     displayTrades(document.getElementById('accountFilter').value);
 }
@@ -1236,12 +1272,91 @@ function zeigeWalletSummary() {
     document.getElementById('walletSumAus').textContent = zahl(-w.aus, 2);
 }
 
+// ---------- Commissions (IBPortal CommissionsDeposit pro Woche) ----------
+function istCommission(w) {
+    return String(w.type || '').trim().toLowerCase() === 'ibportal commissionsdeposit';
+}
+
+function renderCommissions() {
+    const sel = document.getElementById('commJahr');
+    if (!sel) return;
+    const eintraege = walletTx.filter(w => istCommission(w) && w.date);
+    // Wochen (Montag) mit Summe
+    const wochen = new Map();
+    eintraege.forEach(w => {
+        const montag = formatDate(getMonday(keyToDate(String(w.date).substring(0, 10))));
+        const x = wochen.get(montag) || { summe: 0, anzahl: 0 };
+        x.summe += Number(w.amount) || 0;
+        x.anzahl++;
+        wochen.set(montag, x);
+    });
+    // Jahr-Auswahl: vorhandene Jahre + aktuelles Jahr, aktuelles Jahr vorbelegt
+    const aktuell = String(new Date().getFullYear());
+    const jahre = [...new Set([...wochen.keys()].map(k => k.substring(0, 4)).concat([aktuell]))].sort().reverse();
+    const vorher = sel.value || aktuell;
+    sel.innerHTML = jahre.map(j => `<option value="${j}">${j}</option>`).join('');
+    sel.value = jahre.includes(vorher) ? vorher : aktuell;
+    const jahr = sel.value;
+
+    // Wochen des Jahres (nach dem Montag), neueste zuerst
+    const imJahr = [...wochen.entries()].filter(([k]) => k.substring(0, 4) === jahr).sort((a, b) => b[0].localeCompare(a[0]));
+    const tbody = document.getElementById('commBody');
+    tbody.innerHTML = '';
+    let total = 0, anzahl = 0;
+    imJahr.forEach(([montag, x]) => {
+        total += x.summe;
+        anzahl += x.anzahl;
+        const row = tbody.insertRow();
+        const c0 = row.insertCell(); c0.textContent = datumZeit(montag); c0.classList.add('text-left');
+        row.insertCell().textContent = zahl(x.anzahl);
+        row.insertCell().textContent = zahl(x.summe, 2);
+    });
+    const tr = tbody.insertRow();
+    tr.classList.add('total-row');
+    const t0 = tr.insertCell(); t0.textContent = 'Total ' + jahr; t0.classList.add('text-left');
+    tr.insertCell().textContent = zahl(anzahl);
+    tr.insertCell().textContent = zahl(total, 2);
+
+    setzeKachel('commTotal', total, { sub: imJahr.length + (imJahr.length === 1 ? ' Woche' : ' Wochen') + ' mit Commissions' });
+    setzeKachel('commSchnitt', imJahr.length ? total / imJahr.length : null, { sub: 'nur Wochen mit Commissions' });
+
+    // Grafik: alle Wochen vom ersten bis zum letzten Eintrag im Jahr, Wochen ohne Eintrag = 0
+    const keys = [];
+    if (imJahr.length) {
+        const erste = keyToDate(imJahr[imJahr.length - 1][0]);
+        const letzte = keyToDate(imJahr[0][0]);
+        for (let d = erste; d <= letzte; d.setDate(d.getDate() + 7)) keys.push(formatDate(d));
+    }
+    zeichneLinienChart({
+        box: document.getElementById('commChart'),
+        keys,
+        xLabel: k => datumZeit(k).substring(0, 6),
+        tipTitel: k => 'Woche vom ' + datumZeit(k),
+        yLabel: v => zahl(v, 0),
+        tipWert: v => zahl(v, 2) + ' USD',
+        serien: [{ name: 'Commissions', farbe: '#10b981', gesamt: false, werte: keys.map(k => wochen.has(k) ? wochen.get(k).summe : 0) }]
+    });
+}
+
+// Type-Auswahl im Tab Wallet-Transaktionen füllen
+function fuelleWalletTypeFilter() {
+    const sel = document.getElementById('walletFilterType');
+    if (!sel) return;
+    const vorher = sel.value;
+    const typen = [...new Set(walletTx.map(w => w.type).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Alle</option>' + typen.map(t => `<option value="${t}">${t}</option>`).join('');
+    if (typen.includes(vorher)) sel.value = vorher;
+}
+
 function displayWallet() {
+    fuelleWalletTypeFilter();
+    renderCommissions();
     zeigeWalletSummary();
     displayUnstimmigkeiten();
     const tbody = document.getElementById('walletBody');
     tbody.innerHTML = '';
-    const sorted = [...walletTx].sort((a, b) =>
+    const fTyp = document.getElementById('walletFilterType').value;
+    const sorted = [...walletTx].filter(w => !fTyp || w.type === fTyp).sort((a, b) =>
         String(b.date || '').localeCompare(String(a.date || '')) || Number(b.transaction_id) - Number(a.transaction_id));
 
     let totalAmount = 0;
@@ -1335,8 +1450,11 @@ async function importWallet() {
 const TABS_MIT_FILTER = ['trades'];
 let aktuellerSubTab = 'accounts';
 
+// Tabs, die nur angemeldet (Admin) sichtbar sind
+const ADMIN_TABS = ['wallet', 'commissions', 'admin'];
+
 function showTab(name) {
-    if (name === 'admin' && !isAdmin) name = 'dashboard';
+    if (ADMIN_TABS.includes(name) && !isAdmin) name = 'dashboard';
     if (!document.getElementById('tab-' + name)) name = 'dashboard';
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
@@ -1881,76 +1999,93 @@ function berechneTWR(eintraege) {
 // Liniengrafik als SVG (ohne externe Bibliothek)
 const TWR_FARBEN = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
 
-function zeichneTWRChart(serien) {
-    const box = document.getElementById('twrChart');
+// Liniengrafik als SVG (ohne externe Bibliothek)
+// cfg: { box, keys (x-Werte, sortiert), xLabel(key), tipTitel(key), yLabel(v), tipWert(v), serien: [{ name, farbe, gesamt, werte }] }
+function zeichneLinienChart(cfg) {
+    const box = cfg.box;
+    const keys = cfg.keys;
+    const serien = cfg.serien;
     if (!box) return;
-    // alle Tage von erstem bis letztem Eintrag
-    const alleTage = [...new Set(serien.flatMap(s => s.verlauf.map(p => p.tag)))].sort();
-    if (alleTage.length < 2) { box.innerHTML = '<p class="dash-hinweis" style="margin:0;">Noch zu wenig Daten für die Grafik.</p>'; return; }
-    const tage = [];
-    for (let d = keyToDate(alleTage[0]); d <= keyToDate(alleTage[alleTage.length - 1]); d.setDate(d.getDate() + 1)) tage.push(formatDate(d));
-    // Werte je Tag (letzter bekannter Wert wird fortgeführt, vor dem ersten Eintrag leer)
-    serien.forEach(s => {
-        const m = new Map(s.verlauf.map(p => [p.tag, p.pct]));
-        let letzter = null;
-        s.werte = tage.map(tag => { if (m.has(tag)) letzter = m.get(tag); return letzter; });
-    });
+    if (keys.length < 2) { box.innerHTML = '<p class="dash-hinweis" style="margin:0;">Noch zu wenig Daten für die Grafik.</p>'; return; }
     const alleWerte = serien.flatMap(s => s.werte).filter(x => x !== null);
     let min = Math.min(0, ...alleWerte), max = Math.max(0, ...alleWerte);
     if (max - min < 1) { max += 0.5; min -= 0.5; }
-    const pad = (max - min) * 0.08; min -= pad; max += pad;
+    // "schöne" Schritte für die Y-Achse (1, 2, 5, 10 ...)
+    const roh = (max - min) / 5;
+    const mag = Math.pow(10, Math.floor(Math.log10(roh)));
+    const nrm = roh / mag;
+    const schritt = (nrm <= 1 ? 1 : nrm <= 2 ? 2 : nrm <= 5 ? 5 : 10) * mag;
+    min = Math.floor(min / schritt) * schritt;
+    max = Math.ceil(max / schritt) * schritt;
 
-    const W = 1000, H = 340, L = 60, R = 20, T = 20, B = 40;
-    const x = i => L + (W - L - R) * (tage.length === 1 ? 0 : i / (tage.length - 1));
+    const W = 1000, H = 340, L = 70, R = 20, T = 20, B = 40;
+    const x = i => L + (W - L - R) * (keys.length === 1 ? 0 : i / (keys.length - 1));
     const y = v => T + (H - T - B) * (1 - (v - min) / (max - min));
 
-    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verlauf zeitgewichtete Rendite">`;
-    // Gitter + Y-Beschriftung
-    for (let k = 0; k <= 5; k++) {
-        const val = min + (max - min) * k / 5;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">`;
+    for (let val = min; val <= max + schritt / 2; val += schritt) {
         svg += `<line x1="${L}" x2="${W - R}" y1="${y(val)}" y2="${y(val)}" stroke="#e2e8f0" stroke-width="1"/>`;
-        svg += `<text x="${L - 8}" y="${y(val) + 4}" text-anchor="end" font-size="12" fill="#718096">${zahl(val, 1)}%</text>`;
+        svg += `<text x="${L - 8}" y="${y(val) + 4}" text-anchor="end" font-size="12" fill="#718096">${cfg.yLabel(val)}</text>`;
     }
     svg += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="#a0aec0" stroke-width="1.5"/>`;
-    // X-Beschriftung (ca. 6 Daten)
-    const schritte = Math.max(1, Math.round((tage.length - 1) / 6));
-    for (let i = 0; i < tage.length; i += schritte) {
-        svg += `<text x="${x(i)}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#718096">${datumZeit(tage[i]).substring(0, 6)}${datumZeit(tage[i]).substring(8, 10)}</text>`;
+    const schritte = Math.max(1, Math.round((keys.length - 1) / 6));
+    for (let i = 0; i < keys.length; i += schritte) {
+        svg += `<text x="${x(i)}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#718096">${cfg.xLabel(keys[i])}</text>`;
     }
-    // Linien
     serien.forEach(s => {
         let pfad = '';
         s.werte.forEach((val, i) => {
             if (val === null) return;
             pfad += (pfad ? ' L' : 'M') + x(i).toFixed(1) + ' ' + y(val).toFixed(1);
         });
-        svg += `<path d="${pfad}" fill="none" stroke="${s.farbe}" stroke-width="${s.gesamt ? 3 : 2}" ${s.gesamt ? '' : 'stroke-dasharray="0"'} stroke-linejoin="round"/>`;
+        svg += `<path d="${pfad}" fill="none" stroke="${s.farbe}" stroke-width="${s.gesamt ? 3 : 2}" stroke-linejoin="round"/>`;
     });
-    svg += `<line id="twrLinie" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#4a5568" stroke-width="1" stroke-dasharray="4 3" style="display:none"/>`;
-    svg += `<rect id="twrFlaeche" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+    svg += `<line class="chart-linie" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#4a5568" stroke-width="1" stroke-dasharray="4 3" style="display:none"/>`;
+    svg += `<rect class="chart-flaeche" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
     svg += '</svg>';
 
-    const legende = serien.map(s => `<span class="twr-leg"><span class="twr-punkt" style="background:${s.farbe}"></span>${s.name}</span>`).join('');
-    box.innerHTML = `<div class="twr-legende">${legende}</div><div class="twr-svg-wrap">${svg}<div class="twr-tooltip" id="twrTooltip"></div></div>`;
+    const legende = serien.length > 1 ? '<div class="twr-legende">' + serien.map(s => `<span class="twr-leg"><span class="twr-punkt" style="background:${s.farbe}"></span>${s.name}</span>`).join('') + '</div>' : '';
+    box.innerHTML = `${legende}<div class="twr-svg-wrap">${svg}<div class="twr-tooltip"></div></div>`;
 
-    // Maus: Werte am jeweiligen Tag anzeigen
     const svgEl = box.querySelector('svg');
-    const flaeche = box.querySelector('#twrFlaeche');
-    const linie = box.querySelector('#twrLinie');
-    const tip = box.querySelector('#twrTooltip');
-    const zeigen = ev => {
+    const flaeche = box.querySelector('.chart-flaeche');
+    const linie = box.querySelector('.chart-linie');
+    const tip = box.querySelector('.twr-tooltip');
+    flaeche.addEventListener('mousemove', ev => {
         const r = svgEl.getBoundingClientRect();
         const px = (ev.clientX - r.left) / r.width * W;
-        const i = Math.max(0, Math.min(tage.length - 1, Math.round((px - L) / (W - L - R) * (tage.length - 1))));
+        const i = Math.max(0, Math.min(keys.length - 1, Math.round((px - L) / (W - L - R) * (keys.length - 1))));
         linie.setAttribute('x1', x(i)); linie.setAttribute('x2', x(i)); linie.style.display = '';
-        tip.innerHTML = '<strong>' + WOCHENTAGE[keyToDate(tage[i]).getDay()] + ' ' + datumZeit(tage[i]) + '</strong><br>' +
-            serien.map(s => `<span style="color:${s.gesamt ? '#ffffff' : s.farbe}">●</span> ${s.name}: ${s.werte[i] === null ? '–' : zahl(s.werte[i], 2) + '%'}`).join('<br>');
+        tip.innerHTML = '<strong>' + cfg.tipTitel(keys[i]) + '</strong><br>' +
+            serien.map(s => `<span style="color:${s.gesamt ? '#ffffff' : s.farbe}">●</span> ${s.name}: ${s.werte[i] === null ? '–' : cfg.tipWert(s.werte[i])}`).join('<br>');
         tip.style.display = 'block';
         const links = x(i) / W * r.width;
         tip.style.left = (links > r.width / 2 ? links - tip.offsetWidth - 12 : links + 12) + 'px';
-    };
-    flaeche.addEventListener('mousemove', zeigen);
+    });
     flaeche.addEventListener('mouseleave', () => { tip.style.display = 'none'; linie.style.display = 'none'; });
+}
+
+// TWR-Verlauf: jeder Tag vom ersten bis zum letzten Eintrag, letzter Wert wird fortgeführt
+function zeichneTWRChart(serien) {
+    const alleTage = [...new Set(serien.flatMap(s => s.verlauf.map(p => p.tag)))].sort();
+    const tage = [];
+    if (alleTage.length) {
+        for (let d = keyToDate(alleTage[0]); d <= keyToDate(alleTage[alleTage.length - 1]); d.setDate(d.getDate() + 1)) tage.push(formatDate(d));
+    }
+    serien.forEach(s => {
+        const m = new Map(s.verlauf.map(p => [p.tag, p.pct]));
+        let letzter = null;
+        s.werte = tage.map(tag => { if (m.has(tag)) letzter = m.get(tag); return letzter; });
+    });
+    zeichneLinienChart({
+        box: document.getElementById('twrChart'),
+        keys: tage,
+        xLabel: k => datumZeit(k).substring(0, 6) + datumZeit(k).substring(8, 10),
+        tipTitel: k => WOCHENTAGE[keyToDate(k).getDay()] + ' ' + datumZeit(k),
+        yLabel: v => zahl(v, 1) + '%',
+        tipWert: v => zahl(v, 2) + '%',
+        serien
+    });
 }
 
 function renderTWR() {
@@ -2012,7 +2147,7 @@ function renderDashboard() {
     const gesamt = bestUndSchlechtest(trades);
     const info = x => {
         const strat = accountZusatz(x.t.account) || 'Account ' + x.t.account;
-        return datumZeit(datumKey(x.t.openTime)) + ' · ' + strat + ' (' + x.t.account + ') · ' + zahl(x.t.profit, 2);
+        return datumZeit(datumKey(x.t.openTime)) + ' · ' + strat + ' (' + x.t.account + ')';
     };
     const jeStrat = nachStrategie(trades).map(g => ({ name: g.name, bs: bestUndSchlechtest(g.eintraege) }));
     const kurz = x => x ? zahl(x.pct, 3) + '% (' + datumZeit(datumKey(x.t.openTime)) + ')' : '–';
