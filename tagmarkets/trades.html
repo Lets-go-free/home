@@ -442,6 +442,7 @@
                         <option value="Einzahlung">Einzahlung</option>
                         <option value="Gebühren">Gebühren</option>
                         <option value="Auszahlung">Auszahlung</option>
+                        <option value="Balance Adjust">Balance Adjust</option>
                         <option value="-">ohne Kategorie (Trades)</option>
                     </select>
                 </label>
@@ -549,7 +550,7 @@
         <div id="ermittelnContainer" style="margin-bottom: 30px;">
             <h3 style="margin-bottom: 20px;">Kategorien neu ermitteln</h3>
             <p class="info-box">
-                Rechnet die Kategorie aller Accounting-Einträge neu aus: Plus = Einzahlung, Minus = Gebühren. Ein Minus wird zur Auszahlung, wenn im Wallet eine passende «Prop Deposit»/«Prop Withdrawal» steht oder wenn innert 60 Sekunden im gleichen Account der gleiche Betrag wieder einbezahlt wird (Re-Invest). Am Samstag gilt pro Account nur der erste übrige Minus-Betrag als Gebühr, alle weiteren sind Auszahlungen. Von Hand gesetzte Kategorien (oranger Rand) werden nicht verändert.
+                Rechnet die Kategorie aller Accounting-Einträge neu aus: Plus = Einzahlung, Minus = Gebühren. Ein Minus wird zur Auszahlung, wenn im Wallet eine passende «Prop Deposit»/«Prop Withdrawal» steht Folgt innert 60 Sekunden im gleichen Account eine Einzahlung mit dem gleichen Betrag (Re-Invest), wird das Minus zu «Balance Adjust». Balance Adjust zählt nicht im Saldo. Am Samstag gilt pro Account nur der erste übrige Minus-Betrag als Gebühr, alle weiteren sind Auszahlungen. Von Hand gesetzte Kategorien (oranger Rand) werden nicht verändert.
             </p>
             <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
                 <button type="button" class="neo-btn" onclick="neuErmitteln()">Kategorien neu ermitteln</button>
@@ -628,7 +629,7 @@ const SUPABASE_URL = 'https://cfnxuesibpnlgyklzqkj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const KATEGORIEN = ['Einzahlung', 'Gebühren', 'Auszahlung'];
+const KATEGORIEN = ['Einzahlung', 'Gebühren', 'Auszahlung', 'Balance Adjust'];
 
 let mt5Trades = [];      // Trades aus tm_trades
 let accountsCache = [];  // Konten aus tm_accounts
@@ -1401,8 +1402,11 @@ function pruefePropDeposits() {
 // Gilt nur für Accounting-Einträge, die nicht von Hand gesetzt wurden:
 // 1. Grundregel: Betrag > 0 = Einzahlung, Betrag < 0 = Gebühren
 // 2. Minus-Betrag mit passender "Prop Deposit"/"Prop Withdrawal" im Wallet (eindeutig) = Auszahlung
-// 3. Re-Invest: Minus-Betrag und innert REINVEST_SEKUNDEN im gleichen Account ein Plus-Betrag
-//    mit gleichem Betrag (direkt oder geteilt durch den Hebel) = Auszahlung
+// 3. Re-Invest (in MT5 "Balance Adjust" + "Balance Upgrade"): Minus-Betrag und innert
+//    REINVEST_SEKUNDEN im gleichen Account ein Plus-Betrag mit gleichem Betrag
+//    (direkt oder geteilt durch den Hebel) -> Minus-Betrag = "Balance Adjust"
+//    Balance Adjust zählt nicht im Saldo und nicht als Auszahlung/Gebühr: der Gewinn wird
+//    ins Kapital umgebucht, das Kapital steigt um den Plus-Betrag.
 // 4. Samstag: Gebühren fallen am Samstag an. Pro Account ist der erste übrige Minus-Betrag
 //    am Samstag die Gebühr, alle weiteren Minus-Beträge an diesem Samstag = Auszahlung
 //    (von Hand als Auszahlung/Einzahlung gesetzte Einträge zählen dabei nicht)
@@ -1475,7 +1479,7 @@ async function ermittleKategorien() {
         const basis = autoKategorie(t);
         let ziel = basis;
         if (basis === 'Gebühren' && propKeys.has(key)) { ziel = 'Auszahlung'; grund.set(key, 'Prop'); }
-        else if (basis === 'Gebühren' && reinvestKeys.has(key)) { ziel = 'Auszahlung'; grund.set(key, 'Reinvest'); }
+        else if (basis === 'Gebühren' && reinvestKeys.has(key)) { ziel = 'Balance Adjust'; grund.set(key, 'Reinvest'); }
         else if (basis === 'Gebühren' && samstagKeys.has(key)) { ziel = 'Auszahlung'; grund.set(key, 'Samstag'); }
         const speichern = ziel === basis ? null : ziel;
         if ((t.kategorie || null) !== speichern) aenderungen.push({ t, speichern });
@@ -1738,6 +1742,11 @@ function displayTrades(selectedAccount) {
             saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
             return;
         }
+        // Balance Adjust (Re-Invest): Gewinn wird ins Kapital umgebucht, zählt nicht im Saldo
+        if (getKategorie(t) === 'Balance Adjust') {
+            saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
+            return;
+        }
         const eff = betragEffektiv(t);
         if (eff === null) saldoUnbekannt = true;
         else laufend += eff;
@@ -1879,7 +1888,7 @@ function displayTrades(selectedAccount) {
                 sel.classList.add('manuell');
                 sel.title = 'Von Hand gesetzt, wird bei «Neu ermitteln» nicht verändert';
             } else {
-                sel.title = 'Automatisch' + (grund === 'Reinvest' ? ' (Re-Invest erkannt)' : grund === 'Prop' ? ' (Prop-Buchung im Wallet)' :
+                sel.title = 'Automatisch' + (grund === 'Reinvest' ? ' (Re-Invest: Balance Adjust, gleich danach Einzahlung)' : grund === 'Prop' ? ' (Prop-Buchung im Wallet)' :
                     grund === 'Samstag' ? ' (weiterer Minus-Betrag am Samstag, Gebühr ist der erste)' : '');
             }
             if (!kat) {
