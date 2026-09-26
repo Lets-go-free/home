@@ -1,4 +1,4 @@
-// Phase 6.19 · 26.09.2026 01:19:30 CEST: Audit P4 im Realtest abgeschlossen; P5 Claims/Payouts startet mit zentralem asset-flow-first Payout-Readmodel fuer Detailtab, Bot-Summen und Dashboard. Legacy-Felder bleiben nur Fallback. Build 20260926-011930.
+// Phase 6.20 · 26.09.2026 02:30:43 CEST: P5 Claims/Payouts: bestätigte native APTM-Claims werden als project_transaction_asset_flows persistiert; Legacy Reward-Felder bleiben nur Kompatibilitätscache. Build 20260926-023043.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: Release-Metadaten synchronisiert; DAO1-Ownership-/Kaufpreis-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
@@ -3422,6 +3422,81 @@ window.DAO1Project = (() => {
     return [];
   }
 
+  function nativeClaimFlowKey(txHash){
+    return `claim-native:${String(txHash||"").toLowerCase()}`;
+  }
+
+  function nativeClaimAmountRaw(amount){
+    const n=Number(amount);
+    if(!Number.isFinite(n)||n<=0)return "0";
+    const fixed=n.toFixed(18);
+    const [whole,frac=""]=fixed.split(".");
+    try{return BigInt(`${whole}${frac.padEnd(18,"0").slice(0,18)}`).toString();}catch{return "0";}
+  }
+
+  function nativeClaimAssetFlowRow(address,tx,amount,{priceUsd=null,valueUsd=null,priceSource=null,counterparty=null}={}){
+    const ctx=getContext?.();
+    const txHash=String(tx?.tx_hash||"").toLowerCase();
+    const numericAmount=Number(amount||0);
+    if(!ctx?.currentUser?.id||!address||!txHash||!Number.isFinite(numericAmount)||numericAmount<=0)return null;
+    const px=priceUsd==null?null:Number(priceUsd);
+    const usd=valueUsd==null?(Number.isFinite(px)?numericAmount*px:null):Number(valueUsd);
+    return {
+      user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+      wallet_id:walletIdForAddress(address),flow_key:nativeClaimFlowKey(txHash),
+      tx_hash:txHash,block_number:Number(tx?.block_number||0),tx_timestamp:tx?.tx_timestamp||null,
+      log_index:-1,token_address:"native",token_symbol:"APTM",token_name:"Apertum",token_decimals:18,
+      amount_raw:nativeClaimAmountRaw(numericAmount),amount:numericAmount,
+      counterparty_address:counterparty||tx?.to_address||null,direction:"eingang",
+      price_usd:Number.isFinite(px)?px:null,value_usd:Number.isFinite(usd)?usd:null,
+      price_source:priceSource||null,updated_at:new Date().toISOString()
+    };
+  }
+
+  async function backfillNativeClaimAssetFlows(targetWallets=null){
+    const ctx=getContext?.();
+    if(!ctx?.currentUser?.id)return {wallets:0,claims:0,persisted:0};
+    const rawTargets=Array.isArray(targetWallets)&&targetWallets.length?targetWallets:(ctx.wallets||[]);
+    let walletsDone=0,claimsSeen=0,persisted=0;
+    for(const target of rawTargets){
+      const address=typeof target==="string"?lower(target):walletAddress(target);
+      if(!address)continue;
+      const [claims,flows,txs]=await Promise.all([
+        loadCachedClaims(address,null),
+        loadAssetFlowRows(address,{force:true}),
+        loadTransactionRows(address,null)
+      ]);
+      const incomingByTx=new Set((flows||[]).filter(f=>f.direction==="eingang").map(f=>String(f.tx_hash||"").toLowerCase()));
+      const txByHash=new Map((txs||[]).map(t=>[String(t.tx_hash||"").toLowerCase(),t]));
+      const rows=[];
+      for(const c of (claims||[])){
+        claimsSeen++;
+        const h=String(c.tx_hash||"").toLowerCase();
+        if(!h||incomingByTx.has(h))continue;
+        const symbol=String(c.reward_asset_symbol||"").toUpperCase();
+        const assetAddress=lower(c.reward_asset_address||"");
+        const isNative=assetAddress==="native" || (!assetAddress && symbol==="APTM");
+        const amount=Number(c.reward_asset_amount??c.reward_aptm??0);
+        if(!isNative||!Number.isFinite(amount)||amount<=0)continue;
+        const tx=txByHash.get(h)||{tx_hash:h,block_number:c.block_number,tx_timestamp:c.tx_timestamp,to_address:c.nft_contract};
+        const directPx=Number(c.aptm_usd||0);
+        const derivedPx=!directPx&&Number(c.reward_asset_usd||c.reward_usd||0)>0?Number(c.reward_asset_usd||c.reward_usd)/amount:null;
+        const row=nativeClaimAssetFlowRow(address,tx,amount,{
+          priceUsd:directPx||derivedPx||null,
+          valueUsd:c.reward_asset_usd??c.reward_usd??null,
+          priceSource:c.reward_asset_price_source||c.price_source||"Historischer nativer Claim-Cache",
+          counterparty:c.nft_contract||tx.to_address||null
+        });
+        if(row){rows.push(row);incomingByTx.add(h);}
+      }
+      if(rows.length){await saveAssetFlowRows(rows);persisted+=rows.length;}
+      walletsDone++;
+    }
+    const result={wallets:walletsDone,claims:claimsSeen,persisted};
+    console.info("DAO1 Native Claim Flow Migration",result);
+    return result;
+  }
+
   function tokenAmount(value,{address=null,symbol="",summary=false}={}){
     const formatter=getContext?.()?.tokenFormat?.amount || window.WalletTokenFormat?.amount;
     if(typeof formatter==="function") return formatter(value,{chain:"apertum",address,symbol},{summary});
@@ -4369,7 +4444,7 @@ window.DAO1Project = (() => {
   }
 
   async function enrichTransactionsWithClaims(address,status=null,jobToken=transactionJobToken,options={}){
-    const claimPerf={startedAt:performance.now(),loadBaseMs:0,detailFlowsMs:0,valuationMs:0,nativeFallbackMs:0,rowBuildMs:0,saveClaimsMs:0,saveTxPatchesMs:0};
+    const claimPerf={startedAt:performance.now(),loadBaseMs:0,detailFlowsMs:0,valuationMs:0,nativeFallbackMs:0,saveNativeFlowsMs:0,nativeFlowsPersisted:0,rowBuildMs:0,saveClaimsMs:0,saveTxPatchesMs:0};
     const baseStarted=performance.now();
     const txs=await loadTransactionRows(address,null);
     // v53: Claims verwenden direkt den persistenten NFT-Cache DES betreffenden Wallets.
@@ -4515,6 +4590,38 @@ window.DAO1Project = (() => {
     }
     claimPerf.nativeFallbackMs=Math.round(performance.now()-nativeStarted);
 
+    // Phase 6.20 / P5: Bestätigte native APTM-Claim-Auszahlungen werden nicht mehr
+    // nur als Claim-Legacyfelder geführt. Sie erhalten denselben kanonischen
+    // project_transaction_asset_flows-Datensatz wie ERC-20-Claims. Damit lesen
+    // Dashboard, Bot-Summen und Claim-Detail auch native Claims asset-flow-first.
+    const nativeFlowStarted=performance.now();
+    const nativeFlowRows=[];
+    for(const t of nativeTargets){
+      const h=String(t.tx_hash||"").toLowerCase();
+      const amount=Number(nativeFallbackByHash.get(h)||0);
+      if(!Number.isFinite(amount)||amount<=0)continue;
+      if((flowsByTx.get(h)||[]).some(f=>f.direction==="eingang"))continue;
+      const txPrice=Number(t.aptm_usd||0);
+      const row=nativeClaimAssetFlowRow(address,t,amount,{
+        priceUsd:txPrice>0?txPrice:null,
+        valueUsd:txPrice>0?amount*txPrice:null,
+        priceSource:txPrice>0?(t.price_source||"Historischer APTM/USD-Kurs der Claim-TX"):null,
+        counterparty:t.to_address||null
+      });
+      if(row)nativeFlowRows.push(row);
+    }
+    if(nativeFlowRows.length){
+      await saveAssetFlowRows(nativeFlowRows);
+      for(const row of nativeFlowRows){
+        const h=String(row.tx_hash||"").toLowerCase();
+        allFlows.push(row);
+        if(!flowsByTx.has(h))flowsByTx.set(h,[]);
+        flowsByTx.get(h).push(row);
+      }
+    }
+    claimPerf.saveNativeFlowsMs=Math.round(performance.now()-nativeFlowStarted);
+    claimPerf.nativeFlowsPersisted=nativeFlowRows.length;
+
     const rowBuildStarted=performance.now();
     const claimRows=[];
     for(let i=0;i<claimTxs.length;i++){
@@ -4570,7 +4677,7 @@ window.DAO1Project = (() => {
         }
       }
       const legacyRewardAptm=primary
-        ? (isWrappedAptmSymbol(primary.token_symbol,primary.token_name)?rewardAmount:null)
+        ? ((isWrappedAptmSymbol(primary.token_symbol,primary.token_name)||lower(primary.token_address||"")==="native"||String(primary.token_symbol||"").toUpperCase()==="APTM")?rewardAmount:null)
         : rewardAmount;
 
       claimRows.push({
@@ -7921,5 +8028,5 @@ window.DAO1Project = (() => {
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
-    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, classifyNftType };
+    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, classifyNftType };
 })();

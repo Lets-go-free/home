@@ -1,4 +1,4 @@
-// Phase 6.19 · 26.09.2026 01:19:30 CEST: Audit P4 nach 6.18-Realtest abgeschlossen (25,8 s Gesamt / 16,8 s DAO1); P5 Claims/Payouts startet mit asset-flow-first Single-Source-of-Truth-Leseschicht. Build 20260926-011930.
+// Phase 6.20 · 26.09.2026 02:30:43 CEST: Audit P5 Schritt 2: native APTM-Claims werden als kanonische Asset-Flows persistiert; bestehende native Claim-Caches werden einmalig ohne Blockchain-Vollscan migriert. Build 20260926-023043.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: unabhängige Apertum-Owner-/Collections-Abfragen werden parallel geladen; Ownership-, Kaufpreis- und Cache-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen. Persistierte Resolver-v3-Ergebnisse (auch bewusst offene) werden beim NFT-Tab cache-first wiederverwendet; kein erneuter Kaufpreis-Lauf beim ersten Öffnen ohne geänderte Erwerbs-Evidenz. P4 Asset-Flow-Fresh-Build entkoppelt Vollbewertung. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 zentraler NFT-Kaufpreisresolver v3; historische Kauf-Tx bleibt über spätere Walletwechsel erhalten. P4 Messung bestätigt Asset-Flows als Hauptengpass. Build 20260924-173201.
@@ -321,8 +321,19 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "6.01";
+const WT_CURRENT_RELEASE = "6.20";
 const WT_RELEASE_REGISTRY = Object.freeze({
+  "6.20": {
+    title: "Native APTM-Claims werden als Asset-Flows vereinheitlicht",
+    userNotice: true,
+    dataImpact: true,
+    migrations: ["dao1:native-claim-flows-v1"],
+    bullets: [
+      "Native APTM-Auszahlungen aus Bot-Claims werden jetzt wie ERC-20-Claims als kanonische Asset-Flows gespeichert.",
+      "Bestehende bestätigte native Claims werden einmalig aus dem Claim-Cache in project_transaction_asset_flows nachgezogen; dafür ist kein neuer Blockchain-Vollscan nötig.",
+      "Die bisherigen Claim-Reward-Felder bleiben vorerst nur als Kompatibilitätscache erhalten; sichtbare Summen lesen weiterhin asset-flow-first."
+    ]
+  },
   "5.93": {
     title: "NFT-Datenmigration und APTMDAO-RPC wurden korrigiert",
     userNotice: true,
@@ -426,7 +437,16 @@ async function wtMigrationDao1NftMetadataOwnership(){
     wtNftMigrationTechnicalIssues=null;
   }
 }
+async function wtMigrationDao1NativeClaimFlows(){
+  if(!window.DAO1Project?.backfillNativeClaimAssetFlows)throw new Error("DAO1 Native-Claim-Flow-Migration ist nicht verfügbar.");
+  const result=await window.DAO1Project.backfillNativeClaimAssetFlows();
+  await window.DAO1Project?.loadDashboardSummary?.().catch(e=>console.warn("DAO1 Dashboard nach Native-Claim-Migration",e));
+  refreshDashboardProjectSummaries?.().catch(()=>{});
+  return {migrationStatus:"complete",details:result||{wallets:0,claims:0,persisted:0}};
+}
+
 const WT_DATA_MIGRATIONS = Object.freeze({
+  "dao1:native-claim-flows-v1": {version:1,release:"6.20",label:"DAO1 native APTM-Claims → kanonische Asset-Flows",run:wtMigrationDao1NativeClaimFlows},
   "dao1:nft-store-metadata-v3": {version:4,release:"5.93",label:"DAO1/APTM NFT-Metadaten + Ownership/DID-Repair · RPC/partial Fix",run:wtMigrationDao1NftMetadataOwnership}
 });
 async function runPendingDataMigrations(){
@@ -1760,7 +1780,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"DB/RAM",manual:"Projektrefresh",details:[["DAO1 Übersicht/Bot-Summen","RAM nach Lazy Load","Supabase DAO1 Caches","Apertum bei Aktualisierung","Current State; eindeutige aktuelle Bots, Historie separat"]]},
   {id:"dao-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"–",open:"vorhandener Preis-Cache",manual:"zentrale Preisaktualisierung",details:[["DAO1 aktuelle Kurse/Preisrouten","RAM/zentraler Preiscache","bestehende DAO1/Apertum Preislogik","Apertum DEX nur bei zentraler Preisaktualisierung","Tab zeigt ausschließlich bereits ermittelte Preise, Routen und Pools; keine eigene Preisermittlung"]]},
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Wallet-Wechsel Cache; Daten aktualisieren lädt neue Chain-Daten"]]},
-  {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","P5: zentrale asset-flow-first Payout-Leseschicht; Claim→NFT-Marker aus Transaktion/Claim-Cache","Supabase project_transaction_asset_flows (Asset/Menge/USD primär) + project_transactions/project_nft_claims nur Zuordnung/Legacy-Fallback","Apertum nur bei manueller Aktualisierung","Dashboard, Bot-Übersicht und Claim-Detail lesen dieselbe Payout-Schicht; claim_reward_aptm/-usd ist nur Fallback für alte native Claims ohne Flow"]]},
+  {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","P5: zentrale asset-flow-first Payout-Leseschicht; Claim→NFT-Marker aus Transaktion/Claim-Cache","Supabase project_transaction_asset_flows (Asset/Menge/USD primär) + project_transactions/project_nft_claims nur Zuordnung/Legacy-Fallback","Apertum nur bei manueller Aktualisierung","Phase 6.20 persistiert auch native APTM-Claims als Asset-Flows; Dashboard, Bot-Übersicht und Claim-Detail lesen dieselbe Payout-Schicht. Legacy reward-Felder sind nur noch Kompatibilitätscache."]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → Root + Downline + Upline der aktuell eigenen DIDs lokal lesen, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
@@ -2121,7 +2141,7 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P2", workStatus:"erledigt", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Phase 6.03: Automatischer Fresh-Build-Snapshot ist an den Lifecycle-Statusvertrag gekoppelt; nur complete ist zugelassen, partial/deferred/failed blockieren den finalen Snapshot und werden im Snapshot-Gate protokolliert."},
   {priority:"P3", workStatus:"erledigt", severity:"critical", area:"Fresh-Build-Parität", finding:"6.11-Realtest: Fresh-Build reproduziert den bekannten Entwicklungs-Testuser einschließlich Ownership/Erwerbsdaten und historischer Kaufpreise. Kontrollfall #38483 findet wieder exakt 10’000 wUSDT in Tx 0x31cd…1de2; weitere bekannte Preise (u. a. #31722, #90227, #90289, #37174) sind deckungsgleich. Bewusst nicht deterministisch verknüpfbare Käufe bleiben offen statt geraten zu werden.", action:"Phase 6.12 schließt P3 ab und macht den finalen Resolver-v3-Stand cache-first: auch bewusst offene Ergebnisse werden mit ihrer Erwerbs-Evidenz persistiert und beim ersten NFT-Tab-Öffnen nicht nochmals neu gerechnet, solange sich die zugrunde liegende Ownership-/Erwerbs-Evidenz nicht geändert hat."},
   {priority:"P4", workStatus:"erledigt", severity:"high", area:"Performance Fresh-Import", finding:"6.18-Realtest bestätigt die Konsolidierung: Wallet-Erstimport 25'783 ms, DAO1 16'788 ms. Asset-Flows 1'056 ms, Claims 2'241 ms, Transactions 3'354 ms, NFT-Ownership 8'135 ms. Gegenüber dem 6.11-Stand mit rund 17 Minuten wurde der blockierende Fresh-Build um rund 97,5 % reduziert; weitere Ownership-Mikrooptimierungen sind aktuell nicht verhältnismässig.", action:"P4 abgeschlossen. 6.18 bleibt Referenz: Owner-/Collections-Endpoint parallel, Asset-Flow-Fresh-Build ohne Vollbewertung, Claim-Patches im Batch. Weitere Optimierung nur bei neu gemessenem Hotspot."},
-  {priority:"P5", workStatus:"in Arbeit", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Der Audit zeigt drei überlappende Persistenz-/Readmodelle: project_transaction_asset_flows enthält den tatsächlichen Assetfluss; project_nft_claims speichert Claim→NFT plus Reward-Assetfelder; project_transactions enthält zusätzlich Claim-Marker und Legacy reward_aptm/USD-Felder. Das ist funktional, kann aber widersprüchliche Auszahlungswerte erzeugen.", action:"Phase 6.19 startet die Konsolidierung ohne Schema-/Write-Risiko: Detailtab, Bot-Claim-Summen, Bot-Übersicht und Dashboard lesen über eine zentrale asset-flow-first Payout-Schicht. project_transaction_asset_flows ist für Asset/Menge/USD primär; claim_reward_aptm/USD ist nur Legacy-Fallback. Nächster P5-Schritt: native APTM-Payouts ebenfalls als kanonische Asset-Flows persistieren und danach redundante Reward-Felder schrittweise aus führenden Lesepfaden entfernen."},
+  {priority:"P5", workStatus:"in Arbeit", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Der Audit zeigt drei überlappende Persistenz-/Readmodelle: project_transaction_asset_flows enthält den tatsächlichen Assetfluss; project_nft_claims speichert Claim→NFT plus Reward-Assetfelder; project_transactions enthält zusätzlich Claim-Marker und Legacy reward_aptm/USD-Felder. Das ist funktional, kann aber widersprüchliche Auszahlungswerte erzeugen.", action:"Phase 6.19 hat alle sichtbaren Claim-Auszahlungen asset-flow-first vereinheitlicht. Phase 6.20 persistiert nun auch bestätigte native APTM-Claims als kanonische project_transaction_asset_flows und migriert bestehende native Claim-Caches einmalig ohne Blockchain-Vollscan. claim_reward_aptm/USD bleiben vorerst nur Kompatibilitätscache. Nach Realtest kann P5 im nächsten Schritt die noch lesenden Legacy-/Exportpfade prüfen und redundante Reward-Felder aus führenden Pfaden entfernen."},
   {priority:"P6", workStatus:"offen", severity:"high", area:"NFT / Bot Current State", finding:"nft_cache, project_nft_ownership und DAO1-Runtime-Caches können zeitweise unterschiedliche Zustände liefern.", action:"nft_cache + project_nft_ownership als persistente Wahrheiten definieren; Runtime nur als abgeleitete Session-Sicht verwenden."},
   {priority:"P7", workStatus:"offen", severity:"high", area:"Wallet-ID Lifecycle", finding:"Transiente IDs wie local1 konnten bis in UUID-DB-Filter gelangen (6.00 korrigierter konkreter Fall).", action:"DB-Zugriffe ausschließlich mit persistierter dbId/UUID erlauben; lokale Client-ID nur für UI verwenden."},
   {priority:"P8", workStatus:"offen", severity:"medium", area:"Fehlerbehandlung", finding:"Mehrere optionale catch(()=>{})-Pfade erschweren die Unterscheidung zwischen bewusst optional und fachlich unvollständig.", action:"Fehlerklassen unterscheiden: optional, retryable, partial, fatal; zentrale Diagnose statt stiller Fehler."},
