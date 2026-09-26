@@ -120,8 +120,34 @@
             margin: 0 0 12px 0;
         }
         .dash-hinweis { font-size: 0.75em; font-weight: 400; color: #718096; margin-left: 8px; }
-        .sum-sub { font-size: 0.8em; color: #718096; }
+        .sum-sub { font-size: 0.8em; color: #718096; white-space: pre-line; line-height: 1.5; }
         .sum-card.sum-saldo .sum-sub { color: #cbd5e0; }
+        .twr-chart {
+            margin-top: 12px;
+            background: #ffffff;
+            border: 1px solid #cbd5e0;
+            border-radius: 10px;
+            padding: 14px 16px 6px 16px;
+        }
+        .twr-legende { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85em; color: #4a5568; margin-bottom: 6px; }
+        .twr-leg { display: inline-flex; align-items: center; gap: 6px; }
+        .twr-punkt { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+        .twr-svg-wrap { position: relative; }
+        .twr-svg-wrap svg { width: 100%; height: auto; display: block; }
+        .twr-tooltip {
+            display: none;
+            position: absolute;
+            top: 10px;
+            background: #1a202c;
+            color: #ffffff;
+            font-size: 0.8em;
+            line-height: 1.5;
+            padding: 8px 10px;
+            border-radius: 6px;
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 5;
+        }
         .neo-input {
             padding: 9px 10px;
             border: 2px solid #cbd5e0;
@@ -393,6 +419,13 @@
                 </div>
             </div>
             <div class="dash-bereich">
+                <h4>Zeitgewichtete Rendite (TWR) <span class="dash-hinweis">wie gut die Strategien gearbeitet haben, unabhängig davon, wann wie viel Geld ein- oder ausbezahlt wurde</span></h4>
+                <div class="trades-summary">
+                    <div class="sum-card" title="Trades minus Gebühren und Kommissionen, pro Abschnitt zwischen Ein-/Auszahlungen gerechnet und verkettet"><span class="sum-label">Zeitgewichtete Rendite</span><span class="sum-wert" id="dTWR">–</span><span class="sum-sub" id="dTWRSub"></span></div>
+                </div>
+                <div class="twr-chart" id="twrChart"></div>
+            </div>
+            <div class="dash-bereich">
                 <h4>Trades</h4>
                 <div class="trades-summary">
                     <div class="sum-card"><span class="sum-label">Anzahl Trades</span><span class="sum-wert" id="dAnzahl">–</span><span class="sum-sub" id="dAnzahlSub"></span></div>
@@ -458,7 +491,7 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Close Price</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Commission</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit/Amount</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;" title="Gewinn/Verlust in % vom Saldo des Accounts vor dem Trade">G/V %</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;" title="Gewinn/Verlust in % vom Saldo des Accounts vor dem Trade">G/V %<br>Brutto</th>
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;">Gehebelt</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Betrag<br>effektiv</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
@@ -590,7 +623,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 26.09.2026 23:12:31</div>
+        <div class="version-info">Version: 26.09.2026 23:44:41</div>
     </div>
 </div>
 
@@ -1788,6 +1821,149 @@ function setzeKachel(id, wert, opt) {
     if (sub) sub.textContent = opt.sub || '';
 }
 
+// Strategie eines Accounts (aus Admin -> Accounts), sonst "ohne Strategie"
+function strategieVon(account) {
+    const acc = loadAccounts().find(a => a.account === String(account));
+    return (acc && acc.strategie) ? acc.strategie : 'ohne Strategie';
+}
+
+// Einträge nach Strategie gruppieren, sortiert nach Name ("ohne Strategie" zuletzt)
+function nachStrategie(eintraege) {
+    const g = {};
+    eintraege.forEach(t => { (g[strategieVon(t.account)] = g[strategieVon(t.account)] || []).push(t); });
+    return Object.keys(g)
+        .sort((a, b) => (a === 'ohne Strategie') - (b === 'ohne Strategie') || a.localeCompare(b))
+        .map(name => ({ name, eintraege: g[name] }));
+}
+
+function bestUndSchlechtest(trades) {
+    let best = null, worst = null;
+    trades.forEach(t => {
+        const pr = tradeProzente.get(tradeKey(t.account, t.ticket));
+        if (!pr || pr.pct === null) return;
+        if (!best || pr.pct > best.pct) best = { t, pct: pr.pct };
+        if (!worst || pr.pct < worst.pct) worst = { t, pct: pr.pct };
+    });
+    return { best, worst };
+}
+
+// ---------- Zeitgewichtete Rendite (TWR) ----------
+// Alle Einträge chronologisch. Kapital = laufender Saldo (Betrag effektiv inkl. Commission).
+// - Einzahlung, Auszahlung, Balance Adjust = Geldfluss: verändert das Kapital, aber nicht die Rendite
+// - Trades (inkl. Commission) und Gebühren = Ergebnis: Rendite = Ergebnis / Kapital davor
+// Die Einzelrenditen werden verkettet: (1 + r1) x (1 + r2) x ... - 1
+// Rückgabe: { pct, verlauf: [{ tag, pct }], unvollstaendig }
+function berechneTWR(eintraege) {
+    const liste = [...eintraege].sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
+    let kapital = 0;
+    let faktor = 1;
+    let unvollstaendig = false;
+    const proTag = new Map();
+    liste.forEach(t => {
+        const eff = betragEffektiv(t);
+        if (eff === null) { unvollstaendig = true; return; }
+        const komm = Number(t.commission) || 0;
+        const kat = isAccounting(t) ? getKategorie(t) : '';
+        const istGeldfluss = kat === 'Einzahlung' || kat === 'Auszahlung' || kat === 'Balance Adjust';
+        if (istGeldfluss) {
+            kapital += eff + komm;
+        } else {
+            const ergebnis = eff + komm;
+            if (kapital > 0) faktor *= (1 + ergebnis / kapital);
+            kapital += ergebnis;
+        }
+        proTag.set(datumKey(t.openTime), (faktor - 1) * 100);
+    });
+    const verlauf = [...proTag.entries()].map(([tag, pct]) => ({ tag, pct }));
+    return { pct: liste.length ? (faktor - 1) * 100 : null, verlauf, unvollstaendig };
+}
+
+// Liniengrafik als SVG (ohne externe Bibliothek)
+const TWR_FARBEN = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
+
+function zeichneTWRChart(serien) {
+    const box = document.getElementById('twrChart');
+    if (!box) return;
+    // alle Tage von erstem bis letztem Eintrag
+    const alleTage = [...new Set(serien.flatMap(s => s.verlauf.map(p => p.tag)))].sort();
+    if (alleTage.length < 2) { box.innerHTML = '<p class="dash-hinweis" style="margin:0;">Noch zu wenig Daten für die Grafik.</p>'; return; }
+    const tage = [];
+    for (let d = keyToDate(alleTage[0]); d <= keyToDate(alleTage[alleTage.length - 1]); d.setDate(d.getDate() + 1)) tage.push(formatDate(d));
+    // Werte je Tag (letzter bekannter Wert wird fortgeführt, vor dem ersten Eintrag leer)
+    serien.forEach(s => {
+        const m = new Map(s.verlauf.map(p => [p.tag, p.pct]));
+        let letzter = null;
+        s.werte = tage.map(tag => { if (m.has(tag)) letzter = m.get(tag); return letzter; });
+    });
+    const alleWerte = serien.flatMap(s => s.werte).filter(x => x !== null);
+    let min = Math.min(0, ...alleWerte), max = Math.max(0, ...alleWerte);
+    if (max - min < 1) { max += 0.5; min -= 0.5; }
+    const pad = (max - min) * 0.08; min -= pad; max += pad;
+
+    const W = 1000, H = 340, L = 60, R = 20, T = 20, B = 40;
+    const x = i => L + (W - L - R) * (tage.length === 1 ? 0 : i / (tage.length - 1));
+    const y = v => T + (H - T - B) * (1 - (v - min) / (max - min));
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verlauf zeitgewichtete Rendite">`;
+    // Gitter + Y-Beschriftung
+    for (let k = 0; k <= 5; k++) {
+        const val = min + (max - min) * k / 5;
+        svg += `<line x1="${L}" x2="${W - R}" y1="${y(val)}" y2="${y(val)}" stroke="#e2e8f0" stroke-width="1"/>`;
+        svg += `<text x="${L - 8}" y="${y(val) + 4}" text-anchor="end" font-size="12" fill="#718096">${zahl(val, 1)}%</text>`;
+    }
+    svg += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="#a0aec0" stroke-width="1.5"/>`;
+    // X-Beschriftung (ca. 6 Daten)
+    const schritte = Math.max(1, Math.round((tage.length - 1) / 6));
+    for (let i = 0; i < tage.length; i += schritte) {
+        svg += `<text x="${x(i)}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#718096">${datumZeit(tage[i]).substring(0, 6)}${datumZeit(tage[i]).substring(8, 10)}</text>`;
+    }
+    // Linien
+    serien.forEach(s => {
+        let pfad = '';
+        s.werte.forEach((val, i) => {
+            if (val === null) return;
+            pfad += (pfad ? ' L' : 'M') + x(i).toFixed(1) + ' ' + y(val).toFixed(1);
+        });
+        svg += `<path d="${pfad}" fill="none" stroke="${s.farbe}" stroke-width="${s.gesamt ? 3 : 2}" ${s.gesamt ? '' : 'stroke-dasharray="0"'} stroke-linejoin="round"/>`;
+    });
+    svg += `<line id="twrLinie" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#4a5568" stroke-width="1" stroke-dasharray="4 3" style="display:none"/>`;
+    svg += `<rect id="twrFlaeche" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+    svg += '</svg>';
+
+    const legende = serien.map(s => `<span class="twr-leg"><span class="twr-punkt" style="background:${s.farbe}"></span>${s.name}</span>`).join('');
+    box.innerHTML = `<div class="twr-legende">${legende}</div><div class="twr-svg-wrap">${svg}<div class="twr-tooltip" id="twrTooltip"></div></div>`;
+
+    // Maus: Werte am jeweiligen Tag anzeigen
+    const svgEl = box.querySelector('svg');
+    const flaeche = box.querySelector('#twrFlaeche');
+    const linie = box.querySelector('#twrLinie');
+    const tip = box.querySelector('#twrTooltip');
+    const zeigen = ev => {
+        const r = svgEl.getBoundingClientRect();
+        const px = (ev.clientX - r.left) / r.width * W;
+        const i = Math.max(0, Math.min(tage.length - 1, Math.round((px - L) / (W - L - R) * (tage.length - 1))));
+        linie.setAttribute('x1', x(i)); linie.setAttribute('x2', x(i)); linie.style.display = '';
+        tip.innerHTML = '<strong>' + WOCHENTAGE[keyToDate(tage[i]).getDay()] + ' ' + datumZeit(tage[i]) + '</strong><br>' +
+            serien.map(s => `<span style="color:${s.gesamt ? '#ffffff' : s.farbe}">●</span> ${s.name}: ${s.werte[i] === null ? '–' : zahl(s.werte[i], 2) + '%'}`).join('<br>');
+        tip.style.display = 'block';
+        const links = x(i) / W * r.width;
+        tip.style.left = (links > r.width / 2 ? links - tip.offsetWidth - 12 : links + 12) + 'px';
+    };
+    flaeche.addEventListener('mousemove', zeigen);
+    flaeche.addEventListener('mouseleave', () => { tip.style.display = 'none'; linie.style.display = 'none'; });
+}
+
+function renderTWR() {
+    const gesamt = berechneTWR(mt5Trades);
+    const gruppen = nachStrategie(mt5Trades).map(g => ({ name: g.name, twr: berechneTWR(g.eintraege) }));
+    const sub = (gesamt.unvollstaendig ? 'Hebel bei einem Konto fehlt, Wert unvollständig\n' : '') +
+        gruppen.map(g => g.name + ': ' + (g.twr.pct === null ? '–' : zahl(g.twr.pct, 2) + '%')).join('\n');
+    setzeKachel('dTWR', gesamt.pct, { farbig: true, suffix: '%', sub });
+    const serien = [{ name: 'Gesamt', farbe: '#2d3748', gesamt: true, verlauf: gesamt.verlauf }]
+        .concat(gruppen.map((g, i) => ({ name: g.name, farbe: TWR_FARBEN[i % TWR_FARBEN.length], verlauf: g.twr.verlauf })));
+    zeichneTWRChart(serien);
+}
+
 function renderDashboard() {
     // Konto (Wallet)
     const w = walletSummen();
@@ -1796,43 +1972,57 @@ function renderDashboard() {
     setzeKachel('dKontoAus', -w.aus);
     setzeKachel('dKontoNetto', netto);
 
-    // Strategien (alle Trades, alle Accounts)
+    // Strategien (alle Trades, alle Accounts) + Unterteilung je Strategie
     const sum = tradeSummen(mt5Trades);
-    setzeKachel('dStratEin', sum.fehlt ? null : sum.einz);
-    setzeKachel('dStratAus', sum.fehlt ? null : sum.ausz);
-    setzeKachel('dStratGew', sum.fehlt ? null : sum.gew, { farbig: true });
-    setzeKachel('dStratGeb', sum.fehlt ? null : sum.geb);
-    setzeKachel('dStratKomm', sum.komm);
-    setzeKachel('dStratSaldo', sum.saldo, { sub: sum.fehlt ? 'Hebel bei einem Konto fehlt' : '' });
+    const gruppen = nachStrategie(mt5Trades).map(g => ({ name: g.name, sum: tradeSummen(g.eintraege) }));
+    const zeilen = feld => gruppen.map(g => {
+        const wert = feld === 'komm' ? g.sum.komm : (feld === 'saldo' ? g.sum.saldo : (g.sum.fehlt ? null : g.sum[feld]));
+        return g.name + ': ' + (wert === null ? '–' : zahl(wert, 2));
+    }).join('\n');
+    setzeKachel('dStratEin', sum.fehlt ? null : sum.einz, { sub: zeilen('einz') });
+    setzeKachel('dStratAus', sum.fehlt ? null : sum.ausz, { sub: zeilen('ausz') });
+    setzeKachel('dStratGew', sum.fehlt ? null : sum.gew, { farbig: true, sub: zeilen('gew') });
+    setzeKachel('dStratGeb', sum.fehlt ? null : sum.geb, { sub: zeilen('geb') });
+    setzeKachel('dStratKomm', sum.komm, { sub: zeilen('komm') });
+    setzeKachel('dStratSaldo', sum.saldo, { sub: (sum.fehlt ? 'Hebel bei einem Konto fehlt\n' : '') + zeilen('saldo') });
 
     // Effektiver Gewinn/Verlust
     const eff = sum.saldo === null ? null : sum.saldo - netto;
     setzeKachel('dEffGV', eff, { farbig: true });
     setzeKachel('dEffGVPct', (eff !== null && netto > 0) ? eff / netto * 100 : null, { farbig: true, suffix: '%' });
 
-    // Anzahl Trades
+    // Anzahl Trades + je Strategie
     const trades = mt5Trades.filter(t => !isAccounting(t));
+    const pctVon = (n, total) => total ? zahl(n / total * 100, 2) + '%' : '';
+    const tGruppen = nachStrategie(trades).map(g => ({
+        name: g.name,
+        anzahl: g.eintraege.length,
+        gewinne: g.eintraege.filter(t => t.profit > 0).length,
+        verluste: g.eintraege.filter(t => t.profit < 0).length
+    }));
     const gewinne = trades.filter(t => t.profit > 0).length;
     const verluste = trades.filter(t => t.profit < 0).length;
-    const pct = n => trades.length ? zahl(n / trades.length * 100, 2) + '%' : '';
-    setzeKachel('dAnzahl', zahl(trades.length));
-    setzeKachel('dGewinn', zahl(gewinne), { sub: pct(gewinne) });
-    setzeKachel('dVerlust', zahl(verluste), { sub: pct(verluste) });
+    setzeKachel('dAnzahl', zahl(trades.length), { sub: tGruppen.map(g => g.name + ': ' + zahl(g.anzahl)).join('\n') });
+    setzeKachel('dGewinn', zahl(gewinne), { sub: pctVon(gewinne, trades.length) + '\n' +
+        tGruppen.map(g => g.name + ': ' + zahl(g.gewinne) + ' (' + pctVon(g.gewinne, g.anzahl) + ')').join('\n') });
+    setzeKachel('dVerlust', zahl(verluste), { sub: pctVon(verluste, trades.length) + '\n' +
+        tGruppen.map(g => g.name + ': ' + zahl(g.verluste) + ' (' + pctVon(g.verluste, g.anzahl) + ')').join('\n') });
 
-    // Bester / schlechtester Trade (nach %)
-    let best = null, worst = null;
-    trades.forEach(t => {
-        const pr = tradeProzente.get(tradeKey(t.account, t.ticket));
-        if (!pr || pr.pct === null) return;
-        if (!best || pr.pct > best.pct) best = { t, pct: pr.pct };
-        if (!worst || pr.pct < worst.pct) worst = { t, pct: pr.pct };
-    });
+    // Bester / schlechtester Trade (nach %) + je Strategie
+    const gesamt = bestUndSchlechtest(trades);
     const info = x => {
         const strat = accountZusatz(x.t.account) || 'Account ' + x.t.account;
         return datumZeit(datumKey(x.t.openTime)) + ' · ' + strat + ' (' + x.t.account + ') · ' + zahl(x.t.profit, 2);
     };
-    setzeKachel('dBester', best ? best.pct : null, { farbig: true, dez: 3, suffix: '%', sub: best ? info(best) : '' });
-    setzeKachel('dSchlechtester', worst ? worst.pct : null, { farbig: true, dez: 3, suffix: '%', sub: worst ? info(worst) : '' });
+    const jeStrat = nachStrategie(trades).map(g => ({ name: g.name, bs: bestUndSchlechtest(g.eintraege) }));
+    const kurz = x => x ? zahl(x.pct, 3) + '% (' + datumZeit(datumKey(x.t.openTime)) + ')' : '–';
+    setzeKachel('dBester', gesamt.best ? gesamt.best.pct : null, { farbig: true, dez: 3, suffix: '%',
+        sub: (gesamt.best ? info(gesamt.best) : '') + '\n' + jeStrat.map(g => g.name + ': ' + kurz(g.bs.best)).join('\n') });
+    setzeKachel('dSchlechtester', gesamt.worst ? gesamt.worst.pct : null, { farbig: true, dez: 3, suffix: '%',
+        sub: (gesamt.worst ? info(gesamt.worst) : '') + '\n' + jeStrat.map(g => g.name + ': ' + kurz(g.bs.worst)).join('\n') });
+
+    // Zeitgewichtete Rendite inkl. Grafik
+    renderTWR();
 }
 
 // ---------- Summary über der Tabelle "Alle Trades" ----------
