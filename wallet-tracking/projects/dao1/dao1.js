@@ -1,3 +1,4 @@
+// Phase 6.25 · 26.09.2026 17:31:56 CEST: P5 Diagnose: echte Missing-Preise nativer APTM-Claims protokollieren Exact-/Nachbar-/Legacy-Anker, ohne die Preislogik zu verändern. Build 20260926-173156.
 // Phase 6.24 · 26.09.2026 17:17:59 CEST: P5 UI-Fix: Die Claim-Spalte „APTM-Preis USD historisch“ liest den Stückpreis aus dem kanonischen Asset-Flow statt aus dem Legacy-Transaktionsfeld aptm_usd. Build 20260926-171759.
 // Phase 6.21 · 26.09.2026 12:12:27 CEST: P5 Claims/Payouts: sichtbare Claim-/Export-Lesepfade verwenden ausschliesslich kanonische Asset-Flows; Legacy Reward-Felder sind kein führender Read-Pfad mehr. Build 20260926-121227.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: Release-Metadaten synchronisiert; DAO1-Ownership-/Kaufpreis-Fachlogik unverändert. Build 20260925-183332.
@@ -4958,6 +4959,70 @@ window.DAO1Project = (() => {
     </div>`;
   }
 
+  let nativeClaimMissingPriceDiagSignature="";
+
+  async function diagnoseMissingNativeClaimFlowPrices(rows){
+    const ctx=getContext?.();
+    if(!ctx?.isAdmin)return;
+    const visibleTx=new Set((rows||[]).map(r=>String(r?.tx_hash||"").toLowerCase()).filter(Boolean));
+    const missing=(transactionAssetFlows||[]).filter(f=>
+      visibleTx.has(String(f?.tx_hash||"").toLowerCase()) &&
+      f?.direction==="eingang" &&
+      String(f?.flow_key||"").startsWith("claim-native:") &&
+      isNativeAptmAssetFlow(f) &&
+      (f?.price_usd==null || f?.value_usd==null)
+    ).sort((a,b)=>Number(b.block_number||0)-Number(a.block_number||0));
+    if(!missing.length)return;
+    const signature=missing.map(f=>`${String(f.tx_hash||"").toLowerCase()}:${Number(f.block_number||0)}`).join("|");
+    if(signature===nativeClaimMissingPriceDiagSignature)return;
+    nativeClaimMissingPriceDiagSignature=signature;
+
+    const pair=lower(PAIR_ADDRESS);
+    async function one(q){
+      try{const {data,error}=await q;if(error)throw error;return Array.isArray(data)?(data[0]||null):(data||null);}
+      catch(e){return {_diag_error:e?.message||String(e)};}
+    }
+    const diagnostics=await mapLimited(missing,4,async f=>{
+      const block=Number(f.block_number||0);
+      const [exact,before,after,legacy]=await Promise.all([
+        one(sb.from("aptm_price_anchors").select("target_block,sync_block,aptm_usd,scanned_from_block,scanned_at").eq("project_key",PROJECT_KEY).eq("chain_key",CHAIN_KEY).eq("pool_address",pair).eq("parser_version",PRICE_ANCHOR_VERSION).eq("target_block",block).limit(1)),
+        one(sb.from("aptm_price_anchors").select("target_block,sync_block,aptm_usd,scanned_from_block").eq("project_key",PROJECT_KEY).eq("chain_key",CHAIN_KEY).eq("pool_address",pair).eq("parser_version",PRICE_ANCHOR_VERSION).lt("target_block",block).not("aptm_usd","is",null).order("target_block",{ascending:false}).limit(1)),
+        one(sb.from("aptm_price_anchors").select("target_block,sync_block,aptm_usd,scanned_from_block").eq("project_key",PROJECT_KEY).eq("chain_key",CHAIN_KEY).eq("pool_address",pair).eq("parser_version",PRICE_ANCHOR_VERSION).gt("target_block",block).not("aptm_usd","is",null).order("target_block",{ascending:true}).limit(1)),
+        one(sb.from("aptm_price_history").select("block_number,log_index,aptm_usd").eq("pool_address",pair).lte("block_number",block).order("block_number",{ascending:false}).order("log_index",{ascending:false}).limit(1))
+      ]);
+      const beforeTarget=Number(before?.target_block);
+      const afterTarget=Number(after?.target_block);
+      return {
+        tx:String(f.tx_hash||""),
+        at:f.tx_timestamp||null,
+        block,
+        amount:Number(f.amount||0),
+        marketStartBlock:APTM_MARKET_START_BLOCK,
+        afterMarketStart:block>=APTM_MARKET_START_BLOCK,
+        exactAnchor:exact?`${exact.sync_block??"null"} / ${exact.aptm_usd??"null"}`:"none",
+        exactScannedFrom:exact?.scanned_from_block??null,
+        exactScannedAt:exact?.scanned_at??null,
+        beforeTarget:Number.isFinite(beforeTarget)?beforeTarget:null,
+        beforeGap:Number.isFinite(beforeTarget)?block-beforeTarget:null,
+        beforeSync:before?.sync_block??null,
+        beforePrice:before?.aptm_usd??null,
+        afterTarget:Number.isFinite(afterTarget)?afterTarget:null,
+        afterGap:Number.isFinite(afterTarget)?afterTarget-block:null,
+        afterSync:after?.sync_block??null,
+        afterPrice:after?.aptm_usd??null,
+        legacySync:legacy?.block_number??null,
+        legacyPrice:legacy?.aptm_usd??null,
+        exactError:exact?._diag_error||null,
+        beforeError:before?._diag_error||null,
+        afterError:after?._diag_error||null,
+        legacyError:legacy?._diag_error||null
+      };
+    });
+    console.info(`DAO1 Native Claim Missing Price Diagnostics · count=${diagnostics.length} · marketStartBlock=${APTM_MARKET_START_BLOCK} · marketStart=${APTM_MARKET_START_UTC}`);
+    console.table(diagnostics);
+    for(const d of diagnostics)console.info("DAO1 Native Claim Missing Price",d);
+  }
+
   function renderClaimsTab(){
     const el=document.getElementById("dao1ClaimsContent");if(!el)return;
     const walletRows=tabWalletFilteredRows(transactionRows.filter(r=>isClaimTxRow(r) && !isDidReferralRow(r)),claimFilterWallet);
@@ -4969,6 +5034,7 @@ window.DAO1Project = (() => {
     el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot-Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst eine tatsächliche Auszahlung den Claim.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
       <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText,"Bot-Claims",rows.length)}</div>
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const payouts=claimPayoutEntriesForTx(r);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=payouts.length?payouts.map(f=>{const isWrapped=isWrappedAptmSymbol(f.token_symbol,f.token_name);const amount=isWrapped?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"TOKEN"})} ${escapeHtml(f.token_symbol||"TOKEN")}`;const histUsd=Number(f.value_usd||0);return `<strong>${amount}</strong><div class="meta">${histUsd?usd(histUsd):"USD hist. –"}</div>`;}).join(""):"–";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${(()=>{const p=payouts.find(f=>((String(f.token_address||"").toLowerCase()==="native"&&String(f.token_symbol||"").toUpperCase()==="APTM")||isWrappedAptmSymbol(f.token_symbol,f.token_name))&&f.price_usd!=null&&Number.isFinite(Number(f.price_usd)));return p?usd(Number(p.price_usd)):"–";})()}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
+    void diagnoseMissingNativeClaimFlowPrices(rows);
   }
 
   let dao1TeamTreeMode="wallet";
