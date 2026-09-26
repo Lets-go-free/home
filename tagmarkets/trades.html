@@ -526,6 +526,11 @@
         <!-- Wallet-Transaktionen -->
         <div id="walletContainer">
             <h3 style="margin-bottom: 20px;">Wallet-Transaktionen</h3>
+            <!-- Summary: Geld von aussen ins System / aus dem System heraus -->
+            <div class="trades-summary">
+                <div class="sum-card" title="Frisches Geld von aussen (Status Approved)"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="walletSumEin">–</span></div>
+                <div class="sum-card" title="Auszahlungen aus dem System heraus (Status Approved)"><span class="sum-label">Auszahlungen</span><span class="sum-wert" id="walletSumAus">–</span></div>
+            </div>
             <div class="table-container-small">
                 <table id="walletTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
@@ -636,7 +641,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 26.09.2026 21:41:41</div>
+        <div class="version-info">Version: 26.09.2026 22:17:17</div>
     </div>
 </div>
 
@@ -1218,7 +1223,38 @@ async function loadWallet() {
     walletTx = all;
 }
 
+// ---------- Summary Wallet: Einzahlungen von aussen / Auszahlungen aus dem System ----------
+// Regeln: [Type, Transaction Sub-Type, Method], '*' = beliebig. Gross/klein egal.
+const WALLET_EINZAHLUNG = [
+    ['Deposit', '*', 'Crypto'],
+    ['IBPortal CommissionsDeposit', 'IBPortal CommissionsDeposit', 'Wire Transfer']
+];
+const WALLET_AUSZAHLUNG = [
+    ['Wallet Withdrawal From USD', '*', '*']
+];
+
+function walletRegelPasst(w, regeln) {
+    const norm = v => String(v || '').trim().toLowerCase();
+    return regeln.some(([typ, sub, methode]) =>
+        (typ === '*' || norm(w.type) === norm(typ)) &&
+        (sub === '*' || norm(w.sub_type) === norm(sub)) &&
+        (methode === '*' || norm(w.method) === norm(methode)));
+}
+
+function zeigeWalletSummary() {
+    let ein = 0, aus = 0;
+    walletTx.forEach(w => {
+        if (String(w.status || '').trim().toLowerCase() !== 'approved') return;
+        const betrag = Math.abs(Number(w.amount) || 0);
+        if (walletRegelPasst(w, WALLET_EINZAHLUNG)) ein += betrag;
+        else if (walletRegelPasst(w, WALLET_AUSZAHLUNG)) aus += betrag;
+    });
+    document.getElementById('walletSumEin').textContent = zahl(ein, 2);
+    document.getElementById('walletSumAus').textContent = zahl(-aus, 2);
+}
+
 function displayWallet() {
+    zeigeWalletSummary();
     displayUnstimmigkeiten();
     const tbody = document.getElementById('walletBody');
     tbody.innerHTML = '';
