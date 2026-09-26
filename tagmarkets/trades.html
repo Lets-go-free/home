@@ -1655,6 +1655,15 @@ function zeitUmbruch(zeit) {
     return datumZeit(zeit);
 }
 
+// Wochentag + Datum + Zeit, z.B. "Sa 08.08.2026 15:36:33"
+// (geschütztes Leerzeichen zwischen Wochentag und Datum, damit sie zusammenbleiben)
+const WOCHENTAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+function mitWochentag(zeit) {
+    const key = datumKey(String(zeit || ''));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return datumZeit(zeit);
+    return WOCHENTAGE[keyToDate(key).getDay()] + '\u00a0' + datumZeit(zeit);
+}
+
 function formatPlain(value) {
     return String(value);
 }
@@ -1730,7 +1739,7 @@ function displayTrades(selectedAccount) {
     // Saldo: laufende Summe "Betrag effektiv" der angezeigten Accounting-Einträge
     // (Einzahlungen, Auszahlungen, Gebühren), chronologisch (bei gleicher Zeit nach Ticket).
     // Gewinne/Verluste der Trades zählen NICHT, die werden separat ausbezahlt oder reinvestiert.
-    // Ohne Kommissionen. Fehlt ein Betrag effektiv (Hebel fehlt), ist der Saldo ab dort unbekannt.
+    // Die Commission der Trades wird abgezogen. Fehlt ein Betrag effektiv (Hebel fehlt), ist der Saldo ab dort unbekannt.
     const chrono = [...trades].sort((a, b) =>
         a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
     const saldoMap = new Map();
@@ -1738,7 +1747,8 @@ function displayTrades(selectedAccount) {
     let saldoUnbekannt = false;
     chrono.forEach(t => {
         if (!isAccounting(t)) {
-            // Trade: Saldo bleibt unverändert
+            // Trade: Gewinn/Verlust zählt nicht, die Commission (negativ) schon
+            laufend += Number(t.commission) || 0;
             saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
             return;
         }
@@ -1797,7 +1807,7 @@ function displayTrades(selectedAccount) {
         const row = tbody.insertRow();
         // Ausgeblendet: Platform, S/L, T/P, Taxes, Swap (sind weiterhin in der Datenbank)
         const values = [
-            [t.ticket, true], [t.account, true], [zeitUmbruch(t.openTime), true],
+            [t.ticket, true], [t.account, true], [mitWochentag(t.openTime), true],
             [t.type, true], [zahl(t.volume), false], [t.symbol, true],
             [zahl(t.openPrice), false],
             [zeitUmbruch(t.closedTime), true], [zahl(t.closePrice), false], [zahl(t.commission), false]
