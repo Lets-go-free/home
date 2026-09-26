@@ -659,7 +659,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 27.09.2026 00:03:29</div>
+        <div class="version-info">Version: 27.09.2026 00:30:04</div>
     </div>
 </div>
 
@@ -1327,14 +1327,14 @@ function renderCommissions() {
         const letzte = keyToDate(imJahr[0][0]);
         for (let d = erste; d <= letzte; d.setDate(d.getDate() + 7)) keys.push(formatDate(d));
     }
-    zeichneLinienChart({
+    zeichneSaeulenChart({
         box: document.getElementById('commChart'),
         keys,
+        werte: keys.map(k => wochen.has(k) ? wochen.get(k).summe : 0),
+        anzahl: keys.map(k => wochen.has(k) ? wochen.get(k).anzahl : 0),
         xLabel: k => datumZeit(k).substring(0, 6),
         tipTitel: k => 'Woche vom ' + datumZeit(k),
-        yLabel: v => zahl(v, 0),
-        tipWert: v => zahl(v, 2) + ' USD',
-        serien: [{ name: 'Commissions', farbe: '#10b981', gesamt: false, werte: keys.map(k => wochen.has(k) ? wochen.get(k).summe : 0) }]
+        yLabel: v => zahl(v, 0)
     });
 }
 
@@ -2063,6 +2063,76 @@ function zeichneLinienChart(cfg) {
         tip.style.left = (links > r.width / 2 ? links - tip.offsetWidth - 12 : links + 12) + 'px';
     });
     flaeche.addEventListener('mouseleave', () => { tip.style.display = 'none'; linie.style.display = 'none'; });
+}
+
+// Säulendiagramm als SVG, in jeder Säule die Anzahl (z.B. Claims je Woche)
+// cfg: { box, keys, werte, anzahl, xLabel(key), tipTitel(key), yLabel(v) }
+function zeichneSaeulenChart(cfg) {
+    const box = cfg.box;
+    const keys = cfg.keys;
+    if (!box) return;
+    if (!keys.length) { box.innerHTML = '<p class="dash-hinweis" style="margin:0;">Keine Commissions in diesem Jahr.</p>'; return; }
+
+    let max = Math.max(0, ...cfg.werte);
+    if (max <= 0) max = 1;
+    const roh = max / 5;
+    const mag = Math.pow(10, Math.floor(Math.log10(roh)));
+    const nrm = roh / mag;
+    const schritt = (nrm <= 1 ? 1 : nrm <= 2 ? 2 : nrm <= 5 ? 5 : 10) * mag;
+    max = Math.ceil(max / schritt) * schritt;
+
+    const W = 1000, H = 340, L = 70, R = 20, T = 20, B = 40;
+    const band = (W - L - R) / keys.length;
+    const breite = Math.max(2, band * 0.7);
+    const xMitte = i => L + band * i + band / 2;
+    const y = v => T + (H - T - B) * (1 - v / max);
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">`;
+    for (let val = 0; val <= max + schritt / 2; val += schritt) {
+        svg += `<line x1="${L}" x2="${W - R}" y1="${y(val)}" y2="${y(val)}" stroke="${val === 0 ? '#a0aec0' : '#e2e8f0'}" stroke-width="${val === 0 ? 1.5 : 1}"/>`;
+        svg += `<text x="${L - 8}" y="${y(val) + 4}" text-anchor="end" font-size="12" fill="#718096">${cfg.yLabel(val)}</text>`;
+    }
+    const schritte = Math.max(1, Math.round(keys.length / 8));
+    keys.forEach((k, i) => {
+        const wert = cfg.werte[i];
+        const n = cfg.anzahl[i];
+        if (wert > 0) {
+            const top = y(wert);
+            const hoehe = y(0) - top;
+            svg += `<rect class="saeule" data-i="${i}" x="${(xMitte(i) - breite / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${breite.toFixed(1)}" height="${hoehe.toFixed(1)}" rx="3" fill="#10b981"/>`;
+            // Anzahl in der Säule (bei zu kleiner Säule darüber)
+            const schrift = Math.min(14, Math.max(9, breite * 0.45));
+            if (hoehe >= schrift + 8) {
+                svg += `<text x="${xMitte(i)}" y="${(top + schrift + 3).toFixed(1)}" text-anchor="middle" font-size="${schrift.toFixed(0)}" font-weight="700" fill="#ffffff" pointer-events="none">${n}</text>`;
+            } else {
+                svg += `<text x="${xMitte(i)}" y="${(top - 4).toFixed(1)}" text-anchor="middle" font-size="${schrift.toFixed(0)}" font-weight="700" fill="#2d3748" pointer-events="none">${n}</text>`;
+            }
+        }
+        if (i % schritte === 0) {
+            svg += `<text x="${xMitte(i)}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#718096">${cfg.xLabel(k)}</text>`;
+        }
+    });
+    svg += `<rect class="chart-flaeche" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+    svg += '</svg>';
+    box.innerHTML = `<div class="twr-legende"><span class="twr-leg"><span class="twr-punkt" style="background:#10b981"></span>Summe pro Woche (Zahl in der Säule = Anzahl Claims)</span></div><div class="twr-svg-wrap">${svg}<div class="twr-tooltip"></div></div>`;
+
+    const svgEl = box.querySelector('svg');
+    const flaeche = box.querySelector('.chart-flaeche');
+    const tip = box.querySelector('.twr-tooltip');
+    flaeche.addEventListener('mousemove', ev => {
+        const r = svgEl.getBoundingClientRect();
+        const px = (ev.clientX - r.left) / r.width * W;
+        const i = Math.max(0, Math.min(keys.length - 1, Math.floor((px - L) / band)));
+        box.querySelectorAll('.saeule').forEach(el => el.setAttribute('fill', Number(el.dataset.i) === i ? '#059669' : '#10b981'));
+        tip.innerHTML = '<strong>' + cfg.tipTitel(keys[i]) + '</strong><br>Summe: ' + zahl(cfg.werte[i], 2) + ' USD<br>Anzahl Claims: ' + cfg.anzahl[i];
+        tip.style.display = 'block';
+        const links = xMitte(i) / W * r.width;
+        tip.style.left = (links > r.width / 2 ? links - tip.offsetWidth - 12 : links + 12) + 'px';
+    });
+    flaeche.addEventListener('mouseleave', () => {
+        tip.style.display = 'none';
+        box.querySelectorAll('.saeule').forEach(el => el.setAttribute('fill', '#10b981'));
+    });
 }
 
 // TWR-Verlauf: jeder Tag vom ersten bis zum letzten Eintrag, letzter Wert wird fortgeführt
