@@ -1,4 +1,4 @@
-// Phase 6.27 · 26.09.2026 18:08:50 CEST: P5 Diagnose-Fix: Missing-Claim-Preisdiagnose läuft beim App-Start auch bevor der Adminstatus vollständig geladen ist; nur eigener User-Kontext erforderlich. Build 20260926-180850.
+// Phase 6.28 · 26.09.2026 19:15:59 CEST: P5: APTM-Preisanker werden für offene Post-Launch-Claims wallet-unabhängig nachgezogen; normale User lösen fehlende Zielblöcke lokal/read-only auf. Prelaunch bleibt global ab On-Chain-Marktstart Block 88356 definiert. Build 20260926-191559.
 // Phase 6.26 · 26.09.2026 17:56:20 CEST: P5: Missing-Claim-Preisjob vom Tab in Start/Refresh verschoben; nur offene Nicht-Prelaunch-Flows werden erneut bewertet und diagnostiziert. Build 20260926-175620.
 // Phase 6.25 · 26.09.2026 17:31:56 CEST: P5 Diagnose: echte Missing-Preise nativer APTM-Claims protokollieren Exact-/Nachbar-/Legacy-Anker, ohne die Preislogik zu verändern. Build 20260926-173156.
 // Phase 6.24 · 26.09.2026 17:17:59 CEST: P5 UI-Fix: Die Claim-Spalte „APTM-Preis USD historisch“ liest den Stückpreis aus dem kanonischen Asset-Flow statt aus dem Legacy-Transaktionsfeld aptm_usd. Build 20260926-171759.
@@ -3051,21 +3051,15 @@ window.DAO1Project = (() => {
     for(const r of validCached)map.set(Number(r.target_block),r);
     if(activePriceJobLog){activePriceJobLog.anchorHits+=validCached.length;priceJobLog(`Anchor-Cache: ${validCached.length}/${targets.length} gültige Zielblöcke · ${nullCached.length} leere Anchor(s) werden neu geprüft`);}
 
-    if(nullCached.length && !getContext?.()?.isAdmin){
-      // Nicht-Admins dürfen globale leere Anchors nicht neu berechnen; vorhandener
-      // negativer Cache bleibt für sie maßgeblich. Admin-Fresh-Builds behandeln leere
-      // Anchors dagegen unten wie fehlende Zielblöcke und versuchen zuerst getReserves.
-      for(const r of nullCached)map.set(Number(r.target_block),r);
-    }
+    const ctx=getContext?.();
+    const canPersistGlobalAnchors=!!ctx?.isAdmin;
+    // Phase 6.28: Ein leerer globaler Anchor darf normale User nicht dauerhaft auf
+    // "missing" festnageln. Der globale Cache ist nur Wiederverwendung, nicht die
+    // fachliche Preisquelle. Fehlende/leere Zielblöcke werden fuer jeden User lokal
+    // read-only gegen den Pool aufgeloest; nur Admins persistieren das Ergebnis global.
 
     const missing=targets.filter(b=>!map.has(b));
     if(!missing.length)return map;
-    const ctx=getContext?.();
-    if(!ctx?.isAdmin){
-      // Nicht-Admins profitieren vom globalen Cache. Fehlende Blöcke werden aus
-      // Cache-Poisoning-Gründen nicht clientseitig global geschrieben.
-      return map;
-    }
 
     const meta=await poolMeta();
 
@@ -3080,8 +3074,8 @@ window.DAO1Project = (() => {
       if(status && ((idx+1)%25===0 || idx+1===missing.length))status.textContent=`Historische APTM-Preise ${idx+1}/${missing.length} per Pool-State geprüft…`;
     });
     if(reserveCreated.length){
-      await savePriceAnchors(reserveCreated);
-      if(activePriceJobLog)priceJobLog(`Reserve-Anchor: ${reserveCreated.length}/${missing.length} Zielblöcke ohne Log-Scan bewertet`);
+      if(canPersistGlobalAnchors)await savePriceAnchors(reserveCreated);
+      if(activePriceJobLog)priceJobLog(`Reserve-Anchor: ${reserveCreated.length}/${missing.length} Zielblöcke ohne Log-Scan bewertet${canPersistGlobalAnchors?" · global gespeichert":" · lokal aufgelöst"}`);
     }
     const stillMissing=missing.filter(b=>!map.has(b));
     if(!stillMissing.length)return map;
@@ -3107,8 +3101,8 @@ window.DAO1Project = (() => {
       }
     }
     await Promise.all(Array.from({length:Math.min(PRICE_ANCHOR_CONCURRENCY,clusters.length)},()=>worker()));
-    await savePriceAnchors(created);
-    if(activePriceJobLog)priceJobLog(`${created.length} globale Preisanker gespeichert`);
+    if(canPersistGlobalAnchors)await savePriceAnchors(created);
+    if(activePriceJobLog)priceJobLog(canPersistGlobalAnchors?`${created.length} globale Preisanker gespeichert`:`${created.length} Preisanker lokal aufgelöst`);
     return map;
   }
 
@@ -3534,6 +3528,41 @@ window.DAO1Project = (() => {
     return result;
   }
 
+  async function latestCachedAptmPriceBlock(maxBlock){
+    const target=Number(maxBlock);
+    if(!Number.isFinite(target)||target<APTM_MARKET_START_BLOCK)return null;
+    try{
+      const {data,error}=await sb.from("aptm_price_history").select("block_number,aptm_usd")
+        .eq("pool_address",lower(PAIR_ADDRESS)).lte("block_number",target)
+        .not("aptm_usd","is",null).order("block_number",{ascending:false}).limit(1);
+      if(error)throw error;
+      const row=(data||[])[0];
+      return row&&Number.isFinite(Number(row.block_number))?Number(row.block_number):null;
+    }catch(e){
+      console.warn("APTM letzter Preis-Sync lesen",e);
+      return null;
+    }
+  }
+
+  // Phase 6.28: Die globale APTM-Preishistorie ist wallet-unabhängig. Admin-Starts
+  // ziehen den gemeinsamen Sync-Cache bis zum höchsten offenen Post-Launch-Claim nach.
+  // Normale User schreiben den globalen Cache bewusst nicht; ihre fehlenden Zielblöcke
+  // werden anschließend trotzdem lokal/read-only in ensureExactPriceAnchors aufgelöst.
+  async function syncAptmPriceHistoryThroughBlock(maxBlock,status=null){
+    const target=Number(maxBlock);
+    const ctx=getContext?.();
+    if(!Number.isFinite(target)||target<APTM_MARKET_START_BLOCK)return {target,skipped:true,reason:"prelaunch"};
+    const lastBefore=await latestCachedAptmPriceBlock(target);
+    if(!ctx?.isAdmin)return {target,lastBefore,skipped:true,reason:"non-admin-local-resolution"};
+    const from=Math.max(APTM_MARKET_START_BLOCK,Number.isFinite(lastBefore)?lastBefore+1:APTM_MARKET_START_BLOCK);
+    if(from>target)return {target,lastBefore,from,scanned:false};
+    const rows=await syncPriceRangeChunked(from,target,status);
+    const lastAfter=await latestCachedAptmPriceBlock(target);
+    const result={target,from,lastBefore,lastAfter,rows:Number(rows?.length||0),scanned:true};
+    console.info("DAO1 APTM Price History Sync",result);
+    return result;
+  }
+
   // Phase 6.22 / P5: bestehende native APTM-Claim-Flows erhalten ihren
   // historischen USD-Wert direkt im kanonischen Asset-Flow. Vorhandene exakte
   // Transaktionspreise werden wiederverwendet; nur noch offene Blöcke gehen
@@ -3581,6 +3610,10 @@ window.DAO1Project = (() => {
         }else unresolved.push(f);
       }
       if(unresolved.length){
+        const highestOpenBlock=Math.max(...unresolved.map(f=>Number(f.block_number||0)).filter(Number.isFinite));
+        if(Number.isFinite(highestOpenBlock) && highestOpenBlock>=APTM_MARKET_START_BLOCK){
+          await syncAptmPriceHistoryThroughBlock(highestOpenBlock,document.getElementById("dao1TransactionStatus"));
+        }
         await valueAssetFlows(unresolved);
         for(const f of unresolved){
           f.updated_at=new Date().toISOString();
