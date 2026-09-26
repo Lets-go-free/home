@@ -1,3 +1,4 @@
+// Phase 6.26 · 26.09.2026 17:56:20 CEST: P5: Missing-Claim-Preisjob vom Tab in Start/Refresh verschoben; nur offene Nicht-Prelaunch-Flows werden erneut bewertet und diagnostiziert. Build 20260926-175620.
 // Phase 6.25 · 26.09.2026 17:31:56 CEST: P5 Diagnose: echte Missing-Preise nativer APTM-Claims protokollieren Exact-/Nachbar-/Legacy-Anker, ohne die Preislogik zu verändern. Build 20260926-173156.
 // Phase 6.24 · 26.09.2026 17:17:59 CEST: P5 UI-Fix: Die Claim-Spalte „APTM-Preis USD historisch“ liest den Stückpreis aus dem kanonischen Asset-Flow statt aus dem Legacy-Transaktionsfeld aptm_usd. Build 20260926-171759.
 // Phase 6.21 · 26.09.2026 12:12:27 CEST: P5 Claims/Payouts: sichtbare Claim-/Export-Lesepfade verwenden ausschliesslich kanonische Asset-Flows; Legacy Reward-Felder sind kein führender Read-Pfad mehr. Build 20260926-121227.
@@ -3553,11 +3554,21 @@ window.DAO1Project = (() => {
         f.direction==="eingang" &&
         String(f.flow_key||"").startsWith("claim-native:") &&
         isNativeAptmAssetFlow(f) &&
-        (f.price_usd==null || f.value_usd==null)
+        (f.price_usd==null || f.value_usd==null) &&
+        !String(f.price_source||"").includes(PRICE_PRELAUNCH_TAG)
       );
       flowsSeen+=candidates.length;
-      const direct=[],unresolved=[];
+      const direct=[],prelaunchRows=[],unresolved=[];
       for(const f of candidates){
+        const block=Number(f.block_number||0);
+        if(Number.isFinite(block) && block>0 && block<APTM_MARKET_START_BLOCK){
+          f.price_usd=null;
+          f.value_usd=null;
+          f.price_source=`Noch kein On-Chain-Marktpreis vorhanden · Marktstart Block ${APTM_MARKET_START_BLOCK} · ${PRICE_PRELAUNCH_TAG}`;
+          f.updated_at=new Date().toISOString();
+          prelaunchRows.push(f);prelaunch++;
+          continue;
+        }
         const tx=txByHash.get(String(f.tx_hash||"").toLowerCase());
         const price=Number(tx?.aptm_usd||0);
         if(price>0){
@@ -3577,7 +3588,7 @@ window.DAO1Project = (() => {
           else missing++;
         }
       }
-      const changed=[...direct,...unresolved];
+      const changed=[...direct,...prelaunchRows,...unresolved];
       if(changed.length){await saveAssetFlowRows(changed);persisted+=changed.length;}
       walletsDone++;
     }
@@ -4960,22 +4971,30 @@ window.DAO1Project = (() => {
   }
 
   let nativeClaimMissingPriceDiagSignature="";
+  let nativeClaimBackgroundPricePromise=null;
+  let nativeClaimBackgroundPriceUserId="";
+  let nativeClaimBackgroundPriceDoneAt=0;
 
-  async function diagnoseMissingNativeClaimFlowPrices(rows){
+  async function diagnoseMissingNativeClaimFlowPrices(rows=null,{flows=null,reason="background"}={}){
     const ctx=getContext?.();
-    if(!ctx?.isAdmin)return;
-    const visibleTx=new Set((rows||[]).map(r=>String(r?.tx_hash||"").toLowerCase()).filter(Boolean));
-    const missing=(transactionAssetFlows||[]).filter(f=>
-      visibleTx.has(String(f?.tx_hash||"").toLowerCase()) &&
+    if(!ctx?.isAdmin)return [];
+    const visibleTx=Array.isArray(rows)&&rows.length?new Set(rows.map(r=>String(r?.tx_hash||"").toLowerCase()).filter(Boolean)):null;
+    const sourceFlows=Array.isArray(flows)?flows:(transactionAssetFlows||[]);
+    const missing=sourceFlows.filter(f=>
+      (!visibleTx || visibleTx.has(String(f?.tx_hash||"").toLowerCase())) &&
       f?.direction==="eingang" &&
       String(f?.flow_key||"").startsWith("claim-native:") &&
       isNativeAptmAssetFlow(f) &&
-      (f?.price_usd==null || f?.value_usd==null)
+      (f?.price_usd==null || f?.value_usd==null) &&
+      !String(f?.price_source||"").includes(PRICE_PRELAUNCH_TAG)
     ).sort((a,b)=>Number(b.block_number||0)-Number(a.block_number||0));
-    if(!missing.length)return;
-    const signature=missing.map(f=>`${String(f.tx_hash||"").toLowerCase()}:${Number(f.block_number||0)}`).join("|");
-    if(signature===nativeClaimMissingPriceDiagSignature)return;
+    const signature=`${reason}|`+missing.map(f=>`${String(f.tx_hash||"").toLowerCase()}:${Number(f.block_number||0)}`).join("|");
+    if(signature===nativeClaimMissingPriceDiagSignature)return [];
     nativeClaimMissingPriceDiagSignature=signature;
+    if(!missing.length){
+      console.info(`DAO1 Native Claim Missing Price Diagnostics · count=0 · reason=${reason} · marketStartBlock=${APTM_MARKET_START_BLOCK} · marketStart=${APTM_MARKET_START_UTC}`);
+      return [];
+    }
 
     const pair=lower(PAIR_ADDRESS);
     async function one(q){
@@ -5018,9 +5037,32 @@ window.DAO1Project = (() => {
         legacyError:legacy?._diag_error||null
       };
     });
-    console.info(`DAO1 Native Claim Missing Price Diagnostics · count=${diagnostics.length} · marketStartBlock=${APTM_MARKET_START_BLOCK} · marketStart=${APTM_MARKET_START_UTC}`);
+    console.info(`DAO1 Native Claim Missing Price Diagnostics · count=${diagnostics.length} · reason=${reason} · marketStartBlock=${APTM_MARKET_START_BLOCK} · marketStart=${APTM_MARKET_START_UTC}`);
     console.table(diagnostics);
     for(const d of diagnostics)console.info("DAO1 Native Claim Missing Price",d);
+    return diagnostics;
+  }
+
+  async function refreshMissingNativeClaimPrices({force=false,reason="app-start"}={}){
+    const ctx=getContext?.();
+    const userId=String(ctx?.currentUser?.id||"");
+    if(!userId)return {skipped:true,reason:"no-user"};
+    if(nativeClaimBackgroundPricePromise)return nativeClaimBackgroundPricePromise;
+    if(!force && nativeClaimBackgroundPriceUserId===userId && nativeClaimBackgroundPriceDoneAt>0)return {skipped:true,reason:"already-checked"};
+    nativeClaimBackgroundPricePromise=(async()=>{
+      const started=performance.now();
+      const result=await backfillNativeClaimAssetFlowPrices();
+      const wallets=(ctx.wallets||[]).filter(w=>walletAddress(w));
+      transactionAssetFlows=await loadAllAssetFlowRows(wallets);
+      const diagnostics=await diagnoseMissingNativeClaimFlowPrices(null,{flows:transactionAssetFlows,reason});
+      nativeClaimBackgroundPriceUserId=userId;
+      nativeClaimBackgroundPriceDoneAt=Date.now();
+      if(document.getElementById("dao1-subtab-claims")?.style.display!=="none")renderClaimsTab();
+      const summary={...result,diagnostics:Number(diagnostics?.length||0),reason,durationMs:Math.round(performance.now()-started)};
+      console.info("DAO1 Native Claim Price Background",summary);
+      return summary;
+    })();
+    try{return await nativeClaimBackgroundPricePromise;}finally{nativeClaimBackgroundPricePromise=null;}
   }
 
   function renderClaimsTab(){
@@ -5034,7 +5076,6 @@ window.DAO1Project = (() => {
     el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot-Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst eine tatsächliche Auszahlung den Claim.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
       <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText,"Bot-Claims",rows.length)}</div>
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const payouts=claimPayoutEntriesForTx(r);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=payouts.length?payouts.map(f=>{const isWrapped=isWrappedAptmSymbol(f.token_symbol,f.token_name);const amount=isWrapped?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"TOKEN"})} ${escapeHtml(f.token_symbol||"TOKEN")}`;const histUsd=Number(f.value_usd||0);return `<strong>${amount}</strong><div class="meta">${histUsd?usd(histUsd):"USD hist. –"}</div>`;}).join(""):"–";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${(()=>{const p=payouts.find(f=>((String(f.token_address||"").toLowerCase()==="native"&&String(f.token_symbol||"").toUpperCase()==="APTM")||isWrappedAptmSymbol(f.token_symbol,f.token_name))&&f.price_usd!=null&&Number.isFinite(Number(f.price_usd)));return p?usd(Number(p.price_usd)):"–";})()}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
-    void diagnoseMissingNativeClaimFlowPrices(rows);
   }
 
   let dao1TeamTreeMode="wallet";
@@ -7924,6 +7965,12 @@ window.DAO1Project = (() => {
       parts.claims=dao1LifecyclePart("deferred","Keine DAO1/APTMDAO-Claim-Quelle belegt.",{required:false});
     }
 
+    if(projectRelevant){
+      await dao1RunLifecyclePart(parts,"claimPrices",()=>refreshMissingNativeClaimPrices({force:true,reason:"wallet-refresh"}),{required:false});
+    }else{
+      parts.claimPrices=dao1LifecyclePart("deferred","Keine DAO1/APTMDAO-Claim-Quelle belegt.",{required:false});
+    }
+
     await dao1RunLifecyclePart(parts,"didRoots",()=>loadDAO1OwnedDidRoots(true),{required:projectRelevant});
     const treeCaches=await dao1RunLifecyclePart(parts,"teamCaches",()=>Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache()]),{required:false});
     const [legacy,aptm]=Array.isArray(treeCaches)?treeCaches:[null,null];
@@ -8041,6 +8088,7 @@ window.DAO1Project = (() => {
       // Tree-Subcaches mit den erkannten Roots gelesen.
       await loadOwnershipCache({preferShared:true}).catch(e=>console.warn("DAO1 Dashboard Ownership",e));
       await loadDAO1OwnedDidRoots(true).catch(e=>console.warn("DAO1 Dashboard DID-Roots",e));
+      await refreshMissingNativeClaimPrices({reason:"app-start"}).catch(e=>console.warn("DAO1 Native Claim Price Background",e));
       const [cached,aptmCached,rewards,recentPartnerActivities]=await Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache(),loadDashboardRewardCache(),loadDashboardPartnerBotActivities()]);
       const patch={updatedAt:new Date().toISOString()};
       if(cached?.edges && dao1OwnedDidRoots.length){
@@ -8065,5 +8113,5 @@ window.DAO1Project = (() => {
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
-    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, backfillNativeClaimAssetFlowPrices, classifyNftType };
+    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, backfillNativeClaimAssetFlowPrices, refreshMissingNativeClaimPrices, classifyNftType };
 })();

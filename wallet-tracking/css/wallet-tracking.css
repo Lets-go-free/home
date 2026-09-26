@@ -1,3 +1,4 @@
+/* Phase 6.26 · 26.09.2026 17:56:20 CEST · DAO1 Dark-Mode Tabellenzeilen: Grund-/Zebra-/Hover-Farben explizit dunkel. Build 20260926-175620. */
 :root {
     --bg: #0f1115;
     --card: #171a21;
@@ -1143,6 +1144,18 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 :root[data-theme="dark"] td,:root[data-theme="dark"] .project-data-table td{border-color:var(--border)!important}
 :root[data-theme="dark"] tbody tr:nth-child(even) td{background:#172235!important}
 :root[data-theme="dark"] tbody tr:hover td{background:#20314b!important}
+
+/* Phase 6.26: DAO1 Dark-Mode-Zeilen duerfen nicht vom hellen globalen
+   Tabellen-Background durchscheinen. Grundfarbe, Zebra und Hover werden
+   fuer alle DAO1-Tabellen explizit im Dark Mode gesetzt. */
+:root[data-theme="dark"] #tab-dao1 table tbody tr,
+:root[data-theme="dark"] #tab-dao1 .project-data-table tbody tr{background:var(--card)!important}
+:root[data-theme="dark"] #tab-dao1 table tbody tr td,
+:root[data-theme="dark"] #tab-dao1 .project-data-table tbody tr td{background:transparent!important;color:var(--text)}
+:root[data-theme="dark"] #tab-dao1 table tbody tr:nth-child(even) td,
+:root[data-theme="dark"] #tab-dao1 .project-data-table tbody tr:nth-child(even) td{background:#172235!important}
+:root[data-theme="dark"] #tab-dao1 table tbody tr:hover td,
+:root[data-theme="dark"] #tab-dao1 .project-data-table tbody tr:hover td{background:#20314b!important}
 :root[data-theme="dark"] .tab-btn{background:#18253a;color:#b9c9e0;border-color:#2b3b55}
 :root[data-theme="dark"] .tab-btn.active{background:#203b65;color:#dceaff;border-color:#4e7fc4}
 :root[data-theme="dark"] .main-nav-btn{color:#b9c9e0}:root[data-theme="dark"] .main-nav-btn:hover{background:#1b2a40;border-color:#2b3b55}:root[data-theme="dark"] .main-nav-btn.active{background:#203b65;color:#dceaff;border-color:#4e7fc4}
