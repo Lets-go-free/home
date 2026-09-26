@@ -79,6 +79,12 @@
         #tradesTable th.sortierbar:hover { background: #1a202c; }
         #tradesTable th.sortierbar .sort-pfeil { font-size: 0.8em; color: #a0aec0; }
         #tradesTable th.sortierbar.aktiv .sort-pfeil { color: #10b981; }
+        .type-sub {
+            display: block;
+            font-size: 0.8em;
+            color: #718096;
+            line-height: 1.3;
+        }
         .neo-input {
             padding: 9px 10px;
             border: 2px solid #cbd5e0;
@@ -833,40 +839,51 @@ function getKategorie(trade) {
 
 // Auszahlungen, die zu einem "Prop Withdrawal" im Wallet gehören (gehebelt gebucht).
 // Wird bei jeder Anzeige neu bestimmt.
-let propWithdrawalKeys = new Set();
+// Capital Withdrawal: Auszahlung, deren Wallet-Buchung (Prop Deposit / Prop Withdrawal)
+// nur über den Hebel passt (z.B. -295.92 in den Trades = 12.33 x 24 im Wallet).
+// Das ist ein Abzug aus dem investierten (gehebelten) Kapital. Wird bei jeder Anzeige neu bestimmt.
+let capitalWithdrawalKeys = new Set();
 
-function istPropWithdrawal(w) {
-    const norm = v => String(v || '').trim().toLowerCase();
-    return norm(w.type) === 'prop withdrawal' && norm(w.sub_type) === 'prop withdrawal';
+function berechneCapitalWithdrawals() {
+    const keys = new Set();
+    walletZuTrade.forEach((wallets, key) => {
+        const t = mt5Trades.find(x => tradeKey(x.account, x.ticket) === key);
+        if (!t || getKategorie(t) !== 'Auszahlung') return;
+        const h = hebelFaktor(t.account);
+        if (!h) return;
+        const tb = Math.abs(t.profit);
+        const nurUeberHebel = wallets.some(w => {
+            const wb = Math.abs(Number(w.amount) || 0);
+            return Math.abs(tb - wb) > PROP_TOLERANZ && Math.abs(tb / h - wb) <= PROP_TOLERANZ;
+        });
+        if (nurUeberHebel) keys.add(key);
+    });
+    capitalWithdrawalKeys = keys;
 }
 
-// Paart jede Prop-Withdrawal-Transaktion mit höchstens einer Auszahlung
-// (gleiches Datum, Betrag / Hebel = Wallet-Betrag, Rundung bis PROP_TOLERANZ)
-function berechnePropWithdrawalKeys() {
-    const keys = new Set();
-    walletTx.filter(w => istPropWithdrawal(w) && w.date).forEach(w => {
-        const datum = String(w.date).substring(0, 10);
-        const wb = Math.abs(Number(w.amount) || 0);
-        const t = mt5Trades.find(t => {
-            if (!isAccounting(t) || getKategorie(t) !== 'Auszahlung') return false;
-            if (keys.has(tradeKey(t.account, t.ticket)) || datumKey(t.openTime) !== datum) return false;
-            const h = hebelFaktor(t.account);
-            return !!h && Math.abs(Math.abs(t.profit) / h - wb) <= PROP_TOLERANZ;
-        });
-        if (t) keys.add(tradeKey(t.account, t.ticket));
-    });
-    propWithdrawalKeys = keys;
+// Unterzeile beim Type: "Capital Withdrawal" oder "ReInvest"
+function untertyp(t) {
+    if (!isAccounting(t)) return '';
+    const key = tradeKey(t.account, t.ticket);
+    if (capitalWithdrawalKeys.has(key)) return 'Capital Withdrawal';
+    if (reinvestPaare.has(key) && getKategorie(t) === 'Balance Adjust') return 'ReInvest';
+    for (const [minusKey, plusKey] of reinvestPaare) {
+        if (plusKey !== key) continue;
+        const minus = mt5Trades.find(x => tradeKey(x.account, x.ticket) === minusKey);
+        if (minus && getKategorie(minus) === 'Balance Adjust') return 'ReInvest';
+    }
+    return '';
 }
 
 // Automatisch gehebelt?
 // - Einzahlungen: ja
-// - Auszahlungen mit "Prop Withdrawal" im Wallet: ja
+// - Capital Withdrawals (Auszahlung, Wallet-Betrag passt nur über den Hebel): ja
 // - alles andere (übrige Auszahlungen, Gebühren, Trades): nein
 function autoGehebelt(t) {
     if (!isAccounting(t)) return false;
     const kat = getKategorie(t);
     return kat === 'Einzahlung' ||
-        (kat === 'Auszahlung' && propWithdrawalKeys.has(tradeKey(t.account, t.ticket)));
+        (kat === 'Auszahlung' && capitalWithdrawalKeys.has(tradeKey(t.account, t.ticket)));
 }
 
 // Manuell gesetzter Schalter hat Vorrang, sonst automatisch
@@ -1417,7 +1434,11 @@ function zeitMs(zeit) {
     return Date.parse(String(zeit).replace(' ', 'T'));
 }
 
+// Minus-Key -> Plus-Key der erkannten Re-Invest-Paare (wird bei jedem Aufruf neu gefüllt)
+let reinvestPaare = new Map();
+
 function findeReinvests() {
+    reinvestPaare = new Map();
     const keys = new Set();
     const benutzt = new Set();
     const acc = mt5Trades.filter(isAccounting);
@@ -1435,6 +1456,7 @@ function findeReinvests() {
         if (plus) {
             benutzt.add(tradeKey(plus.account, plus.ticket));
             keys.add(tradeKey(minus.account, minus.ticket));
+            reinvestPaare.set(tradeKey(minus.account, minus.ticket), tradeKey(plus.account, plus.ticket));
         }
     });
     return keys;
@@ -1712,8 +1734,9 @@ function fuelleTypeFilter() {
 }
 
 function displayTrades(selectedAccount) {
-    berechnePropWithdrawalKeys();
     berechneWalletZuordnung();
+    berechneCapitalWithdrawals();
+    findeReinvests();
     renderAuswertungen(selectedAccount);
     displayUnstimmigkeiten();
     const tbody = document.getElementById('tradesBody');
@@ -1829,6 +1852,18 @@ function displayTrades(selectedAccount) {
             if (left) c.classList.add('text-left');
             // Open Time, Type, Closed Time dürfen umbrechen
             if (i === 2 || i === 3 || i === 7) c.classList.add('wrap');
+            // Type: Unterzeile in kleinerer Schrift
+            if (i === 3) {
+                const sub = untertyp(t);
+                if (sub) {
+                    c.textContent = '';
+                    c.appendChild(document.createTextNode(v));
+                    const span = document.createElement('span');
+                    span.className = 'type-sub';
+                    span.textContent = sub;
+                    c.appendChild(span);
+                }
+            }
         });
 
         // Profit/Amount
