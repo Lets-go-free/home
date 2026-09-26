@@ -1,3 +1,4 @@
+// Phase 6.27 · 26.09.2026 18:08:50 CEST: P5 Diagnose-Timingfix für verbleibende Post-Launch-Claim-Preise; Projekt-Subnav im Dark Mode vollständig dunkel. Build 20260926-180850.
 // Phase 6.26 · 26.09.2026 17:56:20 CEST: P5: historische native APTM-Claim-Preise werden start-/refresh-seitig nachgezogen; Dark-Mode-Zebra für DAO1-Tabellen korrigiert. Build 20260926-175620.
 // Phase 6.25 · 26.09.2026 17:31:56 CEST: P5 Diagnose: Missing native APTM-Claim-Preise werden gegen Exact-/Nachbar-/Legacy-Anker geprüft; Preislogik unverändert. Build 20260926-173156.
 // Phase 6.24 · 26.09.2026 17:17:59 CEST: P5: Claim-Stückpreis-Spalte liest price_usd aus kanonischen Asset-Flows; 10 wirklich unbewertete native APTM-Flows bleiben offen. Build 20260926-171759.

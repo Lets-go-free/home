@@ -1,3 +1,4 @@
+/* Phase 6.27 · 26.09.2026 18:08:50 CEST · Dark Mode: Projekt-Subnav-Container und Buttons vollständig dunkel; DAO1 Tabellenfix bleibt bestehen. Build 20260926-180850. */
 /* Phase 6.26 · 26.09.2026 17:56:20 CEST · DAO1 Dark-Mode Tabellenzeilen: Grund-/Zebra-/Hover-Farben explizit dunkel. Build 20260926-175620. */
 :root {
     --bg: #0f1115;
@@ -1159,6 +1160,29 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 :root[data-theme="dark"] .tab-btn{background:#18253a;color:#b9c9e0;border-color:#2b3b55}
 :root[data-theme="dark"] .tab-btn.active{background:#203b65;color:#dceaff;border-color:#4e7fc4}
 :root[data-theme="dark"] .main-nav-btn{color:#b9c9e0}:root[data-theme="dark"] .main-nav-btn:hover{background:#1b2a40;border-color:#2b3b55}:root[data-theme="dark"] .main-nav-btn.active{background:#203b65;color:#dceaff;border-color:#4e7fc4}
+
+/* Phase 6.27: Projekt-Untertabs duerfen im Dark Mode keinen hellen Light-Mode-
+   Container behalten. Gilt bewusst fuer DAO1 und TLN/VOW, damit dieselbe
+   Komponente projektuebergreifend konsistent bleibt. */
+:root[data-theme="dark"] .project-subtabs{
+  background:var(--card)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="dark"] .project-subtabs .tab-btn{
+  background:#18253a!important;
+  color:#b9c9e0!important;
+  border-color:#2b3b55!important;
+}
+:root[data-theme="dark"] .project-subtabs .tab-btn:hover{
+  background:#1b2f49!important;
+  color:#dceaff!important;
+  border-color:#3a5d87!important;
+}
+:root[data-theme="dark"] .project-subtabs .tab-btn.active{
+  background:#203b65!important;
+  color:#dceaff!important;
+  border-color:#4e7fc4!important;
+}
 
 /* Dashboard + zentraler Personenfilter */
 .wt-global-person-filter{display:flex;align-items:center;gap:7px;min-width:245px}

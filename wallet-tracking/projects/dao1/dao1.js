@@ -1,3 +1,4 @@
+// Phase 6.27 · 26.09.2026 18:08:50 CEST: P5 Diagnose-Fix: Missing-Claim-Preisdiagnose läuft beim App-Start auch bevor der Adminstatus vollständig geladen ist; nur eigener User-Kontext erforderlich. Build 20260926-180850.
 // Phase 6.26 · 26.09.2026 17:56:20 CEST: P5: Missing-Claim-Preisjob vom Tab in Start/Refresh verschoben; nur offene Nicht-Prelaunch-Flows werden erneut bewertet und diagnostiziert. Build 20260926-175620.
 // Phase 6.25 · 26.09.2026 17:31:56 CEST: P5 Diagnose: echte Missing-Preise nativer APTM-Claims protokollieren Exact-/Nachbar-/Legacy-Anker, ohne die Preislogik zu verändern. Build 20260926-173156.
 // Phase 6.24 · 26.09.2026 17:17:59 CEST: P5 UI-Fix: Die Claim-Spalte „APTM-Preis USD historisch“ liest den Stückpreis aus dem kanonischen Asset-Flow statt aus dem Legacy-Transaktionsfeld aptm_usd. Build 20260926-171759.
@@ -4977,7 +4978,11 @@ window.DAO1Project = (() => {
 
   async function diagnoseMissingNativeClaimFlowPrices(rows=null,{flows=null,reason="background"}={}){
     const ctx=getContext?.();
-    if(!ctx?.isAdmin)return [];
+    // Phase 6.27: Der App-Start kann vor Abschluss der Adminrollen-Hydrierung laufen.
+    // Die Diagnose liest ausschließlich Flows des aktuell eingeloggten Users; deshalb
+    // reicht hier eine aktive User-Session. So werden echte Missing-Fälle beim Start
+    // nicht mehr fälschlich mit diagnostics=0 übersprungen.
+    if(!ctx?.currentUser?.id)return [];
     const visibleTx=Array.isArray(rows)&&rows.length?new Set(rows.map(r=>String(r?.tx_hash||"").toLowerCase()).filter(Boolean)):null;
     const sourceFlows=Array.isArray(flows)?flows:(transactionAssetFlows||[]);
     const missing=sourceFlows.filter(f=>
