@@ -659,7 +659,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 27.09.2026 00:30:04</div>
+        <div class="version-info">Version: 27.09.2026 00:38:04</div>
     </div>
 </div>
 
@@ -1277,6 +1277,29 @@ function istCommission(w) {
     return String(w.type || '').trim().toLowerCase() === 'ibportal commissionsdeposit';
 }
 
+// Woche (Montag) des allerersten Trades (Buy/Sell) über alle Accounts, oder null
+function ersterTradeMontag() {
+    const zeiten = mt5Trades.filter(t => !isAccounting(t)).map(t => t.openTime).sort();
+    return zeiten.length ? getMonday(keyToDate(datumKey(zeiten[0]))) : null;
+}
+
+// Anzahl Wochen (Montage) eines Jahres ab dem 1. Montag im Jahr,
+// frühestens ab der Woche des allerersten Trades (erst dann commissions-berechtigt),
+// im laufenden Jahr nur bis und mit der aktuellen Woche
+function anzahlWochen(jahr) {
+    const ersterMontag = new Date(jahr, 0, 1);
+    while (ersterMontag.getDay() !== 1) ersterMontag.setDate(ersterMontag.getDate() + 1);
+    const tradeMontag = ersterTradeMontag();
+    if (tradeMontag && tradeMontag > ersterMontag) ersterMontag.setTime(tradeMontag.getTime());
+    const heute = new Date();
+    let ende = new Date(jahr, 11, 31);
+    if (heute.getFullYear() === jahr) ende = heute;
+    if (heute.getFullYear() < jahr) return 0;
+    const letzterMontag = getMonday(ende);
+    if (letzterMontag < ersterMontag) return 0;
+    return Math.round((letzterMontag - ersterMontag) / (7 * 24 * 3600 * 1000)) + 1;
+}
+
 function renderCommissions() {
     const sel = document.getElementById('commJahr');
     if (!sel) return;
@@ -1317,8 +1340,18 @@ function renderCommissions() {
     tr.insertCell().textContent = zahl(anzahl);
     tr.insertCell().textContent = zahl(total, 2);
 
-    setzeKachel('commTotal', total, { sub: imJahr.length + (imJahr.length === 1 ? ' Woche' : ' Wochen') + ' mit Commissions' });
-    setzeKachel('commSchnitt', imJahr.length ? total / imJahr.length : null, { sub: 'nur Wochen mit Commissions' });
+    // Durchschnitt: Total / Anzahl Wochen ab dem 1. Montag im Jahr
+    // bis zur aktuellen Woche (laufendes Jahr) bzw. bis zur letzten Woche des Jahres (frühere Jahre)
+    const wochenImJahr = anzahlWochen(Number(jahr));
+    const tm = ersterTradeMontag();
+    const abWoche = (() => {
+        const m = new Date(Number(jahr), 0, 1);
+        while (m.getDay() !== 1) m.setDate(m.getDate() + 1);
+        return (tm && tm > m) ? tm : m;
+    })();
+    setzeKachel('commTotal', total);
+    setzeKachel('commSchnitt', wochenImJahr > 0 ? total / wochenImJahr : null);
+    document.getElementById('commSchnitt').parentElement.title = 'Total / ' + wochenImJahr + ' Wochen (ab Woche vom ' + datumZeit(formatDate(abWoche)) + ')';
 
     // Grafik: alle Wochen vom ersten bis zum letzten Eintrag im Jahr, Wochen ohne Eintrag = 0
     const keys = [];
