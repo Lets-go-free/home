@@ -1,4 +1,4 @@
-// Phase 6.22 · 26.09.2026 12:26:28 CEST: P5 Claims/Payouts: native APTM-Claim-Flows werden mit der bestehenden exact-v13 APTM/USD-Historienengine kanonisch bewertet; bestehende TX-Preise werden zuerst wiederverwendet. Build 20260926-122628.
+// Phase 6.23 · 26.09.2026 13:13:03 CEST: P5 Hotfix: persistierte Asset-Flows entfernen das nur zur UI-Hydrierung ergänzte wallet_address vor dem Supabase-Upsert; offene 6.22-Preis-Migration kann dadurch sauber erneut laufen. Build 20260926-131303.
 // Phase 6.21 · 26.09.2026 12:12:27 CEST: P5 Claims/Payouts: sichtbare Claim-/Export-Lesepfade verwenden ausschliesslich kanonische Asset-Flows; Legacy Reward-Felder sind kein führender Read-Pfad mehr. Build 20260926-121227.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: Release-Metadaten synchronisiert; DAO1-Ownership-/Kaufpreis-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
@@ -3348,10 +3348,18 @@ window.DAO1Project = (() => {
     const changedWalletIds=new Set(rows.map(r=>String(r?.wallet_id||"")).filter(Boolean));
     for(const id of changedWalletIds)daoHistoryFlowCache.delete(`wallet:${id}`);
     daoHistoryFlowCache.delete("all");
+    // Phase 6.23: loadAssetFlowRows() hydratisiert wallet_address nur fuer UI/Runtime.
+    // project_transaction_asset_flows besitzt bewusst nur wallet_id; der private
+    // Adresswert darf deshalb nie zurueck in den Persistenz-Payload gelangen.
+    const persistRows=rows.map(row=>{
+      const clean={...row};
+      delete clean.wallet_address;
+      return clean;
+    });
     const BATCH=500;
-    for(let i=0;i<rows.length;i+=BATCH){
+    for(let i=0;i<persistRows.length;i+=BATCH){
       const {error}=await sb.from("project_transaction_asset_flows")
-        .upsert(rows.slice(i,i+BATCH),{onConflict:"user_id,project_key,chain_key,wallet_id,flow_key"});
+        .upsert(persistRows.slice(i,i+BATCH),{onConflict:"user_id,project_key,chain_key,wallet_id,flow_key"});
       if(error)throw error;
     }
   }

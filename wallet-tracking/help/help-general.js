@@ -1,4 +1,4 @@
-// Phase 6.22 · 26.09.2026 12:26:28 CEST: P5 DAO1 Claims/Payouts: native APTM-Claim-Flows werden historisch in USD direkt im kanonischen Asset-Flow bewertet. Build 20260926-122628.
+// Phase 6.23 · 26.09.2026 13:13:03 CEST: P5 DAO1 Claims/Payouts: Asset-Flow-Persistenz sanitisiert Runtime-Felder; offene 6.22-Preis-Migration kann ohne SQL/Wallet-Neuaufbau erneut laufen. Build 20260926-131303.
 // Phase 6.21 · 26.09.2026 12:12:27 CEST: P5 DAO1 Claims/Payouts: sichtbare Claim-/Transaktions-/Exportwerte lesen Auszahlungen ausschliesslich aus kanonischen Asset-Flows. Build 20260926-121227.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: paralleler Apertum-Owner-/Collections-Fetch reduziert den gemessenen NFT-Inventar-Hotspot; Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: Fresh-Build-Kaufpreise cache-first beim ersten NFT-Tab sichtbar; Resolver-v3-Offenstände werden evidenzgebunden wiederverwendet. P4 entkoppelt die vollständige Asset-Flow-USD-Bewertung vom blockierenden Fresh-Build. Build 20260924-183001.
