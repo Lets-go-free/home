@@ -590,6 +590,8 @@
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Strategie</th>
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Hebel</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Inaktiv seit</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;" title="Summe Betrag effektiv inkl. Commission aller Einträge dieses Accounts">Saldo</th>
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;"></th>
                         </tr>
                     </thead>
@@ -659,7 +661,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 27.09.2026 00:38:04</div>
+        <div class="version-info">Version: 27.09.2026 00:52:45</div>
     </div>
 </div>
 
@@ -669,6 +671,23 @@
 function accountZusatz(account) {
     const acc = loadAccounts().find(a => a.account === String(account));
     return acc ? [acc.strategie, acc.hebel].filter(Boolean).join(' · ') : '';
+}
+
+// Saldo eines Accounts: Summe Betrag effektiv + Commission aller Einträge (null, wenn Hebel fehlt)
+function saldoAccount(account) {
+    let saldo = 0;
+    for (const t of mt5Trades) {
+        if (t.account !== String(account)) continue;
+        const eff = betragEffektiv(t);
+        if (eff === null) return null;
+        saldo += eff + (Number(t.commission) || 0);
+    }
+    return saldo;
+}
+
+function inaktivSeit(account) {
+    const acc = loadAccounts().find(a => a.account === String(account));
+    return acc && acc.inaktiv_seit ? acc.inaktiv_seit : '';
 }
 
 function populateAccountFilter() {
@@ -685,8 +704,13 @@ function populateAccountFilter() {
     accounts.forEach(account => {
         const option = document.createElement('option');
         option.value = account;
+        const teile = [];
         const zusatz = accountZusatz(account);
-        option.textContent = account + (zusatz ? ' – ' + zusatz : '');
+        if (zusatz) teile.push(zusatz);
+        const saldo = saldoAccount(account);
+        teile.push('Saldo ' + (saldo === null ? '–' : zahl(saldo, 2)));
+        if (inaktivSeit(account)) teile.push('inaktiv seit ' + datumZeit(inaktivSeit(account)));
+        option.textContent = account + ' – ' + teile.join(' · ');
         select.appendChild(option);
     });
     if (accounts.includes(previous)) select.value = previous;
@@ -763,9 +787,9 @@ function dbToTrade(d) {
 // ---------- Laden ----------
 async function loadFromDb() {
     // Konten
-    const acc = await db.from('tm_accounts').select('account, strategie, hebel').order('account');
+    const acc = await db.from('tm_accounts').select('account, strategie, hebel, inaktiv_seit').order('account');
     if (acc.error) throw acc.error;
-    accountsCache = acc.data.map(a => ({ account: String(a.account), strategie: a.strategie || '', hebel: a.hebel || '' }));
+    accountsCache = acc.data.map(a => ({ account: String(a.account), strategie: a.strategie || '', hebel: a.hebel || '', inaktiv_seit: a.inaktiv_seit ? String(a.inaktiv_seit).substring(0, 10) : '' }));
 
     // Trades (seitenweise, Supabase liefert max. 1000 pro Abfrage)
     const all = [];
@@ -1031,14 +1055,30 @@ function displayAccounts() {
 
         const c1 = row.insertCell();
         const c2 = row.insertCell();
+        const cIn = row.insertCell();
+        const cSaldo = row.insertCell();
+        cSaldo.style.textAlign = 'right';
+        cSaldo.style.fontWeight = '700';
+        const saldo = saldoAccount(acc.account);
+        cSaldo.textContent = saldo === null ? '–' : zahl(saldo, 2);
+        if (saldo === null) cSaldo.title = 'Hebel fehlt';
         const c3 = row.insertCell();
         c3.classList.add('table-center');
 
         if (!isAdmin) {
             c1.textContent = acc.strategie || '–';
             c2.textContent = acc.hebel || '–';
+            cIn.textContent = acc.inaktiv_seit ? datumZeit(acc.inaktiv_seit) : '';
             return;
         }
+
+        const dat = document.createElement('input');
+        dat.type = 'date';
+        dat.className = 'neo-input';
+        dat.value = acc.inaktiv_seit || '';
+        dat.title = 'Leer lassen, solange der Account aktiv ist';
+        dat.onchange = () => updateAccount(acc.account, 'inaktiv_seit', dat.value);
+        cIn.appendChild(dat);
 
         const inp = document.createElement('input');
         inp.type = 'text';
@@ -2006,27 +2046,40 @@ function bestUndSchlechtest(trades) {
 // Rückgabe: { pct, verlauf: [{ tag, pct }], unvollstaendig }
 function berechneTWR(eintraege) {
     const liste = [...eintraege].sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
+    // Inaktive Accounts: am Ende des Tages "inaktiv seit" wird der verbleibende Saldo
+    // als Geldfluss herausgenommen. So verwässert totes Kapital die Rendite nicht.
+    const accountsHier = [...new Set(liste.map(t => t.account))];
+    accountsHier.forEach(acc => {
+        const tag = inaktivSeit(acc);
+        if (tag) liste.push({ virtuellInaktiv: true, account: acc, openTime: tag + ' 23:59:59', ticket: '0' });
+    });
+    liste.sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
+
     let kapital = 0;
+    const kapitalAcc = {};
     let faktor = 1;
     let unvollstaendig = false;
     const proTag = new Map();
     liste.forEach(t => {
+        if (t.virtuellInaktiv) {
+            kapital -= (kapitalAcc[t.account] || 0);
+            kapitalAcc[t.account] = 0;
+            proTag.set(datumKey(t.openTime), (faktor - 1) * 100);
+            return;
+        }
         const eff = betragEffektiv(t);
         if (eff === null) { unvollstaendig = true; return; }
         const komm = Number(t.commission) || 0;
         const kat = isAccounting(t) ? getKategorie(t) : '';
         const istGeldfluss = kat === 'Einzahlung' || kat === 'Auszahlung' || kat === 'Balance Adjust';
-        if (istGeldfluss) {
-            kapital += eff + komm;
-        } else {
-            const ergebnis = eff + komm;
-            if (kapital > 0) faktor *= (1 + ergebnis / kapital);
-            kapital += ergebnis;
-        }
+        const betrag = eff + komm;
+        if (!istGeldfluss && kapital > 0) faktor *= (1 + betrag / kapital);
+        kapital += betrag;
+        kapitalAcc[t.account] = (kapitalAcc[t.account] || 0) + betrag;
         proTag.set(datumKey(t.openTime), (faktor - 1) * 100);
     });
     const verlauf = [...proTag.entries()].map(([tag, pct]) => ({ tag, pct }));
-    return { pct: liste.length ? (faktor - 1) * 100 : null, verlauf, unvollstaendig };
+    return { pct: eintraege.length ? (faktor - 1) * 100 : null, verlauf, unvollstaendig };
 }
 
 // Liniengrafik als SVG (ohne externe Bibliothek)
@@ -2329,6 +2382,7 @@ function displayTrades(selectedAccount) {
     berechneWalletZuordnung();
     berechneCapitalWithdrawals();
     findeReinvests();
+    populateAccountFilter();
     berechneTradeProzente();
     renderDashboard();
     displayUnstimmigkeiten();
