@@ -1,3 +1,4 @@
+// Phase 6.22 · 26.09.2026 12:26:28 CEST: P5 Claims/Payouts: native APTM-Claim-Flows werden mit der bestehenden exact-v13 APTM/USD-Historienengine kanonisch bewertet; bestehende TX-Preise werden zuerst wiederverwendet. Build 20260926-122628.
 // Phase 6.21 · 26.09.2026 12:12:27 CEST: P5 Claims/Payouts: sichtbare Claim-/Export-Lesepfade verwenden ausschliesslich kanonische Asset-Flows; Legacy Reward-Felder sind kein führender Read-Pfad mehr. Build 20260926-121227.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: P4: Release-Metadaten synchronisiert; DAO1-Ownership-/Kaufpreis-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
@@ -3308,6 +3309,14 @@ window.DAO1Project = (() => {
     return s==="WAPTM" || n.includes("WRAPPED APTM") || n.includes("WAPTM");
   }
 
+  function isNativeAptmAssetFlow(row){
+    return String(row?.token_address||"").toLowerCase()==="native" && String(row?.token_symbol||"").toUpperCase()==="APTM";
+  }
+
+  function isAptmPricedAssetFlow(row){
+    return isNativeAptmAssetFlow(row) || isWrappedAptmSymbol(row?.token_symbol,row?.token_name);
+  }
+
   async function getTokenFlowScanState(address){
     const {data,error}=await sb.from("project_scan_state")
       .select("*")
@@ -3514,6 +3523,60 @@ window.DAO1Project = (() => {
     return result;
   }
 
+  // Phase 6.22 / P5: bestehende native APTM-Claim-Flows erhalten ihren
+  // historischen USD-Wert direkt im kanonischen Asset-Flow. Vorhandene exakte
+  // Transaktionspreise werden wiederverwendet; nur noch offene Blöcke gehen
+  // gesammelt durch dieselbe exact-v13 Price-Anchor-Engine wie die TX-Historie.
+  async function backfillNativeClaimAssetFlowPrices(targetWallets=null){
+    const ctx=getContext?.();
+    if(!ctx?.currentUser?.id)return {wallets:0,flows:0,reusedTxPrices:0,enginePriced:0,prelaunch:0,missing:0,persisted:0};
+    const rawTargets=Array.isArray(targetWallets)&&targetWallets.length?targetWallets:(ctx.wallets||[]);
+    let walletsDone=0,flowsSeen=0,reusedTxPrices=0,enginePriced=0,prelaunch=0,missing=0,persisted=0;
+    for(const target of rawTargets){
+      const address=typeof target==="string"?lower(target):walletAddress(target);
+      if(!address)continue;
+      const [flows,txs]=await Promise.all([
+        loadAssetFlowRows(address,{force:true}),
+        loadTransactionRows(address,null)
+      ]);
+      const txByHash=new Map((txs||[]).map(t=>[String(t.tx_hash||"").toLowerCase(),t]));
+      const candidates=(flows||[]).filter(f=>
+        f.direction==="eingang" &&
+        String(f.flow_key||"").startsWith("claim-native:") &&
+        isNativeAptmAssetFlow(f) &&
+        (f.price_usd==null || f.value_usd==null)
+      );
+      flowsSeen+=candidates.length;
+      const direct=[],unresolved=[];
+      for(const f of candidates){
+        const tx=txByHash.get(String(f.tx_hash||"").toLowerCase());
+        const price=Number(tx?.aptm_usd||0);
+        if(price>0){
+          f.price_usd=price;
+          f.value_usd=Number(f.amount||0)*price;
+          f.price_source=tx?.price_source||"Historischer APTM/USD-Kurs der Claim-TX";
+          f.updated_at=new Date().toISOString();
+          direct.push(f);reusedTxPrices++;
+        }else unresolved.push(f);
+      }
+      if(unresolved.length){
+        await valueAssetFlows(unresolved);
+        for(const f of unresolved){
+          f.updated_at=new Date().toISOString();
+          if(f.price_usd!=null && f.value_usd!=null)enginePriced++;
+          else if(String(f.price_source||"").includes(PRICE_PRELAUNCH_TAG))prelaunch++;
+          else missing++;
+        }
+      }
+      const changed=[...direct,...unresolved];
+      if(changed.length){await saveAssetFlowRows(changed);persisted+=changed.length;}
+      walletsDone++;
+    }
+    const result={wallets:walletsDone,flows:flowsSeen,reusedTxPrices,enginePriced,prelaunch,missing,persisted};
+    console.info("DAO1 Native Claim Flow Price Migration",result);
+    return result;
+  }
+
   function tokenAmount(value,{address=null,symbol="",summary=false}={}){
     const formatter=getContext?.()?.tokenFormat?.amount || window.WalletTokenFormat?.amount;
     if(typeof formatter==="function") return formatter(value,{chain:"apertum",address,symbol},{summary});
@@ -3540,7 +3603,7 @@ window.DAO1Project = (() => {
 
   async function valueAssetFlows(rows){
     if(!rows?.length)return rows||[];
-    const aptmBlocks=[...new Set(rows.filter(r=>isWrappedAptmSymbol(r.token_symbol,r.token_name)).map(r=>Number(r.block_number)).filter(Number.isFinite))];
+    const aptmBlocks=[...new Set(rows.filter(isAptmPricedAssetFlow).map(r=>Number(r.block_number)).filter(Number.isFinite))];
     let history=null;
     if(aptmBlocks.length){
       history=await ensurePricesForClaimBlocks(aptmBlocks,document.getElementById("dao1TransactionStatus"));
@@ -3551,12 +3614,16 @@ window.DAO1Project = (() => {
         r.price_usd=1;
         r.value_usd=amount;
         r.price_source="Stablecoin-Parität · 1 USD";
-      }else if(isWrappedAptmSymbol(r.token_symbol,r.token_name)&&history){
+      }else if(isAptmPricedAssetFlow(r)&&history){
         const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
+        const native=isNativeAptmAssetFlow(r);
+        r.price_source=px.source ? (native?px.source:`wAPTM/APTM 1:1 · ${px.source}`) : null;
         if(px.price!=null){
           r.price_usd=Number(px.price);
           r.value_usd=amount*Number(px.price);
-          r.price_source=`wAPTM/APTM 1:1 · ${px.source}`;
+        }else{
+          r.price_usd=null;
+          r.value_usd=null;
         }
       }else{
         // Weitere DAO1-/Wrapped-Assets: zentrale historische Hauptseiten-Preisengine
@@ -3573,160 +3640,10 @@ window.DAO1Project = (() => {
             r.price_source=hp.source||"Zentrale historische Apertum-Preisengine";
           }
         }catch(e){
-          console.warn("DAO1 Asset-Flow Preis nicht ermittelbar",r.token_symbol,r.token_address,r.block_number,e);
+          console.warn("DAO1 Asset-Flow historische Bewertung",r.tx_hash,r.token_symbol,e);
         }
       }
     }
-    return rows;
-  }
-
-  function assetFlowRowFromTransfer(t,address,index=0){
-    const ctx=getContext?.();
-    const tokenAddress=tokenTransferAddress(t);
-    const txHash=tokenTransferTxHash(t);
-    if(!tokenAddress||!txHash)return null;
-    const decimals=tokenTransferDecimals(t);
-    const raw=tokenTransferRawValue(t);
-    return {
-      user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-      wallet_id:walletIdForAddress(address),flow_key:tokenFlowKey(t,address,index),
-      tx_hash:txHash,block_number:Number(t.block_number??t.block??0),
-      tx_timestamp:t.timestamp||t.block_timestamp||null,
-      log_index:Number(t.log_index??t.logIndex??-1),
-      token_address:tokenAddress,token_symbol:tokenFlowSymbol(t),token_name:tokenFlowName(t),
-      token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),
-      counterparty_address:tokenFlowCounterparty(t,address),direction:tokenFlowDirection(t,address),
-      price_usd:null,value_usd:null,price_source:null,updated_at:new Date().toISOString()
-    };
-  }
-
-  const ERC20_TRANSFER_TOPIC="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-
-  function rawTopicValue(v){
-    if(typeof v==="string")return v;
-    return String(v?.hex || v?.value || v?.hash || "");
-  }
-
-  function numericHexOrNumber(v,fallback=0){
-    if(v==null)return fallback;
-    try{
-      if(typeof v==="string" && /^0x[0-9a-f]+$/i.test(v))return Number(BigInt(v));
-      const n=Number(v);
-      return Number.isFinite(n)?n:fallback;
-    }catch{return fallback;}
-  }
-
-  function logContractAddress(log){
-    return lower(
-      log?.address_hash ||
-      log?.address?.address_hash ||
-      log?.address?.hash ||
-      H(log?.address) ||
-      log?.address ||
-      ""
-    );
-  }
-
-  async function tokenMetaForContract(contract){
-    contract=lower(contract);
-    if(!contract)return {symbol:"",name:"",decimals:18};
-    if(dao1TokenMetaCache.has(contract))return dao1TokenMetaCache.get(contract);
-    let meta={symbol:"",name:"",decimals:18};
-    try{
-      const j=await fetchJson(`${EXPLORER_API}/tokens/${contract}`,"Apertum Explorer · Token-Metadaten");
-      meta={
-        symbol:String(j?.symbol||j?.token?.symbol||""),
-        name:String(j?.name||j?.token?.name||""),
-        decimals:Number(j?.decimals??j?.token?.decimals??18)
-      };
-      if(!Number.isFinite(meta.decimals))meta.decimals=18;
-    }catch(e){
-      console.warn("DAO1 Token-Metadaten Fallback",contract,e);
-    }
-    dao1TokenMetaCache.set(contract,meta);
-    return meta;
-  }
-
-  const dao1ClaimLogsCache=new Map();
-  const dao1ClaimLogsInflight=new Map();
-  async function fetchClaimTransferLogs(txHash){
-    const hash=String(txHash||"").toLowerCase();
-    if(!/^0x[0-9a-f]{64}$/.test(hash))return [];
-    if(dao1ClaimLogsCache.has(hash))return dao1ClaimLogsCache.get(hash)||[];
-    if(dao1ClaimLogsInflight.has(hash))return dao1ClaimLogsInflight.get(hash);
-    const job=(async()=>{
-
-    // Primär das standardisierte RPC-Receipt verwenden. Historische Blockscout-
-    // /transactions/<hash>/logs-Aufrufe liefern auf Apertum teilweise HTTP 400,
-    // obwohl das Receipt die ERC-20 Transfer-Events vollständig enthält.
-    try{
-      const receipt=await rpc("eth_getTransactionReceipt",[hash]);
-      const logs=Array.isArray(receipt?.logs)?receipt.logs:[];
-      if(logs.length)return logs;
-    }catch(e){
-      console.warn("DAO1 Claim Logs via RPC Receipt",hash,e);
-    }
-
-    // Explorer nur noch als Fallback, falls das RPC-Receipt keine Logs liefert.
-    try{
-      return await fetchAll(`/transactions/${hash}/logs`);
-    }catch(e){
-      console.warn("DAO1 Claim Logs via Explorer Fallback",hash,e);
-      return [];
-    }
-    })();
-    dao1ClaimLogsInflight.set(hash,job);
-    try{
-      const rows=await job;
-      dao1ClaimLogsCache.set(hash,rows||[]);
-      return rows||[];
-    }finally{
-      dao1ClaimLogsInflight.delete(hash);
-    }
-  }
-
-  async function assetFlowRowsFromTransferLogs(txHash,address,txMeta=null){
-    const hash=String(txHash||"").toLowerCase();
-    const wallet=lower(address);
-    const logs=await fetchClaimTransferLogs(hash);
-    const rows=[];
-
-    for(let i=0;i<logs.length;i++){
-      const log=logs[i]||{};
-      const topics=Array.isArray(log.topics)?log.topics.map(rawTopicValue):[];
-      if(String(topics[0]||"").toLowerCase()!==ERC20_TRANSFER_TOPIC || topics.length<3)continue;
-
-      const from=lower(topicAddr(topics[1]));
-      const to=lower(topicAddr(topics[2]));
-      if(from!==wallet && to!==wallet)continue;
-
-      const contract=logContractAddress(log);
-      if(!contract)continue;
-
-      let raw="0";
-      try{ raw=BigInt(String(log.data||"0x0")).toString(); }catch{ continue; }
-      const meta=await tokenMetaForContract(contract);
-
-      const pseudo={
-        token:{
-          address_hash:contract,
-          symbol:meta.symbol,
-          name:meta.name,
-          decimals:meta.decimals
-        },
-        from:{hash:from},
-        to:{hash:to},
-        value:raw,
-        transaction_hash:hash,
-        block_number:numericHexOrNumber(log.block_number??log.blockNumber,Number(txMeta?.block_number||0)),
-        timestamp:log.timestamp||log.block_timestamp||txMeta?.tx_timestamp||null,
-        log_index:numericHexOrNumber(log.log_index??log.logIndex,i)
-      };
-
-      const row=assetFlowRowFromTransfer(pseudo,address,i);
-      if(row && ["eingang","ausgang","intern"].includes(row.direction))rows.push(row);
-    }
-
     return rows;
   }
 
@@ -4630,6 +4547,8 @@ window.DAO1Project = (() => {
       if(row)nativeFlowRows.push(row);
     }
     if(nativeFlowRows.length){
+      const nativeNeedsValuation=nativeFlowRows.filter(r=>r.price_usd==null || r.value_usd==null);
+      if(nativeNeedsValuation.length)await valueAssetFlows(nativeNeedsValuation);
       await saveAssetFlowRows(nativeFlowRows);
       for(const row of nativeFlowRows){
         const h=String(row.tx_hash||"").toLowerCase();
@@ -8072,5 +7991,5 @@ window.DAO1Project = (() => {
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
-    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, classifyNftType };
+    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, backfillNativeClaimAssetFlowPrices, classifyNftType };
 })();
