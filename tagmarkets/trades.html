@@ -1600,15 +1600,21 @@ function displayTrades(selectedAccount) {
         });
     }
 
-    // Saldo: laufende Summe "Betrag effektiv" über alle angezeigten Einträge,
-    // chronologisch (bei gleicher Zeit nach Ticket). Ohne Kommissionen.
-    // Fehlt ein Betrag effektiv (Hebel fehlt), ist der Saldo ab dort unbekannt.
+    // Saldo: laufende Summe "Betrag effektiv" der angezeigten Accounting-Einträge
+    // (Einzahlungen, Auszahlungen, Gebühren), chronologisch (bei gleicher Zeit nach Ticket).
+    // Gewinne/Verluste der Trades zählen NICHT, die werden separat ausbezahlt oder reinvestiert.
+    // Ohne Kommissionen. Fehlt ein Betrag effektiv (Hebel fehlt), ist der Saldo ab dort unbekannt.
     const chrono = [...trades].sort((a, b) =>
         a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
     const saldoMap = new Map();
     let laufend = 0;
     let saldoUnbekannt = false;
     chrono.forEach(t => {
+        if (!isAccounting(t)) {
+            // Trade: Saldo bleibt unverändert
+            saldoMap.set(tradeKey(t.account, t.ticket), saldoUnbekannt ? null : laufend);
+            return;
+        }
         const eff = betragEffektiv(t);
         if (eff === null) saldoUnbekannt = true;
         else laufend += eff;
