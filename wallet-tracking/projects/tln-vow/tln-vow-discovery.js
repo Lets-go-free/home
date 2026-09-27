@@ -1,4 +1,4 @@
-// Phase 6.44 · 27.09.2026 19:22:03 CEST: TLN-Team Cold-Run-Schutz. Ein Slice-MISS im normalen Team-Tab startet keinen vollständigen SmartNode-Historienscan mehr. Der Restore verifiziert zuerst die eigenen TLN-IDs gezielt und fragt den DB-Slice nur für echte TLN-Leader ab. Ein Full-Cold-Scan bleibt ausschließlich dem expliziten manuellen Step-7/DEV-Pfad vorbehalten. Build 20260927-192203.
+// Phase 6.45 · 27.09.2026 19:53:49 CEST: TLN-Team Restore strikt cache-only. Realtest 6.44 zeigte trotz blockiertem Globalgraph-Fullscan >1400 einzelne eth_getTransactionByHash-Requests aus automatischer Lifecycle-Nachverifikation. Normaler Team-Tab lädt nur persistente Graph-/Identity-/Lifecycle-Caches; offene Lifecycles werden nicht automatisch historisch rekonstruiert. Historische Lifecycle-Verifikation bleibt explizitem Step 7 bzw. gezieltem Partner-Detail-Refresh vorbehalten. Build 20260927-195349.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: Release-Synchronisierung; TLN/VOW-Fachlogik unverändert. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: Appweite Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-163030.
@@ -14,7 +14,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-192203';
+const BUILD_ID='20260927-195349';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -208,7 +208,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 19:22:03 CEST';
+const APP_VERSION='27.09.2026 19:53:49 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -17505,10 +17505,17 @@ async function restoreTeamTreeFromPersistentCache(){
     // oder spaeter einen serverseitigen Job aktualisiert. Staking-Discovery unveraendert.
     const stillOpen=lifecycleWallets.filter(w=>!TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified);
     log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. ${stillOpen.length} Lifecycle(s) nach Restore offen; nur vollständig serverseitig gecachte Contract-Historien dürfen automatisch einmal nachverifiziert werden.`,'ok');
-    // Erst NACH dem sichtbaren Restore. Die Funktion selbst prueft nochmals streng, dass
-    // kein Wallet-History-/Receipt-Fallback notwendig werden kann.
-    teamScheduleSupplementalRegistryLifecycleCompletion(stillOpen).catch(e=>log(`Team-Zusatzregistry Lifecycle: ${e.message||e}`,'warn'));
-    teamScheduleSafeCachedLifecycleCompletion(stillOpen).catch(e=>log(`Team-Lifecycle sicherer Cache-Nachlauf: ${e.message||e}`,'warn'));
+    // Phase 6.45: Der normale Team-Tab bleibt nach dem sichtbaren Restore strikt cache-only.
+    // Realtest 6.44 zeigte trotz blockiertem Globalgraph-Fullscan >1400 einzelne
+    // eth_getTransactionByHash-Requests aus der automatischen Lifecycle-Nachverifikation.
+    // Deshalb startet der Restore weder fuer neue Registry-Partner noch fuer vermeintlich
+    // vollstaendige Contract-History automatisch teamVerifyMissingLifecycles(). Offene
+    // Lifecycles bleiben sichtbar und werden nur durch den expliziten Step-7-Pfad oder
+    // einen gezielten Partner-Detail-Refresh nachverifiziert.
+    if(stillOpen.length){
+      log(`Team-Restore cache-only: ${stillOpen.length} Lifecycle(s) offen · keine automatische historische Tx-/Receipt-Nachverifikation beim normalen Team-Tab.`,'muted');
+      console.info('TLN Team: Restore strikt cache-only', {openLifecycles:stillOpen.length, automaticLifecycleVerification:false});
+    }
     return true;
   }catch(e){
     CURRENT_TEAM_PROJECT_FOREST=null;
