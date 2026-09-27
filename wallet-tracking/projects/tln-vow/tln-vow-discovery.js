@@ -1,4 +1,4 @@
-// Phase 6.42 · 27.09.2026 19:01:13 CEST: Cache-Buster-Fix für produktive TLN-Discovery. Die 6.41 Slice-MISS-Logik war im Code vorhanden, wurde aber aus index.html noch mit altem v=20260927-112214 referenziert. Build 20260927-190113.
+// Phase 6.43 · 27.09.2026 19:11:18 CEST: TLN-Team Race Condition behoben. switchProjectUserTab('team') wartet nun auf ensureInitialized(), bevor Own-Wallet-Roots/Slice geprüft werden. Dadurch kann ein früher Tab-Wechsel nicht mehr mit leerem tlnWallets-Stand abbrechen. Eindeutige Console-Diagnose für Initialisierung und Slice/Discovery ergänzt. Build 20260927-191118.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: Release-Synchronisierung; TLN/VOW-Fachlogik unverändert. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: Appweite Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-163030.
@@ -14,7 +14,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-190113';
+const BUILD_ID='20260927-191118';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -208,7 +208,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 19:01:13 CEST';
+const APP_VERSION='27.09.2026 19:11:18 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11281,13 +11281,29 @@ async function ensureTeamPersistentCacheLoaded({discoverOnMiss=false}={}){
   return !!CURRENT_TEAM_PROJECT_FOREST?.components?.length;
 }
 
-function switchProjectUserTab(name){
+async function switchProjectUserTab(name){
   const key=String(name||'overview');
   document.querySelectorAll('.project-user-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.projectPanel===key));
   document.querySelectorAll('.project-user-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`projectPanel-${key}`));
   renderProjectUserView();
   if(key==='admin')void renderProjectAdminContractRegistry();
-  if(key==='team')void ensureTeamPersistentCacheLoaded({discoverOnMiss:true}).then(()=>{renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();}).catch(e=>log(`Team-Cache/Neuaufbau konnte nicht geladen werden: ${e?.message||e}`,'warn'));
+  if(key==='team'){
+    try{
+      // Team-Root-Ermittlung basiert auf tlnWallets. Bei schnellem Tab-Wechsel kann
+      // diese Liste vor init() noch leer sein. Deshalb Team immer erst nach der
+      // zentralen TLN/VOW-Initialisierung restaurieren/discovern.
+      await ensureInitialized();
+      const roots=[...projectOwnWalletMap().keys()].map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w));
+      console.info('TLN Team: Initialisierung abgeschlossen', {roots:roots.length, wallets:roots});
+      const rootsKey=teamOwnWalletRootsKey();
+      const restored=await ensureTeamPersistentCacheLoaded({discoverOnMiss:true});
+      console.info('TLN Team: Cache/Discovery abgeschlossen', {roots:roots.length, rootsKey, restored:!!restored, hasForest:!!CURRENT_TEAM_PROJECT_FOREST?.components?.length});
+      renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();
+    }catch(e){
+      console.warn('TLN Team: Initialisierung/Cache/Neuaufbau fehlgeschlagen',e);
+      log(`Team-Cache/Neuaufbau konnte nicht geladen werden: ${e?.message||e}`,'warn');
+    }
+  }
   if(key==='loans')void initCentralLoanEngine().discover();
 }
 function setupProjectUserTabs(){
