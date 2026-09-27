@@ -1,3 +1,4 @@
+// Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P6 gestartet: zentraler NFT-/Ownership-Read-Model-Konsistenzcheck gegen DAO1-Session-Sichten; keine Fachlogikänderung. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5: APTM-Preisanker werden für offene Post-Launch-Claims wallet-unabhängig nachgezogen; normale User lösen fehlende Zielblöcke lokal/read-only auf. Prelaunch bleibt global ab On-Chain-Marktstart Block 88356 definiert. Build 20260926-191559.
 // Phase 6.26 · 26.09.2026 17:56:20 CEST: P5: Missing-Claim-Preisjob vom Tab in Start/Refresh verschoben; nur offene Nicht-Prelaunch-Flows werden erneut bewertet und diagnostiziert. Build 20260926-175620.
 // Phase 6.25 · 26.09.2026 17:31:56 CEST: P5 Diagnose: echte Missing-Preise nativer APTM-Claims protokollieren Exact-/Nachbar-/Legacy-Anker, ohne die Preislogik zu verändern. Build 20260926-173156.
@@ -397,6 +398,7 @@ window.DAO1Project = (() => {
     const walletsNow=projectWallets();
     if(!walletsNow.some(w=>String(w.id)===String(selectedWalletId))) selectedWalletId=String(walletsNow[0]?.id||"");
     await loadCurrentApertumNfts();
+    dao1NftReadModelAudit("refresh-config");
     renderMinerSelector();
     renderNftClassification();
     renderAssetSummary();
@@ -800,6 +802,31 @@ window.DAO1Project = (() => {
       });
     }
     return items;
+  }
+
+  function dao1NftReadModelAudit(reason="manual") {
+    const centralLoaded=window.isCentralNftCacheLoaded?.()===true;
+    const centralOwnership=window.getCentralNftOwnershipRows?.();
+    const ownKey=r=>[String(r?.wallet_id||""),lower(r?.nft_contract||""),String(r?.nft_id??""),Number(r?.owned_from_block||0),Number(r?.owned_to_block||0),r?.is_current?1:0].join("|");
+    const localOwnKeys=new Set((ownershipRows||[]).map(ownKey));
+    const centralOwnKeys=new Set((Array.isArray(centralOwnership)?centralOwnership:[]).map(ownKey));
+    const ownershipOnlyLocal=[...localOwnKeys].filter(k=>!centralOwnKeys.has(k));
+    const ownershipOnlyCentral=[...centralOwnKeys].filter(k=>!localOwnKeys.has(k));
+
+    const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
+    const walletId=String(wallet?.dbId||wallet?.id||"");
+    const nftKey=n=>`${lower(n?.tokenAddress||n?.contract||"")}|${String(n?.tokenId??n?.id??"")}`;
+    const centralCurrent=(centralLoaded&&walletId?window.getCachedNftsForWalletId?.(walletId):null);
+    const centralNftKeys=new Set((Array.isArray(centralCurrent)?centralCurrent:[])
+      .filter(n=>String(n?.chain||"")===CHAIN_KEY&&!n?.possibleSpam&&!n?.userMarkedSpam)
+      .map(nftKey));
+    const localNftKeys=new Set((currentApertumNfts||[]).map(nftKey));
+    const currentOnlyLocal=[...localNftKeys].filter(k=>!centralNftKeys.has(k));
+    const currentOnlyCentral=[...centralNftKeys].filter(k=>!localNftKeys.has(k));
+    const status=centralLoaded&&Array.isArray(centralOwnership)&&!ownershipOnlyLocal.length&&!ownershipOnlyCentral.length&&!currentOnlyLocal.length&&!currentOnlyCentral.length?"complete":"mismatch";
+    const result={reason,status,centralLoaded,walletId,ownershipLocal:localOwnKeys.size,ownershipCentral:Array.isArray(centralOwnership)?centralOwnKeys.size:null,ownershipOnlyLocal:ownershipOnlyLocal.slice(0,20),ownershipOnlyCentral:ownershipOnlyCentral.slice(0,20),currentNftsLocal:localNftKeys.size,currentNftsCentral:Array.isArray(centralCurrent)?centralNftKeys.size:null,currentOnlyLocal:currentOnlyLocal.slice(0,20),currentOnlyCentral:currentOnlyCentral.slice(0,20)};
+    console.info("DAO1 NFT Read-Model Audit",result);
+    return result;
   }
 
   async function loadCurrentApertumNfts() {
@@ -8151,5 +8178,5 @@ window.DAO1Project = (() => {
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
-    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, backfillNativeClaimAssetFlowPrices, refreshMissingNativeClaimPrices, classifyNftType };
+    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, backfillNativeClaimAssetFlowPrices, refreshMissingNativeClaimPrices, runNftReadModelAudit:dao1NftReadModelAudit, classifyNftType };
 })();
