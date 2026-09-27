@@ -1,3 +1,4 @@
+// Phase 6.42 · 27.09.2026 19:01:13 CEST: Cache-Buster-Fix für produktive TLN-Discovery. Die 6.41 Slice-MISS-Logik war im Code vorhanden, wurde aber aus index.html noch mit altem v=20260927-112214 referenziert. Build 20260927-190113.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: Release-Synchronisierung; TLN/VOW-Fachlogik unverändert. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: Appweite Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-163030.
@@ -13,7 +14,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-132841';
+const BUILD_ID='20260927-190113';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -207,7 +208,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 13:28:41 CEST';
+const APP_VERSION='27.09.2026 19:01:13 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
