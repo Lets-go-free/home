@@ -177,3 +177,13 @@ body.admin-user .tln-admin-only { display:inline-block !important; }
 .loan-raw,.loan-link{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;white-space:nowrap}
 .loan-position-diag{border:1px solid var(--border,var(--border));border-radius:10px;padding:8px 10px}
 .loan-position-diag summary{cursor:pointer}
+
+
+/* Phase 6.50 · 28.09.2026 01:15:38 CEST: TLN/VOW project tables must stay dark in dark mode, including empty/odd rows and loan tables. */
+#tlnvowDiscoveryHost .project-cache-only-note{margin:0 0 14px;padding:12px 14px;border:1px solid var(--accent-border);border-radius:10px;background:var(--accent-soft);color:var(--text);font-size:12px;line-height:1.45}
+:root[data-theme="dark"] #tlnvowDiscoveryHost table tbody tr td{background:var(--card)!important;color:var(--text)!important;border-color:var(--border)!important}
+:root[data-theme="dark"] #tlnvowDiscoveryHost table tbody tr:nth-child(even) td{background:#172235!important}
+:root[data-theme="dark"] #tlnvowDiscoveryHost table tbody tr:hover td{background:#20314b!important}
+:root[data-theme="dark"] #tlnvowDiscoveryHost .project-data-table,
+:root[data-theme="dark"] #tlnvowDiscoveryHost .team-lifecycle-list,
+:root[data-theme="dark"] #tlnvowDiscoveryHost .wrap{background:var(--card)!important;color:var(--text)!important}

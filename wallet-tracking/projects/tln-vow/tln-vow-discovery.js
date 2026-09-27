@@ -1,3 +1,4 @@
+// Phase 6.50 · 28.09.2026 01:15:38 CEST: Fresh-User TLN/VOW Reward-Tabs verwenden die globale sanitized Reward-Summary v2 als cache-only Summary-Fallback, ohne Detaildaten zu erfinden. Staking-/Referral-/Bonus-Detailbereiche unterscheiden nun explizit zwischen 0 belegten Daten und noch nicht aufgebauten Detail-Snapshots. Dark-Mode-Tabellen werden über den aktualisierten CSS-Cache-Buster und scoped Dark-Regeln vereinheitlicht. Build 20260928-011538.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: Dashboard Reward-Summary v2 speichert ausschließlich Human-Units (schemaVersion 2, amountUnit=human). 6.47/6.48-v1 wird bewusst ignoriert, damit bereits persistierte Raw-Decimals-Fehler nicht weiterverwendet werden. Edge-Backfill 6.49 normalisiert Legacy-Rawwerte zentral vor dem Speichern. Build 20260928-010115.
 // Phase 6.46 · 27.09.2026 20:19:27 CEST: TLN-Team-Restore wirklich cache-only. Realtest 6.45 zeigte weiterhin >1000 eth_getTransactionByHash-Requests. Ursache: teamRestoreAdditionalRegistryGraph() startete bei fehlendem Zusatzregistry-Cache automatisch einen historischen Join-Aufbau und lud fuer jede Transfer-Tx die volle Transaktion. Der normale Team-Restore darf diesen History-Pfad nicht mehr starten; on-chain Zusatzregistry-Aufbau bleibt ausschliesslich dem expliziten Step-7-Pfad vorbehalten. Build 20260927-201927.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
@@ -15,7 +16,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-010115';
+const BUILD_ID='20260928-011538';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -96,6 +97,9 @@ const CLAIM_REFERENCE_RUN_CACHE=new Map();
 let PROJECT_WALLET_FILTER='all';
 const PROJECT_WALLET_SNAPSHOTS=new Map();
 let PROJECT_WALLET_SNAPSHOTS_LOADING=false;
+let PROJECT_REWARD_SUMMARY_FALLBACK=null;
+let PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE='';
+let PROJECT_REWARD_SUMMARY_FALLBACK_LOADING=false;
 // Keine generische fest codierte Staking-Laufzeit. Contract-/Generations-spezifische
 // Laufzeiten werden nur mit dokumentierter Evidenz hinterlegt.
 function stakingDurationDays(){ return null; }
@@ -209,7 +213,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 01:01:15 CEST';
+const APP_VERSION='28.09.2026 01:15:38 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11850,23 +11854,89 @@ function projectReferralDetailHtml(rows,showOwnerWallet){
   const details=`<div class="card"><h2>🤝 Referral Rewards · einzelne Claims</h2><p class="muted">Jede Zeile zeigt den belegten Reward-Mint und den Partner/Staker, dessen fremde Staking-Transaktion diesem Referral-Reward zugeordnet wurde.</p><div class="project-data-table wrap"><table style="min-width:${showOwnerWallet?'1650':'1500'}px"><thead><tr><th>Zeitpunkt</th>${showOwnerWallet?'<th>Mein Wallet</th>':''}<th>Reward</th><th>Partner / Staker</th><th>TLN ID</th><th>Level</th><th>Staking</th><th>LP-Paar</th><th>Stake-Nachweis</th><th>Tx</th></tr></thead><tbody>${list.map(r=>`<tr><td>${r.timestamp?new Date(r.timestamp*1000).toLocaleString('de-CH'):'–'}</td>${showOwnerWallet?`<td><b>${esc(projectWalletLabel(r.ownerWallet))}</b><div class="small mono muted">${esc(r.ownerWallet)}</div></td>`:''}<td><b>${fmt(r?.mint?.amountHuman,r?.mint?.symbol)} ${esc(r?.mint?.symbol||'–')}</b><div class="small mono muted">${esc(r?.mint?.token||'')}</div></td><td><b>Staker-Wallet</b><div class="mono">${esc(r.partnerWallet||'–')}</div></td><td>${r?.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.partnerWallet)}<div class="small muted">${esc(r.tlnIdentity.source||'Registry')}</div>`:'<span class="warn">unresolved</span>'}</td><td>${r.referralLevel?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.stakingContract):r.stakeEvents.length?'<b>Staking per Stake-Event erkannt</b>':'<span class="warn">unbekannt</span>'}<div class="small mono muted">${esc(r.stakingContract||'')}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label||'LP')}</b><div class="small mono muted">${esc(r.lpPair.pair||'')}</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono">${r.hash?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`;
   return summary+details;
 }
+function projectRewardSummaryScopeWallets(){
+  if(PROJECT_WALLET_FILTER==='all')return [...new Set((tlnWallets||[]).map(w=>norm(w?.evm_address||'')).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
+  const w=norm(PROJECT_WALLET_FILTER||'');
+  return /^0x[0-9a-f]{40}$/.test(w)?[w]:[];
+}
+function projectRewardSummaryFallbackMap(field){
+  const rows=PROJECT_REWARD_SUMMARY_FALLBACK?.[field]?.total||[];
+  const map=new Map();
+  for(const row of rows){
+    const address=norm(row?.address||'')||String(row?.assetId||row?.symbol||'unknown');
+    map.set(address,{address,symbol:projectTokenSymbol(row?.address,row?.symbol),amount:Number(row?.amount||0),count:null});
+  }
+  return map;
+}
+function projectRewardSummaryHasData(field){
+  return projectRewardSummaryFallbackMap(field).size>0;
+}
+async function refreshProjectRewardSummaryFallback({force=false}={}){
+  const scopeWallets=projectRewardSummaryScopeWallets();
+  const scopeKey=scopeWallets.join(',');
+  if(PROJECT_REWARD_SUMMARY_FALLBACK_LOADING)return;
+  if(!force&&PROJECT_REWARD_SUMMARY_FALLBACK&&PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE===scopeKey)return;
+  PROJECT_REWARD_SUMMARY_FALLBACK_LOADING=true;
+  try{
+    PROJECT_REWARD_SUMMARY_FALLBACK=await loadDashboardRewardPeriodsCacheOnly(scopeWallets);
+    PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE=scopeKey;
+  }catch(e){
+    console.warn('TLN Projekt Reward-Summary cache-only',e);
+    PROJECT_REWARD_SUMMARY_FALLBACK=null;
+    PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE=scopeKey;
+  }finally{
+    PROJECT_REWARD_SUMMARY_FALLBACK_LOADING=false;
+    renderProjectAggregateDetails();
+  }
+}
+function projectRewardDetailStateHtml(kind,hasSummary,{partial=false}={}){
+  if(!hasSummary)return '';
+  const label=kind==='referral'?'Referral-Claims':kind==='bonus'?'Bonus-Ausschüttungen':'Staking-/Reward-Positionen';
+  const title=partial?'Summen vollständig nutzbar · Detaildaten nur teilweise aufgebaut.':'Summen vorhanden · Detaildaten noch nicht aufgebaut.';
+  return `<div class="project-cache-only-note"><b>${esc(title)}</b><br>Die Reward-Summen stammen cache-only aus verifizierten privaten Snapshots bzw. dem globalen sanitisierten On-Chain-Summary-Cache. ${esc(label)} werden nur für Wallets mit vorhandenem verifiziertem Detail-Snapshot angezeigt. Es wird dafür beim Öffnen dieses Tabs kein historischer Blockchain-Vollscan gestartet.</div>`;
+}
 function renderProjectAggregateDetails(){
   const d=projectAggregateData(),all=PROJECT_WALLET_FILTER==='all';
   const scopeTitle=all?'alle Wallets':projectWalletLabel(PROJECT_WALLET_FILTER);
   const st=$('projectStakingsAggregate'),rw=$('projectRewardsAggregate'),rf=$('projectReferralAggregate'),bo=$('projectBonusAggregate');
+  const detailSnapshots=d.scoped.length;
+  const expectedDetailSnapshots=all?tlnWallets.length:1;
+  const detailGap=Math.max(0,expectedDetailSnapshots-detailSnapshots);
+  const stakingFallback=projectRewardSummaryFallbackMap('rewards');
+  const referralFallback=projectRewardSummaryFallbackMap('referralRewards');
+  const bonusFallback=projectRewardSummaryFallbackMap('bonusRewards');
+  const stakingSummary=stakingFallback.size?stakingFallback:d.stakingByToken;
+  const referralSummary=referralFallback.size?referralFallback:d.referralByToken;
+  const bonusSummary=bonusFallback.size?bonusFallback:d.bonusByToken;
+  const cacheOnlyStaking=stakingFallback.size>0;
+  const cacheOnlyReferral=referralFallback.size>0;
+  const cacheOnlyBonus=bonusFallback.size>0;
+  const missingStakingDetails=detailGap>0&&stakingFallback.size>0;
+  const missingReferralDetails=detailGap>0&&referralFallback.size>0;
+  const missingBonusDetails=detailGap>0&&bonusFallback.size>0;
+  const rewardTable=(title,map,claims,{cacheOnly=false}={})=>{
+    const rows=[...map.values()];
+    const source=cacheOnly
+      ?'Quelle: globaler sanitiserter Reward-Summary-Cache (Human-Units). Einzeltransaktionen sind für diesen Benutzer noch nicht als Detail-Snapshot aufgebaut.'
+      :'Quelle: persistenter Detail-Snapshot des Projektfilters.';
+    const txText=cacheOnly?'Tx-Anzahl im Summary-Cache nicht enthalten.':`${claims} belegte Tx im gewählten Scope.`;
+    return `<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${txText} Die Mengen werden je Token separat summiert. ${source}</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count==null?'–':x.count}</td><td class="num"><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})}</b></td></tr>`).join(''):`<tr><td colspan="3">${detailSnapshots?'Keine belegten Rewards.':'Noch keine Reward-Summary verfügbar.'}</td></tr>`}</tbody></table></div></div>`;
+  };
   if(st){
     st.style.display='block';
-    st.innerHTML=projectStakingPositionOverviewHtml(d.lots,scopeTitle,all);
+    st.innerHTML=`${projectRewardDetailStateHtml('staking',missingStakingDetails,{partial:detailSnapshots>0})}${rewardTable('🏆 Staking-Rewards',stakingSummary,d.stakingClaims,{cacheOnly:cacheOnlyStaking})}${projectStakingPositionOverviewHtml(d.lots,scopeTitle,all)}`;
   }
-  const rewardTable=(title,map,claims)=>`<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${claims} belegte Tx im gewählten Scope. Die Spalte „Zahlungen“ zählt je Token; Mengen werden je Token separat summiert. Quelle: persistenter Snapshot des Projektfilters.</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${[...map.values()].length?[...map.values()].map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count}</td><td class="num"><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})}</b></td></tr>`).join(''):'<tr><td colspan="3">Keine belegten Rewards.</td></tr>'}</tbody></table></div></div>`;
-  if(rw){rw.style.display='block';rw.innerHTML=rewardTable('🏆 Staking-Rewards',d.stakingByToken,d.stakingClaims);}
-  if(rf){rf.style.display='block';rf.innerHTML=rewardTable('🤝 Referral Rewards · Summary',d.referralByToken,d.referralClaims)+projectReferralDetailHtml(d.referralRows,all);}
+  if(rw){rw.style.display='block';rw.innerHTML=rewardTable('🏆 Staking-Rewards',stakingSummary,d.stakingClaims,{cacheOnly:cacheOnlyStaking});}
+  if(rf){
+    rf.style.display='block';
+    rf.innerHTML=rewardTable('🤝 Referral Rewards · Summary',referralSummary,d.referralClaims,{cacheOnly:cacheOnlyReferral})
+      +(missingReferralDetails?projectRewardDetailStateHtml('referral',true,{partial:detailSnapshots>0}):projectReferralDetailHtml(d.referralRows,all));
+  }
   if(bo){
     bo.style.display='block';
-    bo.innerHTML=`${rewardTable('🎁 Bonus-Rewards',d.bonusByToken,d.bonusClaims)}
+    bo.innerHTML=`${rewardTable('🎁 Bonus-Rewards',bonusSummary,d.bonusClaims,{cacheOnly:cacheOnlyBonus})}
       <div class="card"><h2>🎁 Bonus-Rewards · Ausschüttungen und Claims</h2>
-      <p class="muted">Der Reward-Transfer/Mint ist im selben verifizierten Receipt wie die explizite <code>claimBonus</code>-Transaktion belegt. Ethereum/BSC liefert dafür einen Block-Zeitstempel; deshalb sind Ausschüttungs- und Claim-Zeit hier identisch. Das ist kein separat sekundengenau belegter Ausschüttungszeitpunkt außerhalb der Claim-Tx.</p>
-      ${projectBonusDetailTableHtml(d.bonusRows,all)}</div>`;
+      ${missingBonusDetails?projectRewardDetailStateHtml('bonus',true,{partial:detailSnapshots>0}):`<p class="muted">Der Reward-Transfer/Mint ist im selben verifizierten Receipt wie die explizite <code>claimBonus</code>-Transaktion belegt. Ethereum/BSC liefert dafür einen Block-Zeitstempel; deshalb sind Ausschüttungs- und Claim-Zeit hier identisch. Das ist kein separat sekundengenau belegter Ausschüttungszeitpunkt außerhalb der Claim-Tx.</p>${projectBonusDetailTableHtml(d.bonusRows,all)}`}</div>`;
   }
   // Die alten Detail-Renderer hängen am technischen CURRENT_WALLET und dürfen deshalb
   // in der produktiven Projektansicht nicht mehr sichtbar sein. Sie bleiben im DOM für
@@ -11927,7 +11997,7 @@ async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
       await Promise.all([...PROJECT_WALLET_SNAPSHOTS.entries()].map(([wallet,payload])=>hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi())));
     }
     log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) für die Aggregation geladen${batched?' · 1 Batch-Read statt Wallet-Einzelreads':''}.`,'ok');
-  }finally{PROJECT_WALLET_SNAPSHOTS_LOADING=false;renderProjectUserView();}
+  }finally{PROJECT_WALLET_SNAPSHOTS_LOADING=false;renderProjectUserView();void refreshProjectRewardSummaryFallback({force:true});}
 }
 async function applyProjectWalletFilter(){
   const note=$('projectWalletFilterNote');
@@ -11940,7 +12010,9 @@ async function applyProjectWalletFilter(){
   // niemals verändern. Die grüne Projektansicht liest ausschließlich persistente
   // Wallet-Snapshots; der obere Selector steuert nur manuelle Analyse-/Step-Läufe.
   renderProjectUserView();renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();
+  await refreshProjectRewardSummaryFallback({force:true});
 }
+
 function renderProjectUserView(){renderProjectOverview();renderProjectAggregateDetails();}
 
 const DISCOVERY_PROCESS={
@@ -18514,10 +18586,11 @@ function mergeDashboardRewardPeriodSets(parts){
   return out;
 }
 
-async function loadDashboardRewardPeriodsCacheOnly(){
+async function loadDashboardRewardPeriodsCacheOnly(walletAddresses=null){
   const ctx=dashboardContextGetter?.();
   const uid=ctx?.currentUser?.id;
-  const own=(ctx?.wallets||[]).filter(w=>w?.isOwnWallet!==false&&/^0x[0-9a-f]{40}$/i.test(String(w?.evm||w?.evm_address||'')));
+  const requested=Array.isArray(walletAddresses)?new Set(walletAddresses.map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w))):null;
+  const own=(ctx?.wallets||[]).filter(w=>w?.isOwnWallet!==false&&/^0x[0-9a-f]{40}$/i.test(String(w?.evm||w?.evm_address||''))&&(!requested||requested.has(norm(w?.evm||w?.evm_address||''))));
   const ids=own.map(w=>String(w?.dbId||'')).filter(id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
   if(!uid||!own.length)return null;
   const byId=new Map(own.filter(w=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(w?.dbId||''))).map(w=>[String(w.dbId),norm(w?.evm||w?.evm_address||'')]));
