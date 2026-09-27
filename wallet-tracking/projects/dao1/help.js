@@ -1,3 +1,4 @@
+// Phase 6.31 · 27.09.2026 02:34:41 CEST: P6 abgeschlossen; P7 Wallet-ID-Lifecycle schützt DB-wallet_id strikt vor transienten UI-IDs. Build 20260927-023441.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Helper für Receipt/ERC-20-Fallback wiederhergestellt; P6 Read-Model-Prüfung bleibt unverändert. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: P5 abgeschlossen; P6 prüft zentralen NFT-/Ownership-Read-Model-Vertrag gegen DAO1-Session-Sichten. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5 Preisanker-Fix: globale APTM-Historie bis offene Post-Launch-Claims nachziehen; read-only Exact-Fallback für alle User; Prelaunch global ab Block 88356. Build 20260926-191559.

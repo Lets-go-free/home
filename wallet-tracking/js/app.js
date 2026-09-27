@@ -1,3 +1,4 @@
+// Phase 6.31 · 27.09.2026 02:34:41 CEST: P6 Realtest abgeschlossen; P7 Wallet-ID Lifecycle gestartet. Zentrale Persistenzgrenze akzeptiert für wallet_id nur echte dbId/UUID; NFT-/Discovery-/31.12.-DB-Pfade gegen lokale IDs abgesichert. Build 20260927-023441.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: P6-Testblocker behoben: fehlende DAO1 Claim-Receipt-/Asset-Flow-Helper aus dem bewährten 6.21-Pfad wiederhergestellt; Lifecycle/Snapshot-Gate kann P6 nun wieder vollständig erreichen. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P5 nach Realtest abgeschlossen (Asset-Flow-SoT, historische Preise, 0 Post-Launch-Missing); P6 NFT/Bot Current-State gestartet. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5: globale APTM-Preishistorie/Exact-Anker bis zu offenen Post-Launch-Claims nachziehen; Nicht-Admins erhalten lokalen read-only Exact-Fallback. Prelaunch ist wallet-unabhängig durch den ersten On-Chain-Marktpreis definiert. Build 20260926-191559.
@@ -327,7 +328,7 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "6.30";
+const WT_CURRENT_RELEASE = "6.31";
 const WT_RELEASE_REGISTRY = Object.freeze({
   "6.23": {
     title: "Korrektur der historischen APTM-Claim-Preisaktualisierung",
@@ -853,8 +854,8 @@ async function loadTaxSnapshot(date,walletSel="__all"){
 async function saveTaxSnapshot(date,tz,walletSel){
   if(!currentUser||!date)return;
   const selected=walletSel==="__all"?wallets:wallets.filter(w=>String(w.id)===String(walletSel));
-  const ids=new Set(selected.map(w=>String(w.dbId||w.id)));
-  await sb.from("year_end_positions").delete().eq("snapshot_date",date).in("wallet_id",[...ids]);
+  const ids=new Set(selected.map(w=>persistedWalletDbId(w)).filter(Boolean));
+  if(ids.size)await sb.from("year_end_positions").delete().eq("snapshot_date",date).in("wallet_id",[...ids]);
   const payload=taxRows.filter(r=>{const w=selected.find(x=>x.label===r.wallet&&walletAddressForChain(x,r.chain)===r.wallet_address);return !!w?.dbId;}).map(r=>{
     const w=selected.find(x=>x.label===r.wallet&&walletAddressForChain(x,r.chain)===r.wallet_address);
     return {user_id:currentUser.id,snapshot_date:date,timezone:tz,wallet_id:w.dbId,chain_key:r.chain,asset_key:r.asset||"native",symbol:r.symbol||null,decimals:r.decimals??null,amount:r.amount??null,block_ref:r.block??null,price_usd:r.price_usd??null,value_usd:r.value_usd??null,balance_source:r.balance_source||null,price_source:r.price_source||null,status:r.status||"verifiziert",error_message:r.error||null,calculated_at:new Date().toISOString()};
@@ -2178,8 +2179,8 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P3", workStatus:"erledigt", severity:"critical", area:"Fresh-Build-Parität", finding:"6.11-Realtest: Fresh-Build reproduziert den bekannten Entwicklungs-Testuser einschließlich Ownership/Erwerbsdaten und historischer Kaufpreise. Kontrollfall #38483 findet wieder exakt 10’000 wUSDT in Tx 0x31cd…1de2; weitere bekannte Preise (u. a. #31722, #90227, #90289, #37174) sind deckungsgleich. Bewusst nicht deterministisch verknüpfbare Käufe bleiben offen statt geraten zu werden.", action:"Phase 6.12 schließt P3 ab und macht den finalen Resolver-v3-Stand cache-first: auch bewusst offene Ergebnisse werden mit ihrer Erwerbs-Evidenz persistiert und beim ersten NFT-Tab-Öffnen nicht nochmals neu gerechnet, solange sich die zugrunde liegende Ownership-/Erwerbs-Evidenz nicht geändert hat."},
   {priority:"P4", workStatus:"erledigt", severity:"high", area:"Performance Fresh-Import", finding:"6.18-Realtest bestätigt die Konsolidierung: Wallet-Erstimport 25'783 ms, DAO1 16'788 ms. Asset-Flows 1'056 ms, Claims 2'241 ms, Transactions 3'354 ms, NFT-Ownership 8'135 ms. Gegenüber dem 6.11-Stand mit rund 17 Minuten wurde der blockierende Fresh-Build um rund 97,5 % reduziert; weitere Ownership-Mikrooptimierungen sind aktuell nicht verhältnismässig.", action:"P4 abgeschlossen. 6.18 bleibt Referenz: Owner-/Collections-Endpoint parallel, Asset-Flow-Fresh-Build ohne Vollbewertung, Claim-Patches im Batch. Weitere Optimierung nur bei neu gemessenem Hotspot."},
   {priority:"P5", workStatus:"erledigt", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Die früher überlappenden Claim-/Payout-Modelle sind konsolidiert. Asset, Menge und historischer USD-Wert werden kanonisch in project_transaction_asset_flows geführt; project_nft_claims bleibt Claim↔NFT/Evidenz, project_transactions Transaktions-/Klassifikationsbasis. Legacy reward_aptm/USD sind keine aktive sichtbare Quelle mehr.", action:"P5 abgeschlossen. Realtests: 263 eindeutige native APTM-Flows / 263 TX / 1’829.869891 APTM; nach 6.28 sind alle Post-Launch-Claimpreise bewertet (6/6 nachgezogen, missing=0). Vier Claims vor dem globalen On-Chain-Marktstart Block 88356 bleiben korrekt als Prelaunch ohne erfundenen USD-Wert. Weitere Änderungen nur bei Regression."},
-  {priority:"P6", workStatus:"in Arbeit", severity:"high", area:"NFT / Bot Current State", finding:"Persistente Wahrheiten sind fachlich bereits getrennt (nft_cache = aktueller Wallet-NFT-Bestand, project_nft_ownership = Besitzhistorie), aber DAO1 hält zusätzliche Session-Kopien (currentApertumNfts, ownershipRows). Frühere P3-Fehler zeigten, dass veraltete Session-Kopien einen frischeren DB-/Central-State zeitweise überdecken können.", action:"Phase 6.30: Der erste P6-Realtest deckte einen unabhängigen Claim-Lifecycle-Blocker auf (fehlende fetchClaimTransferLogs-/Asset-Flow-Helper seit 6.22). Dieser wurde aus dem bewährten 6.21-Receipt-Pfad vollständig wiederhergestellt. P6 selbst bleibt ohne Refactor auf Verdacht: DAO1 protokolliert nach seiner Current-State-Initialisierung einen Read-Model-Konsistenzcheck zwischen zentralem nft_cache/project_nft_ownership und den DAO1-Session-Sichten. Erst reale Mismatches werden korrigiert. Zielvertrag: persistente Wahrheit = nft_cache + project_nft_ownership; Runtime ausschließlich abgeleitete Sicht, niemals konkurrierende Wahrheit."},
-  {priority:"P7", workStatus:"offen", severity:"high", area:"Wallet-ID Lifecycle", finding:"Transiente IDs wie local1 konnten bis in UUID-DB-Filter gelangen (6.00 korrigierter konkreter Fall).", action:"DB-Zugriffe ausschließlich mit persistierter dbId/UUID erlauben; lokale Client-ID nur für UI verwenden."},
+  {priority:"P6", workStatus:"erledigt", severity:"high", area:"NFT / Bot Current State", finding:"6.30-Realtest: zentrale und DAO1-lokale Read-Sichten sind vollständig deckungsgleich: 19/19 aktuelle NFTs, 36/36 Ownership-Zeilen, keine onlyLocal/onlyCentral-Abweichung, Status complete. Der unabhängige Claim-Lifecycle-Blocker ist ebenfalls behoben.", action:"P6 abgeschlossen. Persistente Wahrheit bleibt nft_cache + project_nft_ownership; DAO1-Sessiondaten sind abgeleitete Runtime-Sicht. Read-Model-Audit bleibt als Regressiondiagnose bestehen."},
+  {priority:"P7", workStatus:"in Arbeit", severity:"high", area:"Wallet-ID Lifecycle", finding:"P7-Codeaudit 6.31 fand neben dem bereits in 6.00 behobenen TLN-Fall weitere DB-Grenzen mit dbId||id-Fallback: NFT-Cache, Discovery-Cache und 31.12.-Snapshot-Delete konnten theoretisch transiente UI-IDs in wallet_id verwenden. DAO1 prüfte local-Prefix, aber noch nicht strikt UUID.", action:"Phase 6.31 führt eine zentrale persistierte Wallet-ID-Grenze ein: DB-wallet_id akzeptiert nur w.dbId im UUID-Format; lokale Client-ID bleibt UI/Runtime. NFT-/Discovery-Schreibpfade verlangen UUID, Dashboard-LP und 31.12.-Delete überspringen nicht persistierte Wallets. DAO1 walletIdForAddress wird ebenfalls UUID-strikt. P7 bleibt bis Fresh-Wallet-Realtest offen."},
   {priority:"P8", workStatus:"offen", severity:"medium", area:"Fehlerbehandlung", finding:"Mehrere optionale catch(()=>{})-Pfade erschweren die Unterscheidung zwischen bewusst optional und fachlich unvollständig.", action:"Fehlerklassen unterscheiden: optional, retryable, partial, fatal; zentrale Diagnose statt stiller Fehler."},
   {priority:"P9", workStatus:"offen", severity:"medium", area:"Cache-Ownership", finding:"Wallet-, User-, Projekt- und globale Caches sind nicht überall explizit klassifiziert.", action:"Jeden persistenten Cache mit Scope, Source of Truth, Invalidierung und Delete-Verhalten dokumentieren."},
   {priority:"—", workStatus:"beobachten", severity:"good", area:"Komplette Userdaten-Löschung", finding:"Transaktionale DB-Löschung plus Abschlussprüfung ist architektonisch robust aufgebaut.", action:"Beibehalten; nur Regressionstests und Scope-Dokumentation ergänzen."},
@@ -2209,7 +2210,7 @@ function renderHardcodingAudit(){
   const hardcodingRows=HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("");
   el.innerHTML=`
     <div class="custom-token-card" style="margin-bottom:16px">
-      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.30</h3>
+      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.31</h3>
       <div class="note" style="margin-bottom:10px"><strong>Entscheidung:</strong> Kein Rewrite. Feature-Freeze für neue große Funktionen, bis die offenen Lifecycle-Punkte konsolidiert sind. <strong>Steuerungsregel:</strong> Die Tabelle ist die führende Quelle. Bearbeitet wird jeweils die höchste offene Arbeitspriorität P1–P9. <strong>Arbeitspriorität</strong> bestimmt die Reihenfolge; <strong>Risiko</strong> beschreibt unabhängig davon die fachliche/technische Auswirkung. Abgeschlossene Punkte auf „erledigt“ setzen; stabile Punkte ohne Umbau bleiben auf „beobachten“.</div>
       <div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1450px"><thead><tr><th>Prio</th><th>Arbeitsstatus</th><th>Risiko</th><th>Bereich</th><th>Audit-Befund</th><th>Ziel / nächster Schritt</th></tr></thead><tbody>${lifecycleRows}</tbody></table></div>
     </div>
@@ -5337,7 +5338,7 @@ function dashboardPriceRows(targetWallets=walletsForCurrentView(),involvedProjec
 let dashboardLpPositionCache=[];
 async function loadDashboardLpPositionCache(){
   if(!currentUser?.id||!wallets.length||!sb){dashboardLpPositionCache=[];return []}
-  const ids=wallets.map(w=>String(w.dbId||w.id||'')).filter(x=>x&&!x.startsWith('local'));
+  const ids=wallets.map(w=>persistedWalletDbId(w)).filter(Boolean);
   if(!ids.length){dashboardLpPositionCache=[];return []}
   try{
     const {data,error}=await sb.from('lp_position_cache').select('project_key,chain_key,wallet_id,wallet_address,pair_address,current_wallet_lp,current_staked_lp,current_lp,current_usd,refreshed_at,updated_at').eq('user_id',currentUser.id).in('wallet_id',ids);
@@ -8277,8 +8278,18 @@ function sanitizeNftCacheValue(value, stats=null) {
   return value;
 }
 
+function isPersistedWalletUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value||"").trim());
+}
+function persistedWalletDbId(w,{required=false,context="DB-Zugriff"}={}) {
+  const id=String(w?.dbId||"").trim();
+  if(isPersistedWalletUuid(id))return id;
+  if(required)throw new Error(`${context}: persistierte Wallet-UUID fehlt (${w?.label||w?.id||"Wallet"}).`);
+  return null;
+}
+
 async function saveNftCacheForWallet(w, nfts, chains) {
-  const walletId = String(w.dbId || w.id);
+  const walletId = persistedWalletDbId(w,{required:true,context:"NFT-Cache"});
   const sanitizeStats = { nulChars: 0 };
   const payload = sanitizeNftCacheValue({
     user_id: currentUser.id,
@@ -9588,7 +9599,7 @@ function renderDiscoveryCacheState(extraMessage) {
 async function saveDiscoveryCache(w, findings, scanNotes) {
   const scannedAt = new Date();
   const nextAt = new Date(scannedAt.getTime() + DISCOVERY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
-  const walletId = String(w.dbId || w.id);
+  const walletId = persistedWalletDbId(w,{required:true,context:"Discovery-Cache"});
 
   const payload = {
     user_id: currentUser.id,
