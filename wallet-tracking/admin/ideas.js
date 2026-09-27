@@ -1,4 +1,4 @@
-// Phase 6.32 · 27.09.2026 02:59:45 CEST: P7 Fresh-Wallet-Realtest abgeschlossen; P8 Fehlerbehandlung gestartet mit zentraler Async-Klassifikation optional/retryable/partial/fatal. Build 20260927-025945.
+// Phase 6.33 · 27.09.2026 03:34:30 CEST: P8 Auth-Diagnose für apertum-nft-history ergänzt; 401/403 werden ohne Tokeninhalt auf Session-/User-Zustand geprüft und als partial klassifiziert. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: P6-Realtest-Blocker behoben: versehentlich entfallene DAO1 Claim-Receipt-/Asset-Flow-Helper wiederhergestellt; P6 Read-Model-Diagnose fachlich unverändert. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P5 nach 6.28-Realtest abgeschlossen; P6 NFT/Bot Current-State-Readmodel mit Konsistenzdiagnose gestartet. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5 APTM-Anchor-Sync bis höchste offene Post-Launch-Claims; lokaler read-only Exact-Fallback für normale User; Prelaunch global ab Block 88356. Build 20260926-191559.

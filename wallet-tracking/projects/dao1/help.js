@@ -1,4 +1,4 @@
-// Phase 6.32 · 27.09.2026 02:59:45 CEST: P7 abgeschlossen; P8 Fehlerbehandlung klassifiziert stille Async-Pfade zentral, DAO1-Fachlogik unverändert. Build 20260927-025945.
+// Phase 6.33 · 27.09.2026 03:34:30 CEST: P8: sichere Auth-Diagnose für apertum-nft-history ergänzt; keine Tokeninhalte werden ausgegeben, DAO1-Fachlogik unverändert. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Helper für Receipt/ERC-20-Fallback wiederhergestellt; P6 Read-Model-Prüfung bleibt unverändert. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: P5 abgeschlossen; P6 prüft zentralen NFT-/Ownership-Read-Model-Vertrag gegen DAO1-Session-Sichten. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5 Preisanker-Fix: globale APTM-Historie bis offene Post-Launch-Claims nachziehen; read-only Exact-Fallback für alle User; Prelaunch global ab Block 88356. Build 20260926-191559.

@@ -1,4 +1,4 @@
-// Phase 6.32 · 27.09.2026 02:59:45 CEST: P7 Realtest complete; P8 zentrale Fehlerklassifikation liegt in app.js, DAO1-Fachlogik unverändert. Build 20260927-025945.
+// Phase 6.33 · 27.09.2026 03:34:30 CEST: P7 Realtest complete; P8 sichere Auth-Diagnose für apertum-nft-history ergänzt; keine Tokenwerte werden geloggt, Fachlogik unverändert. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Hotfix: in 6.22 versehentlich entfallene kanonische Asset-Flow-/Receipt-Helper vollständig wiederhergestellt; P6 Read-Model-Audit bleibt unverändert und wird erst nach erfolgreichem Lifecycle bewertet. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P6 gestartet: zentraler NFT-/Ownership-Read-Model-Konsistenzcheck gegen DAO1-Session-Sichten; keine Fachlogikänderung. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5: APTM-Preisanker werden für offene Post-Launch-Claims wallet-unabhängig nachgezogen; normale User lösen fehlende Zielblöcke lokal/read-only auf. Prelaunch bleibt global ab On-Chain-Marktstart Block 88356 definiert. Build 20260926-191559.
@@ -1620,6 +1620,48 @@ window.DAO1Project = (() => {
     };
   }
 
+  function dao1EdgeAuthHttpStatus(error){
+    return Number(error?.context?.status||error?.status||0)||null;
+  }
+
+  async function dao1EdgeAuthDiagnostics(functionName,error){
+    const ctx=getContext?.()||{};
+    let session=null,sessionError=null,verifiedUser=null,userError=null;
+    try{
+      const r=await sb.auth.getSession();
+      session=r?.data?.session||null;
+      sessionError=r?.error||null;
+    }catch(e){sessionError=e;}
+    try{
+      const r=await sb.auth.getUser();
+      verifiedUser=r?.data?.user||null;
+      userError=r?.error||null;
+    }catch(e){userError=e;}
+    const expiresAtSec=Number(session?.expires_at||0)||null;
+    const expiresInSec=expiresAtSec?Math.round(expiresAtSec-Date.now()/1000):null;
+    const meta={
+      function:String(functionName||""),
+      httpStatus:dao1EdgeAuthHttpStatus(error),
+      sessionPresent:!!session,
+      accessTokenPresent:!!session?.access_token,
+      sessionUserPresent:!!session?.user?.id,
+      sessionUserId:session?.user?.id||null,
+      contextUserId:ctx?.currentUser?.id||null,
+      sessionMatchesContext:!!(session?.user?.id&&ctx?.currentUser?.id&&session.user.id===ctx.currentUser.id),
+      expiresAt:expiresAtSec?new Date(expiresAtSec*1000).toISOString():null,
+      expiresInSec,
+      expired:expiresInSec!=null?expiresInSec<=0:null,
+      authUserCheckOk:!!verifiedUser?.id&&!userError,
+      authUserId:verifiedUser?.id||null,
+      authUserMatchesSession:!!(verifiedUser?.id&&session?.user?.id&&verifiedUser.id===session.user.id),
+      sessionError:sessionError?.message||null,
+      authUserError:userError?.message||null
+    };
+    console.warn("DAO1 Edge Auth Diagnose",meta);
+    window.reportWalletTrackingAsyncIssue?.("partial","DAO1 NFT-Historie Auth",error,meta);
+    return meta;
+  }
+
   async function fetchCachedNftHistories(contract,ids,statusPrefix=""){
     const clean=[...new Set((ids||[]).map(String))].filter(id=>/^\d+$/.test(id));
     if(!clean.length)return new Map();
@@ -1633,6 +1675,9 @@ window.DAO1Project = (() => {
         body:{contract:lower(contract),token_ids:missing}
       });
       if(error){
+        if(dao1EdgeAuthHttpStatus(error)===401||dao1EdgeAuthHttpStatus(error)===403){
+          await dao1EdgeAuthDiagnostics("apertum-nft-history",error);
+        }
         let detail=error.message||String(error);
         try{
           const ctx=error.context;
