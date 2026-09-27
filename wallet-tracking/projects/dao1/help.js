@@ -1,3 +1,4 @@
+// Phase 6.34 · 27.09.2026 03:45:02 CEST: P8: DAO1 Edge-Historie startet nur mit aktiver Session; bei Session-Verlust bleibt Cache sichtbar und die App fordert zur Neuanmeldung auf. Build 20260927-034502.
 // Phase 6.33 · 27.09.2026 03:34:30 CEST: P8: sichere Auth-Diagnose für apertum-nft-history ergänzt; keine Tokeninhalte werden ausgegeben, DAO1-Fachlogik unverändert. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Helper für Receipt/ERC-20-Fallback wiederhergestellt; P6 Read-Model-Prüfung bleibt unverändert. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: P5 abgeschlossen; P6 prüft zentralen NFT-/Ownership-Read-Model-Vertrag gegen DAO1-Session-Sichten. Build 20260927-015500.
@@ -34,8 +35,8 @@
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260923-014444";
-const HELP_MODULE_TIMESTAMP="23.09.2026 01:44:44 CEST";
+const HELP_MODULE_BUILD="20260927-034502";
+const HELP_MODULE_TIMESTAMP="27.09.2026 03:45:02 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;

@@ -1,3 +1,4 @@
+// Phase 6.34 · 27.09.2026 03:45:02 CEST: P8 Auth-Gate: apertum-nft-history prüft aktive Session vor dem Edge-Aufruf; fehlende Session stoppt den Request und meldet zentralen Re-Login-Zustand statt 401-Kaskade. Build 20260927-034502.
 // Phase 6.33 · 27.09.2026 03:34:30 CEST: P7 Realtest complete; P8 sichere Auth-Diagnose für apertum-nft-history ergänzt; keine Tokenwerte werden geloggt, Fachlogik unverändert. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Hotfix: in 6.22 versehentlich entfallene kanonische Asset-Flow-/Receipt-Helper vollständig wiederhergestellt; P6 Read-Model-Audit bleibt unverändert und wird erst nach erfolgreichem Lifecycle bewertet. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P6 gestartet: zentraler NFT-/Ownership-Read-Model-Konsistenzcheck gegen DAO1-Session-Sichten; keine Fachlogikänderung. Build 20260927-015500.
@@ -1662,6 +1663,24 @@ window.DAO1Project = (() => {
     return meta;
   }
 
+  async function dao1RequireEdgeSession(functionName){
+    if(window.requireWalletTrackingSession){
+      const session=await window.requireWalletTrackingSession({reason:`Sitzung abgelaufen – ${functionName} benötigt eine erneute Anmeldung.`});
+      if(!session){
+        const err=new Error("AUTH_SESSION_MISSING");
+        err.code="WT_AUTH_SESSION_MISSING";
+        throw err;
+      }
+      return session;
+    }
+    const {data,error}=await sb.auth.getSession();
+    if(error||!data?.session?.access_token){
+      window.handleWalletTrackingSessionLost?.(`Sitzung abgelaufen – ${functionName} benötigt eine erneute Anmeldung.`,error);
+      const err=new Error("AUTH_SESSION_MISSING");err.code="WT_AUTH_SESSION_MISSING";throw err;
+    }
+    return data.session;
+  }
+
   async function fetchCachedNftHistories(contract,ids,statusPrefix=""){
     const clean=[...new Set((ids||[]).map(String))].filter(id=>/^\d+$/.test(id));
     if(!clean.length)return new Map();
@@ -1671,12 +1690,16 @@ window.DAO1Project = (() => {
       setTransactionStatus("loading",
         `${statusPrefix}NFT-Besitzhistorie wird geladen…`,
         `${missing.length} NFT(s) · schneller Explorer-/Global-Cache-Pfad`);
+      await dao1RequireEdgeSession("apertum-nft-history");
       const {data,error}=await sb.functions.invoke("apertum-nft-history",{
         body:{contract:lower(contract),token_ids:missing}
       });
       if(error){
         if(dao1EdgeAuthHttpStatus(error)===401||dao1EdgeAuthHttpStatus(error)===403){
-          await dao1EdgeAuthDiagnostics("apertum-nft-history",error);
+          const auth=await dao1EdgeAuthDiagnostics("apertum-nft-history",error);
+          if(!auth?.sessionPresent||!auth?.accessTokenPresent){
+            window.handleWalletTrackingSessionLost?.("Sitzung abgelaufen – bitte neu anmelden.",error);
+          }
         }
         let detail=error.message||String(error);
         try{
@@ -6305,7 +6328,7 @@ window.DAO1Project = (() => {
     const contract=lower(nft?.contract||""),id=String(nft?.id??"");
     if(!contract||!/^\d+$/.test(id))return null;
     let rows=[];
-    try{const map=await fetchCachedNftHistories(contract,[id]);rows=map.get(id)||[];}catch(e){console.warn("DAO1 NFT historische Kaufkette",contract,id,e);return null;}
+    try{const map=await fetchCachedNftHistories(contract,[id]);rows=map.get(id)||[];}catch(e){if(e?.code!=="WT_AUTH_SESSION_MISSING")console.warn("DAO1 NFT historische Kaufkette",contract,id,e);return null;}
     const zero="0x0000000000000000000000000000000000000000",excluded=lower(excludeTx||"");
     const candidates=rows.filter(t=>transferTokenIds(t).includes(id)).map(t=>({
       txHash:String(t.transaction_hash||t.tx_hash||H(t.transaction)||"").toLowerCase(),

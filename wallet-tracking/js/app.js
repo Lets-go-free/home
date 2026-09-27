@@ -1,3 +1,4 @@
+// Phase 6.34 · 27.09.2026 03:45:02 CEST: P8 Session-Verlust zentral behandelt: fehlende Supabase-Session schaltet App in sichtbaren Re-Login-/Cache-only-Zustand, private/Edge-Aufrufe werden vor dem Request blockiert und 401-Kaskaden vermieden. Build 20260927-034502.
 // Phase 6.33 · 27.09.2026 03:34:30 CEST: P7 Fresh-Wallet-Realtest abgeschlossen (nur UUID in DB-wallet_id, Lifecycle complete); P8 Auth-Diagnose ergänzt: 401 der Apertum-NFT-Historie protokolliert Session-/User-Status ohne Tokeninhalt und klassifiziert den Pfad als partial. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: P6-Testblocker behoben: fehlende DAO1 Claim-Receipt-/Asset-Flow-Helper aus dem bewährten 6.21-Pfad wiederhergestellt; Lifecycle/Snapshot-Gate kann P6 nun wieder vollständig erreichen. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P5 nach Realtest abgeschlossen (Asset-Flow-SoT, historische Preise, 0 Post-Launch-Missing); P6 NFT/Bot Current-State gestartet. Build 20260927-015500.
@@ -626,6 +627,80 @@ async function copyDonationAddress() {
   }
 }
 
+
+let wtAuthSessionLost=false;
+let wtAuthSessionLossReason="";
+let wtAuthSessionCheckPromise=null;
+
+function wtRenderSessionExpiredState(reason="Sitzung abgelaufen"){
+  wtAuthSessionLost=true;
+  wtAuthSessionLossReason=String(reason||"Sitzung abgelaufen");
+  currentUser=null;
+  isAdmin=false;
+  adminDebugMode=false;
+  try{sessionStorage.removeItem(ADMIN_DEBUG_SESSION_KEY);}catch(_){ }
+  applyAdminDebugMode();
+  const gate=document.getElementById("authGate");
+  const app=document.getElementById("appContent");
+  const actions=document.getElementById("heroUserActions");
+  const label=document.getElementById("userEmailLabel");
+  const status=document.getElementById("authStatus");
+  if(app)app.style.display="block"; // Cache-/DB-Stand bleibt sichtbar, aber ohne private Nachladejobs.
+  if(gate){
+    gate.style.display="block";
+    gate.classList.add("wt-session-expired");
+    const h=gate.querySelector("h3");if(h)h.textContent="Sitzung abgelaufen – bitte neu anmelden";
+  }
+  if(status)status.innerHTML=`<strong>${escapeAttr(wtAuthSessionLossReason)}</strong><br>Der vorhandene Stand bleibt sichtbar. Private Daten werden erst nach erneuter Anmeldung wieder aktualisiert.`;
+  if(actions)actions.style.display="none";
+  if(label)label.textContent="Sitzung abgelaufen";
+  document.body.classList.add("wt-auth-session-expired");
+  dataJobActiveCount=0;setDataJobUi(false);
+  try{if(globalPriceTimer){clearTimeout(globalPriceTimer);globalPriceTimer=null;}}catch(_){ }
+  console.warn("WalletTracking Auth Session Lost",{reason:wtAuthSessionLossReason});
+}
+window.handleWalletTrackingSessionLost=(reason,error)=>{
+  if(!wtAuthSessionLost)wtRenderSessionExpiredState(reason||error?.message||"Sitzung abgelaufen");
+  return false;
+};
+
+async function wtRequireActiveSession({reason="Sitzung abgelaufen",silent=false}={}){
+  if(wtAuthSessionLost)return null;
+  if(!wtAuthSessionCheckPromise){
+    wtAuthSessionCheckPromise=(async()=>{
+      try{
+        const {data,error}=await sb.auth.getSession();
+        if(error)throw error;
+        const session=data?.session||null;
+        if(!session?.user?.id||!session?.access_token){
+          wtRenderSessionExpiredState(reason);
+          return null;
+        }
+        currentUser=session.user;
+        return session;
+      }catch(e){
+        if(!silent)console.warn("WalletTracking Session-Prüfung",e);
+        wtRenderSessionExpiredState(reason);
+        return null;
+      }finally{
+        setTimeout(()=>{wtAuthSessionCheckPromise=null;},0);
+      }
+    })();
+  }
+  return await wtAuthSessionCheckPromise;
+}
+window.requireWalletTrackingSession=wtRequireActiveSession;
+
+function wtRestoreAuthenticatedUi(session){
+  if(!session?.user)return;
+  wtAuthSessionLost=false;wtAuthSessionLossReason="";currentUser=session.user;
+  document.body.classList.remove("wt-auth-session-expired");
+  const gate=document.getElementById("authGate");
+  const status=document.getElementById("authStatus");
+  if(gate){gate.style.display="none";gate.classList.remove("wt-session-expired");const h=gate.querySelector("h3");if(h)h.textContent="Login";}
+  if(status)status.textContent="";
+}
+
 async function logout() {
   await sb.auth.signOut();
   location.reload();
@@ -634,24 +709,30 @@ async function logout() {
 async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
   sb.auth.onAuthStateChange((event, newSession) => {
-    if(newSession?.user)currentUser=newSession.user;
-    if (newSession && !document.getElementById("appContent")?.style.display) {
-      beginDataJobUi("Daten werden geladen …");
-      onLoggedIn(newSession).finally(()=>endDataJobUi());
+    if(newSession?.user){
+      wtRestoreAuthenticatedUi(newSession);
+      if (!document.getElementById("appContent")?.style.display) {
+        beginDataJobUi("Daten werden geladen …");
+        onLoggedIn(newSession).finally(()=>endDataJobUi());
+      }
+      return;
     }
-    if(event==="SIGNED_OUT"){
-      currentUser=null;
-      dataJobActiveCount=0;setDataJobUi(false);
+    if(event==="SIGNED_OUT"||event==="USER_DELETED"){
+      wtRenderSessionExpiredState(event==="SIGNED_OUT"?"Sitzung beendet – bitte neu anmelden.":"Benutzerkonto ist nicht mehr angemeldet.");
     }
   });
   if (session) {
+    wtRestoreAuthenticatedUi(session);
     beginDataJobUi("Daten werden geladen …");
     try { await onLoggedIn(session); } finally { endDataJobUi(); }
+  } else {
+    currentUser=null;
   }
 }
 
 async function onLoggedIn(session) {
   markRequestAudit("login-start");
+  wtRestoreAuthenticatedUi(session);
   currentUser = session.user;
   document.getElementById("authGate").style.display = "none";
   // Das App-Gerüst und der Dashboard-Tab werden sofort sichtbar. Chain-/DB-Konfiguration
@@ -2201,7 +2282,7 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P5", workStatus:"erledigt", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Die früher überlappenden Claim-/Payout-Modelle sind konsolidiert. Asset, Menge und historischer USD-Wert werden kanonisch in project_transaction_asset_flows geführt; project_nft_claims bleibt Claim↔NFT/Evidenz, project_transactions Transaktions-/Klassifikationsbasis. Legacy reward_aptm/USD sind keine aktive sichtbare Quelle mehr.", action:"P5 abgeschlossen. Realtests: 263 eindeutige native APTM-Flows / 263 TX / 1’829.869891 APTM; nach 6.28 sind alle Post-Launch-Claimpreise bewertet (6/6 nachgezogen, missing=0). Vier Claims vor dem globalen On-Chain-Marktstart Block 88356 bleiben korrekt als Prelaunch ohne erfundenen USD-Wert. Weitere Änderungen nur bei Regression."},
   {priority:"P6", workStatus:"erledigt", severity:"high", area:"NFT / Bot Current State", finding:"6.30-Realtest: zentrale und DAO1-lokale Read-Sichten sind vollständig deckungsgleich: 19/19 aktuelle NFTs, 36/36 Ownership-Zeilen, keine onlyLocal/onlyCentral-Abweichung, Status complete. Der unabhängige Claim-Lifecycle-Blocker ist ebenfalls behoben.", action:"P6 abgeschlossen. Persistente Wahrheit bleibt nft_cache + project_nft_ownership; DAO1-Sessiondaten sind abgeleitete Runtime-Sicht. Read-Model-Audit bleibt als Regressiondiagnose bestehen."},
   {priority:"P7", workStatus:"erledigt", severity:"high", area:"Wallet-ID Lifecycle", finding:"P7-Codeaudit 6.31 fand mehrere DB-Grenzen mit dbId||id-Fallback. Der Fresh-Wallet-Realtest bestätigte danach ausschließlich persistierte UUIDs in wallet_id-Requests, keine 400/422/22P02-Fehler und lifecycleStatus complete bei leerer failures-Liste.", action:"Phase 6.31/6.32: DB-wallet_id akzeptiert nur w.dbId im UUID-Format; lokale Client-ID bleibt UI/Runtime. NFT-/Discovery-Schreibpfade, Dashboard-LP, 31.12.-Delete und DAO1-Walletauflösung sind UUID-strikt. P7 = erledigt."},
-  {priority:"P8", workStatus:"in Arbeit", severity:"medium", area:"Fehlerbehandlung", finding:"Mehrere bisher stille Promise-/catch-Pfade erschweren die Unterscheidung zwischen bewusst optional, erneut versuchbar und fachlich unvollständig.", action:"Phase 6.33 startet eine zentrale Async-Fehlerdiagnose mit den Klassen optional / retryable / partial / fatal. Zunächst werden belegte stille Anwendungsdaten-Pfade (Admin-Check, Dashboard-/Projekt-Summaries, TLN/BSC-Staking-Merge) klassifiziert, ohne Fachlogik oder Lifecycle-Status vorschnell zu ändern. P8 bleibt bis Realtest und Rest-Catch-Audit offen."},
+  {priority:"P8", workStatus:"in Arbeit", severity:"medium", area:"Fehlerbehandlung", finding:"Mehrere bisher stille Promise-/catch-Pfade erschweren die Unterscheidung zwischen bewusst optional, erneut versuchbar und fachlich unvollständig.", action:"Phase 6.34 ergänzt die zentrale Auth-Fehlergrenze: fehlt die Supabase-Session, bleibt der vorhandene Cache-Stand sichtbar, die App fordert klar zur Neuanmeldung auf und private/Edge-Nachladejobs werden vor dem Request blockiert. Damit werden 401-Kaskaden (z. B. apertum-nft-history) verhindert. P8 bleibt bis Realtest Session-Verlust + Rest-Catch-Audit offen."},
   {priority:"P9", workStatus:"offen", severity:"medium", area:"Cache-Ownership", finding:"Wallet-, User-, Projekt- und globale Caches sind nicht überall explizit klassifiziert.", action:"Jeden persistenten Cache mit Scope, Source of Truth, Invalidierung und Delete-Verhalten dokumentieren."},
   {priority:"—", workStatus:"beobachten", severity:"good", area:"Komplette Userdaten-Löschung", finding:"Transaktionale DB-Löschung plus Abschlussprüfung ist architektonisch robust aufgebaut.", action:"Beibehalten; nur Regressionstests und Scope-Dokumentation ergänzen."},
   {priority:"—", workStatus:"beobachten", severity:"good", area:"Projekttrennung", finding:"TLN/VOW und DAO1/APTM sind fachlich getrennte Projektmodule mit gemeinsamer Infrastruktur.", action:"Beibehalten; gemeinsame Infrastruktur konsolidieren, ohne projektspezifische Fachlogik zu vermischen."}
@@ -2230,7 +2311,7 @@ function renderHardcodingAudit(){
   const hardcodingRows=HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("");
   el.innerHTML=`
     <div class="custom-token-card" style="margin-bottom:16px">
-      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.33</h3>
+      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.34</h3>
       <div class="note" style="margin-bottom:10px"><strong>Entscheidung:</strong> Kein Rewrite. Feature-Freeze für neue große Funktionen, bis die offenen Lifecycle-Punkte konsolidiert sind. <strong>Steuerungsregel:</strong> Die Tabelle ist die führende Quelle. Bearbeitet wird jeweils die höchste offene Arbeitspriorität P1–P9. <strong>Arbeitspriorität</strong> bestimmt die Reihenfolge; <strong>Risiko</strong> beschreibt unabhängig davon die fachliche/technische Auswirkung. Abgeschlossene Punkte auf „erledigt“ setzen; stabile Punkte ohne Umbau bleiben auf „beobachten“.</div>
       <div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1450px"><thead><tr><th>Prio</th><th>Arbeitsstatus</th><th>Risiko</th><th>Bereich</th><th>Audit-Befund</th><th>Ziel / nächster Schritt</th></tr></thead><tbody>${lifecycleRows}</tbody></table></div>
     </div>

@@ -1,3 +1,4 @@
+// Phase 6.34 · 27.09.2026 03:45:02 CEST: P8 Session-Verlust als zentraler Zustand: Cache bleibt sichtbar, Re-Login wird angezeigt, private/Edge-Requests werden ohne Session blockiert; 401-Kaskaden vermieden. Build 20260927-034502.
 // Phase 6.33 · 27.09.2026 03:34:30 CEST: P8 Auth-Diagnose für apertum-nft-history ergänzt; 401/403 werden ohne Tokeninhalt auf Session-/User-Zustand geprüft und als partial klassifiziert. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: P6-Realtest-Blocker behoben: versehentlich entfallene DAO1 Claim-Receipt-/Asset-Flow-Helper wiederhergestellt; P6 Read-Model-Diagnose fachlich unverändert. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P5 nach 6.28-Realtest abgeschlossen; P6 NFT/Bot Current-State-Readmodel mit Konsistenzdiagnose gestartet. Build 20260927-015500.
