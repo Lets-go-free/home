@@ -4586,7 +4586,18 @@ async function loadPersistentErc20Cache(wallet){
 async function savePersistentErc20Cache(wallet,cache){
   if(!currentUserId||!stakingScanDbCacheAvailable||!cache?.rows)return false;
   const walletId=await privateWalletIdForAddress(wallet);if(!walletId){log(`Staking-Cache ${short(wallet)} nicht gespeichert: keine private wallet_id gefunden.`,'warn');return false}
-  const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:walletId,wallet_address:null,cache_key:STAKING_SCAN_CACHE_KEY,scanner_version:'erc20-raw-v1',complete_from_block:Number(cache.completeFromBlock||0),last_scanned_block:Number(cache.latestBlock||0),payload:cache.rows.map(compactTransferForCache),updated_at:new Date().toISOString()};
+  const requestedBlock=Number(cache.latestBlock||0);
+  // P9: Ein älterer/offener Browser-Tab darf einen bereits weiter gescannten
+  // persistenten Cache nicht wieder auf einen kleineren Block zurücksetzen.
+  if(requestedBlock>0){
+    const {data:existing,error:readError}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',walletId).eq('cache_key',STAKING_SCAN_CACHE_KEY).maybeSingle();
+    if(readError){log(`Supabase Staking-Chain-Cache Versionsprüfung fehlgeschlagen: ${readError.message||readError}`,'warn');return false}
+    if(existing?.scanner_version==='erc20-raw-v1'&&Number(existing.last_scanned_block||0)>requestedBlock){
+      log(`Staking-Cache ${short(wallet)} nicht zurückgeschrieben: DB ist bereits bis Block ${Number(existing.last_scanned_block).toLocaleString('de-CH')} neuer als lokaler Stand ${requestedBlock.toLocaleString('de-CH')}.`,'muted');
+      return true;
+    }
+  }
+  const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:walletId,wallet_address:null,cache_key:STAKING_SCAN_CACHE_KEY,scanner_version:'erc20-raw-v1',complete_from_block:Number(cache.completeFromBlock||0),last_scanned_block:requestedBlock,payload:cache.rows.map(compactTransferForCache),updated_at:new Date().toISOString()};
   const {error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_id,cache_key'});
   if(error){log(`Supabase Staking-Chain-Cache Speichern fehlgeschlagen: ${error.message||error}`,'warn');return false}
   log(`Supabase Staking-Chain-Cache aktualisiert: ${cache.rows.length} Transfers · wallet_id-basiert.`,'ok');return true;
@@ -4622,12 +4633,27 @@ async function loadTechnicalProcessCache(wallet,cacheKey,scannerVersion){
 }
 async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,lastBlock=0){
   if(!currentUserId||!stakingScanDbCacheAvailable||!payload)return false;
-  const scope=await technicalCacheScope(wallet),now=new Date().toISOString();let error=null;
+  const scope=await technicalCacheScope(wallet),now=new Date().toISOString(),requestedBlock=Number(lastBlock||0);let error=null;
+  // P9: Block-versionierte technische Caches sind monoton. Ein veralteter Tab darf
+  // einen bereits weiter verifizierten DB-Stand nicht durch einen kleineren Block
+  // und dessen Payload ersetzen. lastBlock=0 bleibt bewusst unversioniert.
+  if(requestedBlock>0){
+    let q=scope.kind==='private'
+      ? sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,payload,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',scope.walletId).eq('cache_key',cacheKey)
+      : sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scanner_version,payload,last_scanned_block').eq('chain_key','bsc').eq('scope_address',scope.scopeAddress).eq('cache_key',cacheKey);
+    const {data:existing,error:readError}=await q.maybeSingle();
+    if(readError){log(`Technischer Cache ${cacheKey} Versionsprüfung fehlgeschlagen: ${readError.message||readError}`,'warn');return false}
+    if(existing?.scanner_version===scannerVersion&&Number(existing.last_scanned_block||0)>requestedBlock){
+      TECHNICAL_PROCESS_SESSION_CACHE.set(technicalProcessSessionKey(scope,cacheKey,scannerVersion),existing.payload||null);
+      log(`Technischer Cache ${cacheKey} nicht zurückgeschrieben: DB-Stand Block ${Number(existing.last_scanned_block).toLocaleString('de-CH')} ist neuer als lokaler Stand ${requestedBlock.toLocaleString('de-CH')}.`,'muted');
+      return true;
+    }
+  }
   if(scope.kind==='private'){
-    const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:scope.walletId,wallet_address:null,cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:Number(lastBlock||0),payload,updated_at:now};
+    const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:scope.walletId,wallet_address:null,cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:requestedBlock,payload,updated_at:now};
     ({error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_id,cache_key'}));
   }else{
-    const row={chain_key:'bsc',scope_address:scope.scopeAddress,cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:Number(lastBlock||0),payload,created_by:currentUserId,updated_by:currentUserId,updated_at:now};
+    const row={chain_key:'bsc',scope_address:scope.scopeAddress,cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:requestedBlock,payload,created_by:currentUserId,updated_by:currentUserId,updated_at:now};
     ({error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).upsert(row,{onConflict:'chain_key,scope_address,cache_key'}));
   }
   if(error){log(`Technischer Cache ${cacheKey} konnte nicht gespeichert werden: ${error.message||error}`,'warn');return false}
