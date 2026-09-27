@@ -1,3 +1,4 @@
+// Phase 6.49 · 28.09.2026 01:01:15 CEST: Dashboard Reward-Summary v2 speichert ausschließlich Human-Units (schemaVersion 2, amountUnit=human). 6.47/6.48-v1 wird bewusst ignoriert, damit bereits persistierte Raw-Decimals-Fehler nicht weiterverwendet werden. Edge-Backfill 6.49 normalisiert Legacy-Rawwerte zentral vor dem Speichern. Build 20260928-010115.
 // Phase 6.46 · 27.09.2026 20:19:27 CEST: TLN-Team-Restore wirklich cache-only. Realtest 6.45 zeigte weiterhin >1000 eth_getTransactionByHash-Requests. Ursache: teamRestoreAdditionalRegistryGraph() startete bei fehlendem Zusatzregistry-Cache automatisch einen historischen Join-Aufbau und lud fuer jede Transfer-Tx die volle Transaktion. Der normale Team-Restore darf diesen History-Pfad nicht mehr starten; on-chain Zusatzregistry-Aufbau bleibt ausschliesslich dem expliziten Step-7-Pfad vorbehalten. Build 20260927-201927.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: Release-Synchronisierung; TLN/VOW-Fachlogik unverändert. Build 20260924-173201.
@@ -14,7 +15,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-224040';
+const BUILD_ID='20260928-010115';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -208,7 +209,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 22:40:40 CEST';
+const APP_VERSION='28.09.2026 01:01:15 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4139,7 +4140,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   rewardRelations:'reward-contract-relations-v2-global-fingerprint',
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
-  dashboardRewardSummary:'dashboard-reward-summary-v1',
+  dashboardRewardSummary:'dashboard-reward-summary-v2',
   snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
   teamLifecycle:'team-lifecycle-v9-partial-lifecycle-persist',
   teamLifecycleQueue:'team-lifecycle-queue-v1',
@@ -4904,7 +4905,7 @@ async function saveGlobalDashboardRewardPeriods(wallet,periods,meta={}){
       chain_key:'bsc',scope_address:w,cache_key:TECH_CACHE_KEYS.dashboardRewardSummary,
       scanner_version:TECH_CACHE_VERSIONS.dashboardRewardSummary,
       complete_from_block:0,last_scanned_block:Number(meta?.sourceLastBlock||0),
-      payload:{kind:'dashboard_reward_summary',wallet:w,sourceBuildId:meta?.sourceBuildId||BUILD_ID,sourceSavedAt:meta?.sourceSavedAt||new Date().toISOString(),...periods},
+      payload:{kind:'dashboard_reward_summary',schemaVersion:2,amountUnit:'human',normalizationVersion:2,wallet:w,sourceBuildId:meta?.sourceBuildId||BUILD_ID,sourceSavedAt:meta?.sourceSavedAt||new Date().toISOString(),...periods},
       created_by:currentUserId,updated_by:currentUserId,updated_at:new Date().toISOString()
     };
     const {error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).upsert(row,{onConflict:'chain_key,scope_address,cache_key'});
@@ -11493,18 +11494,25 @@ function projectReferralMintHumanAmount(m){
     if(raw==null||decimals==null)continue;
     try{return Number(ethers.formatUnits(BigInt(String(raw)),decimals))}catch{}
   }
+  if(m?.amountHuman!=null){const human=Number(m.amountHuman);if(Number.isFinite(human))return human;}
   const value=m?.amount;
   if(value==null)return 0;
   const s=String(value).trim();
   let n=Number(s);if(!Number.isFinite(n))return 0;
-  // Compatibility for old snapshots that persisted an integer raw-unit amount in
-  // "amount" but no explicit netRaw. Only apply when registry decimals are known
-  // and the integer is clearly raw-scaled.
-  if(decimals!=null&&decimals>0&&/^\d+$/.test(s)&&Math.abs(n)>=10**Math.min(decimals,12)){
-    try{
-      const scaled=Number(ethers.formatUnits(BigInt(s),decimals));
-      if(Number.isFinite(scaled))return scaled;
-    }catch{}
+  // Compatibility for old snapshots that persisted a raw-unit amount in "amount"
+  // but no explicit netRaw. Large JSON numbers are commonly rendered as scientific
+  // notation after parsing; therefore raw detection must not depend on /^\d+$/.
+  if(decimals!=null&&decimals>0){
+    if(/^-?\d+$/.test(s)){
+      try{
+        const scaled=Number(ethers.formatUnits(BigInt(s),decimals));
+        if(Number.isFinite(scaled)&&Math.abs(n)>=10**Math.min(decimals,15))return scaled;
+      }catch{}
+    }
+    // Number/scientific-notation legacy path. At this point integer precision may
+    // already be reduced, but dividing by 10^decimals restores the correct token
+    // magnitude and is sufficient for the dashboard summary.
+    if(/[eE][+-]?\d+/.test(s)&&Math.abs(n)>=10**Math.min(decimals,15))return n/(10**decimals);
   }
   return n;
 }
@@ -18542,7 +18550,7 @@ async function loadDashboardRewardPeriodsCacheOnly(){
       .eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.dashboardRewardSummary).in('scope_address',chunk);
     if(error)throw error;
     for(const row of (data||[])){
-      if(row?.scanner_version!==TECH_CACHE_VERSIONS.dashboardRewardSummary||row?.payload?.kind!=='dashboard_reward_summary')continue;
+      if(row?.scanner_version!==TECH_CACHE_VERSIONS.dashboardRewardSummary||row?.payload?.kind!=='dashboard_reward_summary'||Number(row?.payload?.schemaVersion||0)!==2||row?.payload?.amountUnit!=='human')continue;
       const wallet=norm(row.scope_address||row.payload.wallet||'');if(!byWallet.has(wallet)||covered.has(wallet))continue;
       summaryParts.push(row.payload);covered.add(wallet);
     }

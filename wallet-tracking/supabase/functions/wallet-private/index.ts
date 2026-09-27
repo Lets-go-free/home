@@ -1,4 +1,4 @@
-// Phase 6.48 · 27.09.2026 22:40:40 CEST: Authentifizierter TLN Reward-Summary-Backfill für Fresh-User. Nur eigene Wallet-Adressen des aktuellen Users; fremde private Snapshots werden ausschließlich serverintern gelesen und auf Reward-Periodensummen reduziert. Keine Rohpayloads/User-IDs werden ausgegeben. Build 20260927-224040.
+// Phase 6.49 · 28.09.2026 01:01:15 CEST: TLN Fresh-User Reward-Backfill v2. Zentrale Raw→Human-Normalisierung für Staking/Bonus/Referral; verifizierte TLN/TLN+/TLNX-Decimale; Legacy raw-scaled amount als JS-Number/Scientific-Notation wird tokengebunden erkannt. Ausgabe trägt amountUnit=human/schemaVersion=2. Build 20260928-010115.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Unveränderte 5.94-Userdaten-Löschlogik, Release-Paketstruktur korrigiert. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Neue geschützte Aktion user_data_delete ruft die transaktionale Komplettlöschung aller userbezogenen WalletTracking-Daten auf. Build 20260922-140348.
 // Phase 5.92 · 22.09.2026 11:01:30 CEST: Authentifizierter NFT-Metadata-Proxy für api.aptmdao.io/nft/<ID> mit enger Allowlist, Timeout und Größenlimit. Build 20260922-110130.
@@ -831,23 +831,64 @@ function rawUnitsToNumber(rawValue: unknown, decimalsValue: unknown): number | n
   return Number.isFinite(value) ? value : null
 }
 
-function referralMintHumanAmount(mint: any): number {
-  const address = normalizeEvmAddress(mint?.token)
-  const decimals = Number.isInteger(Number(mint?.decimals))
-    ? Number(mint.decimals)
-    : REFERRAL_DECIMALS[address]
+function verifiedTokenDecimals(addressValue: unknown, fallback: unknown = null): number | null {
+  const address = normalizeEvmAddress(addressValue)
+  const verified = REFERRAL_DECIMALS[address]
+  if (Number.isInteger(verified) && verified >= 0 && verified <= 36) return verified
+  const n = Number(fallback)
+  return Number.isInteger(n) && n >= 0 && n <= 36 ? n : null
+}
+
+// Canonical reward amount boundary for the Edge backfill. The result of this
+// function is ALWAYS human-token units. Never pass raw ERC-20 units beyond here.
+// Older Discovery snapshots used several shapes:
+//   * netRaw / amountRaw / rawAmount + decimals (preferred, lossless)
+//   * amountHuman (already normalized)
+//   * amount as an integer-like raw value; after JSON parsing very large values may
+//     become a JS Number rendered in scientific notation, so /^\d+$/ is NOT enough.
+function rewardHumanAmount(row: any): number {
+  const address = normalizeEvmAddress(row?.token)
+  const decimals = verifiedTokenDecimals(address, row?.decimals ?? row?.tokenDecimals ?? row?.token_decimals)
+
   for (const key of ['netRaw', 'amountRaw', 'rawAmount']) {
-    if (mint?.[key] == null) continue
-    const n = rawUnitsToNumber(mint[key], decimals)
+    if (row?.[key] == null || decimals == null) continue
+    const n = rawUnitsToNumber(row[key], decimals)
     if (n != null) return n
   }
-  const amount = Number(mint?.amount ?? 0)
-  if (!Number.isFinite(amount)) return 0
-  if (decimals != null && decimals > 0 && /^\d+$/.test(String(mint?.amount ?? '')) && Math.abs(amount) >= 10 ** Math.min(decimals, 12)) {
-    const scaled = rawUnitsToNumber(mint.amount, decimals)
-    if (scaled != null) return scaled
+
+  if (row?.amountHuman != null) {
+    const explicitHuman = Number(row.amountHuman)
+    if (Number.isFinite(explicitHuman)) return explicitHuman
   }
+
+  const rawCandidate = row?.amount
+  const amount = Number(rawCandidate ?? 0)
+  if (!Number.isFinite(amount)) return 0
+  if (decimals == null || decimals <= 0) return amount
+
+  // Exact integer strings can still be scaled losslessly.
+  const text = String(rawCandidate ?? '').trim()
+  if (/^-?\d+$/.test(text)) {
+    const scaled = rawUnitsToNumber(text, decimals)
+    if (scaled != null && Math.abs(amount) >= 10 ** Math.min(decimals, 12)) return scaled
+  }
+
+  // Legacy compatibility: JSON may already have parsed a 20+ digit raw integer into
+  // a Number (e.g. 9.9578e+22), which String() renders in scientific notation.
+  // This is the repeated failure mode that the old /^\d+$/ test missed. Only scale
+  // this Number fallback when scientific notation is actually present and the value
+  // has the raw-unit magnitude expected for the token decimals. Low-decimal tokens
+  // such as wUSDT therefore keep normal human values such as 10'197.25 untouched.
+  const rawScaledThreshold = 10 ** Math.min(decimals, 15)
+  if (/[eE][+-]?\d+/.test(text) && Math.abs(amount) >= rawScaledThreshold) {
+    return amount / (10 ** decimals)
+  }
+
   return amount
+}
+
+function referralMintHumanAmount(mint: any): number {
+  return rewardHumanAmount(mint)
 }
 
 function sanitizedRewardPeriodsFromSnapshot(payload: any): DashboardRewardPeriods {
@@ -865,7 +906,7 @@ function sanitizedRewardPeriodsFromSnapshot(payload: any): DashboardRewardPeriod
       if (isBonusClaim(claim)) continue
       const hash = String(claim?.hash || '').toLowerCase()
       const token = normalizeEvmAddress(claim?.token)
-      const amount = Number(claim?.amount ?? 0)
+      const amount = rewardHumanAmount(claim)
       if (!hash || !token || !Number.isFinite(amount) || amount <= 0) continue
       const key = `${hash}|${token}|${String(claim?.symbol || claim?.tokenSymbol || '')}|${amount}`
       if (stakingSeen.has(key)) continue
@@ -880,7 +921,7 @@ function sanitizedRewardPeriodsFromSnapshot(payload: any): DashboardRewardPeriod
     if (!isBonusClaim(claim)) continue
     const hash = String(claim?.hash || '').toLowerCase()
     const token = normalizeEvmAddress(claim?.token)
-    const amount = Number(claim?.amount ?? 0)
+    const amount = rewardHumanAmount(claim)
     if (!hash || !token || !Number.isFinite(amount) || amount <= 0) continue
     const key = `${hash}|${token}|${amount}`
     if (bonusSeen.has(key)) continue
@@ -966,6 +1007,9 @@ async function loadSanitizedTlnRewardSummaries(
       completedStep: Number(payload.completedStep || 0),
       sourceSavedAt: payload?.lastCheckedAt || payload?.savedAt || row?.updated_at || null,
       sourceLastBlock: Number(payload?.lastCheckedBlock || payload?.sourceLastBlock || row?.last_scanned_block || 0),
+      schemaVersion: 2,
+      amountUnit: 'human',
+      normalizationVersion: 2,
       periods: sanitizedRewardPeriodsFromSnapshot(payload),
     })
   }
