@@ -1,4 +1,4 @@
-// Phase 6.43 · 27.09.2026 19:11:18 CEST: TLN-Team Race Condition behoben. switchProjectUserTab('team') wartet nun auf ensureInitialized(), bevor Own-Wallet-Roots/Slice geprüft werden. Dadurch kann ein früher Tab-Wechsel nicht mehr mit leerem tlnWallets-Stand abbrechen. Eindeutige Console-Diagnose für Initialisierung und Slice/Discovery ergänzt. Build 20260927-191118.
+// Phase 6.44 · 27.09.2026 19:22:03 CEST: TLN-Team Cold-Run-Schutz. Ein Slice-MISS im normalen Team-Tab startet keinen vollständigen SmartNode-Historienscan mehr. Der Restore verifiziert zuerst die eigenen TLN-IDs gezielt und fragt den DB-Slice nur für echte TLN-Leader ab. Ein Full-Cold-Scan bleibt ausschließlich dem expliziten manuellen Step-7/DEV-Pfad vorbehalten. Build 20260927-192203.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: Release-Synchronisierung; TLN/VOW-Fachlogik unverändert. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: Appweite Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-163030.
@@ -14,7 +14,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-191118';
+const BUILD_ID='20260927-192203';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -208,7 +208,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 19:11:18 CEST';
+const APP_VERSION='27.09.2026 19:22:03 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11257,8 +11257,21 @@ async function renderProjectAdminContractRegistry(){
 let teamPersistentRestorePromise=null;
 let teamPersistentRestoreRootsKey='';
 let teamSliceMissDiscoveryRootsKey='';
+let TEAM_AUTO_FULLSCAN_BLOCKED_REASON='';
 function teamOwnWalletRootsKey(){
   return [...projectOwnWalletMap().keys()].map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w)).sort().join('|');
+}
+async function teamVerifiedOwnWalletsForRestore(ownWallets){
+  const input=[...new Set((ownWallets||[]).map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
+  if(!input.length)return [];
+  await teamLoadIdentityCacheFromDb(input);
+  const missing=input.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId);
+  if(missing.length){
+    await teamMapWithConcurrency(missing,4,async w=>{
+      try{return await teamGetIdentity(w,{historyFallback:false})}catch{return null}
+    });
+  }
+  return input.filter(w=>!!TEAM_IDENTITY_CACHE.get(w)?.nodeId);
 }
 async function ensureTeamPersistentCacheLoaded({discoverOnMiss=false}={}){
   const rootsKey=teamOwnWalletRootsKey();
@@ -11270,15 +11283,17 @@ async function ensureTeamPersistentCacheLoaded({discoverOnMiss=false}={}){
   }
   const restored=await teamPersistentRestorePromise;
   if(restored||!discoverOnMiss||!rootsKey)return restored;
-  // Fresh-Wallet-Fall: Ein leerer relevanter Slice kann sich nicht selbst heilen.
-  // Deshalb genau EIN Discovery-Start je aktueller Root-Signatur. Der bestehende
-  // Step-7-Pfad bleibt die einzige Stelle, die den Globalgraph on-chain aufbaut/
-  // aktualisiert; normale Cache-HITs bleiben strikt egress-first und billig.
-  if(teamSliceMissDiscoveryRootsKey===rootsKey)return false;
-  teamSliceMissDiscoveryRootsKey=rootsKey;
-  log('Team-Slice MISS fuer aktuelle eigene Wallets: Step 7 wird einmalig zum Neuaufbau/Update gestartet. Weitere Tab-Oeffnungen dieser Sitzung starten keinen zweiten Lauf.','warn');
-  await processTeamTree();
-  return !!CURRENT_TEAM_PROJECT_FOREST?.components?.length;
+  // Phase 6.44: Ein Slice-MISS im normalen Team-Tab darf niemals einen kompletten
+  // SmartNode-Historienscan ab Block 0 ausloesen. Genau dieser Fallback erzeugte im
+  // Realtest >3500 Requests. Der teure Full-Cold-Scan bleibt nur dem expliziten
+  // manuellen Step-7/DEV-Aufruf vorbehalten.
+  if(teamSliceMissDiscoveryRootsKey!==rootsKey){
+    teamSliceMissDiscoveryRootsKey=rootsKey;
+    TEAM_AUTO_FULLSCAN_BLOCKED_REASON='Kein persistenter Team-Slice fuer die verifizierten eigenen TLN-IDs vorhanden. Automatischer Vollscan ist deaktiviert; ein kompletter Neuaufbau darf nur explizit ueber den manuellen Step-7/DEV-Pfad gestartet werden.';
+    log(`Team-Slice MISS: ${TEAM_AUTO_FULLSCAN_BLOCKED_REASON}`,'warn');
+  }
+  renderTeamTree();
+  return false;
 }
 
 async function switchProjectUserTab(name){
@@ -17285,7 +17300,9 @@ function renderTeamTree(){
   const box=$('teamTree'),status=$('teamTreeStatus');if(!box||!status)return;
   const forest=CURRENT_TEAM_PROJECT_FOREST;
   if(!forest||!forest.components?.length){
-    box.innerHTML='<div class="muted">Noch kein projektweiter TLN/VOW-Team-Baum ermittelt.</div>';return;
+    box.innerHTML=TEAM_AUTO_FULLSCAN_BLOCKED_REASON
+      ?`<div class="warn"><b>Noch keine Team-Daten.</b></div><div class="muted" style="margin-top:6px">${esc(TEAM_AUTO_FULLSCAN_BLOCKED_REASON)}</div>`
+      :'<div class="muted">Noch kein projektweiter TLN/VOW-Team-Baum ermittelt.</div>';return;
   }
   const visible=projectTeamVisibleWallets(forest);
   const ownCount=[...visible].filter(w=>forest.ownSet.has(w)).length;
@@ -17404,15 +17421,25 @@ async function restoreTeamTreeFromPersistentCache(){
       log('Team-Restore: keine TLN/VOW-Wallets unter „MEINE Wallets“ gefunden.','warn');
       return false;
     }
-    // Egress-first: zuerst nur eigene IDs, danach nur die für diese Leader relevante Graph-Scheibe.
-    // Der globale Identity-Cache und der globale SmartNode-Graph werden beim normalen Tab-Aufruf NICHT heruntergeladen.
-    await teamLoadIdentityCacheFromDb(ownWallets);
-    const cached=await teamLoadRelevantGraphSlice(ownWallets);
-    if(!cached?.edges?.size){
-      log('Team-Restore: kein relevanter persistenter Team-Slice verfügbar. Der Team-Tab darf fuer diese aktuelle Own-Wallet-Signatur einmalig Step 7 zum Neuaufbau starten; der Restore selbst laedt weiterhin keinen Globalgraph.','muted');
+    // Egress-first: zuerst nur eigene IDs gezielt verifizieren und danach den DB-Slice
+    // ausschließlich für echte TLN-Leader laden. Reine Projekt-/Token-Wallets ohne
+    // verifizierte TLN-ID dürfen den Team-Root-Scope nicht aufblasen.
+    const verifiedOwnWallets=await teamVerifiedOwnWalletsForRestore(ownWallets);
+    if(!verifiedOwnWallets.length){
+      TEAM_AUTO_FULLSCAN_BLOCKED_REASON='Keine eigene Wallet mit verifizierter TLN-ID gefunden.';
+      log(`Team-Restore: ${TEAM_AUTO_FULLSCAN_BLOCKED_REASON}`,'warn');
       renderTeamTree();
       return false;
     }
+    log(`Team-Restore: ${verifiedOwnWallets.length}/${ownWallets.length} eigene Wallet(s) als TLN-Leader verifiziert: ${verifiedOwnWallets.map(short).join(', ')}.`,'muted');
+    const cached=await teamLoadRelevantGraphSlice(verifiedOwnWallets);
+    if(!cached?.edges?.size){
+      TEAM_AUTO_FULLSCAN_BLOCKED_REASON='Für die verifizierten eigenen TLN-IDs ist im persistenten Globalgraph noch kein relevanter Slice vorhanden. Automatischer Vollscan bleibt deaktiviert.';
+      log(`Team-Restore: ${TEAM_AUTO_FULLSCAN_BLOCKED_REASON}`,'warn');
+      renderTeamTree();
+      return false;
+    }
+    TEAM_AUTO_FULLSCAN_BLOCKED_REASON='';
 
     const edges=new Map(cached.edges);
     const relevantWallets=[...new Set([...edges.keys(),...[...edges.values()].map(e=>norm(e.parent)),...ownWallets])];
@@ -17667,6 +17694,7 @@ function logTeamMissingIdentityDiagnostics(forest,teamCheck){
 let TEAM_TREE_RUN_INFLIGHT=false;
 async function processTeamTree(){
   if(TEAM_TREE_RUN_INFLIGHT){log('Schritt 7: paralleler Zweitstart ignoriert – Team-Baum läuft bereits.','warn');return}
+  TEAM_AUTO_FULLSCAN_BLOCKED_REASON='';
   TEAM_TREE_RUN_INFLIGHT=true;
   const b=$('stepTeam');if(!b){TEAM_TREE_RUN_INFLIGHT=false;return}
   b.disabled=true;setStepState(7,'läuft …','running');
