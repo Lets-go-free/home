@@ -1,8 +1,10 @@
+// Phase 6.48 · 27.09.2026 22:40:40 CEST: Authentifizierter TLN Reward-Summary-Backfill für Fresh-User. Nur eigene Wallet-Adressen des aktuellen Users; fremde private Snapshots werden ausschließlich serverintern gelesen und auf Reward-Periodensummen reduziert. Keine Rohpayloads/User-IDs werden ausgegeben. Build 20260927-224040.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Unveränderte 5.94-Userdaten-Löschlogik, Release-Paketstruktur korrigiert. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Neue geschützte Aktion user_data_delete ruft die transaktionale Komplettlöschung aller userbezogenen WalletTracking-Daten auf. Build 20260922-140348.
 // Phase 5.92 · 22.09.2026 11:01:30 CEST: Authentifizierter NFT-Metadata-Proxy für api.aptmdao.io/nft/<ID> mit enger Allowlist, Timeout und Größenlimit. Build 20260922-110130.
 // Phase 5.81 · 21.09.2026 23:36:49 CEST · vollständige Einzel-Wallet-Löschung via transaktionaler DB-RPC · Build 20260921-233649
 import { withSupabase } from 'npm:@supabase/server@^1'
+import { createClient } from 'npm:@supabase/supabase-js@^2'
 
 const ENCRYPTION_VERSION = 1
 const KEY_VERSION = 1
@@ -718,6 +720,260 @@ async function replaceAllAliases(
   }
 }
 
+
+
+type DashboardRewardItem = {
+  chain: string
+  address: string | null
+  assetId: string
+  symbol: string
+  amount: number
+}
+
+type DashboardRewardPeriods = {
+  rewards: Record<string, DashboardRewardItem[]>
+  referralRewards: Record<string, DashboardRewardItem[]>
+  bonusRewards: Record<string, DashboardRewardItem[]>
+}
+
+function normalizeEvmAddress(value: unknown): string {
+  const v = String(value ?? '').trim().toLowerCase()
+  return /^0x[0-9a-f]{40}$/.test(v) ? v : ''
+}
+
+function rewardTimestampMs(value: unknown): number | null {
+  if (value == null || value === '') return null
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 1e12 ? value : value * 1000
+  }
+  const text = String(value).trim()
+  if (/^0x[0-9a-f]+$/i.test(text)) {
+    const n = Number.parseInt(text, 16)
+    return Number.isFinite(n) ? (n > 1e12 ? n : n * 1000) : null
+  }
+  if (/^\d+(?:\.\d+)?$/.test(text)) {
+    const n = Number(text)
+    return Number.isFinite(n) ? (n > 1e12 ? n : n * 1000) : null
+  }
+  const parsed = Date.parse(text)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function rewardPeriodKeys(value: unknown): string[] {
+  const ms = rewardTimestampMs(value)
+  if (!ms) return []
+  const d = new Date(ms)
+  if (!Number.isFinite(d.getTime())) return []
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const previousYear = year - 1
+  const month = now.getUTCMonth()
+  const out = ['total']
+  if (d.getUTCFullYear() === previousYear) out.push('previousYear')
+  if (d.getUTCFullYear() === year) {
+    out.push('year')
+    if (d.getUTCMonth() === month) out.push('month')
+  }
+  return out
+}
+
+function emptyDashboardRewardPeriods(): DashboardRewardPeriods {
+  const make = () => ({ total: [], previousYear: [], year: [], month: [] })
+  return { rewards: make(), referralRewards: make(), bonusRewards: make() }
+}
+
+function addDashboardReward(
+  target: Record<string, DashboardRewardItem[]>,
+  timeValue: unknown,
+  addressValue: unknown,
+  symbolValue: unknown,
+  amountValue: unknown,
+) {
+  const amount = Number(amountValue ?? 0)
+  if (!Number.isFinite(amount) || amount === 0) return
+  const keys = rewardPeriodKeys(timeValue)
+  if (!keys.length) return
+  const address = normalizeEvmAddress(addressValue) || null
+  const symbol = String(symbolValue || 'TOKEN')
+  const assetId = address || `symbol:${symbol.toLowerCase()}`
+  for (const period of keys) {
+    const rows = target[period] ?? (target[period] = [])
+    let row = rows.find((x) => x.assetId === assetId && x.chain === 'bsc')
+    if (!row) {
+      row = { chain: 'bsc', address, assetId, symbol, amount: 0 }
+      rows.push(row)
+    }
+    row.amount += amount
+  }
+}
+
+const BONUS_SELECTORS = new Set(['0x0e99f5e6'])
+const REFERRAL_DECIMALS: Record<string, number> = {
+  '0xf7d142a354322c7560250caa0e2a06c89649e4c2': 18,
+  '0x29280091fa7f3abe4739ad5f1f7c5287feaf7736': 18,
+  '0x3dda9ea88136ecede768cd374a2af37219da55e7': 18,
+}
+
+function isBonusClaim(claim: any): boolean {
+  return BONUS_SELECTORS.has(String(claim?.selector || '').toLowerCase())
+}
+
+function rawUnitsToNumber(rawValue: unknown, decimalsValue: unknown): number | null {
+  const raw = String(rawValue ?? '').trim()
+  const decimals = Number(decimalsValue)
+  if (!/^-?\d+$/.test(raw) || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) return null
+  const negative = raw.startsWith('-')
+  const digits = negative ? raw.slice(1) : raw
+  const padded = digits.padStart(decimals + 1, '0')
+  const whole = decimals ? padded.slice(0, -decimals) : padded
+  const frac = decimals ? padded.slice(-decimals).replace(/0+$/, '') : ''
+  const value = Number(`${negative ? '-' : ''}${whole}${frac ? `.${frac}` : ''}`)
+  return Number.isFinite(value) ? value : null
+}
+
+function referralMintHumanAmount(mint: any): number {
+  const address = normalizeEvmAddress(mint?.token)
+  const decimals = Number.isInteger(Number(mint?.decimals))
+    ? Number(mint.decimals)
+    : REFERRAL_DECIMALS[address]
+  for (const key of ['netRaw', 'amountRaw', 'rawAmount']) {
+    if (mint?.[key] == null) continue
+    const n = rawUnitsToNumber(mint[key], decimals)
+    if (n != null) return n
+  }
+  const amount = Number(mint?.amount ?? 0)
+  if (!Number.isFinite(amount)) return 0
+  if (decimals != null && decimals > 0 && /^\d+$/.test(String(mint?.amount ?? '')) && Math.abs(amount) >= 10 ** Math.min(decimals, 12)) {
+    const scaled = rawUnitsToNumber(mint.amount, decimals)
+    if (scaled != null) return scaled
+  }
+  return amount
+}
+
+function sanitizedRewardPeriodsFromSnapshot(payload: any): DashboardRewardPeriods {
+  const out = emptyDashboardRewardPeriods()
+  const lots = Array.isArray(payload?.process?.lots) ? payload.process.lots : []
+  const stakingSeen = new Set<string>()
+
+  for (const lot of lots) {
+    const candidates = [
+      ...(Array.isArray(lot?.transactions) ? lot.transactions : []),
+      ...(Array.isArray(lot?.rewardClaims) ? lot.rewardClaims : []),
+    ]
+    for (const claim of candidates) {
+      if (!['stake_reward', 'distribution', 'claim'].includes(String(claim?.eventType || ''))) continue
+      if (isBonusClaim(claim)) continue
+      const hash = String(claim?.hash || '').toLowerCase()
+      const token = normalizeEvmAddress(claim?.token)
+      const amount = Number(claim?.amount ?? 0)
+      if (!hash || !token || !Number.isFinite(amount) || amount <= 0) continue
+      const key = `${hash}|${token}|${String(claim?.symbol || claim?.tokenSymbol || '')}|${amount}`
+      if (stakingSeen.has(key)) continue
+      stakingSeen.add(key)
+      addDashboardReward(out.rewards, claim?.time ?? claim?.timeStamp ?? claim?.timestamp, token, claim?.symbol || claim?.tokenSymbol, amount)
+    }
+  }
+
+  const bonusSeen = new Set<string>()
+  const proven = Array.isArray(payload?.globals?.provenRewardRows) ? payload.globals.provenRewardRows : []
+  for (const claim of proven) {
+    if (!isBonusClaim(claim)) continue
+    const hash = String(claim?.hash || '').toLowerCase()
+    const token = normalizeEvmAddress(claim?.token)
+    const amount = Number(claim?.amount ?? 0)
+    if (!hash || !token || !Number.isFinite(amount) || amount <= 0) continue
+    const key = `${hash}|${token}|${amount}`
+    if (bonusSeen.has(key)) continue
+    bonusSeen.add(key)
+    addDashboardReward(out.bonusRewards, claim?.time ?? claim?.timeStamp ?? claim?.timestamp, token, claim?.symbol || claim?.tokenSymbol, amount)
+  }
+
+  const strong = Array.isArray(payload?.globals?.claimReferenceResult?.strong)
+    ? payload.globals.claimReferenceResult.strong
+    : []
+  const referralSeen = new Set<string>()
+  for (const row of strong) {
+    const hash = String(row?.hash || '').toLowerCase()
+    for (const mint of (Array.isArray(row?.mints) ? row.mints : [])) {
+      const token = normalizeEvmAddress(mint?.token)
+      if (!token) continue
+      const amount = referralMintHumanAmount(mint)
+      if (!Number.isFinite(amount) || amount === 0) continue
+      const key = `${hash}|${token}|${amount}`
+      if (referralSeen.has(key)) continue
+      referralSeen.add(key)
+      addDashboardReward(out.referralRewards, row?.timestamp ?? row?.time, token, mint?.symbol, amount)
+    }
+  }
+
+  return out
+}
+
+function serviceSupabaseClient() {
+  const url = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !serviceKey) throw new Error('Supabase Service-Role-Konfiguration fehlt.')
+  return createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+}
+
+async function loadSanitizedTlnRewardSummaries(
+  supabase: any,
+  key: CryptoKey,
+  userId: string,
+  requestedValue: unknown,
+) {
+  const requested = Array.isArray(requestedValue)
+    ? [...new Set(requestedValue.map(normalizeEvmAddress).filter(Boolean))].slice(0, 50)
+    : []
+  if (!requested.length) return { summaries: [], missing: [] }
+
+  // Security boundary: only addresses currently stored as *own* wallets by this
+  // authenticated user may use the cross-user cache reuse path. The response is
+  // additionally reduced to chain-derived reward totals only; no foreign user_id,
+  // wallet_id, alias, owner name or raw discovery payload leaves this Edge Function.
+  const ownWallets = (await loadWallets(supabase, key, userId))
+    .filter((w) => w?.is_own_wallet !== false)
+    .map((w) => normalizeEvmAddress(w?.evm_address))
+    .filter(Boolean)
+  const allowed = new Set(ownWallets)
+  const wallets = requested.filter((w) => allowed.has(w))
+  if (!wallets.length) return { summaries: [], missing: requested }
+
+  const service = serviceSupabaseClient()
+  const summaries: any[] = []
+  const missing: string[] = []
+
+  for (const wallet of wallets) {
+    const { data, error } = await service
+      .from('tln_vow_staking_scan_cache')
+      .select('payload,last_scanned_block,updated_at,scanner_version')
+      .eq('chain_key', 'bsc')
+      .eq('cache_key', 'verified-discovery-results')
+      .eq('payload->>wallet', wallet)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+
+    if (error) throw new Error(`TLN Reward-Snapshot ${wallet}: ${error.message}`)
+    const row = data?.[0]
+    const payload = row?.payload
+    if (!payload || payload?.kind !== 'verified_discovery_results' || Number(payload?.completedStep || 0) < 4) {
+      missing.push(wallet)
+      continue
+    }
+
+    summaries.push({
+      wallet,
+      completedStep: Number(payload.completedStep || 0),
+      sourceSavedAt: payload?.lastCheckedAt || payload?.savedAt || row?.updated_at || null,
+      sourceLastBlock: Number(payload?.lastCheckedBlock || payload?.sourceLastBlock || row?.last_scanned_block || 0),
+      periods: sanitizedRewardPeriodsFromSnapshot(payload),
+    })
+  }
+
+  for (const wallet of requested) if (!wallets.includes(wallet) && !missing.includes(wallet)) missing.push(wallet)
+  return { summaries, missing }
+}
+
 export default {
   fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
     if (req.method !== 'POST') {
@@ -888,6 +1144,16 @@ export default {
       if (action === 'wallet_list') {
         const wallets = await loadWallets(ctx.supabase, key, userId)
         return json({ ok: true, action, wallets })
+      }
+
+      if (action === 'tln_reward_summary') {
+        const result = await loadSanitizedTlnRewardSummaries(
+          ctx.supabase,
+          key,
+          userId,
+          body.wallets,
+        )
+        return json({ ok: true, action, ...result })
       }
 
       if (action === 'wallet_save') {
