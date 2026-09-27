@@ -1,3 +1,4 @@
+// Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Hotfix: in 6.22 versehentlich entfallene kanonische Asset-Flow-/Receipt-Helper vollständig wiederhergestellt; P6 Read-Model-Audit bleibt unverändert und wird erst nach erfolgreichem Lifecycle bewertet. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P6 gestartet: zentraler NFT-/Ownership-Read-Model-Konsistenzcheck gegen DAO1-Session-Sichten; keine Fachlogikänderung. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5: APTM-Preisanker werden für offene Post-Launch-Claims wallet-unabhängig nachgezogen; normale User lösen fehlende Zielblöcke lokal/read-only auf. Prelaunch bleibt global ab On-Chain-Marktstart Block 88356 definiert. Build 20260926-191559.
 // Phase 6.26 · 26.09.2026 17:56:20 CEST: P5: Missing-Claim-Preisjob vom Tab in Start/Refresh verschoben; nur offene Nicht-Prelaunch-Flows werden erneut bewertet und diagnostiziert. Build 20260926-175620.
@@ -3725,6 +3726,156 @@ window.DAO1Project = (() => {
         }
       }
     }
+    return rows;
+  }
+
+
+  function assetFlowRowFromTransfer(t,address,index=0){
+    const ctx=getContext?.();
+    const tokenAddress=tokenTransferAddress(t);
+    const txHash=tokenTransferTxHash(t);
+    if(!tokenAddress||!txHash)return null;
+    const decimals=tokenTransferDecimals(t);
+    const raw=tokenTransferRawValue(t);
+    return {
+      user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+      wallet_id:walletIdForAddress(address),flow_key:tokenFlowKey(t,address,index),
+      tx_hash:txHash,block_number:Number(t.block_number??t.block??0),
+      tx_timestamp:t.timestamp||t.block_timestamp||null,
+      log_index:Number(t.log_index??t.logIndex??-1),
+      token_address:tokenAddress,token_symbol:tokenFlowSymbol(t),token_name:tokenFlowName(t),
+      token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),
+      counterparty_address:tokenFlowCounterparty(t,address),direction:tokenFlowDirection(t,address),
+      price_usd:null,value_usd:null,price_source:null,updated_at:new Date().toISOString()
+    };
+  }
+
+  const ERC20_TRANSFER_TOPIC="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+
+  function rawTopicValue(v){
+    if(typeof v==="string")return v;
+    return String(v?.hex || v?.value || v?.hash || "");
+  }
+
+  function numericHexOrNumber(v,fallback=0){
+    if(v==null)return fallback;
+    try{
+      if(typeof v==="string" && /^0x[0-9a-f]+$/i.test(v))return Number(BigInt(v));
+      const n=Number(v);
+      return Number.isFinite(n)?n:fallback;
+    }catch{return fallback;}
+  }
+
+  function logContractAddress(log){
+    return lower(
+      log?.address_hash ||
+      log?.address?.address_hash ||
+      log?.address?.hash ||
+      H(log?.address) ||
+      log?.address ||
+      ""
+    );
+  }
+
+  async function tokenMetaForContract(contract){
+    contract=lower(contract);
+    if(!contract)return {symbol:"",name:"",decimals:18};
+    if(dao1TokenMetaCache.has(contract))return dao1TokenMetaCache.get(contract);
+    let meta={symbol:"",name:"",decimals:18};
+    try{
+      const j=await fetchJson(`${EXPLORER_API}/tokens/${contract}`,"Apertum Explorer · Token-Metadaten");
+      meta={
+        symbol:String(j?.symbol||j?.token?.symbol||""),
+        name:String(j?.name||j?.token?.name||""),
+        decimals:Number(j?.decimals??j?.token?.decimals??18)
+      };
+      if(!Number.isFinite(meta.decimals))meta.decimals=18;
+    }catch(e){
+      console.warn("DAO1 Token-Metadaten Fallback",contract,e);
+    }
+    dao1TokenMetaCache.set(contract,meta);
+    return meta;
+  }
+
+  const dao1ClaimLogsCache=new Map();
+  const dao1ClaimLogsInflight=new Map();
+  async function fetchClaimTransferLogs(txHash){
+    const hash=String(txHash||"").toLowerCase();
+    if(!/^0x[0-9a-f]{64}$/.test(hash))return [];
+    if(dao1ClaimLogsCache.has(hash))return dao1ClaimLogsCache.get(hash)||[];
+    if(dao1ClaimLogsInflight.has(hash))return dao1ClaimLogsInflight.get(hash);
+    const job=(async()=>{
+      // Primär das standardisierte RPC-Receipt verwenden. Historische Blockscout-
+      // /transactions/<hash>/logs-Aufrufe liefern auf Apertum teilweise HTTP 400,
+      // obwohl das Receipt die ERC-20 Transfer-Events vollständig enthält.
+      try{
+        const receipt=await rpc("eth_getTransactionReceipt",[hash]);
+        const logs=Array.isArray(receipt?.logs)?receipt.logs:[];
+        if(logs.length)return logs;
+      }catch(e){
+        console.warn("DAO1 Claim Logs via RPC Receipt",hash,e);
+      }
+
+      // Explorer nur noch als Fallback, falls das RPC-Receipt keine Logs liefert.
+      try{
+        return await fetchAll(`/transactions/${hash}/logs`);
+      }catch(e){
+        console.warn("DAO1 Claim Logs via Explorer Fallback",hash,e);
+        return [];
+      }
+    })();
+    dao1ClaimLogsInflight.set(hash,job);
+    try{
+      const rows=await job;
+      dao1ClaimLogsCache.set(hash,rows||[]);
+      return rows||[];
+    }finally{
+      dao1ClaimLogsInflight.delete(hash);
+    }
+  }
+
+  async function assetFlowRowsFromTransferLogs(txHash,address,txMeta=null){
+    const hash=String(txHash||"").toLowerCase();
+    const wallet=lower(address);
+    const logs=await fetchClaimTransferLogs(hash);
+    const rows=[];
+
+    for(let i=0;i<logs.length;i++){
+      const log=logs[i]||{};
+      const topics=Array.isArray(log.topics)?log.topics.map(rawTopicValue):[];
+      if(String(topics[0]||"").toLowerCase()!==ERC20_TRANSFER_TOPIC || topics.length<3)continue;
+
+      const from=lower(topicAddr(topics[1]));
+      const to=lower(topicAddr(topics[2]));
+      if(from!==wallet && to!==wallet)continue;
+
+      const contract=logContractAddress(log);
+      if(!contract)continue;
+
+      let raw="0";
+      try{ raw=BigInt(String(log.data||"0x0")).toString(); }catch{ continue; }
+      const meta=await tokenMetaForContract(contract);
+
+      const pseudo={
+        token:{
+          address_hash:contract,
+          symbol:meta.symbol,
+          name:meta.name,
+          decimals:meta.decimals
+        },
+        from:{hash:from},
+        to:{hash:to},
+        value:raw,
+        transaction_hash:hash,
+        block_number:numericHexOrNumber(log.block_number??log.blockNumber,Number(txMeta?.block_number||0)),
+        timestamp:log.timestamp||log.block_timestamp||txMeta?.tx_timestamp||null,
+        log_index:numericHexOrNumber(log.log_index??log.logIndex,i)
+      };
+
+      const row=assetFlowRowFromTransfer(pseudo,address,i);
+      if(row && ["eingang","ausgang","intern"].includes(row.direction))rows.push(row);
+    }
+
     return rows;
   }
 
