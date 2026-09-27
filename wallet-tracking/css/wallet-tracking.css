@@ -1,3 +1,4 @@
+/* Phase 6.40 · 27.09.2026 13:16:34 CEST · Dark Mode: DAO1 Partner-Wallet-Detailmodal erhält explizite dunkle Grund-/Zebra-/Hover-Zeilen außerhalb des #tab-dao1 DOM-Scopes. Build 20260927-131634. */
 /* Phase 6.27 · 26.09.2026 18:08:50 CEST · Dark Mode: Projekt-Subnav-Container und Buttons vollständig dunkel; DAO1 Tabellenfix bleibt bestehen. Build 20260926-180850. */
 /* Phase 6.26 · 26.09.2026 17:56:20 CEST · DAO1 Dark-Mode Tabellenzeilen: Grund-/Zebra-/Hover-Farben explizit dunkel. Build 20260926-175620. */
 :root {
@@ -1569,3 +1570,27 @@ body.wt-modal-open{overflow:hidden}
 .wt-team-wallet-dids{display:grid;gap:3px;margin-top:6px}.wt-team-did-row{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:3px 6px;border-radius:7px;font-size:10px}.wt-team-did-row span{font-weight:700}.wt-team-did-row strong{font-size:11px}.wt-team-did-row.dao1{background:rgba(40,135,255,.09);color:var(--text)}.wt-team-did-row.dao1 strong{color:#287ee8}.wt-team-did-row.aptmdao{background:rgba(132,78,255,.09);color:var(--text)}.wt-team-did-row.aptmdao strong{color:#7b55df}
 /* Phase 5.55: mehrere projektspezifische DAO-Uplines oberhalb des eigenen Einstiegsknotens */
 .wt-team-upline-wrap{display:flex;flex-direction:column;align-items:center;margin:8px auto 14px;max-width:900px}.wt-team-upline-label{font-weight:800;margin-bottom:8px}.wt-team-upline-row{display:flex;flex-wrap:wrap;justify-content:center;gap:12px}.wt-team-upline-node{min-width:220px;max-width:300px}.wt-team-upline-connector{font-size:22px;line-height:1;margin-top:6px;color:var(--muted,#6b7a99)}
+
+
+/* Phase 6.40: DAO1 Team-Detailmodal wird direkt unter <body> gerendert und liegt damit
+   ausserhalb von #tab-dao1. Die bisherigen DAO1-Dark-Mode-Regeln konnten die
+   Light-Mode-Zebraregel deshalb nicht sicher ueberschreiben. */
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table table,
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody,
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody tr {
+  background:var(--card)!important;
+  color:var(--text)!important;
+}
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody tr td {
+  background:transparent!important;
+  color:var(--text)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody tr:nth-child(even),
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody tr:nth-child(even) td {
+  background:#172235!important;
+}
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody tr:hover,
+:root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody tr:hover td {
+  background:#20314b!important;
+}
