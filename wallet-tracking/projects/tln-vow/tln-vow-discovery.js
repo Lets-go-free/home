@@ -1,4 +1,4 @@
-// Phase 6.45 · 27.09.2026 19:53:49 CEST: TLN-Team Restore strikt cache-only. Realtest 6.44 zeigte trotz blockiertem Globalgraph-Fullscan >1400 einzelne eth_getTransactionByHash-Requests aus automatischer Lifecycle-Nachverifikation. Normaler Team-Tab lädt nur persistente Graph-/Identity-/Lifecycle-Caches; offene Lifecycles werden nicht automatisch historisch rekonstruiert. Historische Lifecycle-Verifikation bleibt explizitem Step 7 bzw. gezieltem Partner-Detail-Refresh vorbehalten. Build 20260927-195349.
+// Phase 6.46 · 27.09.2026 20:19:27 CEST: TLN-Team-Restore wirklich cache-only. Realtest 6.45 zeigte weiterhin >1000 eth_getTransactionByHash-Requests. Ursache: teamRestoreAdditionalRegistryGraph() startete bei fehlendem Zusatzregistry-Cache automatisch einen historischen Join-Aufbau und lud fuer jede Transfer-Tx die volle Transaktion. Der normale Team-Restore darf diesen History-Pfad nicht mehr starten; on-chain Zusatzregistry-Aufbau bleibt ausschliesslich dem expliziten Step-7-Pfad vorbehalten. Build 20260927-201927.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: Release-Synchronisierung; TLN/VOW-Fachlogik unverändert. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: Appweite Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-163030.
@@ -14,7 +14,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-195349';
+const BUILD_ID='20260927-201927';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -208,7 +208,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 19:53:49 CEST';
+const APP_VERSION='27.09.2026 20:19:27 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13935,7 +13935,7 @@ async function teamRestoreVerifiedSupplementalIdentitySeeds(){
   return restored;
 }
 
-async function teamRestoreAdditionalRegistryGraph(){
+async function teamRestoreAdditionalRegistryGraph({allowHistoryScan=false}={}){
   // Phase 5.13: Neue Registry-Generationen besitzen einen eigenen join(address)-Graph.
   // Zuerst nur persistierte Kanten laden. Nur wenn fuer eine konfigurierte Registry noch
   // gar keine Kante persistiert ist, wird deren (kleine) Join-Historie einmalig on-chain
@@ -13948,6 +13948,10 @@ async function teamRestoreAdditionalRegistryGraph(){
       const {data,error}=await sb.from(TEAM_GRAPH_CACHE_TABLE).select('child_wallet,parent_wallet,join_tx_hash,join_block,source').eq('chain_key','bsc').eq('contract_address',registry).limit(1000);
       if(error)throw error;rows=data||[];
     }catch(e){log(`Team-Zusatzregistry ${short(registry)}: Graph-Cache nicht lesbar (${e.message||e}).`,'warn')}
+    if(!rows.length&&!allowHistoryScan){
+      log(`Team-Zusatzregistry ${short(registry)}: kein persistenter Graph-Cache vorhanden · normaler Team-Restore bleibt cache-only und startet keinen historischen Join-/Tx-Scan.`,'muted');
+      continue;
+    }
     if(!rows.length){
       try{
         let pageKey=null,pages=0;const joins=[];
@@ -17457,8 +17461,17 @@ async function restoreTeamTreeFromPersistentCache(){
     const supplementalSeeds=await teamRestoreVerifiedSupplementalIdentitySeeds();
     // Normaler Seitenstart bleibt kostenarm: wenn der verifizierte Referenzfall die
     // fehlende Registry-Generation bereits wiederherstellt, KEIN Registry-History-Scan.
-    if(!supplementalSeeds)await teamRestoreAdditionalRegistryGraph();
-    await teamHydrateSupplementalIdentityParentsFromEvidence();
+    // Phase 6.46: Auch Zusatzregistries sind beim normalen Restore strikt cache-only.
+    // Fehlt deren persistenter Graph, wird NICHT mehr die komplette Registry-Historie
+    // gelesen und fuer jede Transfer-Tx eth_getTransactionByHash aufgerufen. Dieser
+    // Neuaufbau ist nur noch im expliziten Step-7-Discovery-Pfad erlaubt.
+    if(!supplementalSeeds)await teamRestoreAdditionalRegistryGraph({allowHistoryScan:false});
+    // Cache-only bedeutet hier auch: keine Parent-Rekonstruktion ueber persistierte
+    // Evidence-Tx. teamHydrateSupplementalIdentityParentsFromEvidence() liest fuer jede
+    // offene Supplemental-Identity eth_getTransactionByHash und kann bei grossem Cache
+    // selbst wieder hunderte/tausende Requests erzeugen. Persistierte Graph-Kanten und
+    // bereits gespeicherte parentWallet-Fakten reichen fuer den normalen Restore.
+    // Die Evidence-Tx-Hydrierung bleibt dem expliziten Step-7-Pfad vorbehalten.
     teamMergeSupplementalIdentityEdges(edges);
     teamRebindVisibleAliases();
     const forest=buildProjectTeamForest(edges);
@@ -17530,7 +17543,7 @@ async function prepareTeamTree(){
     TEAM_IDENTITY_CACHE.clear();
     await teamLoadIdentityCacheFromDb();
     const full=await scanCompleteSmartNodeJoinGraph();
-    await teamRestoreAdditionalRegistryGraph();
+    await teamRestoreAdditionalRegistryGraph({allowHistoryScan:true});
     // Neuere SmartNode-Registries können bereits über die direkte Wallet-Suche verifiziert worden sein.
     // Diese Beziehungen ergänzen den alten globalen SmartNode-Graph, ohne dessen kanonische Kanten zu überschreiben.
     await teamHydrateSupplementalIdentityParentsFromEvidence();
