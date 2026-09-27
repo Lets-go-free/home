@@ -13,7 +13,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-112214';
+const BUILD_ID='20260927-132841';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -207,7 +207,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 11:22:14 CEST';
+const APP_VERSION='27.09.2026 13:28:41 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11254,11 +11254,30 @@ async function renderProjectAdminContractRegistry(){
 }
 
 let teamPersistentRestorePromise=null;
-function ensureTeamPersistentCacheLoaded(){
-  if(!teamPersistentRestorePromise){
+let teamPersistentRestoreRootsKey='';
+let teamSliceMissDiscoveryRootsKey='';
+function teamOwnWalletRootsKey(){
+  return [...projectOwnWalletMap().keys()].map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w)).sort().join('|');
+}
+async function ensureTeamPersistentCacheLoaded({discoverOnMiss=false}={}){
+  const rootsKey=teamOwnWalletRootsKey();
+  // Die Promise darf nicht ueber einen Wallet-Import hinweg wiederverwendet werden:
+  // eine neue Own-Wallet-Signatur benoetigt ihren eigenen relevanten Team-Slice.
+  if(!teamPersistentRestorePromise||teamPersistentRestoreRootsKey!==rootsKey){
+    teamPersistentRestoreRootsKey=rootsKey;
     teamPersistentRestorePromise=Promise.resolve(restoreTeamTreeFromPersistentCache()).catch(e=>{teamPersistentRestorePromise=null;throw e});
   }
-  return teamPersistentRestorePromise;
+  const restored=await teamPersistentRestorePromise;
+  if(restored||!discoverOnMiss||!rootsKey)return restored;
+  // Fresh-Wallet-Fall: Ein leerer relevanter Slice kann sich nicht selbst heilen.
+  // Deshalb genau EIN Discovery-Start je aktueller Root-Signatur. Der bestehende
+  // Step-7-Pfad bleibt die einzige Stelle, die den Globalgraph on-chain aufbaut/
+  // aktualisiert; normale Cache-HITs bleiben strikt egress-first und billig.
+  if(teamSliceMissDiscoveryRootsKey===rootsKey)return false;
+  teamSliceMissDiscoveryRootsKey=rootsKey;
+  log('Team-Slice MISS fuer aktuelle eigene Wallets: Step 7 wird einmalig zum Neuaufbau/Update gestartet. Weitere Tab-Oeffnungen dieser Sitzung starten keinen zweiten Lauf.','warn');
+  await processTeamTree();
+  return !!CURRENT_TEAM_PROJECT_FOREST?.components?.length;
 }
 
 function switchProjectUserTab(name){
@@ -11267,7 +11286,7 @@ function switchProjectUserTab(name){
   document.querySelectorAll('.project-user-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`projectPanel-${key}`));
   renderProjectUserView();
   if(key==='admin')void renderProjectAdminContractRegistry();
-  if(key==='team')void ensureTeamPersistentCacheLoaded().then(()=>{renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();}).catch(e=>log(`Team-Cache konnte nicht geladen werden: ${e?.message||e}`,'warn'));
+  if(key==='team')void ensureTeamPersistentCacheLoaded({discoverOnMiss:true}).then(()=>{renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();}).catch(e=>log(`Team-Cache/Neuaufbau konnte nicht geladen werden: ${e?.message||e}`,'warn'));
   if(key==='loans')void initCentralLoanEngine().discover();
 }
 function setupProjectUserTabs(){
@@ -17373,7 +17392,7 @@ async function restoreTeamTreeFromPersistentCache(){
     await teamLoadIdentityCacheFromDb(ownWallets);
     const cached=await teamLoadRelevantGraphSlice(ownWallets);
     if(!cached?.edges?.size){
-      log('Team-Restore: kein relevanter persistenter Team-Slice verfügbar. Step 7 bleibt für Discovery/Neuaufbau zuständig; kein automatischer Globalgraph-Download.','muted');
+      log('Team-Restore: kein relevanter persistenter Team-Slice verfügbar. Der Team-Tab darf fuer diese aktuelle Own-Wallet-Signatur einmalig Step 7 zum Neuaufbau starten; der Restore selbst laedt weiterhin keinen Globalgraph.','muted');
       renderTeamTree();
       return false;
     }
