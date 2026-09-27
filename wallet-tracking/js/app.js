@@ -1,4 +1,4 @@
-// Phase 6.31 · 27.09.2026 02:34:41 CEST: P6 Realtest abgeschlossen; P7 Wallet-ID Lifecycle gestartet. Zentrale Persistenzgrenze akzeptiert für wallet_id nur echte dbId/UUID; NFT-/Discovery-/31.12.-DB-Pfade gegen lokale IDs abgesichert. Build 20260927-023441.
+// Phase 6.32 · 27.09.2026 02:59:45 CEST: P7 Fresh-Wallet-Realtest abgeschlossen (nur UUID in DB-wallet_id, Lifecycle complete); P8 Fehlerbehandlung gestartet: zentrale Klassifikation optional/retryable/partial/fatal für zuvor stille Async-Fehler. Build 20260927-025945.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: P6-Testblocker behoben: fehlende DAO1 Claim-Receipt-/Asset-Flow-Helper aus dem bewährten 6.21-Pfad wiederhergestellt; Lifecycle/Snapshot-Gate kann P6 nun wieder vollständig erreichen. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P5 nach Realtest abgeschlossen (Asset-Flow-SoT, historische Preise, 0 Post-Launch-Missing); P6 NFT/Bot Current-State gestartet. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5: globale APTM-Preishistorie/Exact-Anker bis zu offenen Post-Launch-Claims nachziehen; Nicht-Admins erhalten lokalen read-only Exact-Fallback. Prelaunch ist wallet-unabhängig durch den ersten On-Chain-Marktpreis definiert. Build 20260926-191559.
@@ -262,6 +262,24 @@ function runDataJob(label,job){
 window.runDataJob=runDataJob;
 window.isDataJobActive=()=>dataJobActiveCount>0;
 
+const WT_ASYNC_ISSUE_LEVELS=new Set(["optional","retryable","partial","fatal"]);
+const wtAsyncIssues=[];
+function wtReportAsyncIssue(level,area,error,meta={}){
+  const severity=WT_ASYNC_ISSUE_LEVELS.has(String(level))?String(level):"retryable";
+  const message=String(error?.message||error||"Unbekannter Fehler");
+  const item={at:new Date().toISOString(),severity,area:String(area||"Unbekannt"),message,meta:meta&&typeof meta==="object"?meta:{}};
+  const key=`${item.severity}|${item.area}|${item.message}`;
+  const prior=wtAsyncIssues.find(x=>x._key===key);
+  if(prior){prior.count=(prior.count||1)+1;prior.at=item.at;prior.meta=item.meta;return prior;}
+  wtAsyncIssues.push({...item,_key:key,count:1});
+  if(wtAsyncIssues.length>100)wtAsyncIssues.shift();
+  const label=`WalletTracking ${severity} · ${item.area}`;
+  if(severity==="fatal"||severity==="partial")console.warn(label,{message,meta:item.meta,error});
+  else console.info(label,{message,meta:item.meta,error});
+  return item;
+}
+window.getWalletTrackingAsyncIssues=()=>wtAsyncIssues.map(({_key,...x})=>({...x}));
+
 
 async function checkIsAdmin() {
   try {
@@ -269,6 +287,7 @@ async function checkIsAdmin() {
     if (error) { console.error(error); return false; }
     return !!data;
   } catch (e) {
+    wtReportAsyncIssue("retryable","Admin-Berechtigung",e);
     return false;
   }
 }
@@ -452,7 +471,7 @@ async function wtMigrationDao1NftMetadataOwnership(){
       }
     }
     await window.DAO1Project?.loadDashboardSummary?.().catch(e=>wtTrackNftMigrationIssue("dao-dashboard-summary","",e));
-    refreshDashboardProjectSummaries?.().catch(()=>{});
+    refreshDashboardProjectSummaries?.().catch(e=>wtReportAsyncIssue("optional","Dashboard-Projektsummen",e));
     const issues=wtNftMigrationTechnicalIssues.map(({_key,...x})=>x);
     const details={wallets:refreshedWallets,nfts:nftCount,repaired,remaining,failed,technicalIssues:issues};
     if(failed>0||issues.length>0){
@@ -470,14 +489,14 @@ async function wtMigrationDao1NativeClaimFlows(){
   if(!window.DAO1Project?.backfillNativeClaimAssetFlows)throw new Error("DAO1 Native-Claim-Flow-Migration ist nicht verfügbar.");
   const result=await window.DAO1Project.backfillNativeClaimAssetFlows();
   await window.DAO1Project?.loadDashboardSummary?.().catch(e=>console.warn("DAO1 Dashboard nach Native-Claim-Migration",e));
-  refreshDashboardProjectSummaries?.().catch(()=>{});
+  refreshDashboardProjectSummaries?.().catch(e=>wtReportAsyncIssue("optional","Dashboard-Projektsummen",e));
   return {migrationStatus:"complete",details:result||{wallets:0,claims:0,persisted:0}};
 }
 async function wtMigrationDao1NativeClaimFlowPrices(){
   if(!window.DAO1Project?.backfillNativeClaimAssetFlowPrices)throw new Error("DAO1 Native-Claim-Flow-Preis-Migration ist nicht verfügbar.");
   const result=await window.DAO1Project.backfillNativeClaimAssetFlowPrices();
   await window.DAO1Project?.loadDashboardSummary?.().catch(e=>console.warn("DAO1 Dashboard nach Native-Claim-Preis-Migration",e));
-  refreshDashboardProjectSummaries?.().catch(()=>{});
+  refreshDashboardProjectSummaries?.().catch(e=>wtReportAsyncIssue("optional","Dashboard-Projektsummen",e));
   return {migrationStatus:"complete",details:result||{wallets:0,flows:0,reusedTxPrices:0,enginePriced:0,prelaunch:0,missing:0,persisted:0}};
 }
 
@@ -2180,8 +2199,8 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P4", workStatus:"erledigt", severity:"high", area:"Performance Fresh-Import", finding:"6.18-Realtest bestätigt die Konsolidierung: Wallet-Erstimport 25'783 ms, DAO1 16'788 ms. Asset-Flows 1'056 ms, Claims 2'241 ms, Transactions 3'354 ms, NFT-Ownership 8'135 ms. Gegenüber dem 6.11-Stand mit rund 17 Minuten wurde der blockierende Fresh-Build um rund 97,5 % reduziert; weitere Ownership-Mikrooptimierungen sind aktuell nicht verhältnismässig.", action:"P4 abgeschlossen. 6.18 bleibt Referenz: Owner-/Collections-Endpoint parallel, Asset-Flow-Fresh-Build ohne Vollbewertung, Claim-Patches im Batch. Weitere Optimierung nur bei neu gemessenem Hotspot."},
   {priority:"P5", workStatus:"erledigt", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Die früher überlappenden Claim-/Payout-Modelle sind konsolidiert. Asset, Menge und historischer USD-Wert werden kanonisch in project_transaction_asset_flows geführt; project_nft_claims bleibt Claim↔NFT/Evidenz, project_transactions Transaktions-/Klassifikationsbasis. Legacy reward_aptm/USD sind keine aktive sichtbare Quelle mehr.", action:"P5 abgeschlossen. Realtests: 263 eindeutige native APTM-Flows / 263 TX / 1’829.869891 APTM; nach 6.28 sind alle Post-Launch-Claimpreise bewertet (6/6 nachgezogen, missing=0). Vier Claims vor dem globalen On-Chain-Marktstart Block 88356 bleiben korrekt als Prelaunch ohne erfundenen USD-Wert. Weitere Änderungen nur bei Regression."},
   {priority:"P6", workStatus:"erledigt", severity:"high", area:"NFT / Bot Current State", finding:"6.30-Realtest: zentrale und DAO1-lokale Read-Sichten sind vollständig deckungsgleich: 19/19 aktuelle NFTs, 36/36 Ownership-Zeilen, keine onlyLocal/onlyCentral-Abweichung, Status complete. Der unabhängige Claim-Lifecycle-Blocker ist ebenfalls behoben.", action:"P6 abgeschlossen. Persistente Wahrheit bleibt nft_cache + project_nft_ownership; DAO1-Sessiondaten sind abgeleitete Runtime-Sicht. Read-Model-Audit bleibt als Regressiondiagnose bestehen."},
-  {priority:"P7", workStatus:"in Arbeit", severity:"high", area:"Wallet-ID Lifecycle", finding:"P7-Codeaudit 6.31 fand neben dem bereits in 6.00 behobenen TLN-Fall weitere DB-Grenzen mit dbId||id-Fallback: NFT-Cache, Discovery-Cache und 31.12.-Snapshot-Delete konnten theoretisch transiente UI-IDs in wallet_id verwenden. DAO1 prüfte local-Prefix, aber noch nicht strikt UUID.", action:"Phase 6.31 führt eine zentrale persistierte Wallet-ID-Grenze ein: DB-wallet_id akzeptiert nur w.dbId im UUID-Format; lokale Client-ID bleibt UI/Runtime. NFT-/Discovery-Schreibpfade verlangen UUID, Dashboard-LP und 31.12.-Delete überspringen nicht persistierte Wallets. DAO1 walletIdForAddress wird ebenfalls UUID-strikt. P7 bleibt bis Fresh-Wallet-Realtest offen."},
-  {priority:"P8", workStatus:"offen", severity:"medium", area:"Fehlerbehandlung", finding:"Mehrere optionale catch(()=>{})-Pfade erschweren die Unterscheidung zwischen bewusst optional und fachlich unvollständig.", action:"Fehlerklassen unterscheiden: optional, retryable, partial, fatal; zentrale Diagnose statt stiller Fehler."},
+  {priority:"P7", workStatus:"erledigt", severity:"high", area:"Wallet-ID Lifecycle", finding:"P7-Codeaudit 6.31 fand mehrere DB-Grenzen mit dbId||id-Fallback. Der Fresh-Wallet-Realtest bestätigte danach ausschließlich persistierte UUIDs in wallet_id-Requests, keine 400/422/22P02-Fehler und lifecycleStatus complete bei leerer failures-Liste.", action:"Phase 6.31/6.32: DB-wallet_id akzeptiert nur w.dbId im UUID-Format; lokale Client-ID bleibt UI/Runtime. NFT-/Discovery-Schreibpfade, Dashboard-LP, 31.12.-Delete und DAO1-Walletauflösung sind UUID-strikt. P7 = erledigt."},
+  {priority:"P8", workStatus:"in Arbeit", severity:"medium", area:"Fehlerbehandlung", finding:"Mehrere bisher stille Promise-/catch-Pfade erschweren die Unterscheidung zwischen bewusst optional, erneut versuchbar und fachlich unvollständig.", action:"Phase 6.32 startet eine zentrale Async-Fehlerdiagnose mit den Klassen optional / retryable / partial / fatal. Zunächst werden belegte stille Anwendungsdaten-Pfade (Admin-Check, Dashboard-/Projekt-Summaries, TLN/BSC-Staking-Merge) klassifiziert, ohne Fachlogik oder Lifecycle-Status vorschnell zu ändern. P8 bleibt bis Realtest und Rest-Catch-Audit offen."},
   {priority:"P9", workStatus:"offen", severity:"medium", area:"Cache-Ownership", finding:"Wallet-, User-, Projekt- und globale Caches sind nicht überall explizit klassifiziert.", action:"Jeden persistenten Cache mit Scope, Source of Truth, Invalidierung und Delete-Verhalten dokumentieren."},
   {priority:"—", workStatus:"beobachten", severity:"good", area:"Komplette Userdaten-Löschung", finding:"Transaktionale DB-Löschung plus Abschlussprüfung ist architektonisch robust aufgebaut.", action:"Beibehalten; nur Regressionstests und Scope-Dokumentation ergänzen."},
   {priority:"—", workStatus:"beobachten", severity:"good", area:"Projekttrennung", finding:"TLN/VOW und DAO1/APTM sind fachlich getrennte Projektmodule mit gemeinsamer Infrastruktur.", action:"Beibehalten; gemeinsame Infrastruktur konsolidieren, ohne projektspezifische Fachlogik zu vermischen."}
@@ -2210,7 +2229,7 @@ function renderHardcodingAudit(){
   const hardcodingRows=HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("");
   el.innerHTML=`
     <div class="custom-token-card" style="margin-bottom:16px">
-      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.31</h3>
+      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.32</h3>
       <div class="note" style="margin-bottom:10px"><strong>Entscheidung:</strong> Kein Rewrite. Feature-Freeze für neue große Funktionen, bis die offenen Lifecycle-Punkte konsolidiert sind. <strong>Steuerungsregel:</strong> Die Tabelle ist die führende Quelle. Bearbeitet wird jeweils die höchste offene Arbeitspriorität P1–P9. <strong>Arbeitspriorität</strong> bestimmt die Reihenfolge; <strong>Risiko</strong> beschreibt unabhängig davon die fachliche/technische Auswirkung. Abgeschlossene Punkte auf „erledigt“ setzen; stabile Punkte ohne Umbau bleiben auf „beobachten“.</div>
       <div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1450px"><thead><tr><th>Prio</th><th>Arbeitsstatus</th><th>Risiko</th><th>Bereich</th><th>Audit-Befund</th><th>Ziel / nächster Schritt</th></tr></thead><tbody>${lifecycleRows}</tbody></table></div>
     </div>
@@ -4123,7 +4142,7 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
   });
 
   await timed("Summen",async()=>{
-    await mergeTlnBscStakingCacheIntoWalletData().catch(()=>{});
+    await mergeTlnBscStakingCacheIntoWalletData().catch(e=>wtReportAsyncIssue("partial","TLN/BSC Staking-Cache Merge",e,{context:"fresh-wallet-sums"}));
     renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
   });
   // Audit P2 / Snapshot-Gate: Ein automatischer Fresh-Build-Snapshot ist ein
@@ -4153,7 +4172,7 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
     timings["Snapshot"]=0;
     console.info("Wallet Fresh-Build Snapshot-Gate",{wallet:w.label||w.id,lifecycleStatus:preSnapshotLifecycleStatus,daoLifecycleStatus:daoLifecycle?.status||null,failures:[...failures],snapshotGate});
   }
-  await timed("Projekt-Summaries",()=>refreshDashboardProjectSummaries().catch(()=>{}));
+  await timed("Projekt-Summaries",()=>refreshDashboardProjectSummaries().catch(e=>wtReportAsyncIssue("optional","Projekt-Summaries nach Fresh-Build",e)));
   const durationMs=Math.round(performance.now()-started);
   const detail=Object.entries(timings).map(([name,ms])=>`${name} ${Math.round(ms/100)/10}s`).join(" · ");
   const lifecycleStatus=failures.length?"failed":preSnapshotLifecycleStatus;

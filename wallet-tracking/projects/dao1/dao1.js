@@ -1,4 +1,4 @@
-// Phase 6.31 · 27.09.2026 02:34:41 CEST: P6 Realtest complete; P7 Wallet-ID Lifecycle: DAO1 DB-wallet_id akzeptiert ausschließlich persistierte UUID, lokale Client-ID bleibt Runtime/UI. Build 20260927-023441.
+// Phase 6.32 · 27.09.2026 02:59:45 CEST: P7 Realtest complete; P8 zentrale Fehlerklassifikation liegt in app.js, DAO1-Fachlogik unverändert. Build 20260927-025945.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Hotfix: in 6.22 versehentlich entfallene kanonische Asset-Flow-/Receipt-Helper vollständig wiederhergestellt; P6 Read-Model-Audit bleibt unverändert und wird erst nach erfolgreichem Lifecycle bewertet. Build 20260927-021944.
 // Phase 6.29 · 27.09.2026 01:55:00 CEST: Audit P6 gestartet: zentraler NFT-/Ownership-Read-Model-Konsistenzcheck gegen DAO1-Session-Sichten; keine Fachlogikänderung. Build 20260927-015500.
 // Phase 6.28 · 26.09.2026 19:15:59 CEST: P5: APTM-Preisanker werden für offene Post-Launch-Claims wallet-unabhängig nachgezogen; normale User lösen fehlende Zielblöcke lokal/read-only auf. Prelaunch bleibt global ab On-Chain-Marktstart Block 88356 definiert. Build 20260926-191559.
