@@ -14,7 +14,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260927-204554';
+const BUILD_ID='20260927-224040';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -208,7 +208,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='27.09.2026 20:45:54 CEST';
+const APP_VERSION='27.09.2026 22:40:40 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4896,16 +4896,15 @@ function buildDiscoveryResultPayload(completedStep){
     globals:{unassignedRewards:CURRENT_UNASSIGNED_REWARDS||[],provenRewardRows:CURRENT_PROVEN_REWARD_ROWS||[],claimReferenceResult:CURRENT_CLAIM_REFERENCE_RESULT||null}
   });
 }
-async function saveGlobalDashboardRewardSummary(wallet,payload){
-  const w=norm(wallet||payload?.wallet||'');
-  if(!currentUserId||!ethers.isAddress(w)||!payload||Number(payload?.completedStep||0)<2)return false;
+async function saveGlobalDashboardRewardPeriods(wallet,periods,meta={}){
+  const w=norm(wallet||'');
+  if(!currentUserId||!ethers.isAddress(w)||!periods)return false;
   try{
-    const periods=projectDashboardRewardPeriods([[w,payload]]);
     const row={
       chain_key:'bsc',scope_address:w,cache_key:TECH_CACHE_KEYS.dashboardRewardSummary,
       scanner_version:TECH_CACHE_VERSIONS.dashboardRewardSummary,
-      complete_from_block:0,last_scanned_block:Number(payload?.lastCheckedBlock||payload?.sourceLastBlock||0),
-      payload:{kind:'dashboard_reward_summary',wallet:w,sourceBuildId:payload?.buildId||null,sourceSavedAt:payload?.lastCheckedAt||payload?.savedAt||null,...periods},
+      complete_from_block:0,last_scanned_block:Number(meta?.sourceLastBlock||0),
+      payload:{kind:'dashboard_reward_summary',wallet:w,sourceBuildId:meta?.sourceBuildId||BUILD_ID,sourceSavedAt:meta?.sourceSavedAt||new Date().toISOString(),...periods},
       created_by:currentUserId,updated_by:currentUserId,updated_at:new Date().toISOString()
     };
     const {error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).upsert(row,{onConflict:'chain_key,scope_address,cache_key'});
@@ -4915,6 +4914,12 @@ async function saveGlobalDashboardRewardSummary(wallet,payload){
     log(`Globaler Dashboard-Reward-Summary-Cache ${short(w)} konnte nicht gespeichert werden: ${e?.message||e}`,'warn');
     return false;
   }
+}
+async function saveGlobalDashboardRewardSummary(wallet,payload){
+  const w=norm(wallet||payload?.wallet||'');
+  if(!ethers.isAddress(w)||!payload||Number(payload?.completedStep||0)<2)return false;
+  const periods=projectDashboardRewardPeriods([[w,payload]]);
+  return saveGlobalDashboardRewardPeriods(w,periods,{sourceBuildId:payload?.buildId||null,sourceSavedAt:payload?.lastCheckedAt||payload?.savedAt||null,sourceLastBlock:Number(payload?.lastCheckedBlock||payload?.sourceLastBlock||0)});
 }
 async function saveDiscoveryResultSnapshot(completedStep){
   const wallet=norm(DISCOVERY_PROCESS.wallet||CURRENT_WALLET||'');
@@ -18577,9 +18582,33 @@ async function loadDashboardRewardPeriodsCacheOnly(){
     }
   }
 
+  // 5) Fresh-User-Backfill ohne Chain-Scan: Falls eine Wallet bei einem frueheren
+  // User bereits einen verifizierten privaten Discovery-Snapshot besitzt, darf nur
+  // die serverseitig sanitiserte Reward-Perioden-Summary wiederverwendet werden.
+  // wallet-private prueft vorher, dass die Adresse beim aktuellen User als eigene
+  // Wallet gespeichert ist, liest den fremden privaten Payload nur intern mit
+  // Service-Role und gibt weder user_id/wallet_id noch Rohdaten zurueck.
+  let edgeBackfills=0;
+  const missingShared=[...byWallet.keys()].filter(w=>!covered.has(w));
+  if(missingShared.length){
+    try{
+      const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'tln_reward_summary',wallets:missingShared}});
+      if(error)throw error;
+      if(!data?.ok)throw new Error(data?.error||'wallet-private/tln_reward_summary fehlgeschlagen.');
+      for(const item of (Array.isArray(data?.summaries)?data.summaries:[])){
+        const wallet=norm(item?.wallet||'');
+        if(!byWallet.has(wallet)||covered.has(wallet)||!item?.periods)continue;
+        summaryParts.push(item.periods);covered.add(wallet);edgeBackfills++;
+        void saveGlobalDashboardRewardPeriods(wallet,item.periods,{sourceBuildId:'edge-private-snapshot-backfill',sourceSavedAt:item?.sourceSavedAt||null,sourceLastBlock:Number(item?.sourceLastBlock||0)});
+      }
+    }catch(e){
+      console.warn('TLN Dashboard Reward-Backfill via wallet-private',e);
+    }
+  }
+
   if(directEntries.length)summaryParts.push(projectDashboardRewardPeriods(directEntries));
   const merged=mergeDashboardRewardPeriodSets(summaryParts);
-  return {...merged,diagnostic:{wallets:own.length,covered:covered.size,missing:own.length-covered.size,privateSnapshots:directEntries.filter(([,p])=>p?.kind==='verified_discovery_results').length,globalSummaries:summaryParts.length}};
+  return {...merged,diagnostic:{wallets:own.length,covered:covered.size,missing:own.length-covered.size,privateSnapshots:directEntries.filter(([,p])=>p?.kind==='verified_discovery_results').length,globalSummaries:summaryParts.length,edgeBackfills}};
 }
 
 function dashboardOwnEvmWallets(){
