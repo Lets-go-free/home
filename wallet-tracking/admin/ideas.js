@@ -1,3 +1,4 @@
+// Phase 6.66 · 28.09.2026 18:04:55 CEST: Steuerkurs-Stammdaten (ESTV CHF + USD/CHF) und 31.12.-Preisgrundlage USD/CHF umgesetzt. Build 20260928-180455.
 // Phase 6.65 · 28.09.2026 17:19:53 CEST: Safe-/Predefined-Tokenänderungen ohne globalen loadAll, Chain-abhängiger Tokenfilter und eingeklappter Wallet-Datenstand innerhalb Datenaktualisierung. Build 20260928-171953.
 // Phase 6.64 · 28.09.2026 14:12:28 CEST: Native predefined_tokens sind in der Admin-UI wie Contract-Tokens einem DeFi-Projekt/Projekt-Kategorie zuordenbar; Dark-Mode-Zeilen der Token-/Projekt-Tabellen gehärtet. Build 20260928-141228.
 // Phase 6.63 · 28.09.2026 13:54:47 CEST: DAO1-Dashboard zählt projektzugeordnetes natives APTM; Discovery-Sammelspam respektiert Safe-Freigaben; 31.12.-Bestände schließen bestätigten User-Spam aus, Safe hat Vorrang. Build 20260928-135447.

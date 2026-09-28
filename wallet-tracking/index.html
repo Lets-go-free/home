@@ -47,7 +47,7 @@
 </script>
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260928-171953">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260928-180455">
 <link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260928-042301">
 
 
@@ -129,6 +129,7 @@
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="taxprices" onclick="showTab('admin');showAdminTab('taxprices')">🇨🇭 Steuerkurse</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Audit</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="system" onclick="showTab('admin');showAdminTab('system')">🗺️ Systemübersicht</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
@@ -457,13 +458,17 @@
         <div class="note" style="margin-bottom:12px">
           Historische Wallet-Bestände per Stichtag. Bereits berechnete Stichtage werden in Supabase gespeichert und beim nächsten Öffnen ohne neue Blockchain-Abfragen geladen. „Neu berechnen“ aktualisiert Bestände und Kurse vollständig; „Nur Kurse aktualisieren“ behält die verifizierten Bestände und erneuert nur die historische Bewertung. Das Summary weist die tatsächlich berücksichtigten Chains ausdrücklich aus.
         </div>
-        <div class="custom-token-grid" style="grid-template-columns:minmax(160px,.6fr) minmax(220px,.8fr) minmax(240px,1fr)">
+        <div class="custom-token-grid" style="grid-template-columns:minmax(160px,.6fr) minmax(220px,.8fr) minmax(220px,.8fr) minmax(240px,1fr)">
           <label><span class="field-label">Stichtag</span><input id="taxDate" type="date"></label>
           <label><span class="field-label">Zeitzone</span>
             <select id="taxTimezone"><option value="Europe/Zurich">Europe/Zurich (Schweiz)</option><option value="UTC">UTC</option></select>
           </label>
+          <label><span class="field-label">Preisgrundlage</span>
+            <select id="taxPriceBasis" onchange="onTaxPriceBasisChange()"><option value="usd">Preise in USD</option><option value="chf_estv">Preise in CHF (ESTV)</option></select>
+          </label>
           <label><span class="field-label">Wallet</span><select id="taxWalletSelect"></select></label>
         </div>
+        <div id="taxPriceBasisNote" class="note" style="margin-top:8px"></div>
         <div class="action-row" style="margin-top:12px">
           <button id="taxRunBtn" onclick="runTaxSnapshot()">Neu berechnen</button>
           <button class="secondary" id="taxPriceRefreshBtn" onclick="refreshTaxPricesOnly()">Nur Kurse aktualisieren</button>
@@ -621,6 +626,27 @@
           <button class="secondary" onclick="loadAdminDexConfigs()">🔄 Neu laden</button>
         </div>
         <div id="adminDexConfigsList"></div>
+      </div>
+
+      <div id="admintab-taxprices" class="admin-tab-panel">
+        <div class="section-title">🇨🇭 Steuerkurse · Schweiz / ESTV</div>
+        <div class="note" style="margin-bottom:14px">Globale Steuerkurs-Stammdaten für die Bestandesaufnahme per 31.12. Direkte ESTV-Steuerwerte werden in CHF gespeichert. Fehlt für einen Token ein direkter ESTV-Wert, verwendet der Bericht den vorhandenen USD-Stichtagspreis und rechnet ihn mit dem offiziellen USD/CHF-ESTV-Kurs des Jahres um.</div>
+        <div class="custom-token-card">
+          <div class="custom-token-grid" style="grid-template-columns:minmax(120px,.35fr) minmax(160px,.45fr) minmax(260px,1fr)">
+            <label><span class="field-label">Steuerjahr</span><input id="adminTaxYear" type="number" min="2000" max="2100" step="1" onchange="loadAdminTaxPrices()"></label>
+            <label><span class="field-label">1 USD = CHF</span><input id="adminTaxUsdChf" type="number" min="0" step="0.000001" placeholder="z. B. 0.80043"></label>
+            <label><span class="field-label">ESTV-Quelle / URL</span><input id="adminTaxSourceUrl" type="url" placeholder="https://..."></label>
+          </div>
+          <div class="action-row" style="margin-top:10px"><button onclick="saveAdminTaxFxRate()">USD/CHF speichern</button></div>
+        </div>
+        <div class="custom-token-card" style="margin-top:12px">
+          <h3 style="margin-top:0">Direkte ESTV-Steuerwerte importieren</h3>
+          <div class="note">Eine Zeile pro Asset: <code>SYMBOL;CHF-WERT</code>. Beispiel: <code>BTC;123456.78</code>. Bestehende Werte desselben Jahres/Symbols werden aktualisiert.</div>
+          <textarea id="adminTaxPriceImport" rows="8" style="width:100%;margin-top:10px" placeholder="BTC;...&#10;ETH;..."></textarea>
+          <div class="action-row" style="margin-top:10px"><button onclick="importAdminTaxAssetPrices()">ESTV-Werte importieren</button><button class="secondary" onclick="loadAdminTaxPrices()">Neu laden</button></div>
+          <div id="adminTaxPriceStatus" class="note" style="margin-top:8px"></div>
+        </div>
+        <div id="adminTaxPriceList" style="margin-top:12px"></div>
       </div>
 
       <div id="admintab-hardcoding" class="admin-tab-panel">
@@ -1130,7 +1156,7 @@
   </div>
 
   <footer>
-    Version vom 28.09.2026 13:54:47 CEST · Phase 6.63 · native Projektwerte + Spam-/31.12.-Filter<br>
+    Version vom 28.09.2026 18:04:55 CEST · Phase 6.66 · USD-/ESTV-Steuerpreise per 31.12.<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1149,11 +1175,11 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260928-171953"></script>
-<script src="./help/help-general.js?v=20260928-171953"></script>
+<script src="./admin/ideas.js?v=20260928-180455"></script>
+<script src="./help/help-general.js?v=20260928-180455"></script>
 <script src="./projects/tln-vow/help.js?v=20260928-133530"></script>
 <script src="./projects/dao1/help.js?v=20260928-133530"></script>
-<script src="./js/app.js?v=20260928-171953"></script>
+<script src="./js/app.js?v=20260928-180455"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260928-121620"></script>
 
 
@@ -1172,6 +1198,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.09.2026 17:19:53 CEST · Phase 6.65 · Build 20260928-171953</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.09.2026 18:04:55 CEST · Phase 6.66 · Build 20260928-180455</div>
 </body>
 </html>

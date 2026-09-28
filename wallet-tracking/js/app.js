@@ -1,3 +1,4 @@
+// Phase 6.66 · 28.09.2026 18:04:55 CEST: 31.12.-Bericht unterstützt USD-Marktpreise oder CHF Schweiz/ESTV; neue globale Steuerkurs-Stammdaten mit Admin-Import für USD/CHF und direkte ESTV-Assetwerte. Build 20260928-180455.
 // Phase 6.65 · 28.09.2026 17:19:53 CEST: Token-Stammdaten/Safe-Klassifizierung lösen keinen globalen loadAll mehr aus; gezielter Chain-Refresh statt Vollrefresh, Chain-abhängiger Token-Subfilter und Datenstand-pro-Wallet standardmäßig eingeklappt innerhalb Datenaktualisierung. Build 20260928-171953.
 // Phase 6.63 · 28.09.2026 13:54:47 CEST: DAO1-Projektwert berücksichtigt projektzugeordnete native Assets (APTM); Discovery-Sammelspam schützt manuell sichere Token; 31.12.-Bestandesaufnahme blendet ausdrücklich als Spam markierte Token aus, Safe-Freigabe hat Vorrang. Build 20260928-135447.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: Erster aktiver Start pro Tag führt wieder einen kontrollierten automatischen Delta-Refresh für Wallet-Bestände/Projekt-Current-State/NFTs aus; DAO1/APTMDAO Transaktionen, Claims, Referral-Flows und Teamgraph werden einmal täglich inkrementell nachgeführt. Manuelle Force-/Retry-Buttons für Preise, Loans und DAO-Team sind nur noch für Admins sichtbar; zentrale Refresh-Buttons bleiben im Dashboard, Doppelungen in der Token-Übersicht entfallen. DAO Referral-Partnerzuordnung als Idee zurückgestellt. Build 20260928-133530.
@@ -950,6 +951,47 @@ async function onLoggedIn(session) {
 let taxRows = [];
 let taxCoverage = [];
 const taxPriceCache = new Map();
+let taxEstvFxRate = null;
+let taxEstvAssetPrices = new Map();
+let taxEstvLoadedYear = null;
+
+function taxPriceBasisValue(){ return document.getElementById("taxPriceBasis")?.value || "usd"; }
+function taxIsEstvMode(){ return taxPriceBasisValue()==="chf_estv"; }
+function taxYearFromDate(dateStr){ const y=Number(String(dateStr||"").slice(0,4)); return Number.isInteger(y)?y:null; }
+function fmtChf(v){ return Number.isFinite(Number(v)) ? `CHF ${Number(v).toLocaleString("de-CH",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "–"; }
+async function loadTaxEstvContext(dateStr,force=false){
+  const year=taxYearFromDate(dateStr);
+  if(!year)return;
+  if(!force && taxEstvLoadedYear===year)return;
+  taxEstvFxRate=null;taxEstvAssetPrices=new Map();taxEstvLoadedYear=year;
+  const [fx,assets]=await Promise.all([
+    sb.from("tax_fx_rates").select("*").eq("tax_year",year).eq("from_currency","USD").eq("to_currency","CHF").maybeSingle(),
+    sb.from("tax_asset_prices").select("*").eq("tax_year",year)
+  ]);
+  if(fx.error && fx.error.code!=="PGRST205")console.warn("ESTV USD/CHF",fx.error);
+  if(assets.error && assets.error.code!=="PGRST205")console.warn("ESTV Assetpreise",assets.error);
+  if(fx.data?.rate!=null)taxEstvFxRate=Number(fx.data.rate);
+  for(const r of assets.data||[])taxEstvAssetPrices.set(String(r.asset_code||"").trim().toUpperCase(),r);
+}
+function taxDisplayValuation(r){
+  if(!taxIsEstvMode())return {currency:"USD",price:r.price_usd,value:r.value_usd,source:r.price_source||null,direct:false};
+  const direct=taxEstvAssetPrices.get(String(r.symbol||"").trim().toUpperCase());
+  if(direct?.price_chf!=null){const price=Number(direct.price_chf);return {currency:"CHF",price,value:r.amount==null?null:Number(r.amount)*price,source:`ESTV direkt · ${direct.source_name||"ESTV"}`,direct:true};}
+  if(r.price_usd!=null && Number.isFinite(taxEstvFxRate)){const price=Number(r.price_usd)*taxEstvFxRate;return {currency:"CHF",price,value:r.amount==null?null:Number(r.amount)*price,source:`${r.price_source||"USD-Stichtagspreis"} × ESTV USD/CHF ${taxEstvFxRate}`,direct:false};}
+  return {currency:"CHF",price:null,value:null,source:null,direct:false};
+}
+function updateTaxPriceBasisNote(){
+  const el=document.getElementById("taxPriceBasisNote");if(!el)return;
+  if(!taxIsEstvMode()){el.textContent="USD-Marktpreise: historische USD-Bewertung per gewähltem Stichtag.";return;}
+  const date=document.getElementById("taxDate")?.value||"",year=taxYearFromDate(date);
+  el.textContent=`Schweiz / ESTV ${year||""}: direkter ESTV-Steuerwert in CHF, sofern vorhanden; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs.`;
+}
+async function onTaxPriceBasisChange(){
+  const date=document.getElementById("taxDate")?.value||"";updateTaxPriceBasisNote();
+  if(taxIsEstvMode())await loadTaxEstvContext(date,true);
+  renderTaxResults(date,document.getElementById("taxTimezone")?.value||"Europe/Zurich");
+}
+window.onTaxPriceBasisChange=onTaxPriceBasisChange;
 
 let taxSnapshotLoaded = false;
 
@@ -975,7 +1017,7 @@ async function loadTaxSnapshot(date,walletSel="__all"){
   if(walletSel!=="__all")cq=cq.eq("wallet_scope",walletSel);
   else cq=cq.eq("wallet_scope","__all");
   const cr=await cq; taxCoverage=(cr.data||[]).map(c=>({chain:c.chain_key,status:c.status,scope:c.scope,detail:c.detail}));
-  taxSnapshotLoaded=true;renderTaxResults(date,document.getElementById("taxTimezone")?.value||"Europe/Zurich");
+  taxSnapshotLoaded=true;if(taxIsEstvMode())await loadTaxEstvContext(date);updateTaxPriceBasisNote();renderTaxResults(date,document.getElementById("taxTimezone")?.value||"Europe/Zurich");
   document.getElementById("taxExcelBtn").disabled=false;document.getElementById("taxPdfBtn").disabled=false;
   taxSetStatus("ready",`Gespeicherte Bestandesaufnahme vom ${date} geladen.`,`Keine Blockchain-Abfragen erforderlich. Mit „Neu berechnen“ kann der Stichtag vollständig aktualisiert werden.`);
   return true;
@@ -1023,7 +1065,7 @@ function renderTaxWalletSelect(){
   else el.value="__all";
   const date=document.getElementById("taxDate");
   if(date && !date.value){const y=new Date().getFullYear()-1;date.value=`${y}-12-31`;}
-  if(date&&!date.dataset.snapshotBound){date.dataset.snapshotBound="1";date.addEventListener("change",()=>loadTaxSnapshot(date.value,el.value));el.addEventListener("change",()=>loadTaxSnapshot(date.value,el.value));setTimeout(()=>loadTaxSnapshot(date.value,el.value),0);}
+  if(date&&!date.dataset.snapshotBound){date.dataset.snapshotBound="1";date.addEventListener("change",async()=>{taxEstvLoadedYear=null;updateTaxPriceBasisNote();if(taxIsEstvMode())await loadTaxEstvContext(date.value,true);await loadTaxSnapshot(date.value,el.value);});el.addEventListener("change",()=>loadTaxSnapshot(date.value,el.value));updateTaxPriceBasisNote();setTimeout(()=>loadTaxSnapshot(date.value,el.value),0);}
 }
 
 function taxSetStatus(kind,text,detail=""){
@@ -1726,6 +1768,8 @@ async function runTaxSnapshot(){
     await taxSolanaChains(selectedWallets,targetEpoch,date);
 
     taxRemoveUserMarkedSpamRows();
+    if(taxIsEstvMode())await loadTaxEstvContext(date);
+    updateTaxPriceBasisNote();
     renderTaxResults(date,tz);
     await saveTaxSnapshot(date,tz,walletSel);
     document.getElementById("taxExcelBtn").disabled=taxRows.length===0;
@@ -1745,15 +1789,17 @@ function renderTaxResults(date="",tz=""){
   const summary=document.getElementById("taxSummary"),out=document.getElementById("taxResults");
   if(!summary||!out)return;
   const ok=taxRows.filter(r=>r.status==="verifiziert"),bad=taxRows.filter(r=>r.status!=="verifiziert");
-  const priced=ok.filter(r=>r.price_usd!=null),unpriced=ok.filter(r=>r.price_usd==null);
-  const usdTotal=priced.reduce((a,r)=>a+Number(r.value_usd||0),0);
+  const valuations=new Map(ok.map(r=>[r,taxDisplayValuation(r)]));
+  const priced=ok.filter(r=>valuations.get(r)?.price!=null),unpriced=ok.filter(r=>valuations.get(r)?.price==null);
+  const total=priced.reduce((a,r)=>a+Number(valuations.get(r)?.value||0),0);
+  const currency=taxIsEstvMode()?"CHF":"USD";
   const covered=taxCoverage.filter(r=>r.status==="berücksichtigt").map(r=>CHAIN_META[r.chain]?.label||r.chain);
   const partial=taxCoverage.filter(r=>r.status==="teilweise").map(r=>CHAIN_META[r.chain]?.label||r.chain);
   const failed=taxCoverage.filter(r=>!["berücksichtigt","teilweise"].includes(r.status)).map(r=>CHAIN_META[r.chain]?.label||r.chain);
   summary.innerHTML=`<div class="project-summary">
     <div class="custom-token-card project-summary-box"><span class="field-label">Verifizierte Positionen</span><strong>${ok.length}</strong></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Historischer Kurs vorhanden</span><strong>${priced.length}</strong><div class="meta">${unpriced.length} ohne Kurs</div></div>
-    <div class="custom-token-card project-summary-box"><span class="field-label">USD-Wert soweit verifiziert</span><strong>${usdTotal?fmtUsd(usdTotal):"–"}</strong></div>
+    <div class="custom-token-card project-summary-box"><span class="field-label">${currency}-Wert soweit verifiziert</span><strong>${total?(currency==="CHF"?fmtChf(total):fmtUsd(total)):"–"}</strong></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains berücksichtigt</span><strong>${covered.length}</strong><div class="meta">${escapeAttr(covered.join(", ")||"–")}</div></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains teilweise</span><strong>${partial.length}</strong><div class="meta">${escapeAttr(partial.join(", ")||"–")}</div></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains nicht berücksichtigt</span><strong>${failed.length}</strong><div class="meta">${escapeAttr(failed.join(", ")||"–")}</div></div>
@@ -1761,8 +1807,8 @@ function renderTaxResults(date="",tz=""){
   </div>${renderTaxCoverage()}`;
   if(!taxRows.length){out.innerHTML='<div class="empty">Keine Positionen gefunden oder keine Chain konnte verifiziert werden.</div>';return;}
   const debugCols=!!(isAdmin&&adminDebugMode);
-  out.innerHTML=`<div class="chain-table-wrap project-data-table tax-position-table"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th class="num">Bestand</th><th class="num">Preis USD</th><th class="num">Wert USD</th>${debugCols?'<th>Block / Ledger</th><th>Status / Quelle</th>':''}</tr></thead><tbody>
-    ${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<div class="meta">${escapeAttr(r.wallet_address||"")}</div></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(r.symbol||"–")}</strong><div class="meta">${r.asset&&r.asset!=="native"?escapeAttr(r.asset):"nativ"}</div></td><td class="num">${r.amount==null?"–":fmt(r.amount,{chain:r.chain,address:r.asset&&r.asset!=="native"?r.asset:null,symbol:r.symbol})}</td><td class="num">${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td class="num">${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td>${debugCols?`<td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · Preis: ${escapeAttr(r.price_source)}`:""}</div></td>`:''}</tr>`).join("")}
+  out.innerHTML=`<div class="chain-table-wrap project-data-table tax-position-table"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th class="num">Bestand</th><th class="num">Preis ${currency}</th><th class="num">Wert ${currency}</th>${debugCols?'<th>Block / Ledger</th><th>Status / Quelle</th>':''}</tr></thead><tbody>
+    ${taxRows.map(r=>{const v=taxDisplayValuation(r);return `<tr><td>${escapeAttr(r.wallet)}<div class="meta">${escapeAttr(r.wallet_address||"")}</div></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(r.symbol||"–")}</strong><div class="meta">${r.asset&&r.asset!=="native"?escapeAttr(r.asset):"nativ"}</div></td><td class="num">${r.amount==null?"–":fmt(r.amount,{chain:r.chain,address:r.asset&&r.asset!=="native"?r.asset:null,symbol:r.symbol})}</td><td class="num">${v.price==null?"–":(currency==="CHF"?fmtChf(v.price):fmtUsd(v.price))}</td><td class="num">${v.value==null?"–":(currency==="CHF"?fmtChf(v.value):fmtUsd(v.value))}</td>${debugCols?`<td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${v.source?` · Preis: ${escapeAttr(v.source)}`:""}</div></td>`:''}</tr>`}).join("")}
     </tbody></table></div>`;
 }
 
@@ -1775,25 +1821,27 @@ function taxXmlCell(v){
 function exportTaxExcel(){
   const date=document.getElementById("taxDate")?.value||"";
   const tz=document.getElementById("taxTimezone")?.value||"";
-  let body=`<Row>${taxXmlCell("Wallet Tracking – Bestandesaufnahme per 31.12")}</Row><Row>${taxXmlCell("Stichtag")}${taxXmlCell(date)}</Row><Row>${taxXmlCell("Zeitzone")}${taxXmlCell(tz)}</Row><Row>${taxXmlCell("Qualitätsregel")}${taxXmlCell("Keine Bestände geschätzt; Coverage je Chain separat ausgewiesen.")}</Row><Row></Row>`;
+  const currency=taxIsEstvMode()?"CHF":"USD",basis=taxIsEstvMode()?"CHF · Schweiz/ESTV":"USD-Marktpreise";
+  let body=`<Row>${taxXmlCell("Wallet Tracking – Bestandesaufnahme per 31.12")}</Row><Row>${taxXmlCell("Stichtag")}${taxXmlCell(date)}</Row><Row>${taxXmlCell("Zeitzone")}${taxXmlCell(tz)}</Row><Row>${taxXmlCell("Preisgrundlage")}${taxXmlCell(basis)}</Row><Row>${taxXmlCell("Qualitätsregel")}${taxXmlCell("Keine Bestände geschätzt; Coverage je Chain separat ausgewiesen.")}</Row><Row></Row>`;
   body+=`<Row>${["CHAIN COVERAGE","STATUS","ABDECKUNG","DETAIL"].map(taxXmlCell).join("")}</Row>`;
   for(const c of taxCoverage)body+=`<Row>${[CHAIN_META[c.chain]?.label||c.chain,c.status,c.scope,c.detail].map(taxXmlCell).join("")}</Row>`;
   body+=`<Row></Row>`;
-  const heads=["Wallet","Wallet-Adresse","Chain","Symbol","Asset/Contract","Bestand","Preis USD","Wert USD","Block/Ledger","Bestandsquelle","Preisquelle","Status","Fehler"];
+  const heads=["Wallet","Wallet-Adresse","Chain","Symbol","Asset/Contract","Bestand",`Preis ${currency}`,`Wert ${currency}`,"Block/Ledger","Bestandsquelle","Preisquelle","Status","Fehler"];
   body+=`<Row>${heads.map(taxXmlCell).join("")}</Row>`;
-  for(const r of taxRows)body+=`<Row>${[r.wallet,r.wallet_address,r.chain,r.symbol,r.asset,r.amount??"",r.price_usd??"",r.value_usd??"",r.block??"",r.balance_source||"",r.price_source||"",r.status,r.error||""].map(taxXmlCell).join("")}</Row>`;
+  for(const r of taxRows){const v=taxDisplayValuation(r);body+=`<Row>${[r.wallet,r.wallet_address,r.chain,r.symbol,r.asset,r.amount??"",v.price??"",v.value??"",r.block??"",r.balance_source||"",v.source||"",r.status,r.error||""].map(taxXmlCell).join("")}</Row>`;}
   const xml=`<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Stichtag"><Table>${body}</Table></Worksheet></Workbook>`;
-  const blob=new Blob([xml],{type:"application/vnd.ms-excel"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`bestandesaufnahme-31-12-${date}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  const blob=new Blob([xml],{type:"application/vnd.ms-excel"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`bestandesaufnahme-31-12-${date}-${currency.toLowerCase()}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
 function exportTaxPdf(){
   const date=document.getElementById("taxDate")?.value||"",tz=document.getElementById("taxTimezone")?.value||"",w=window.open("","_blank");if(!w)return alert("Popup wurde blockiert.");
-  const ok=taxRows.filter(r=>r.status==="verifiziert"),priced=ok.filter(r=>r.price_usd!=null&&r.value_usd!=null),total=priced.reduce((s,r)=>s+Number(r.value_usd||0),0);
+  const currency=taxIsEstvMode()?"CHF":"USD",fmtMoney=v=>currency==="CHF"?fmtChf(v):fmtUsd(v),basis=taxIsEstvMode()?"CHF · Schweiz/ESTV":"USD-Marktpreise";
+  const ok=taxRows.filter(r=>r.status==="verifiziert"),priced=ok.filter(r=>taxDisplayValuation(r).value!=null),total=priced.reduce((sum,r)=>sum+Number(taxDisplayValuation(r).value||0),0);
   const walletNames=[...new Set(taxRows.map(r=>r.wallet))].sort((a,b)=>a.localeCompare(b,"de"));
-  const grouped=new Map();for(const r of ok){const k=r.chain+"|"+(r.asset||r.symbol),x=grouped.get(k)||{chain:r.chain,symbol:r.symbol,asset:r.asset,amount:0,value:0,priced:true,price:r.price_usd};x.amount+=Number(r.amount||0);if(r.value_usd==null)x.priced=false;else x.value+=Number(r.value_usd||0);if(x.price==null&&r.price_usd!=null)x.price=r.price_usd;grouped.set(k,x);}
+  const grouped=new Map();for(const r of ok){const v=taxDisplayValuation(r),k=r.chain+"|"+(r.asset||r.symbol),x=grouped.get(k)||{chain:r.chain,symbol:r.symbol,asset:r.asset,amount:0,value:0,priced:true,price:v.price,source:v.source};x.amount+=Number(r.amount||0);if(v.value==null)x.priced=false;else x.value+=Number(v.value||0);if(x.price==null&&v.price!=null)x.price=v.price;if(!x.source&&v.source)x.source=v.source;grouped.set(k,x);}
   const chainKeys=[...new Set([...grouped.values()].map(x=>x.chain))].sort((a,b)=>(CHAIN_CONFIG[a]?.sortOrder||999)-(CHAIN_CONFIG[b]?.sortOrder||999));
-  const chainSummary=chainKeys.map(chain=>{const ar=[...grouped.values()].filter(x=>x.chain===chain),sum=ar.filter(x=>x.priced).reduce((q,x)=>q+x.value,0),rows=ar.map(x=>`<tr><td><b>${escapeAttr(x.symbol||"–")}</b><small>${x.asset&&x.asset!=="native"?escapeAttr(x.asset):"nativ"}</small></td><td class="n">${fmt(x.amount,{chain:x.chain,address:x.asset&&x.asset!=="native"?x.asset:null,symbol:x.symbol},{summary:true})}</td><td class="n">${x.price==null?"–":fmtUsd(x.price)}</td><td class="n">${x.priced?fmtUsd(x.value):"–"}</td></tr>`).join("");return `<h2>${escapeAttr(CHAIN_META[chain]?.label||chain)}</h2><table><thead><tr><th>Token</th><th class="n">Gesamtbestand</th><th class="n">Kurs USD</th><th class="n">Wert USD</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">SUBTOTAL ${escapeAttr(CHAIN_META[chain]?.label||chain)}</td><td class="n">${fmtUsd(sum)}</td></tr></tfoot></table>`}).join("");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme ${date}</title><style>@page{size:A4 landscape;margin:15mm}body{font:9px Arial;color:#18202a;margin:0}h1{font-size:22px;margin:0 0 5px}h2{margin:14px 0 5px}.head{border-bottom:2px solid #ccd2d9;padding-bottom:9px}.cards{display:flex;gap:8px;margin:12px 0}.card{border:1px solid #ccd2d9;border-radius:6px;padding:8px;min-width:150px}.card b{display:block;font-size:14px}table{border-collapse:collapse;width:100%;margin:8px 0}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #c8ced5;padding:4px;vertical-align:top}th,tfoot td{background:#eef1f4;font-weight:bold}.n{text-align:right;white-space:nowrap}th.n{text-align:right}small{display:block;color:#666;font-size:7px;word-break:break-all}tfoot td{border-top:2px solid #18202a;font-size:10px}</style></head><body><div class="head"><h1>Bestandesaufnahme per 31.12</h1><p><b>Stichtag:</b> ${escapeAttr(date)} · ${escapeAttr(tz)} &nbsp; <b>Erstellt:</b> ${new Date().toLocaleString("de-CH")}</p></div><div class="cards"><div class="card">Wallets<b>${walletNames.length}</b></div><div class="card">Verifizierte Positionen<b>${ok.length}</b></div><div class="card">Historisch bewertet<b>${priced.length}/${ok.length}</b></div><div class="card">Gesamtwert<b>${fmtUsd(total)}</b></div></div><h1>Summary nach Chain</h1><p>Tokenbestände sind über alle ausgewählten Wallets je Chain zusammengefasst.</p>${chainSummary}<table><tfoot><tr><td>GESAMTSUMME – bewertete Positionen</td><td class="n">${fmtUsd(total)}</td></tr></tfoot></table><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
+  const chainSummary=chainKeys.map(chain=>{const ar=[...grouped.values()].filter(x=>x.chain===chain),sum=ar.filter(x=>x.priced).reduce((q,x)=>q+x.value,0),rows=ar.map(x=>`<tr><td><b>${escapeAttr(x.symbol||"–")}</b><small>${x.asset&&x.asset!=="native"?escapeAttr(x.asset):"nativ"}</small></td><td class="n">${fmt(x.amount,{chain:x.chain,address:x.asset&&x.asset!=="native"?x.asset:null,symbol:x.symbol},{summary:true})}</td><td class="n">${x.price==null?"–":fmtMoney(x.price)}<small>${escapeAttr(x.source||"")}</small></td><td class="n">${x.priced?fmtMoney(x.value):"–"}</td></tr>`).join("");return `<h2>${escapeAttr(CHAIN_META[chain]?.label||chain)}</h2><table><thead><tr><th>Token</th><th class="n">Gesamtbestand</th><th class="n">Kurs ${currency}</th><th class="n">Wert ${currency}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">SUBTOTAL ${escapeAttr(CHAIN_META[chain]?.label||chain)}</td><td class="n">${fmtMoney(sum)}</td></tr></tfoot></table>`}).join("");
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme ${date}</title><style>@page{size:A4 landscape;margin:15mm}body{font:9px Arial;color:#18202a;margin:0}h1{font-size:22px;margin:0 0 5px}h2{margin:14px 0 5px}.head{border-bottom:2px solid #ccd2d9;padding-bottom:9px}.cards{display:flex;gap:8px;margin:12px 0}.card{border:1px solid #ccd2d9;border-radius:6px;padding:8px;min-width:150px}.card b{display:block;font-size:14px}table{border-collapse:collapse;width:100%;margin:8px 0}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #c8ced5;padding:4px;vertical-align:top}th,tfoot td{background:#eef1f4;font-weight:bold}.n{text-align:right;white-space:nowrap}th.n{text-align:right}small{display:block;color:#666;font-size:7px;word-break:break-all}tfoot td{border-top:2px solid #18202a;font-size:10px}</style></head><body><div class="head"><h1>Bestandesaufnahme per 31.12</h1><p><b>Stichtag:</b> ${escapeAttr(date)} · ${escapeAttr(tz)} &nbsp; <b>Preisgrundlage:</b> ${escapeAttr(basis)} &nbsp; <b>Erstellt:</b> ${new Date().toLocaleString("de-CH")}</p></div><div class="cards"><div class="card">Wallets<b>${walletNames.length}</b></div><div class="card">Verifizierte Positionen<b>${ok.length}</b></div><div class="card">Historisch bewertet<b>${priced.length}/${ok.length}</b></div><div class="card">Gesamtwert<b>${fmtMoney(total)}</b></div></div><h1>Summary nach Chain</h1><p>Tokenbestände sind über alle ausgewählten Wallets je Chain zusammengefasst.</p>${chainSummary}<table><tfoot><tr><td>GESAMTSUMME – bewertete Positionen</td><td class="n">${fmtMoney(total)}</td></tr></tfoot></table><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
 }
 
 
@@ -1894,12 +1942,38 @@ function showAdminTab(name) {
   if (name === "coverage") renderAdminChainCoverage();
   if (name === "defiprojects") loadAdminDefiProjects();
   if (name === "dex") loadAdminDexConfigs();
+  if (name === "taxprices") loadAdminTaxPrices();
   if (name === "hardcoding") renderHardcodingAudit();
   if (name === "system") renderAdminSystemOverview();
   if (name === "ideas" && typeof window.renderAdminIdeas === "function") window.renderAdminIdeas();
   if (name === "documentation") renderAdminDocumentation();
 }
 
+
+
+async function loadAdminTaxPrices(){
+  if(!isAdmin)return;
+  const yearEl=document.getElementById("adminTaxYear");if(!yearEl)return;
+  if(!yearEl.value)yearEl.value=String(new Date().getFullYear()-1);
+  const year=Number(yearEl.value),status=document.getElementById("adminTaxPriceStatus"),host=document.getElementById("adminTaxPriceList");
+  if(status)status.textContent="Steuerkurse werden geladen…";
+  const [fx,assets]=await Promise.all([sb.from("tax_fx_rates").select("*").eq("tax_year",year).eq("from_currency","USD").eq("to_currency","CHF").maybeSingle(),sb.from("tax_asset_prices").select("*").eq("tax_year",year).order("asset_code")]);
+  if(fx.error && fx.error.code!=="PGRST205")throw fx.error;if(assets.error&&assets.error.code!=="PGRST205")throw assets.error;
+  const rate=document.getElementById("adminTaxUsdChf"),url=document.getElementById("adminTaxSourceUrl");if(rate)rate.value=fx.data?.rate??"";if(url)url.value=fx.data?.source_url||assets.data?.find(x=>x.source_url)?.source_url||"";
+  if(host)host.innerHTML=(assets.data||[]).length?`<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Jahr</th><th>Asset</th><th class="num">CHF-Steuerwert</th><th>Quelle</th><th></th></tr></thead><tbody>${(assets.data||[]).map(r=>`<tr><td>${r.tax_year}</td><td><strong>${escapeAttr(r.asset_code)}</strong></td><td class="num">${fmtChf(r.price_chf)}</td><td>${escapeAttr(r.source_name||"ESTV")}${r.source_url?`<div class="meta">${escapeAttr(r.source_url)}</div>`:""}</td><td><button class="remove" onclick="deleteAdminTaxAssetPrice(${r.tax_year},'${escapeAttr(r.asset_code)}')">Entfernen</button></td></tr>`).join("")}</tbody></table></div>`:'<div class="empty">Noch keine direkten ESTV-Steuerwerte für dieses Jahr gespeichert.</div>';
+  if(status)status.textContent=`${(assets.data||[]).length} direkter ESTV-Wert(e) · USD/CHF ${fx.data?.rate??"noch nicht erfasst"}.`;
+}
+async function saveAdminTaxFxRate(){
+  if(!isAdmin)return;const year=Number(document.getElementById("adminTaxYear")?.value),rate=Number(document.getElementById("adminTaxUsdChf")?.value),sourceUrl=String(document.getElementById("adminTaxSourceUrl")?.value||"").trim()||null;if(!year||!(rate>0))return alert("Steuerjahr und positiver USD/CHF-Kurs sind erforderlich.");
+  const payload={tax_year:year,from_currency:"USD",to_currency:"CHF",rate,effective_date:`${year}-12-31`,source_name:"ESTV",source_url:sourceUrl,imported_at:new Date().toISOString()};const {error}=await sb.from("tax_fx_rates").upsert(payload,{onConflict:"tax_year,from_currency,to_currency"});if(error)throw error;taxEstvLoadedYear=null;await loadAdminTaxPrices();
+}
+async function importAdminTaxAssetPrices(){
+  if(!isAdmin)return;const year=Number(document.getElementById("adminTaxYear")?.value),text=String(document.getElementById("adminTaxPriceImport")?.value||""),sourceUrl=String(document.getElementById("adminTaxSourceUrl")?.value||"").trim()||null;if(!year)return alert("Steuerjahr fehlt.");
+  const rows=[];for(const [i,line] of text.split(/\r?\n/).entries()){const raw=line.trim();if(!raw)continue;const parts=raw.split(/[;\t]/).map(x=>x.trim());const code=String(parts[0]||"").toUpperCase(),price=Number(String(parts[1]||"").replace(/'/g,"").replace(",","."));if(!code||!(price>=0))return alert(`Zeile ${i+1} ist ungültig. Erwartet: SYMBOL;CHF-WERT`);rows.push({tax_year:year,asset_code:code,price_chf:price,effective_date:`${year}-12-31`,source_type:"estv_direct",source_name:"ESTV",source_url:sourceUrl,imported_at:new Date().toISOString()});}
+  if(!rows.length)return alert("Keine Importzeilen gefunden.");const {error}=await sb.from("tax_asset_prices").upsert(rows,{onConflict:"tax_year,asset_code"});if(error)throw error;document.getElementById("adminTaxPriceImport").value="";taxEstvLoadedYear=null;await loadAdminTaxPrices();
+}
+async function deleteAdminTaxAssetPrice(year,code){if(!isAdmin)return;if(!confirm(`${code} für ${year} entfernen?`))return;const {error}=await sb.from("tax_asset_prices").delete().eq("tax_year",year).eq("asset_code",code);if(error)throw error;taxEstvLoadedYear=null;await loadAdminTaxPrices();}
+window.loadAdminTaxPrices=loadAdminTaxPrices;window.saveAdminTaxFxRate=saveAdminTaxFxRate;window.importAdminTaxAssetPrices=importAdminTaxAssetPrices;window.deleteAdminTaxAssetPrice=deleteAdminTaxAssetPrice;
 
 
 const ADMIN_SYSTEM_TREE = [
@@ -1927,7 +2001,7 @@ const ADMIN_SYSTEM_TREE = [
     ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Der zentrale Ladebalken bleibt bis zum Abschluss von Beständen, Projekt-/NFT-/Reward-Daten, Summaries und erfolgreichem Snapshot sichtbar. DAO1/APTMDAO baut für relevante Wallets die ERC-20 Asset-Flows inkrementell mit auf. Historische NFT-Ownership wird aus Wallet-Transferhistorien reproduziert; bei nur belegtem Abgang bleibt der Erwerbsbeginn bewusst unbekannt statt geschätzt. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
     ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
-  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
+  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"in_progress",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","year_end_positions / year_end_coverage","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung USD","Cache","historische Markt-/DEX-/LP-Preise","Archive RPC/API bei Bedarf","Stichtagsberechnung"],["Schweiz / ESTV CHF","globaler Stammdatencache","tax_asset_prices + tax_fx_rates","keine externe API im User-Flow","Direkter ESTV-CHF-Wert je Symbol; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs. Pflege nur im Admin-Tab Steuerkurse."]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
   {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"Current-State DB-Registry",daily:"kein Blind-Refresh",open:"RAM zuerst · History danach",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.75: zentrale NFT-Registry lädt beim App-Start nur den für Current State nötigen Bestand/Ownership. Globale Ersterwerbs- und Kaufpreis-Historie wird erst beim Öffnen des NFT-Tabs nachgeladen. NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe zentrale Datenbasis. Manuelle/gezielte Chain-Refreshs bleiben inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet. Phase 6.29 startet Audit P6: nft_cache (aktueller Wallet-NFT-Bestand) und project_nft_ownership (Besitzhistorie) sind die persistenten Wahrheiten; DAO1-Session-Sichten werden nach ihrer Initialisierung gegen diese zentralen Read-Models geprüft und als „DAO1 NFT Read-Model Audit“ protokolliert."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
