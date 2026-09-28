@@ -1,3 +1,4 @@
+// Phase 6.60 · 28.09.2026 11:46:14 CEST: Kontrollierte Fresh-Wallet-Discovery wird beim Speichern einer neuen eigenen TLN/VOW-Wallet automatisch für genau diese Wallet gestartet. Ausschließlich Steps 1–6; Step 7/Team bleibt ausgeschlossen. Manueller Button bleibt als Retry/Fallback. Build 20260928-114614.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-Wallet Reward-Status ans Dashboard angebunden; kontrollierte Erst-Discovery meldet loading/complete/unknown und bleibt auf Steps 1–6 ohne Team-/Step-7-Vollscan begrenzt. Build 20260928-111745.
 // Phase 6.58 · 28.09.2026 04:23:01 CEST: Reward-Summary-UI bereinigt. Technische Cache-/Human-Units-Texte aus Staking-, Referral- und Bonus-Summaries entfernt. Reward-Tx-Anzahl wird aus vorhandenen Detaildaten ergänzt, aber nur wenn der Detail-Scope vollständig ist; bei partiellen Fresh-User-Daten bleibt sie bewusst offen statt eine unvollständige Zahl vorzutäuschen. Build 20260928-042301.
 // Phase 6.57 · 28.09.2026 04:12:38 CEST: Regression-Fix für die TLN/VOW Reward-/Claim-Ansichten: der in 6.53 eingeführte zentrale Helper projectChainRefHtml war an mehreren Render-Stellen verwendet, aber nicht definiert. Der Helper ist jetzt zentral vorhanden und rendert gekürzte BSC-Adresse/Tx-Links plus Copy-Funktion; dadurch brechen Staking-, Referral- und Bonus-Renderpfade nicht mehr mit ReferenceError ab. Build 20260928-041238.
@@ -21,7 +22,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-111745';
+const BUILD_ID='20260928-114614';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -219,7 +220,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 11:17:45 CEST';
+const APP_VERSION='28.09.2026 11:46:14 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11422,7 +11423,7 @@ function projectFirstDiscoveryActionHtml(){
   const missing=projectMissingDetailWalletsForScope();
   if(!missing.length)return '';
   const count=missing.length;
-  return `<div class="project-cache-only-note" style="margin-top:10px"><b>Einmalige Erst-Discovery erforderlich.</b><br>Für ${count===1?'dieses Wallet':`${count} Wallets`} existieren weder ein eigener verifizierter Detail-Snapshot noch wiederverwendbare globale Detaildaten. Die Ermittlung startet nur auf ausdrücklichen Klick, verarbeitet ausschließlich die fehlenden eigenen Wallets nacheinander und startet <b>keinen Team-/Step-7-Vollscan</b>. Je nach Wallet-Historie kann der Lauf mehrere Minuten dauern und RPC-Anfragen erzeugen.<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="secondary" ${FIRST_DISCOVERY_INFLIGHT?'disabled':''} onclick="window.TLNVOWDiscovery?.runFirstDiscovery?.()">${FIRST_DISCOVERY_INFLIGHT?'Erst-Discovery läuft …':`Detaildaten jetzt ermitteln${count>1?` (${count} Wallets)`:''}`}</button><span id="tlnFirstDiscoveryState" class="muted"></span></div></div>`;
+  return `<div class="project-cache-only-note" style="margin-top:10px"><b>Erst-Discovery noch offen.</b><br>Für ${count===1?'dieses Wallet':`${count} Wallets`} existieren weder ein eigener verifizierter Detail-Snapshot noch wiederverwendbare globale Detaildaten. Bei neu gespeicherten eigenen TLN/VOW-Wallets startet die kontrollierte Ermittlung automatisch im Wallet-Erstaufbau. Diese Schaltfläche ist deshalb nur Fallback/Retry für Altfälle oder abgebrochene Läufe. Verarbeitet werden ausschließlich die fehlenden eigenen Wallets nacheinander; ein <b>Team-/Step-7-Vollscan wird nie gestartet</b>. Je nach Wallet-Historie kann der Lauf mehrere Minuten dauern und RPC-Anfragen erzeugen.<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="secondary" ${FIRST_DISCOVERY_INFLIGHT?'disabled':''} onclick="window.TLNVOWDiscovery?.runFirstDiscovery?.()">${FIRST_DISCOVERY_INFLIGHT?'Erst-Discovery läuft …':`Detaildaten jetzt ermitteln${count>1?` (${count} Wallets)`:''}`}</button><span id="tlnFirstDiscoveryState" class="muted"></span></div></div>`;
 }
 function setProjectFirstDiscoveryState(text,kind=''){
   const el=$('tlnFirstDiscoveryState');
@@ -11438,13 +11439,19 @@ async function selectDiscoveryWalletForFirstBuild(wallet){
   const restored=await restoreDiscoveryResultSnapshot(w);
   return restored;
 }
-async function runControlledFirstDiscovery(){
-  if(FIRST_DISCOVERY_INFLIGHT)return;
+async function runControlledFirstDiscovery(options={}){
+  if(FIRST_DISCOVERY_INFLIGHT)return {ok:false,status:'inflight',completed:[],failed:[]};
   await ensureInitialized();
-  const targets=projectMissingDetailWalletsForScope();
-  if(!targets.length){setProjectFirstDiscoveryState('Keine fehlenden Detaildaten mehr.','ok');await window.TLNVOWDiscovery?.loadDashboardSummary?.();return;}
+  const requested=[...new Set((Array.isArray(options?.wallets)?options.wallets:[]).map(norm).filter(w=>ethers.isAddress(w)))];
+  const allMissing=[...new Set((tlnWallets||[]).map(w=>norm(w?.evm_address||'')).filter(w=>ethers.isAddress(w)&&!PROJECT_WALLET_SNAPSHOTS.has(w)))];
+  const targets=requested.length?allMissing.filter(w=>requested.includes(w)):projectMissingDetailWalletsForScope();
+  if(!targets.length){
+    setProjectFirstDiscoveryState('Keine fehlenden Detaildaten mehr.','ok');
+    await window.TLNVOWDiscovery?.loadDashboardSummary?.();
+    return {ok:true,status:'complete',completed:[],failed:[],missing:0};
+  }
   const labels=targets.map(projectWalletLabel).join(', ');
-  if(!window.confirm(`Einmalige TLN/VOW-Erst-Discovery für ${targets.length} eigene Wallet(s) starten?\n\n${labels}\n\nDer Lauf verarbeitet nur diese Wallets (Steps 1–6), startet keinen Team-/Step-7-Vollscan und kann je nach Historie mehrere Minuten dauern.`))return;
+  if(options?.confirm!==false && !window.confirm(`Einmalige TLN/VOW-Erst-Discovery für ${targets.length} eigene Wallet(s) starten?\n\n${labels}\n\nDer Lauf verarbeitet nur diese Wallets (Steps 1–6), startet keinen Team-/Step-7-Vollscan und kann je nach Historie mehrere Minuten dauern.`))return {ok:false,status:'cancelled',completed:[],failed:[],missing:targets.length};
   FIRST_DISCOVERY_INFLIGHT=true;
   window.setDashboardProjectCacheStats?.('tln_vow',{rewardDataState:'loading',rewardDataMissing:targets.length,rewardDataWallets:targets.length});
   renderProjectUserView();
@@ -11474,13 +11481,16 @@ async function runControlledFirstDiscovery(){
     await loadProjectWalletSnapshots({withHistoricalValuation:true}).catch(e=>log(`Erst-Discovery: Projekt-Snapshots konnten nicht neu geladen werden: ${e?.message||e}`,'warn'));
     await refreshProjectRewardSummaryFallback({force:true}).catch(()=>{});
     renderProjectUserView();
-    const left=projectMissingDetailWalletsForScope().length;
+    const left=targets.filter(w=>!PROJECT_WALLET_SNAPSHOTS.has(w)).length;
     if(failed.length)setProjectFirstDiscoveryState(`Abgebrochen: ${failed[0]}`,'err');
     else setProjectFirstDiscoveryState(`Erst-Discovery abgeschlossen${completed.length?` · ${completed.length} Wallet(s) aufgebaut`:''}${left?` · ${left} weiterhin offen`:''}.`,'ok');
     try{await window.TLNVOWDiscovery?.loadDashboardSummary?.();}catch{}
     if(failed.length)window.setDashboardProjectCacheStats?.('tln_vow',{rewardDataState:'error',rewardDataMissing:left,rewardDataError:failed[0]});
   }
+  const missing=targets.filter(w=>!PROJECT_WALLET_SNAPSHOTS.has(w)).length;
+  return {ok:failed.length===0&&missing===0,status:failed.length?'failed':missing?'partial':'complete',completed:[...completed],failed:[...failed],missing,source:String(options?.source||'manual')};
 }
+
 async function hydrateProjectSnapshotValuation(wallet,payload,year=snapshotYearFromUi()){
   const w=norm(wallet||'');
   if(!ethers.isAddress(w)||!payload?.process?.lots?.length)return 0;
@@ -18786,11 +18796,13 @@ function ensureInitialized(){
   if(!initializationPromise)initializationPromise=init().catch(error=>{initializationPromise=null;throw error});
   return initializationPromise;
 }
-async function refreshWalletAfterSave(walletId){
-  // Wenn TLN/VOW in dieser Session noch nie geöffnet wurde, nichts vorladen.
-  // Beim ersten Öffnen liest init() automatisch die frisch gespeicherte Wallet aus wallet-private.
-  if(!initializationPromise)return {deferred:true};
-  await initializationPromise;
+async function refreshWalletAfterSave(walletId,options={}){
+  const autoFirstDiscovery=options?.autoFirstDiscovery===true;
+  // Bestehende Wallet-Edits bleiben lazy, solange TLN/VOW in dieser Session nie geöffnet wurde.
+  // Bei einer NEUEN eigenen Wallet initialisieren wir das Projekt dagegen kontrolliert, damit
+  // eine tatsächlich erkannte TLN/VOW-Wallet ihre fehlenden Steps 1–6 ohne Extra-Klick erhält.
+  if(!initializationPromise&&!autoFirstDiscovery)return {deferred:true};
+  await ensureInitialized();
   const wq=await loadPrivateWalletsForDiscovery();
   if(wq?.error)throw wq.error;
   const role=x=>String(x?.tln_vow_category||x?.defi_category||'').toLowerCase();
@@ -18800,7 +18812,20 @@ async function refreshWalletAfterSave(walletId){
   PRIVATE_WALLET_MAP_LOADED=true;
   populateTlnWalletDropdown();populateProjectWalletFilter();
   await loadProjectWalletSnapshots({withHistoricalValuation:false});
-  return {ok:true,walletId:String(walletId||''),projectWallets:tlnWallets.length};
+
+  let firstDiscovery=null;
+  if(autoFirstDiscovery){
+    const saved=(wq.data||[]).find(w=>String(w?.id||w?.dbId||'')===String(walletId||''));
+    const wallet=norm(saved?.evm_address||'');
+    const own=saved?.is_own_wallet!==false;
+    const isProjectWallet=own&&ethers.isAddress(wallet)&&(tlnWallets||[]).some(w=>norm(w?.evm_address||'')===wallet);
+    if(isProjectWallet&&!PROJECT_WALLET_SNAPSHOTS.has(wallet)){
+      log(`Fresh-Wallet: kontrollierte Erst-Discovery startet automatisch für ${projectWalletLabel(wallet)} (Steps 1–6, kein Step 7).`,'ok');
+      firstDiscovery=await runControlledFirstDiscovery({wallets:[wallet],confirm:false,source:'wallet-save'});
+      if(firstDiscovery?.status==='failed')throw new Error(`automatische Erst-Discovery fehlgeschlagen: ${firstDiscovery.failed?.[0]||'unbekannter Fehler'}`);
+    }
+  }
+  return {ok:true,walletId:String(walletId||''),projectWallets:tlnWallets.length,firstDiscovery};
 }
 
 function loadedDashboardRewardPeriods(){
