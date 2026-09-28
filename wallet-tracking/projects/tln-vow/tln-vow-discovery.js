@@ -1,4 +1,4 @@
-// Phase 6.51 · 28.09.2026 02:10:03 CEST: Fresh-User TLN/VOW trennt Reward-Summary und Staking-Details klar. Fehlende Detail-Snapshots werden nicht mehr als 0 Positionen/0 Stakings dargestellt; der Staking/Rewards-Tab dupliziert bei reinem Summary-Fallback keine Reward-Tabelle mehr. Summary-Spalte 'Zahlungen' heißt nun eindeutig 'Reward-Tx'. Der globale On-Chain-Detailcache + serverseitige Erst-Discovery bleibt als Architekturpunkt offen. Build 20260928-021003.
+// Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN/VOW Fresh-User Detail-Reuse. Rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Detaildaten können serverseitig aus einem bereits verifizierten privaten Discovery-Snapshot derselben Wallet sanitisiert in einen userfreien globalen Detailcache überführt und cache-only wiederverwendet werden. Keine fremden User-/Wallet-IDs, Aliase oder privaten Rohfelder; kein Blockchain-Scan beim Tab-Aufruf. Für erstmals überhaupt unbekannte Wallets bleibt die kontrollierte serverseitige Erst-Discovery offen. Build 20260928-022005.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: Dashboard Reward-Summary v2 speichert ausschließlich Human-Units (schemaVersion 2, amountUnit=human). 6.47/6.48-v1 wird bewusst ignoriert, damit bereits persistierte Raw-Decimals-Fehler nicht weiterverwendet werden. Edge-Backfill 6.49 normalisiert Legacy-Rawwerte zentral vor dem Speichern. Build 20260928-010115.
 // Phase 6.46 · 27.09.2026 20:19:27 CEST: TLN-Team-Restore wirklich cache-only. Realtest 6.45 zeigte weiterhin >1000 eth_getTransactionByHash-Requests. Ursache: teamRestoreAdditionalRegistryGraph() startete bei fehlendem Zusatzregistry-Cache automatisch einen historischen Join-Aufbau und lud fuer jede Transfer-Tx die volle Transaktion. Der normale Team-Restore darf diesen History-Pfad nicht mehr starten; on-chain Zusatzregistry-Aufbau bleibt ausschliesslich dem expliziten Step-7-Pfad vorbehalten. Build 20260927-201927.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
@@ -16,7 +16,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-021003';
+const BUILD_ID='20260928-022005';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -213,7 +213,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 02:10:03 CEST';
+const APP_VERSION='28.09.2026 02:20:05 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4145,6 +4145,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
   dashboardRewardSummary:'dashboard-reward-summary-v2',
+  globalOnchainDetail:'global-onchain-detail-v1',
   snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
   teamLifecycle:'team-lifecycle-v9-partial-lifecycle-persist',
   teamLifecycleQueue:'team-lifecycle-queue-v1',
@@ -4171,6 +4172,7 @@ const TECH_CACHE_KEYS=Object.freeze({
   rewardRelations:'reward-contract-relations',
   discoveryResults:'verified-discovery-results',
   dashboardRewardSummary:'dashboard-reward-summary',
+  globalOnchainDetail:'global-onchain-detail',
   snapshotValuation:'snapshot-valuation',
   teamLifecycle:'team-staking-lifecycle',
   teamLifecycleQueue:'team-lifecycle-queue',
@@ -11960,6 +11962,74 @@ function renderProjectAggregateDetails(){
   if($('projectBonusMount'))$('projectBonusMount').style.display='none';
 }
 
+function projectPayloadFromGlobalOnchainDetail(rowPayload,wallet){
+  const w=norm(wallet||rowPayload?.wallet||'');
+  if(!ethers.isAddress(w)||rowPayload?.kind!=='global_onchain_detail_snapshot'||Number(rowPayload?.schemaVersion||0)!==1)return null;
+  const process=rowPayload?.process||{},globals=rowPayload?.globals||{};
+  return {
+    kind:'verified_discovery_results',schemaVersion:2,wallet:w,
+    completedStep:Number(rowPayload?.completedStep||0),
+    savedAt:rowPayload?.sourceSavedAt||rowPayload?.savedAt||null,
+    lastCheckedAt:rowPayload?.sourceSavedAt||rowPayload?.savedAt||null,
+    lastCheckedBlock:Number(rowPayload?.sourceLastBlock||0),
+    sourceLastBlock:Number(rowPayload?.sourceLastBlock||0),
+    buildId:rowPayload?.sourceBuildId||'global-onchain-detail',
+    _globalOnchainDetail:true,
+    process:{
+      lots:Array.isArray(process?.lots)?process.lots:[],
+      done:{
+        base:!!process?.done?.base,staking:!!process?.done?.staking,duration:!!process?.done?.duration,
+        rewards:!!process?.done?.rewards,referral:!!process?.done?.referral
+      }
+    },
+    globals:{
+      provenRewardRows:Array.isArray(globals?.provenRewardRows)?globals.provenRewardRows:[],
+      claimReferenceResult:globals?.claimReferenceResult||null,
+      unassignedRewards:Array.isArray(globals?.unassignedRewards)?globals.unassignedRewards:[]
+    }
+  };
+}
+
+async function loadGlobalOnchainDetailSnapshots(wallets){
+  const wanted=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)))];
+  const out=new Map();
+  for(let i=0;i<wanted.length;i+=50){
+    const chunk=wanted.slice(i,i+50);
+    const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE)
+      .select('scope_address,scanner_version,payload,updated_at,last_scanned_block')
+      .eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.globalOnchainDetail).in('scope_address',chunk);
+    if(error)throw error;
+    for(const row of (data||[])){
+      if(row?.scanner_version!==TECH_CACHE_VERSIONS.globalOnchainDetail)continue;
+      const wallet=norm(row?.scope_address||row?.payload?.wallet||'');
+      if(!chunk.includes(wallet))continue;
+      const payload=projectPayloadFromGlobalOnchainDetail(row?.payload,wallet);
+      if(payload)out.set(wallet,payload);
+    }
+  }
+  return out;
+}
+
+async function backfillGlobalOnchainDetailSnapshots(wallets){
+  const wanted=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)))];
+  if(!wanted.length)return {details:new Map(),missing:[]};
+  const details=new Map();
+  try{
+    const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'tln_detail_snapshot',wallets:wanted}});
+    if(error)throw error;
+    if(!data?.ok)throw new Error(data?.error||'wallet-private/tln_detail_snapshot fehlgeschlagen.');
+    for(const item of (Array.isArray(data?.details)?data.details:[])){
+      const wallet=norm(item?.wallet||item?.payload?.wallet||'');
+      const payload=projectPayloadFromGlobalOnchainDetail(item?.payload,wallet);
+      if(payload)details.set(wallet,payload);
+    }
+    return {details,missing:Array.isArray(data?.missing)?data.missing.map(norm):[]};
+  }catch(e){
+    log(`Globaler TLN On-Chain-Detail-Backfill nicht verfügbar: ${e?.message||e}`,'warn');
+    return {details,missing:wanted};
+  }
+}
+
 function populateProjectWalletFilter(){
   const sel=$('projectWalletFilter');if(!sel)return;
   const current=PROJECT_WALLET_FILTER||'all';
@@ -11990,8 +12060,6 @@ async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
           const wallet=byWalletId.get(rowId);
           if(wallet&&payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===wallet)PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);
         }
-        // Ein erfolgreicher Batch beweist auch Nullfunde. Diese werden für die Session memoisiert,
-        // damit spaetere Renderer nicht wieder einzelne maybeSingle()-Reads ausloesen.
         for(const [walletId] of byWalletId){
           if(seenIds.has(walletId))continue;
           const scope={kind:'private',walletId,scopeAddress:null};
@@ -11999,17 +12067,37 @@ async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
         }
       }catch(e){log(`Projekt-Snapshot Batch-Read nicht verfügbar; Einzelcache-Fallback: ${e?.message||e}`,'warn')}
     }
-    const missing=batched?wanted.filter(x=>!x.walletId):wanted.filter(x=>!PROJECT_WALLET_SNAPSHOTS.has(x.wallet));
-    if(missing.length){
-      await Promise.all(missing.map(async x=>{
+    const missingPrivate=batched?wanted.filter(x=>!x.walletId):wanted.filter(x=>!PROJECT_WALLET_SNAPSHOTS.has(x.wallet));
+    if(missingPrivate.length){
+      await Promise.all(missingPrivate.map(async x=>{
         const payload=await loadTechnicalProcessCache(x.wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults);
         if(payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===x.wallet)PROJECT_WALLET_SNAPSHOTS.set(x.wallet,payload);
       }));
     }
+
+    // Phase 6.52: Fresh-User Detail-Reuse. Fehlt dem aktuellen User ein privater
+    // Discovery-Snapshot, wird zuerst der userfreie globale On-Chain-Detailcache gelesen.
+    // Falls dieser noch fehlt, darf wallet-private serverseitig einen bereits verifizierten
+    // privaten Snapshot derselben eigenen Wallet sanitisiert übernehmen. Es werden keine
+    // fremden User-/Wallet-IDs oder Aliase ausgeliefert und kein Blockchain-Scan gestartet.
+    let globalDetailHits=0,edgeDetailBackfills=0;
+    const missingGlobal=wanted.map(x=>x.wallet).filter(w=>!PROJECT_WALLET_SNAPSHOTS.has(w));
+    if(missingGlobal.length){
+      try{
+        const globalDetails=await loadGlobalOnchainDetailSnapshots(missingGlobal);
+        for(const [wallet,payload] of globalDetails){PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);globalDetailHits++;}
+      }catch(e){log(`Globaler TLN On-Chain-Detailcache konnte nicht gelesen werden: ${e?.message||e}`,'warn')}
+    }
+    const missingEdge=wanted.map(x=>x.wallet).filter(w=>!PROJECT_WALLET_SNAPSHOTS.has(w));
+    if(missingEdge.length){
+      const result=await backfillGlobalOnchainDetailSnapshots(missingEdge);
+      for(const [wallet,payload] of result.details){PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);edgeDetailBackfills++;}
+    }
+
     if(withHistoricalValuation){
       await Promise.all([...PROJECT_WALLET_SNAPSHOTS.entries()].map(([wallet,payload])=>hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi())));
     }
-    log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) für die Aggregation geladen${batched?' · 1 Batch-Read statt Wallet-Einzelreads':''}.`,'ok');
+    log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) geladen${batched?' · private Batch-Read':''}${globalDetailHits?` · ${globalDetailHits} globaler Detailcache`:''}${edgeDetailBackfills?` · ${edgeDetailBackfills} serverseitiger Detail-Backfill`:''}.`,'ok');
   }finally{PROJECT_WALLET_SNAPSHOTS_LOADING=false;renderProjectUserView();void refreshProjectRewardSummaryFallback({force:true});}
 }
 async function applyProjectWalletFilter(){

@@ -1,3 +1,4 @@
+// Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN Fresh-User Detail-Reuse. Neue geschützte Aktion tln_detail_snapshot übernimmt nur rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Details aus einem bereits verifizierten Discovery-Snapshot derselben eigenen Wallet, entfernt userbezogene/private Felder, persistiert das Ergebnis im globalen technischen Cache und liefert es cache-only zurück. Kein Blockchain-Scan. Build 20260928-022005.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: TLN Fresh-User Reward-Backfill v2. Zentrale Raw→Human-Normalisierung für Staking/Bonus/Referral; verifizierte TLN/TLN+/TLNX-Decimale; Legacy raw-scaled amount als JS-Number/Scientific-Notation wird tokengebunden erkannt. Ausgabe trägt amountUnit=human/schemaVersion=2. Build 20260928-010115.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Unveränderte 5.94-Userdaten-Löschlogik, Release-Paketstruktur korrigiert. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Neue geschützte Aktion user_data_delete ruft die transaktionale Komplettlöschung aller userbezogenen WalletTracking-Daten auf. Build 20260922-140348.
@@ -950,6 +951,144 @@ function sanitizedRewardPeriodsFromSnapshot(payload: any): DashboardRewardPeriod
   return out
 }
 
+const TLN_GLOBAL_TECH_CACHE_TABLE = 'tln_vow_technical_global_cache'
+const TLN_GLOBAL_DETAIL_CACHE_KEY = 'global-onchain-detail'
+const TLN_GLOBAL_DETAIL_CACHE_VERSION = 'global-onchain-detail-v1'
+
+const TLN_DETAIL_PRIVATE_KEYS = new Set([
+  'user_id','userid','userId','wallet_id','walletId','owner_name','ownerName','owner_label','ownerLabel',
+  'wallet_alias','walletAlias','alias','partnerAlias','created_by','updated_by','createdBy','updatedBy',
+  'email','display_name','displayName','encrypted','ciphertext','reference_ciphertext','alias_ciphertext',
+])
+
+function sanitizeTlnPublicOnchainValue(value: any, depth = 0): any {
+  if (depth > 24 || value == null) return value == null ? null : undefined
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) return value.map((v) => sanitizeTlnPublicOnchainValue(v, depth + 1)).filter((v) => v !== undefined)
+  if (typeof value !== 'object') return undefined
+  const out: Record<string, unknown> = {}
+  for (const [key, raw] of Object.entries(value)) {
+    if (TLN_DETAIL_PRIVATE_KEYS.has(key) || /^private/i.test(key) || /ciphertext/i.test(key)) continue
+    const v = sanitizeTlnPublicOnchainValue(raw, depth + 1)
+    if (v !== undefined) out[key] = v
+  }
+  return out
+}
+
+function sanitizedTlnDetailSnapshot(payload: any, wallet: string, row: any) {
+  const process = payload?.process || {}
+  const globals = payload?.globals || {}
+  return {
+    kind: 'global_onchain_detail_snapshot',
+    schemaVersion: 1,
+    wallet,
+    completedStep: Number(payload?.completedStep || 0),
+    sourceBuildId: String(payload?.buildId || ''),
+    sourceSavedAt: payload?.lastCheckedAt || payload?.savedAt || row?.updated_at || null,
+    sourceLastBlock: Number(payload?.lastCheckedBlock || payload?.sourceLastBlock || row?.last_scanned_block || 0),
+    sanitizedAt: new Date().toISOString(),
+    process: {
+      lots: sanitizeTlnPublicOnchainValue(Array.isArray(process?.lots) ? process.lots : []),
+      done: {
+        base: !!process?.done?.base,
+        staking: !!process?.done?.staking,
+        duration: !!process?.done?.duration,
+        rewards: !!process?.done?.rewards,
+        referral: !!process?.done?.referral,
+      },
+    },
+    globals: {
+      provenRewardRows: sanitizeTlnPublicOnchainValue(Array.isArray(globals?.provenRewardRows) ? globals.provenRewardRows : []),
+      claimReferenceResult: sanitizeTlnPublicOnchainValue(globals?.claimReferenceResult || null),
+      unassignedRewards: sanitizeTlnPublicOnchainValue(Array.isArray(globals?.unassignedRewards) ? globals.unassignedRewards : []),
+    },
+  }
+}
+
+async function loadSanitizedTlnDetailSnapshots(
+  supabase: any,
+  key: CryptoKey,
+  userId: string,
+  requestedValue: unknown,
+) {
+  const requested = Array.isArray(requestedValue)
+    ? [...new Set(requestedValue.map(normalizeEvmAddress).filter(Boolean))].slice(0, 20)
+    : []
+  if (!requested.length) return { details: [], missing: [] }
+
+  // Identical security boundary to the Reward-Summary backfill: only addresses that
+  // are currently stored as *own* wallets of this authenticated user are eligible.
+  const ownWallets = (await loadWallets(supabase, key, userId))
+    .filter((w) => w?.is_own_wallet !== false)
+    .map((w) => normalizeEvmAddress(w?.evm_address))
+    .filter(Boolean)
+  const allowed = new Set(ownWallets)
+  const wallets = requested.filter((w) => allowed.has(w))
+  if (!wallets.length) return { details: [], missing: requested }
+
+  const service = serviceSupabaseClient()
+  const details: any[] = []
+  const missing: string[] = []
+
+  for (const wallet of wallets) {
+    // Global cache first. Once sanitized, no private source snapshot is needed again.
+    const { data: globalRows, error: globalError } = await service
+      .from(TLN_GLOBAL_TECH_CACHE_TABLE)
+      .select('payload,scanner_version,updated_at,last_scanned_block')
+      .eq('chain_key', 'bsc')
+      .eq('scope_address', wallet)
+      .eq('cache_key', TLN_GLOBAL_DETAIL_CACHE_KEY)
+      .limit(1)
+    if (globalError) throw new Error(`TLN Detailcache ${wallet}: ${globalError.message}`)
+    const globalRow = globalRows?.[0]
+    if (globalRow?.scanner_version === TLN_GLOBAL_DETAIL_CACHE_VERSION && globalRow?.payload?.kind === 'global_onchain_detail_snapshot') {
+      details.push({ wallet, payload: globalRow.payload, source: 'global-cache' })
+      continue
+    }
+
+    const { data, error } = await service
+      .from('tln_vow_staking_scan_cache')
+      .select('payload,last_scanned_block,updated_at,scanner_version')
+      .eq('chain_key', 'bsc')
+      .eq('cache_key', 'verified-discovery-results')
+      .eq('payload->>wallet', wallet)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+
+    if (error) throw new Error(`TLN Detail-Snapshot ${wallet}: ${error.message}`)
+    const row = data?.[0]
+    const payload = row?.payload
+    // Step 5 is the first state in which staking/rewards + referral detail are both
+    // expected to be complete. Lower steps must not be presented as definitive zeros.
+    if (!payload || payload?.kind !== 'verified_discovery_results' || Number(payload?.completedStep || 0) < 5) {
+      missing.push(wallet)
+      continue
+    }
+
+    const sanitized = sanitizedTlnDetailSnapshot(payload, wallet, row)
+    const { error: upsertError } = await service
+      .from(TLN_GLOBAL_TECH_CACHE_TABLE)
+      .upsert({
+        chain_key: 'bsc',
+        scope_address: wallet,
+        cache_key: TLN_GLOBAL_DETAIL_CACHE_KEY,
+        scanner_version: TLN_GLOBAL_DETAIL_CACHE_VERSION,
+        complete_from_block: 0,
+        last_scanned_block: Number(sanitized.sourceLastBlock || 0),
+        payload: sanitized,
+        created_by: null,
+        updated_by: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'chain_key,scope_address,cache_key' })
+    if (upsertError) throw new Error(`TLN globaler Detailcache ${wallet}: ${upsertError.message}`)
+
+    details.push({ wallet, payload: sanitized, source: 'private-snapshot-backfill' })
+  }
+
+  for (const wallet of requested) if (!wallets.includes(wallet) && !missing.includes(wallet)) missing.push(wallet)
+  return { details, missing }
+}
+
 function serviceSupabaseClient() {
   const url = Deno.env.get('SUPABASE_URL')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -1192,6 +1331,16 @@ export default {
 
       if (action === 'tln_reward_summary') {
         const result = await loadSanitizedTlnRewardSummaries(
+          ctx.supabase,
+          key,
+          userId,
+          body.wallets,
+        )
+        return json({ ok: true, action, ...result })
+      }
+
+      if (action === 'tln_detail_snapshot') {
+        const result = await loadSanitizedTlnDetailSnapshots(
           ctx.supabase,
           key,
           userId,
