@@ -1,4 +1,4 @@
-// Phase 6.60 · 28.09.2026 11:46:14 CEST: Kontrollierte Fresh-Wallet-Discovery wird beim Speichern einer neuen eigenen TLN/VOW-Wallet automatisch für genau diese Wallet gestartet. Ausschließlich Steps 1–6; Step 7/Team bleibt ausgeschlossen. Manueller Button bleibt als Retry/Fallback. Build 20260928-114614.
+// Phase 6.61 · 28.09.2026 12:16:20 CEST: Team-Leerzustand trennt User- und Admin-Sicht. Normale User sehen bei fehlendem Slice keine internen Cache-/Step-7-/Fullscan-Hinweise, sondern einen fachlichen Hinweis auf den vorhandenen Team-Datenstand; Admins sehen die technische Diagnose weiterhin. Build 20260928-121620.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-Wallet Reward-Status ans Dashboard angebunden; kontrollierte Erst-Discovery meldet loading/complete/unknown und bleibt auf Steps 1–6 ohne Team-/Step-7-Vollscan begrenzt. Build 20260928-111745.
 // Phase 6.58 · 28.09.2026 04:23:01 CEST: Reward-Summary-UI bereinigt. Technische Cache-/Human-Units-Texte aus Staking-, Referral- und Bonus-Summaries entfernt. Reward-Tx-Anzahl wird aus vorhandenen Detaildaten ergänzt, aber nur wenn der Detail-Scope vollständig ist; bei partiellen Fresh-User-Daten bleibt sie bewusst offen statt eine unvollständige Zahl vorzutäuschen. Build 20260928-042301.
 // Phase 6.57 · 28.09.2026 04:12:38 CEST: Regression-Fix für die TLN/VOW Reward-/Claim-Ansichten: der in 6.53 eingeführte zentrale Helper projectChainRefHtml war an mehreren Render-Stellen verwendet, aber nicht definiert. Der Helper ist jetzt zentral vorhanden und rendert gekürzte BSC-Adresse/Tx-Links plus Copy-Funktion; dadurch brechen Staking-, Referral- und Bonus-Renderpfade nicht mehr mit ReferenceError ab. Build 20260928-041238.
@@ -22,7 +22,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-114614';
+const BUILD_ID='20260928-121620';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -17658,9 +17658,12 @@ function renderTeamTree(){
   const box=$('teamTree'),status=$('teamTreeStatus');if(!box||!status)return;
   const forest=CURRENT_TEAM_PROJECT_FOREST;
   if(!forest||!forest.components?.length){
-    box.innerHTML=TEAM_AUTO_FULLSCAN_BLOCKED_REASON
-      ?`<div class="warn"><b>Noch keine Team-Daten.</b></div><div class="muted" style="margin-top:6px">${esc(TEAM_AUTO_FULLSCAN_BLOCKED_REASON)}</div>`
-      :'<div class="muted">Noch kein projektweiter TLN/VOW-Team-Baum ermittelt.</div>';return;
+    const adminView=typeof isAdmin!=="undefined"&&!!isAdmin;
+    const userEmpty=`<div class="muted"><b>Keine Teampartner im aktuellen Datenstand.</b><br>Für die ausgewählten TLN/VOW-Wallets sind derzeit keine Teampartner gespeichert.</div>`;
+    if(adminView&&TEAM_AUTO_FULLSCAN_BLOCKED_REASON){
+      box.innerHTML=`${userEmpty}<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Technische Diagnose</summary><div class="muted" style="margin-top:6px">${esc(TEAM_AUTO_FULLSCAN_BLOCKED_REASON)}</div></details>`;
+    }else box.innerHTML=userEmpty;
+    return;
   }
   const visible=projectTeamVisibleWallets(forest);
   const ownCount=[...visible].filter(w=>forest.ownSet.has(w)).length;

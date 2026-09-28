@@ -1,4 +1,4 @@
-// Phase 6.60 · 28.09.2026 11:46:14 CEST: Neue eigene TLN/VOW-Wallets starten die bereits kontrollierte Steps-1–6-Erst-Discovery automatisch im gezielten Wallet-Erstaufbau. Kein Step 7/Team-Fullscan; Dashboard-/Projekt-Button bleibt nur Fallback/Retry für offene oder fehlgeschlagene Altfälle. Daten-Update-Buttons inventarisiert. Build 20260928-114614.
+// Phase 6.61 · 28.09.2026 12:16:20 CEST: Dashboard-Kurstabelle löst bekannte TLN/VOW-Token konsequent zu Namen/Symbolen auf; bei fehlenden Stammdaten wird die verifizierte Preisroute (z. B. v€, v£, v$) statt der Contract-Adresse verwendet. Adresse bleibt nur sekundär mit Copy-Funktion bzw. letzter Fallback. Team-Leerzustand wird für normale User fachlich statt technisch formuliert; Admins behalten die Cache-/Fullscan-Diagnose. Aktualisierungsbutton-Audit fachlich fortgeführt. Build 20260928-121620.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-TLN-Wallet Dashboard unterscheidet Reward-Datenstatus (noch nicht ermittelt / wird ermittelt / vollständig) und bindet die kontrollierte Erst-Discovery direkt an; keine automatische Browser-Vollscan-Discovery. Build 20260928-111745.
 // Phase 6.58 · 28.09.2026 04:23:01 CEST: TLN/VOW Reward-Summary-UI bereinigt; technische Cache-Texte entfernt und Reward-Tx-Zählung bei vollständig vorhandenen Detaildaten aktiviert. Build 20260928-042301.
 // Phase 6.57 · 28.09.2026 04:12:38 CEST: TLN/VOW Regression-Fix: fehlender zentraler Blockchain-Referenz-Helper in tln-vow-discovery.js ergänzt. Reward-/Claim-Renderpfade brechen dadurch nicht mehr mit projectChainRefHtml is not defined ab; gekürzte Adresse/Tx-Links und Copy bleiben zentral konsistent. Build 20260928-041238.
@@ -5358,6 +5358,23 @@ function dashboardTokenDisplayName(chain,address,symbol){
   const named=candidates.map(x=>String(x||"").trim()).find(x=>x && normalizeAddress(x,chain)!==normalized && !/^0x[0-9a-f]{40}$/i.test(x));
   return named||dashboardShortAddress(address)||String(address||"").trim();
 }
+function dashboardPriceRouteTokenName(price){
+  const route=String(price?.route||"").trim();
+  if(!route)return "";
+  const first=route.split(/\s*(?:→|->|\/)\s*/)[0]?.trim()||"";
+  if(!first || /^0x[0-9a-f]{8,40}$/i.test(first) || /^(TVL|Pool|Token)$/i.test(first))return "";
+  return first.replace(/\s*\([^)]*\)\s*$/," ").trim();
+}
+function dashboardResolvedPriceDisplayName({chain,address,symbol,project,price}){
+  const resolved=dashboardTokenDisplayName(chain,address,symbol);
+  const normalized=normalizeAddress(address,chain), short=dashboardShortAddress(address);
+  const unresolved=!resolved || resolved===short || normalizeAddress(resolved,chain)===normalized || /^0x[0-9a-f]{6,40}(?:…[0-9a-f]{4})?$/i.test(resolved);
+  if(unresolved && project==="tln_vow"){
+    const routeName=dashboardPriceRouteTokenName(price);
+    if(routeName)return routeName;
+  }
+  return resolved||short||String(address||"").trim();
+}
 
 function dashboardShortAddress(address){
   const a=String(address||"").trim();
@@ -5447,8 +5464,8 @@ function dashboardPriceRows(targetWallets=walletsForCurrentView(),involvedProjec
     if(project && !involvedProjects.has(project))continue;
     const native=address==="native",meta=native?predefinedNativeAssets[chain]:null;
     const symbol=meta?.symbol||predefinedTokenSymbols[key]||predefinedTokenLabels[key]||h.symbol||address;
-    const displayName=meta?.name||dashboardTokenDisplayName(chain,address,symbol);
     const price=native?nativePrices[chain]:priceForToken(chain,address);
+    const displayName=meta?.name||dashboardResolvedPriceDisplayName({chain,address,symbol,project,price});
     rows.push({key,chain,address,symbol,displayName,project,price,amount:Number(h.amount)||0,usdValue:h.hasUsd?Number(h.usdValue):null,always});
   }
   return rows.sort((a,b)=>(a.project||"").localeCompare(b.project||"")||a.symbol.localeCompare(b.symbol));
@@ -5588,7 +5605,7 @@ function renderDashboard(){
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
   const chainIcon=r=>chainIconHtml(r.chain,"sm");
-  const priceRows=rows=>`<div class="dashboard-table-wrap"><table class="dashboard-price-table dashboard-price-table-compact"><thead><tr><th>Token</th><th title="Chain">Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${rows.map(r=>{const primary=String(r.displayName||r.symbol||"");const isAddr=/^0x[0-9a-f]{40}$/i.test(primary);return `<tr><td><strong>${escapeAttr(isAddr?dashboardShortAddress(primary):primary)}</strong>${isAddr?"":dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${isAddr?"":dashboardAddressHtml(r.address)}</td><td class="dashboard-chain-icon-cell">${chainIcon(r)}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`}).join("")}</tbody></table></div>`;
+  const priceRows=rows=>`<div class="dashboard-table-wrap"><table class="dashboard-price-table dashboard-price-table-compact"><thead><tr><th>Token</th><th title="Chain">Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${rows.map(r=>{const primary=String(r.displayName||r.symbol||dashboardShortAddress(r.address)||"–");return `<tr><td><strong>${escapeAttr(primary)}</strong>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)}</td><td class="dashboard-chain-icon-cell">${chainIcon(r)}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`}).join("")}</tbody></table></div>`;
   const split=Math.ceil(prices.length/2),priceTable=prices.length?`<div class="dashboard-price-columns">${priceRows(prices.slice(0,split))}${priceRows(prices.slice(split))}</div>`:`<div class="empty">Keine Dashboard-Kurse gemäß aktueller Regel: Bestand &gt; 1 USD oder Flag „Im Dashboard immer anzeigen“.</div>`;
   const projectCards=[...involvedProjects].map(key=>[key,portfolio.projects.get(key)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0}]).map(([key,p])=>{
     const projectPrices=prices.filter(x=>x.project===key);
