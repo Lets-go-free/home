@@ -1,4 +1,4 @@
-// Phase 6.56 · 28.09.2026 04:01:06 CEST: Systemweit unbekannte eigene TLN/VOW-Wallets erhalten einen kontrollierten einmaligen Erst-Discovery-Pfad. Der Nutzer startet ihn ausdrücklich aus dem Detailhinweis; nur fehlende eigene Wallets werden nacheinander über Steps 1–6 aufgebaut, Step 7/Team bleibt ausgeschlossen. Danach werden privater Snapshot, globale Reward-Summary und sanitiserter globaler On-Chain-Detailcache nachgezogen. Kein automatischer Browser-Vollscan beim Tab-Öffnen. Build 20260928-040106.
+// Phase 6.57 · 28.09.2026 04:12:38 CEST: Regression-Fix für die TLN/VOW Reward-/Claim-Ansichten: der in 6.53 eingeführte zentrale Helper projectChainRefHtml war an mehreren Render-Stellen verwendet, aber nicht definiert. Der Helper ist jetzt zentral vorhanden und rendert gekürzte BSC-Adresse/Tx-Links plus Copy-Funktion; dadurch brechen Staking-, Referral- und Bonus-Renderpfade nicht mehr mit ReferenceError ab. Build 20260928-041238.
 // Phase 6.55 · 28.09.2026 03:54:52 CEST: Release-Synchronisierung zu Phase 6.55; TLN/VOW Discovery-Logik fachlich unverändert. Legacy-Tab „Liquidity Pools_old“ wurde außerhalb dieses Moduls entfernt. Build 20260928-035452.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: Staking-Reward-Summary direkt in Staking/Rewards integriert; separater Rewards-Summary-Tab entfernt. Globaler Fresh-User On-Chain-Detailcache v2 übernimmt serverseitig vorhandene Step-6-USD-Bewertungen; Detailstatus-Hinweise konsolidiert und lange Chain-Referenzen in Reward-/Claim-Tabellen verkürzt. Build 20260928-024440.
 // Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN/VOW Fresh-User Detail-Reuse. Rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Detaildaten können serverseitig aus einem bereits verifizierten privaten Discovery-Snapshot derselben Wallet sanitisiert in einen userfreien globalen Detailcache überführt und cache-only wiederverwendet werden. Keine fremden User-/Wallet-IDs, Aliase oder privaten Rohfelder; kein Blockchain-Scan beim Tab-Aufruf. Für erstmals überhaupt unbekannte Wallets bleibt die kontrollierte serverseitige Erst-Discovery offen. Build 20260928-022005.
@@ -19,7 +19,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-040106';
+const BUILD_ID='20260928-041238';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -217,7 +217,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 04:01:06 CEST';
+const APP_VERSION='28.09.2026 04:12:38 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11698,6 +11698,29 @@ function projectAggregateData(){
   bonusRows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
   return {scoped,lots,stakingByToken,referralByToken,bonusByToken,referralRows,bonusRows,stakingClaims,referralClaims,bonusClaims,lastChecked};
 }
+function projectChainRefHtml(value,{tx=false,address=false}={}){
+  const v=String(value||'').trim();
+  if(!v)return '–';
+  const label=short(v);
+  const href=tx?`https://bscscan.com/tx/${encodeURIComponent(v)}`:address?`https://bscscan.com/address/${encodeURIComponent(v)}`:'';
+  const linked=href?`<a class="mono" style="color:#8fb1ff;white-space:nowrap" target="_blank" rel="noopener noreferrer" href="${esc(href)}" title="${esc(v)}">${esc(label)}</a>`:`<span class="mono" title="${esc(v)}">${esc(label)}</span>`;
+  return `${linked} <button type="button" data-copy-chain-ref="${esc(v)}" title="Kopieren" aria-label="Blockchain-Referenz kopieren" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 .15rem;vertical-align:baseline">⧉</button>`;
+}
+if(typeof window!=='undefined'&&!window.__wtProjectChainRefCopyBound){
+  window.__wtProjectChainRefCopyBound=true;
+  document.addEventListener('click',async event=>{
+    const btn=event.target?.closest?.('[data-copy-chain-ref]');
+    if(!btn)return;
+    const value=btn.getAttribute('data-copy-chain-ref')||'';
+    if(!value)return;
+    try{
+      await navigator.clipboard.writeText(value);
+      const old=btn.textContent;btn.textContent='✓';
+      setTimeout(()=>{btn.textContent=old||'⧉'},900);
+    }catch(err){console.warn('TLN/VOW: Blockchain-Referenz konnte nicht kopiert werden',err)}
+  });
+}
+
 function projectTokenTotalsHtml(map,empty='–'){
   const rows=[...(map||new Map()).values()].filter(x=>x.amount||x.count).sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol)));
   if(!rows.length)return `<span class="muted">${esc(empty)}</span>`;
