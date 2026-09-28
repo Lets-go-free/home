@@ -1,4 +1,4 @@
-// Phase 6.50 · 28.09.2026 01:15:38 CEST: Fresh-User TLN/VOW Reward-Tabs verwenden die globale sanitized Reward-Summary v2 als cache-only Summary-Fallback, ohne Detaildaten zu erfinden. Staking-/Referral-/Bonus-Detailbereiche unterscheiden nun explizit zwischen 0 belegten Daten und noch nicht aufgebauten Detail-Snapshots. Dark-Mode-Tabellen werden über den aktualisierten CSS-Cache-Buster und scoped Dark-Regeln vereinheitlicht. Build 20260928-011538.
+// Phase 6.51 · 28.09.2026 02:10:03 CEST: Fresh-User TLN/VOW trennt Reward-Summary und Staking-Details klar. Fehlende Detail-Snapshots werden nicht mehr als 0 Positionen/0 Stakings dargestellt; der Staking/Rewards-Tab dupliziert bei reinem Summary-Fallback keine Reward-Tabelle mehr. Summary-Spalte 'Zahlungen' heißt nun eindeutig 'Reward-Tx'. Der globale On-Chain-Detailcache + serverseitige Erst-Discovery bleibt als Architekturpunkt offen. Build 20260928-021003.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: Dashboard Reward-Summary v2 speichert ausschließlich Human-Units (schemaVersion 2, amountUnit=human). 6.47/6.48-v1 wird bewusst ignoriert, damit bereits persistierte Raw-Decimals-Fehler nicht weiterverwendet werden. Edge-Backfill 6.49 normalisiert Legacy-Rawwerte zentral vor dem Speichern. Build 20260928-010115.
 // Phase 6.46 · 27.09.2026 20:19:27 CEST: TLN-Team-Restore wirklich cache-only. Realtest 6.45 zeigte weiterhin >1000 eth_getTransactionByHash-Requests. Ursache: teamRestoreAdditionalRegistryGraph() startete bei fehlendem Zusatzregistry-Cache automatisch einen historischen Join-Aufbau und lud fuer jede Transfer-Tx die volle Transaktion. Der normale Team-Restore darf diesen History-Pfad nicht mehr starten; on-chain Zusatzregistry-Aufbau bleibt ausschliesslich dem expliziten Step-7-Pfad vorbehalten. Build 20260927-201927.
 // Phase 6.18 · 25.09.2026 18:33:32 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260925-183332.
@@ -16,7 +16,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-011538';
+const BUILD_ID='20260928-021003';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -213,7 +213,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 01:15:38 CEST';
+const APP_VERSION='28.09.2026 02:10:03 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11791,13 +11791,22 @@ function projectStakingSummaryRowHtml(l,showWallet,index){
     <details class="project-staking-details"><summary>Details, Aufstockungen und Rewards/Claims anzeigen</summary>${projectStakingPositionCardHtml(l,showWallet)}</details>
   </div>`;
 }
-function projectStakingPositionOverviewHtml(lots,scopeTitle,showWallet){
+function projectStakingPositionOverviewHtml(lots,scopeTitle,showWallet,{detailState='complete',detailSnapshots=0,expectedDetailSnapshots=0}={}){
   const all=[...(lots||[])].sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
   const running=all.filter(l=>l.status!=='closed'),completed=all.filter(l=>l.status==='closed');
+  if(detailState==='missing'){
+    return `<div class="card project-staking-overview">
+      <div class="project-staking-overview-head"><div class="project-staking-title-row"><h2 style="margin:0">Staking – Übersicht</h2><span class="project-staking-count">Detaildaten noch nicht verfügbar</span></div><div class="muted">${esc(scopeTitle)}</div></div>
+      <div class="project-cache-only-note"><b>Staking-Positionen noch nicht aufgebaut.</b><br>Für diesen Benutzer ist noch kein verifizierter Staking-Detail-Snapshot vorhanden. Deshalb werden hier bewusst keine 0 Positionen, 0 laufenden oder 0 abgeschlossenen Stakings behauptet. Die bereits bekannten Reward-Summen stehen im Tab „Rewards Summary“. Ein historischer Blockchain-Vollscan wird beim Öffnen dieses Tabs nicht automatisch gestartet.</div>
+    </div>`;
+  }
+  const partial=detailState==='partial';
   const header=`<div class="project-staking-columns"><div>Projekt / Typ</div><div>Staking-Contract</div><div>Stake-Zeit</div><div>Vertragsende</div><div>Unstake</div><div>Laufzeit</div><div>Staking-Asset</div><div>USD-Wert</div><div>Status</div></div>`;
   const section=(title,rows,icon)=>`<div class="project-staking-section-label">${icon} ${esc(title)} <span class="n">${rows.length}</span></div>${rows.length?`<div class="project-staking-table">${header}${rows.map((l,i)=>projectStakingSummaryRowHtml(l,showWallet,i)).join('')}</div>`:'<div class="empty-note">Keine Positionen in diesem Bereich.</div>'}`;
+  const countLabel=partial?`${all.length} Position(en) aus ${detailSnapshots}/${expectedDetailSnapshots} Detail-Snapshot(s)`:`${all.length} Position(en) gefunden`;
   return `<div class="card project-staking-overview">
-    <div class="project-staking-overview-head"><div class="project-staking-title-row"><h2 style="margin:0">Staking – Übersicht</h2><span class="project-staking-count">${all.length} Position(en) gefunden</span></div><div class="muted">${esc(scopeTitle)}</div></div>
+    <div class="project-staking-overview-head"><div class="project-staking-title-row"><h2 style="margin:0">Staking – Übersicht</h2><span class="project-staking-count">${esc(countLabel)}</span></div><div class="muted">${esc(scopeTitle)}</div></div>
+    ${partial?`<div class="project-cache-only-note"><b>Detaildaten nur teilweise vorhanden.</b><br>Die folgenden Positionen stammen nur aus ${detailSnapshots} von ${expectedDetailSnapshots} erwarteten Wallet-Detail-Snapshots. Die Zahlen sind deshalb nicht als vollständige Gesamtzahl zu verstehen.</div>`:''}
     <p class="muted">Kompakte Lifecycle-Sicht mit Stake, Vertragsende, Unstake, Laufzeit, Asset und historischen USD-Werten. Aufstockungen sowie eindeutig zugeordnete Rewards/Claims bleiben je Position direkt aufklappbar.</p>
     ${section('Laufende / offene Stakings',running,'🟢')}
     ${section('Abgeschlossene Stakings',completed,'✅')}
@@ -11920,11 +11929,15 @@ function renderProjectAggregateDetails(){
       ?'Quelle: globaler sanitiserter Reward-Summary-Cache (Human-Units). Einzeltransaktionen sind für diesen Benutzer noch nicht als Detail-Snapshot aufgebaut.'
       :'Quelle: persistenter Detail-Snapshot des Projektfilters.';
     const txText=cacheOnly?'Tx-Anzahl im Summary-Cache nicht enthalten.':`${claims} belegte Tx im gewählten Scope.`;
-    return `<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${txText} Die Mengen werden je Token separat summiert. ${source}</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count==null?'–':x.count}</td><td class="num"><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})}</b></td></tr>`).join(''):`<tr><td colspan="3">${detailSnapshots?'Keine belegten Rewards.':'Noch keine Reward-Summary verfügbar.'}</td></tr>`}</tbody></table></div></div>`;
+    return `<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${txText} Die Mengen werden je Token separat summiert. ${source}</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Reward-Tx</th><th>Menge</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count==null?'–':x.count}</td><td class="num"><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})}</b></td></tr>`).join(''):`<tr><td colspan="3">${detailSnapshots?'Keine belegten Rewards.':'Noch keine Reward-Summary verfügbar.'}</td></tr>`}</tbody></table></div></div>`;
   };
   if(st){
     st.style.display='block';
-    st.innerHTML=`${projectRewardDetailStateHtml('staking',missingStakingDetails,{partial:detailSnapshots>0})}${rewardTable('🏆 Staking-Rewards',stakingSummary,d.stakingClaims,{cacheOnly:cacheOnlyStaking})}${projectStakingPositionOverviewHtml(d.lots,scopeTitle,all)}`;
+    const stakingDetailState=detailGap<=0?'complete':detailSnapshots>0?'partial':'missing';
+    const stakingSummaryHint=missingStakingDetails
+      ?`<div class="project-cache-only-note"><b>Reward-Summen bereits verfügbar.</b><br>Die aggregierten Staking-Reward-Summen sind im Tab „Rewards Summary“ verfügbar. Dieser Tab zeigt bewusst nur Staking-Detaildaten und dupliziert die Summary-Tabelle nicht.</div>`
+      :'';
+    st.innerHTML=`${stakingSummaryHint}${projectStakingPositionOverviewHtml(d.lots,scopeTitle,all,{detailState:stakingDetailState,detailSnapshots,expectedDetailSnapshots})}`;
   }
   if(rw){rw.style.display='block';rw.innerHTML=rewardTable('🏆 Staking-Rewards',stakingSummary,d.stakingClaims,{cacheOnly:cacheOnlyStaking});}
   if(rf){
