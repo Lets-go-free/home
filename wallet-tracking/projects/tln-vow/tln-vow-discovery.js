@@ -1,3 +1,4 @@
+// Phase 6.54 · 28.09.2026 03:44:15 CEST: Regression-Fix 6.53: Reward-Summary/Detailcache werden vor Staking/Referral/Bonus cache-only synchronisiert; parallele Summary-Ladevorgaenge werden awaited statt verworfen; globaler Detailcache v1 bleibt als Fallback kompatibel, waehrend v2 nur Step-6-Werte ergaenzt. Build 20260928-034415.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: Staking-Reward-Summary direkt in Staking/Rewards integriert; separater Rewards-Summary-Tab entfernt. Globaler Fresh-User On-Chain-Detailcache v2 übernimmt serverseitig vorhandene Step-6-USD-Bewertungen; Detailstatus-Hinweise konsolidiert und lange Chain-Referenzen in Reward-/Claim-Tabellen verkürzt. Build 20260928-024440.
 // Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN/VOW Fresh-User Detail-Reuse. Rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Detaildaten können serverseitig aus einem bereits verifizierten privaten Discovery-Snapshot derselben Wallet sanitisiert in einen userfreien globalen Detailcache überführt und cache-only wiederverwendet werden. Keine fremden User-/Wallet-IDs, Aliase oder privaten Rohfelder; kein Blockchain-Scan beim Tab-Aufruf. Für erstmals überhaupt unbekannte Wallets bleibt die kontrollierte serverseitige Erst-Discovery offen. Build 20260928-022005.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: Dashboard Reward-Summary v2 speichert ausschließlich Human-Units (schemaVersion 2, amountUnit=human). 6.47/6.48-v1 wird bewusst ignoriert, damit bereits persistierte Raw-Decimals-Fehler nicht weiterverwendet werden. Edge-Backfill 6.49 normalisiert Legacy-Rawwerte zentral vor dem Speichern. Build 20260928-010115.
@@ -17,7 +18,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-024440';
+const BUILD_ID='20260928-034415';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -101,6 +102,7 @@ let PROJECT_WALLET_SNAPSHOTS_LOADING=false;
 let PROJECT_REWARD_SUMMARY_FALLBACK=null;
 let PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE='';
 let PROJECT_REWARD_SUMMARY_FALLBACK_LOADING=false;
+let PROJECT_REWARD_SUMMARY_FALLBACK_PROMISE=null;
 // Keine generische fest codierte Staking-Laufzeit. Contract-/Generations-spezifische
 // Laufzeiten werden nur mit dokumentierter Evidenz hinterlegt.
 function stakingDurationDays(){ return null; }
@@ -214,7 +216,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 02:44:40 CEST';
+const APP_VERSION='28.09.2026 03:44:15 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11342,6 +11344,17 @@ async function switchProjectUserTab(name){
   document.querySelectorAll('.project-user-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`projectPanel-${key}`));
   renderProjectUserView();
   if(key==='admin')void renderProjectAdminContractRegistry();
+  if(['stakings','referral','bonus'].includes(key)){
+    try{
+      await ensureInitialized();
+      // 6.54 Regression-Fix: Reward-Tabs stellen vor dem Rendern sicher, dass die bereits
+      // vorhandenen privaten/globalen Snapshots und die Summary-Fallbacks cache-only geladen
+      // sind. Kein Blockchain-Discovery-Scan wird dadurch gestartet.
+      if(PROJECT_WALLET_SNAPSHOTS.size<Math.max(1,tlnWallets.length))await loadProjectWalletSnapshots({withHistoricalValuation:false});
+      await refreshProjectRewardSummaryFallback({force:false});
+      renderProjectAggregateDetails();
+    }catch(e){console.warn(`TLN ${key}: Cache-only Projektdaten konnten nicht nachgeladen werden`,e);}
+  }
   if(key==='team'){
     try{
       // Team-Root-Ermittlung basiert auf tlnWallets. Bei schnellem Tab-Wechsel kann
@@ -11886,20 +11899,29 @@ function projectRewardSummaryHasData(field){
 async function refreshProjectRewardSummaryFallback({force=false}={}){
   const scopeWallets=projectRewardSummaryScopeWallets();
   const scopeKey=scopeWallets.join(',');
-  if(PROJECT_REWARD_SUMMARY_FALLBACK_LOADING)return;
-  if(!force&&PROJECT_REWARD_SUMMARY_FALLBACK&&PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE===scopeKey)return;
+  // Phase 6.54: Ein paralleler Aufruf darf nicht einfach verloren gehen. Genau dieses
+  // Fire-and-forget-Rennen konnte nach dem 6.53-Tabumbau dazu führen, dass Summary/Details
+  // zunächst leer gerendert und danach nicht mehr zuverlässig nachgezogen wurden.
+  if(PROJECT_REWARD_SUMMARY_FALLBACK_PROMISE)return PROJECT_REWARD_SUMMARY_FALLBACK_PROMISE;
+  if(!force&&PROJECT_REWARD_SUMMARY_FALLBACK&&PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE===scopeKey)return PROJECT_REWARD_SUMMARY_FALLBACK;
   PROJECT_REWARD_SUMMARY_FALLBACK_LOADING=true;
-  try{
-    PROJECT_REWARD_SUMMARY_FALLBACK=await loadDashboardRewardPeriodsCacheOnly(scopeWallets);
-    PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE=scopeKey;
-  }catch(e){
-    console.warn('TLN Projekt Reward-Summary cache-only',e);
-    PROJECT_REWARD_SUMMARY_FALLBACK=null;
-    PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE=scopeKey;
-  }finally{
-    PROJECT_REWARD_SUMMARY_FALLBACK_LOADING=false;
-    renderProjectAggregateDetails();
-  }
+  PROJECT_REWARD_SUMMARY_FALLBACK_PROMISE=(async()=>{
+    try{
+      PROJECT_REWARD_SUMMARY_FALLBACK=await loadDashboardRewardPeriodsCacheOnly(scopeWallets);
+      PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE=scopeKey;
+      return PROJECT_REWARD_SUMMARY_FALLBACK;
+    }catch(e){
+      console.warn('TLN Projekt Reward-Summary cache-only',e);
+      PROJECT_REWARD_SUMMARY_FALLBACK=null;
+      PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE=scopeKey;
+      return null;
+    }finally{
+      PROJECT_REWARD_SUMMARY_FALLBACK_LOADING=false;
+      renderProjectAggregateDetails();
+    }
+  })();
+  try{return await PROJECT_REWARD_SUMMARY_FALLBACK_PROMISE;}
+  finally{PROJECT_REWARD_SUMMARY_FALLBACK_PROMISE=null;}
 }
 function projectRewardDetailStateHtml(kind,hasSummary,{detailSnapshots=0,expectedDetailSnapshots=0}={}){
   if(!hasSummary)return '';
@@ -11963,7 +11985,11 @@ function renderProjectAggregateDetails(){
 
 function projectPayloadFromGlobalOnchainDetail(rowPayload,wallet){
   const w=norm(wallet||rowPayload?.wallet||'');
-  if(!ethers.isAddress(w)||rowPayload?.kind!=='global_onchain_detail_snapshot'||Number(rowPayload?.schemaVersion||0)!==2)return null;
+  const schemaVersion=Number(rowPayload?.schemaVersion||0);
+  // Phase 6.54: v2 ergänzt Step-6-Werte, darf aber den bereits verifizierten v1-Detailcache
+  // nicht invalidieren. v1 bleibt als vollständiger On-Chain-Detail-Fallback nutzbar;
+  // ein späterer serverseitiger v2-Backfill ergänzt nur die Bewertung.
+  if(!ethers.isAddress(w)||rowPayload?.kind!=='global_onchain_detail_snapshot'||![1,2].includes(schemaVersion))return null;
   const process=rowPayload?.process||{},globals=rowPayload?.globals||{};
   return {
     kind:'verified_discovery_results',schemaVersion:2,wallet:w,
@@ -11999,7 +12025,7 @@ async function loadGlobalOnchainDetailSnapshots(wallets){
       .eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.globalOnchainDetail).in('scope_address',chunk);
     if(error)throw error;
     for(const row of (data||[])){
-      if(row?.scanner_version!==TECH_CACHE_VERSIONS.globalOnchainDetail)continue;
+      if(![TECH_CACHE_VERSIONS.globalOnchainDetail,'global-onchain-detail-v1'].includes(String(row?.scanner_version||'')))continue;
       const wallet=norm(row?.scope_address||row?.payload?.wallet||'');
       if(!chunk.includes(wallet))continue;
       const payload=projectPayloadFromGlobalOnchainDetail(row?.payload,wallet);

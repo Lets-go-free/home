@@ -1,3 +1,4 @@
+// Phase 6.54 · 28.09.2026 03:44:15 CEST: TLN Fresh-User Detail-Backfill robust gegen fehlende/inkompatible Step-6-Valuation-Caches: Bewertungs-Lookup ist optional und darf den bereits verifizierten Staking/Reward/Referral/Bonus-Detailbackfill nicht mehr komplett abbrechen. Build 20260928-034415.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: TLN globaler Detailcache v2. Beim sanitisierten Fresh-User-Backfill werden vorhandene Step-6-USD-Bewertungen aus dem privaten technischen snapshot-valuation-Cache derselben Source-Wallet in die öffentlichen On-Chain-Lots übernommen. Build 20260928-024440.
 // Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN Fresh-User Detail-Reuse. Neue geschützte Aktion tln_detail_snapshot übernimmt nur rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Details aus einem bereits verifizierten Discovery-Snapshot derselben eigenen Wallet, entfernt userbezogene/private Felder, persistiert das Ergebnis im globalen technischen Cache und liefert es cache-only zurück. Kein Blockchain-Scan. Build 20260928-022005.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: TLN Fresh-User Reward-Backfill v2. Zentrale Raw→Human-Normalisierung für Staking/Bonus/Referral; verifizierte TLN/TLN+/TLNX-Decimale; Legacy raw-scaled amount als JS-Number/Scientific-Notation wird tokengebunden erkannt. Ausgabe trägt amountUnit=human/schemaVersion=2. Build 20260928-010115.
@@ -1107,9 +1108,12 @@ async function loadSanitizedTlnDetailSnapshots(
         .like('cache_key', 'snapshot-valuation:%')
         .order('updated_at', { ascending: false })
         .limit(1)
-      if (valuationError) throw new Error(`TLN Step-6-Bewertung ${wallet}: ${valuationError.message}`)
-      const candidate = valuationRows?.[0]?.payload
-      if (candidate?.kind === 'snapshot_valuation_result') valuationPayload = candidate
+      if (valuationError) {
+        console.warn(`TLN Step-6-Bewertung ${wallet} nicht verfügbar; Detailbackfill läuft ohne Bewertung weiter: ${valuationError.message}`)
+      } else {
+        const candidate = valuationRows?.[0]?.payload
+        if (candidate?.kind === 'snapshot_valuation_result') valuationPayload = candidate
+      }
     }
 
     const sanitized = sanitizedTlnDetailSnapshot(payload, wallet, row, valuationPayload)
