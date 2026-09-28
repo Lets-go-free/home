@@ -1,3 +1,4 @@
+// Phase 6.68 · 28.09.2026 19:21:53 CEST: Refresh-/Button-Audit abgeschlossen: Dashboard-„Daten aktualisieren“ erzwingt auch DAO1/APTMDAO Delta-Sync; täglicher DAO-Lauf nutzt frisch geladene NFT-Current-State-Caches ohne Doppelabruf; technische DAO-NFT-/Reprice-Reparaturaktionen nur Admin. Build 20260928-192153.
 // Phase 6.67 · 28.09.2026 18:38:22 CEST: 31.12.-Browser/PDF/Excel lösen bekannte Token zentral aus Stammdaten auf (u.a. VOW); Contract-Adressen nur noch sekundär/gekürzt in UI/PDF, PDF-Spalten gegen Überlappung fixiert. Build 20260928-183822.
 // Phase 6.66 · 28.09.2026 18:04:55 CEST: 31.12.-Bericht unterstützt USD-Marktpreise oder CHF Schweiz/ESTV; neue globale Steuerkurs-Stammdaten mit Admin-Import für USD/CHF und direkte ESTV-Assetwerte. Build 20260928-180455.
 // Phase 6.65 · 28.09.2026 17:19:53 CEST: Token-Stammdaten/Safe-Klassifizierung lösen keinen globalen loadAll mehr aus; gezielter Chain-Refresh statt Vollrefresh, Chain-abhängiger Token-Subfilter und Datenstand-pro-Wallet standardmäßig eingeklappt innerhalb Datenaktualisierung. Build 20260928-171953.
@@ -314,6 +315,8 @@ function applyAdminDebugMode(){
   const enabled=!!(isAdmin&&adminDebugMode);
   document.body.classList.toggle("admin-user",!!isAdmin);
   document.body.classList.toggle("admin-debug-mode",enabled);
+  const nftOwnershipBtn=document.getElementById("nftOwnershipBtn");
+  if(nftOwnershipBtn)nftOwnershipBtn.style.display=isAdmin?"inline-block":"none";
   const btn=document.getElementById("adminDebugModeBtn");
   if(btn){
     btn.textContent=`🛠️ Debug-Modus: ${enabled?"AN":"AUS"}`;
@@ -938,8 +941,12 @@ async function onLoggedIn(session) {
   if(wallets.length){
     setTimeout(async()=>{
       try{
-        if(autoRefreshNeeded) await loadAll({automatic:true});
-        if(window.DAO1Project?.runDailyDeltaRefresh) await window.DAO1Project.runDailyDeltaRefresh();
+        let centralDailyResult=null;
+        if(autoRefreshNeeded) centralDailyResult=await loadAll({automatic:true});
+        // Wenn der zentrale Tageslauf gerade den NFT-Current-State erfolgreich geladen hat,
+        // darf DAO1 denselben Apertum-NFT-Bestand nicht nochmals live abrufen.
+        const centralNftFailed=Array.isArray(centralDailyResult?.failures)&&centralDailyResult.failures.some(f=>/\bNFTs?:/i.test(String(f?.error||f?.message||"")));
+        if(window.DAO1Project?.runDailyDeltaRefresh) await window.DAO1Project.runDailyDeltaRefresh({useCachedCurrentNfts:!!autoRefreshNeeded&&!centralNftFailed});
         await refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries nach Tageslauf",e));
       }catch(e){console.warn("Täglicher automatischer Delta-Refresh",e);}
     },650);
@@ -5434,7 +5441,18 @@ async function loadAll(options = {}) {
   const automatic=!!options.automatic;
   markRequestAudit(automatic?"refresh:auto:start":"refresh:manual:start");
   try{
-    const result=await runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",()=>loadAllCore(options));
+    const result=await runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",async()=>{
+      const core=await loadAllCore(options);
+      // Der bewusste Dashboard-Refresh ist die zentrale manuelle User-Aktion.
+      // Deshalb zieht er auch DAO1/APTMDAO inkrementell nach (Transaktionen/Flows/Claims/Referral,
+      // NFT-Ownership bei Änderungen und Teamgraph). Der vorherige NFT-Current-State aus loadAllCore
+      // wird wiederverwendet, damit Apertum-NFTs nicht doppelt live geladen werden.
+      let dao1=null;
+      if(!automatic&&window.DAO1Project?.runDailyDeltaRefresh){
+        dao1=await window.DAO1Project.runDailyDeltaRefresh({force:true,useCachedCurrentNfts:true});
+      }
+      return dao1?{...core,dao1}:core;
+    });
     refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries",e));
     return result;
   }finally{markRequestAudit(automatic?"refresh:auto:end":"refresh:manual:end");}

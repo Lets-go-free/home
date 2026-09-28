@@ -1,3 +1,4 @@
+// Phase 6.68 · 28.09.2026 19:21:53 CEST: zentraler Dashboard-Refresh kann DAO1/APTMDAO Delta-Sync erzwingen; frisch zentral geladener Apertum-NFT-Current-State wird wiederverwendet; NFT-Ownership-Repair und historische Reprice-Aktion nur Admin. Build 20260928-192153.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: DAO1/APTMDAO Transaktionen/Flows/Claims/Referral-Rewards und Teamgraph werden beim ersten aktiven Start pro Tag inkrementell nachgeführt; manuelle Transaktions-/Team-Force-Buttons nur Admin. Build 20260928-133530.
 // Phase 6.34 · 27.09.2026 03:45:02 CEST: P8 Auth-Gate: apertum-nft-history prüft aktive Session vor dem Edge-Aufruf; fehlende Session stoppt den Request und meldet zentralen Re-Login-Zustand statt 401-Kaskade. Build 20260927-034502.
 // Phase 6.33 · 27.09.2026 03:34:30 CEST: P7 Realtest complete; P8 sichere Auth-Diagnose für apertum-nft-history ergänzt; keine Tokenwerte werden geloggt, Fachlogik unverändert. Build 20260927-033430.
@@ -1115,9 +1116,9 @@ window.DAO1Project = (() => {
     }
     if(!wallets.some(w=>String(w.id)===String(selectedWalletId)))selectedWalletId=String(wallets[0].id);
     el.innerHTML=`
-      <div class="action-row" style="margin-top:4px;margin-bottom:12px">
+      ${getContext?.()?.isAdmin?`<div class="action-row" style="margin-top:4px;margin-bottom:12px">
         <button class="secondary" onclick="DAO1Project.discoverMinerNfts()">NFT-Bestand / Besitzerhistorie aktualisieren</button>
-      </div>
+      </div>`:""}
       <div class="custom-token-grid" style="grid-template-columns:minmax(320px,1fr);max-width:720px">
         <label><span class="field-label">Apertum Wallet für Claim-Erfassung</span>
           <select id="dao1WalletSelect" onchange="DAO1Project.selectWallet(this.value)">
@@ -1199,10 +1200,10 @@ window.DAO1Project = (() => {
     // Transferketten-Rekonstruktion läuft danach aber nur noch für NFTs, deren aktueller
     // Besitzerzustand gegenüber project_nft_ownership tatsächlich geändert ist.
     // Unveränderte NFTs werden vollständig aus dem persistenten Ownership-Cache übernommen.
-    let freshlyLoadedNfts=null;
-    if(typeof ctx.refreshApertumNftsForWallet==="function")freshlyLoadedNfts=await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFT-Bestand wird abgeglichen…`,`Explorer-Seite ${p} · Besitzerhistorien nur bei Änderungen`));
     const prev=selectedWalletId;
     selectedWalletId=String(wallet.id);
+    let freshlyLoadedNfts=null;
+    if(!options?.useCachedCurrentNfts && typeof ctx.refreshApertumNftsForWallet==="function")freshlyLoadedNfts=await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFT-Bestand wird abgeglichen…`,`Explorer-Seite ${p} · Besitzerhistorien nur bei Änderungen`));
     // Phase 5.99: refreshApertumNftsForWallet aktualisiert den persistierten Cache sofort,
     // während der zentrale In-Memory-NFT-Cache dieses Tabs bis zum nächsten globalen
     // Reload noch den alten Stand enthalten kann. Beim Fresh-Build daher die gerade
@@ -4594,7 +4595,7 @@ window.DAO1Project = (() => {
     }
   }
 
-  async function refreshTransactionHistory(scan=false){
+  async function refreshTransactionHistory(scan=false,options={}){
     const job=++transactionJobToken;
     const wallets=allProjectWalletOptions();
     if(!wallets.length)return;
@@ -4638,7 +4639,7 @@ window.DAO1Project = (() => {
           await enrichTransactionHistoricalPrices(address,job,txSync?.fromBlock);
           if(job!==transactionJobToken)return;
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} · NFTs werden aktualisiert…`,"Apertum NFT-Bestand wird live abgeglichen; Besitzerhistorien werden nur bei tatsächlichen Besitzänderungen neu aufgebaut.");
-          await refreshWalletNftsAndOwnership(w,`Wallet ${i+1}/${targets.length} · `);
+          await refreshWalletNftsAndOwnership(w,`Wallet ${i+1}/${targets.length} · `,{useCachedCurrentNfts:!!options?.useCachedCurrentNfts});
         }
         if(job!==transactionJobToken)return;
         transactionRows=selectedAll?await loadAllApertumTransactionRows(targets,document.getElementById("dao1TransactionStatus")):await loadTransactionRows(walletAddress(targets[0]),null);
@@ -7211,7 +7212,7 @@ window.DAO1Project = (() => {
     el.innerHTML=`
       <div class="action-row" style="margin-bottom:10px">
         ${getContext?.()?.isAdmin?`<button id="dao1TxScanBtn" onclick="DAO1Project.refreshTransactionHistory(true)">Daten aktualisieren</button>`:""}
-        <button id="dao1TxRepriceBtn" class="secondary" onclick="DAO1Project.repriceCachedTransactionHistory()">Historische Preise neu berechnen</button>
+        ${getContext?.()?.isAdmin?`<button id="dao1TxRepriceBtn" class="secondary" onclick="DAO1Project.repriceCachedTransactionHistory()">Historische Preise neu berechnen</button>`:""}
         <button class="secondary" onclick="DAO1Project.exportTransactionsExcel()">Excel exportieren</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsPdf()">PDF / Drucken</button>
       </div>
@@ -7239,7 +7240,7 @@ window.DAO1Project = (() => {
           ${nfts.map(n=>`<option value="${n.id}" ${String(txFilterNft)===n.id?"selected":""}>${n.name}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.subtype?" · "+n.subtype:""}</option>`).join("")}
         </select></label>
       </div>
-      <div class="note" style="margin-top:7px">Alle Filter wirken direkt auf Summary, Detailliste und Export. Historische NFTs bleiben berücksichtigt, sofern Claims zu ihnen gespeichert sind. „Daten aktualisieren“ synchronisiert neue Blockchain-Transaktionen. „Historische Preise neu berechnen“ verwendet dagegen ausschließlich die bereits gecachten TX-Blöcke und erneuert daraus APTM/USD-, USD- und Gas-USD-Werte; die Transaktionshistorie wird dabei nicht erneut vom Explorer geladen.</div>`;
+      <div class="note" style="margin-top:7px">Alle Filter wirken direkt auf Summary, Detailliste und Export. Historische NFTs bleiben berücksichtigt, sofern Claims zu ihnen gespeichert sind. ${getContext?.()?.isAdmin?'Admin: „Daten aktualisieren“ erzwingt den inkrementellen Blockchain-Sync; „Historische Preise neu berechnen“ bewertet ausschließlich bereits gecachte TX-Blöcke neu.':'Neue DAO1/APTMDAO-Transaktionen, Claims und Referral-Flows werden täglich automatisch sowie über den zentralen Dashboard-Button „Daten aktualisieren“ inkrementell nachgeführt.'}</div>`;
     renderPriceJobLog();
   }
 
@@ -8315,16 +8316,17 @@ window.DAO1Project = (() => {
   }
 
 
-  async function runDailyDeltaRefresh(){
+  async function runDailyDeltaRefresh(options={}){
     const ctx=getContext?.();
     if(!ctx?.currentUser?.id || !ctx?.refreshedToday || !ctx?.saveWalletRefreshState) return {skipped:true,reason:"refresh-state-unavailable"};
     const today=(v)=>{const d=new Date(v||0),n=new Date();return Number.isFinite(d.getTime())&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();};
     const latestState=async(dataType)=>{
       try{const {data,error}=await sb.from("wallet_refresh_state").select("last_checked_at").eq("user_id",ctx.currentUser.id).eq("chain_key",CHAIN_KEY).eq("data_type",dataType).order("last_checked_at",{ascending:false}).limit(1);if(error)throw error;return data?.[0]||null;}catch(e){console.warn("DAO Daily Refresh-State",dataType,e);return null;}
     };
+    const force=!!options?.force,useCachedCurrentNfts=!!options?.useCachedCurrentNfts;
     const txType="project:dao1:transactions",teamType="project:dao1:team";
     const [txState,teamState]=await Promise.all([latestState(txType),latestState(teamType)]);
-    const txDue=!today(txState?.last_checked_at),teamDueByState=!today(teamState?.last_checked_at);
+    const txDue=force||!today(txState?.last_checked_at),teamDueByState=force||!today(teamState?.last_checked_at);
     if(!txDue&&!teamDueByState) return {skipped:true,reason:"already-checked-today"};
     await ensureMounted();
     if(!loaded){ await refreshConfig(); loaded=true; }
@@ -8336,7 +8338,7 @@ window.DAO1Project = (() => {
       const previousFilter=txFilterWallet;
       try{
         txFilterWallet="__all";
-        txResult=await refreshTransactionHistory(true);
+        txResult=await refreshTransactionHistory(true,{useCachedCurrentNfts});
         if(txResult?.ok){
           for(const w of wallets) await ctx.saveWalletRefreshState(w,CHAIN_KEY,txType,{last_checked_at:now(),last_refreshed_at:now(),last_result:"refreshed"});
         }

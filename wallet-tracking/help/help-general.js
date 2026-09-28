@@ -1,3 +1,4 @@
+// Phase 6.68 · 28.09.2026 19:21:53 CEST: zentraler Dashboard-Refresh umfasst nun auch DAO1/APTMDAO Delta-Daten; technische DAO-Reparaturbuttons nur Admin, täglicher Lauf vermeidet doppelten Apertum-NFT-Liveabruf. Build 20260928-192153.
 // Phase 6.67 · 28.09.2026 18:38:22 CEST: 31.12.-Ansicht und Exporte lösen bekannte Token über zentrale Stammdaten auf; Contract-Adressen sind sekundäre Identifikatoren und werden in Browser/PDF gekürzt. Build 20260928-183822.
 // Phase 6.66 · 28.09.2026 18:04:55 CEST: 31.12.-Bericht kann zwischen USD-Marktpreisen und CHF Schweiz/ESTV wählen; direkte ESTV-Werte und offizieller USD/CHF-Kurs werden getrennt als globale Steuerkurs-Stammdaten verwaltet. Build 20260928-180455.
 // Phase 6.65 · 28.09.2026 17:19:53 CEST: Token-Klassifizierung/Stammdatenänderungen arbeiten gezielt statt mit globalem Vollrefresh; Tokenfilter folgt der Chain und der Wallet-Datenstand ist eingeklappt in Datenaktualisierung. Build 20260928-171953.
