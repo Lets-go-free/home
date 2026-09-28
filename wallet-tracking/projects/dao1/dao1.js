@@ -1,3 +1,4 @@
+// Phase 6.62 · 28.09.2026 13:35:30 CEST: DAO1/APTMDAO Transaktionen/Flows/Claims/Referral-Rewards und Teamgraph werden beim ersten aktiven Start pro Tag inkrementell nachgeführt; manuelle Transaktions-/Team-Force-Buttons nur Admin. Build 20260928-133530.
 // Phase 6.34 · 27.09.2026 03:45:02 CEST: P8 Auth-Gate: apertum-nft-history prüft aktive Session vor dem Edge-Aufruf; fehlende Session stoppt den Request und meldet zentralen Re-Login-Zustand statt 401-Kaskade. Build 20260927-034502.
 // Phase 6.33 · 27.09.2026 03:34:30 CEST: P7 Realtest complete; P8 sichere Auth-Diagnose für apertum-nft-history ergänzt; keine Tokenwerte werden geloggt, Fachlogik unverändert. Build 20260927-033430.
 // Phase 6.30 · 27.09.2026 02:19:44 CEST: Claim-Lifecycle-Hotfix: in 6.22 versehentlich entfallene kanonische Asset-Flow-/Receipt-Helper vollständig wiederhergestellt; P6 Read-Model-Audit bleibt unverändert und wird erst nach erfolgreichem Lifecycle bewertet. Build 20260927-021944.
@@ -346,7 +347,7 @@ window.DAO1Project = (() => {
         <div id="dao1-subtab-team" class="project-subtab-panel" style="display:none"><div id="dao1TeamContent"></div></div>
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
-        <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
+        <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; neue Blockchain-Daten, Asset-Flows, Claims und Referral-Rewards werden beim ersten aktiven Start des Tages inkrementell nachgeführt. Der manuelle Refresh bleibt Admin-Retry.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
         <div id="dao1PriceJobPanel" class="custom-token-card debug-frame" style="margin-top:10px;padding:10px 12px">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><strong>⏱️ Historische Preis-Neuberechnung · Diagnose-Log</strong><button type="button" class="secondary" onclick="DAO1Project.copyPriceJobLog()">Log kopieren</button><button type="button" class="secondary" onclick="DAO1Project.exportPriceJobLog()">Log als TXT exportieren</button><span id="dao1PriceJobLogState" class="meta">Eigenes Log-Fenster wie in Discovery; vollständig kopier- und exportierbar.</span></div>
           <div id="dao1PriceJobMetrics" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px" class="meta">Noch kein historischer Preisjob in dieser Sitzung.</div>
@@ -4673,9 +4674,11 @@ window.DAO1Project = (() => {
           await showTransactionReadyStatus(walletAddress(targets[0]),transactionRows,"db");
         }
       }
+      return {ok:true,scanned:!!scan,wallets:targets.length};
     }catch(e){
       console.error("Apertum Transaktionshistorie:",e);
       if(job===transactionJobToken)setTransactionStatus("error",e.message||String(e));
+      return {ok:false,error:e};
     }finally{
       if(scan && btn && job===transactionJobToken){btn.disabled=false;btn.textContent="Daten aktualisieren";}
     }
@@ -7039,7 +7042,7 @@ window.DAO1Project = (() => {
       const legacy=dao1TeamDiscovery.legacy,aptm=dao1TeamDiscovery.aptmdao;
       const running=legacy.running||aptm.running,error=legacy.error||aptm.error;
       el.innerHTML=`<div class="status ${error?"warn":"info"}" style="margin-top:12px"><strong>${running?"Teamdaten werden aktualisiert …":"Team-Baum"}</strong>${error?`<div class="note" style="margin-top:4px">${escapeHtml(error)}</div>`:""}<div class="note" style="margin-top:4px">Wallet-zentrierte Darstellung: DAO1 und APTMDAO bleiben als getrennte on-chain Graphen gespeichert; in der Anzeige werden die belegten DIDs je Wallet zusammengeführt. APTMDAO hat nur dann Vorrang, wenn diese Beziehung tatsächlich in deiner Downline liegt.</div></div>
-        <div style="margin-top:10px"><button type="button" onclick="DAO1Project.discoverTeamTree()" ${running?"disabled":""}>${running?"Discovery läuft …":"Team on-chain aktualisieren"}</button></div>
+        ${getContext?.()?.isAdmin?`<div style="margin-top:10px"><button type="button" onclick="DAO1Project.discoverTeamTree()" ${running?"disabled":""}>${running?"Discovery läuft …":"Team on-chain aktualisieren"}</button></div>`:""}
         <div class="project-summary" style="margin-top:12px"><div class="custom-token-card project-summary-box"><span class="field-label">Partner-Wallets</span><strong>${partners.length.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">davon DAO1-Bezug</span><strong>${dao1Partners.size.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">davon APTMDAO-Bezug</span><strong>${aptmPartners.size.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Max. Ebenen</span><strong>${DAO1_TEAM_MAX_LEVELS}</strong></div></div>
         ${dao1WalletForestHtml()}<details class="custom-token-card debug-frame" style="margin-top:12px"><summary style="cursor:pointer;font-weight:800">DEV / Diagnose · getrennte on-chain Graphen</summary><div class="note" style="margin-top:8px">DAO1: ${(legacy.edges||[]).length.toLocaleString("de-DE")} Kanten · APTMDAO: ${(aptm.edges||[]).length.toLocaleString("de-DE")} Kanten. Die User-Ansicht verändert keine on-chain Beziehung, sondern dedupliziert ausschließlich die wallet-zentrierte Darstellung.</div></details>`;
       bindDAO1TeamTreeControls({edges:[]});window.applyDebugModeVisibility?.();queueMicrotask(()=>dao1EnsurePartnerBots(graph).catch(e=>console.warn("DAO Partner-Bots Hintergrund",e)));return;
@@ -7048,7 +7051,7 @@ window.DAO1Project = (() => {
     try{const rows=legacyTreeRows(st.edges||[]),wallets=new Set(rows.map(r=>lower(r.wallet)).filter(Boolean)),patch={updatedAt:new Date().toISOString()};if(isOld){patch.dao1Partners=wallets.size;}else patch.aptmdaoPartners=wallets.size;window.setDashboardProjectCacheStats?.("dao1",patch);}catch(e){console.warn("DAO Team Dashboard-Summary",e);}
     const d=dao1OldTreeCacheDiag;
     const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div></div>`:`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · APTMDAO Tree Cache</strong><div class="note">${escapeHtml(aptmdaoTreeCacheDiag.source)} · lokal ${Number(aptmdaoTreeCacheDiag.localRows||0).toLocaleString("de-DE")} · DB ${Number(aptmdaoTreeCacheDiag.dbRows||0).toLocaleString("de-DE")} · RPC-Logs ${Number(aptmdaoTreeCacheDiag.rpcLogs||0).toLocaleString("de-DE")} · Änderungen ${Number(aptmdaoTreeCacheDiag.changedEdges||0).toLocaleString("de-DE")}</div></div>`;
-    el.innerHTML=`<div class="custom-token-card" style="margin-top:12px"><div class="chain-title">${isOld?"DAO1 (alt) · Diagnose":"APTMDAO (neu) · Diagnose"}</div><div class="status ${st.error?"warn":"info"}" style="margin-top:10px"><strong>${st.status}</strong>${st.error?`<div class="note" style="margin-top:4px">${escapeHtml(st.error)}</div>`:""}</div><div style="margin-top:10px"><div class="custom-token-grid" style="grid-template-columns:minmax(260px,420px) auto;align-items:end">${teamRootSelectorHtml()}<div><button type="button" onclick="DAO1Project.discoverTeamTree()" ${st.running?"disabled":""}>${st.running?"Discovery läuft …":(isOld?"DAO1 on-chain aktualisieren":"APTMDAO on-chain aktualisieren")}</button></div></div></div></div>${cacheDiagHtml}${teamDiscoveryTableHtml(st,isOld)}`;
+    el.innerHTML=`<div class="custom-token-card" style="margin-top:12px"><div class="chain-title">${isOld?"DAO1 (alt) · Diagnose":"APTMDAO (neu) · Diagnose"}</div><div class="status ${st.error?"warn":"info"}" style="margin-top:10px"><strong>${st.status}</strong>${st.error?`<div class="note" style="margin-top:4px">${escapeHtml(st.error)}</div>`:""}</div><div style="margin-top:10px"><div class="custom-token-grid" style="grid-template-columns:minmax(260px,420px) auto;align-items:end">${teamRootSelectorHtml()}${getContext?.()?.isAdmin?`<div><button type="button" onclick="DAO1Project.discoverTeamTree()" ${st.running?"disabled":""}>${st.running?"Discovery läuft …":(isOld?"DAO1 on-chain aktualisieren":"APTMDAO on-chain aktualisieren")}</button></div>`:"<div></div>"}</div></div></div>${cacheDiagHtml}${teamDiscoveryTableHtml(st,isOld)}`;
     dao1OldTreeCacheDiag.renderMs=performance.now()-renderT0;if(st.edges.length)bindDAO1TeamTreeControls(st);window.applyDebugModeVisibility?.();
   }
 
@@ -7207,7 +7210,7 @@ window.DAO1Project = (() => {
 
     el.innerHTML=`
       <div class="action-row" style="margin-bottom:10px">
-        <button id="dao1TxScanBtn" onclick="DAO1Project.refreshTransactionHistory(true)">Daten aktualisieren</button>
+        ${getContext?.()?.isAdmin?`<button id="dao1TxScanBtn" onclick="DAO1Project.refreshTransactionHistory(true)">Daten aktualisieren</button>`:""}
         <button id="dao1TxRepriceBtn" class="secondary" onclick="DAO1Project.repriceCachedTransactionHistory()">Historische Preise neu berechnen</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsExcel()">Excel exportieren</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsPdf()">PDF / Drucken</button>
@@ -8311,6 +8314,47 @@ window.DAO1Project = (() => {
     };
   }
 
+
+  async function runDailyDeltaRefresh(){
+    const ctx=getContext?.();
+    if(!ctx?.currentUser?.id || !ctx?.refreshedToday || !ctx?.saveWalletRefreshState) return {skipped:true,reason:"refresh-state-unavailable"};
+    const today=(v)=>{const d=new Date(v||0),n=new Date();return Number.isFinite(d.getTime())&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();};
+    const latestState=async(dataType)=>{
+      try{const {data,error}=await sb.from("wallet_refresh_state").select("last_checked_at").eq("user_id",ctx.currentUser.id).eq("chain_key",CHAIN_KEY).eq("data_type",dataType).order("last_checked_at",{ascending:false}).limit(1);if(error)throw error;return data?.[0]||null;}catch(e){console.warn("DAO Daily Refresh-State",dataType,e);return null;}
+    };
+    const txType="project:dao1:transactions",teamType="project:dao1:team";
+    const [txState,teamState]=await Promise.all([latestState(txType),latestState(teamType)]);
+    const txDue=!today(txState?.last_checked_at),teamDueByState=!today(teamState?.last_checked_at);
+    if(!txDue&&!teamDueByState) return {skipped:true,reason:"already-checked-today"};
+    await ensureMounted();
+    if(!loaded){ await refreshConfig(); loaded=true; }
+    const wallets=allProjectWalletOptions();
+    if(!wallets.length) return {skipped:true,reason:"no-dao-wallets"};
+    const now=()=>new Date().toISOString();
+    let txResult={skipped:true};
+    if(txDue){
+      const previousFilter=txFilterWallet;
+      try{
+        txFilterWallet="__all";
+        txResult=await refreshTransactionHistory(true);
+        if(txResult?.ok){
+          for(const w of wallets) await ctx.saveWalletRefreshState(w,CHAIN_KEY,txType,{last_checked_at:now(),last_refreshed_at:now(),last_result:"refreshed"});
+        }
+      }finally{txFilterWallet=previousFilter||"__all";}
+    }
+    await loadDAO1OwnedDidRoots(true).catch(e=>console.warn("DAO Daily DID-Roots",e));
+    const anchor=wallets[0],teamDue=!!(anchor&&teamDueByState);
+    let teamOk=true;
+    if(teamDue){
+      if(dao1OwnedDidRoots.length) await scanOldDao1Tree({checkChain:true});
+      if(aptmdaoOwnedDidRoots.length) await scanAptmdaoTree({checkChain:true});
+      teamOk=!dao1TeamDiscovery.legacy.error&&!dao1TeamDiscovery.aptmdao.error;
+      if(teamOk) await ctx.saveWalletRefreshState(anchor,CHAIN_KEY,teamType,{last_checked_at:now(),last_refreshed_at:now(),last_result:"refreshed"});
+    }
+    await loadDashboardSummary().catch(e=>console.warn("DAO Daily Dashboard-Summary",e));
+    return {transactions:txResult,team:{due:teamDue,ok:teamOk}};
+  }
+
   async function ensureLoaded() {
     await ensureMounted();
     if (!loaded) { await refreshConfig(); loaded = true; }
@@ -8395,7 +8439,7 @@ window.DAO1Project = (() => {
     }catch(e){console.warn("DAO1 Dashboard-Summary Cache",e);}
   }
 
-  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, runDailyDeltaRefresh, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,

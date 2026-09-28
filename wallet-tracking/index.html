@@ -145,8 +145,6 @@
 
     <div id="tab-tracking" class="tab-panel">
       <div class="action-row" style="align-items:center;flex-wrap:wrap">
-        <button id="loadBtn" onclick="loadAll()">Daten aktualisieren</button>
-        <button id="currentPriceRefreshBtn" class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>
         <span class="note" style="margin:0"><strong>Datenstatus:</strong> <span id="cacheStatusNote"></span></span>
       </div>
       <div id="currentPriceStatus" class="note wt-data-status-line" style="margin:8px 0 12px"><strong>Preisstand:</strong> wird geprüft…</div>
@@ -154,7 +152,7 @@
       <div id="walletDataFreshness"></div>
       <div id="centralProjectRefreshScratch" style="display:none"></div>
       <div class="note" style="margin-bottom:14px">
-        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Pro Wallet und Datentyp wird höchstens einmal pro Kalendertag automatisch geprüft. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. „Daten aktualisieren“ erneuert diese Bestandsdaten. „Preise aktualisieren“ erneuert dagegen ausschließlich <strong>alle aktuellen Kurse</strong> (native Coins, sichere/eigene Token, Apertum sowie TLN/VOW inklusive aktueller LP-Bewertungen) und die daraus abgeleiteten USD-Werte – ohne Bestände, Discovery, Stakings, Rewards, Team oder historische Stichtage neu zu berechnen. Entdecken und Gebühren bleiben bewusst manuell.
+        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Beim ersten aktiven Start pro Kalendertag folgt automatisch eine kontrollierte Delta-Prüfung. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. Der zentrale manuelle Button „Daten aktualisieren“ bleibt im Dashboard. Aktuelle Kurse werden global automatisch je 15-Minuten-Slot nachgeführt; der manuelle Preis-Refresh ist nur für Admins sichtbar. Entdecken und Gebühren bleiben bewusst manuell.
         Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
       </div>
 
@@ -704,7 +702,7 @@
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <span id="tlnvowPriceStatus" class="note">TLN/VOW-Preisstand wird über die zentrale Preisaktualisierung verwaltet…</span>
         </div>
-        <div class="note" style="margin-top:7px">Die Preisaktualisierung wird zentral in „Wallet-Tracking · Token-Übersicht“ gesteuert. Der dortige Button „Preise aktualisieren“ erneuert alle aktuellen Kurse und USD-Werte inklusive TLN/VOW und aktueller LP-Bewertungen. Discovery, Stakings, Rewards, Team und historische Stichtage werden dabei nicht neu berechnet.</div>
+        <div class="note" style="margin-top:7px">Aktuelle Kurse und USD-Werte inklusive TLN/VOW und aktueller LP-Bewertungen werden global automatisch im 15-Minuten-Rhythmus nachgeführt. Ein manueller Preis-Refresh ist nur für Admins im Dashboard sichtbar. Discovery, Stakings, Rewards, Team und historische Stichtage werden durch den Preisjob nicht neu berechnet.</div>
       </div>
 
       <div class="tab-nav project-chain-nav" style="margin-top:14px">
@@ -894,7 +892,7 @@
         <p class="muted">Zentrale On-Chain-Auswertung aller erkannten TLN/VOW-Loans und Optionen über deine erfassten Wallets. Eröffnungsdaten werden persistent gecacht und nur inkrementell ergänzt. Veränderliche Lifecycle-Daten werden beim Öffnen dieses Tabs immer live nachgeprüft; bereits bestätigte Rückzahlungen bleiben im Cache erhalten. Unbekannte Typen bleiben sichtbar und werden nicht weggefiltert.</p>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 12px">
-          <button id="loanDiscoveryReload" type="button">Loans aktualisieren</button>
+          <button id="loanDiscoveryReload" type="button" style="display:none">Loans aktualisieren</button>
           <span id="loanDiscoveryState" class="muted">Noch nicht geladen.</span>
         </div>
 
@@ -1133,7 +1131,7 @@
   </div>
 
   <footer>
-    Version vom 28.09.2026 12:16:20 CEST · Phase 6.61 · Token-Namen + User/Admin-Teamtexte<br>
+    Version vom 28.09.2026 13:35:30 CEST · Phase 6.62 · täglicher Delta-Refresh + Button-Konsolidierung<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1146,17 +1144,17 @@
 <script src="./js/price-engine.js"></script>
 <script src="./js/lp-engine.js?v=20260921-000207"></script>
 <script src="./js/staking-engine.js"></script>
-<script src="./projects/tln-vow/tln-vow-loans.js?v=20260915-173339"></script>
+<script src="./projects/tln-vow/tln-vow-loans.js?v=20260928-133530"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20260923-001500"></script>
-<script src="./projects/dao1/dao1.js?v=20260927-131634"></script>
+<script src="./projects/dao1/dao1.js?v=20260928-133530"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260928-121620"></script>
-<script src="./help/help-general.js?v=20260927-112214"></script>
-<script src="./projects/tln-vow/help.js?v=20260928-121620"></script>
-<script src="./projects/dao1/help.js?v=20260927-112214"></script>
-<script src="./js/app.js?v=20260928-121620"></script>
+<script src="./admin/ideas.js?v=20260928-133530"></script>
+<script src="./help/help-general.js?v=20260928-133530"></script>
+<script src="./projects/tln-vow/help.js?v=20260928-133530"></script>
+<script src="./projects/dao1/help.js?v=20260928-133530"></script>
+<script src="./js/app.js?v=20260928-133530"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260928-121620"></script>
 
 
@@ -1175,6 +1173,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.09.2026 12:16:20 CEST · Phase 6.61 · Build 20260928-121620</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.09.2026 13:35:30 CEST · Phase 6.62 · Build 20260928-133530</div>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260915-173339 */
+/* TLN/VOW Loans central engine · Phase 6.62 · 28.09.2026 13:35:30 CEST · Force-Refresh-Button nur Admin; normaler Tab-Ladevorgang bleibt inkrementell. Build 20260928-133530 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -1755,7 +1755,7 @@ function initLoanDiscovery(){
   loanShowInnerPanel('loans');
   ['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax','loanFilterType'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderLoanDiscovery));
   document.getElementById('loanFilterReset')?.addEventListener('click',()=>{['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});sel.value='all';renderLoanDiscovery();});
-  document.getElementById('loanDiscoveryReload')?.addEventListener('click',()=>void discoverLoansOnchain({force:true}));
+  const loanReload=document.getElementById('loanDiscoveryReload');if(loanReload){loanReload.style.display=document.body.classList.contains('admin-user')?'inline-block':'none';loanReload.addEventListener('click',()=>void discoverLoansOnchain({force:true}));}
   document.getElementById('loanDiagRun')?.addEventListener('click',()=>void loanSearchPositionBackwards());
   document.getElementById('loanStateRun')?.addEventListener('click',()=>void loanReadPositionState());
   document.getElementById('loanStatusCompareRun')?.addEventListener('click',()=>void loanComparePositionStatusFields());
