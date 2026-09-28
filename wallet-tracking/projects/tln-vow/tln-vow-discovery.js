@@ -1,3 +1,4 @@
+// Phase 6.58 · 28.09.2026 04:23:01 CEST: Reward-Summary-UI bereinigt. Technische Cache-/Human-Units-Texte aus Staking-, Referral- und Bonus-Summaries entfernt. Reward-Tx-Anzahl wird aus vorhandenen Detaildaten ergänzt, aber nur wenn der Detail-Scope vollständig ist; bei partiellen Fresh-User-Daten bleibt sie bewusst offen statt eine unvollständige Zahl vorzutäuschen. Build 20260928-042301.
 // Phase 6.57 · 28.09.2026 04:12:38 CEST: Regression-Fix für die TLN/VOW Reward-/Claim-Ansichten: der in 6.53 eingeführte zentrale Helper projectChainRefHtml war an mehreren Render-Stellen verwendet, aber nicht definiert. Der Helper ist jetzt zentral vorhanden und rendert gekürzte BSC-Adresse/Tx-Links plus Copy-Funktion; dadurch brechen Staking-, Referral- und Bonus-Renderpfade nicht mehr mit ReferenceError ab. Build 20260928-041238.
 // Phase 6.55 · 28.09.2026 03:54:52 CEST: Release-Synchronisierung zu Phase 6.55; TLN/VOW Discovery-Logik fachlich unverändert. Legacy-Tab „Liquidity Pools_old“ wurde außerhalb dieses Moduls entfernt. Build 20260928-035452.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: Staking-Reward-Summary direkt in Staking/Rewards integriert; separater Rewards-Summary-Tab entfernt. Globaler Fresh-User On-Chain-Detailcache v2 übernimmt serverseitig vorhandene Step-6-USD-Bewertungen; Detailstatus-Hinweise konsolidiert und lange Chain-Referenzen in Reward-/Claim-Tabellen verkürzt. Build 20260928-024440.
@@ -19,7 +20,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-041238';
+const BUILD_ID='20260928-042301';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -217,7 +218,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 04:12:38 CEST';
+const APP_VERSION='28.09.2026 04:23:01 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -12044,27 +12045,34 @@ function renderProjectAggregateDetails(){
   const missingStakingDetails=detailGap>0&&stakingFallback.size>0;
   const missingReferralDetails=detailGap>0&&referralFallback.size>0;
   const missingBonusDetails=detailGap>0&&bonusFallback.size>0;
-  const rewardTable=(title,map,claims,{cacheOnly=false}={})=>{
-    const rows=[...map.values()];
-    const source=cacheOnly
-      ?'Quelle: globaler sanitiserter Reward-Summary-Cache (Human-Units).'
-      :'Quelle: persistenter Detail-Snapshot des Projektfilters.';
-    const txText=cacheOnly?'Tx-Anzahl im Summary-Cache nicht enthalten.':`${claims} belegte Tx im gewählten Scope.`;
-    return `<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${txText} Die Mengen werden je Token separat summiert. ${source}</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Reward-Tx</th><th>Menge</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count==null?'–':x.count}</td><td class="num"><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})}</b></td></tr>`).join(''):`<tr><td colspan="3">${detailSnapshots?'Keine belegten Rewards.':'Noch keine Reward-Summary verfügbar.'}</td></tr>`}</tbody></table></div></div>`;
+  const rewardTable=(title,map,claims,{cacheOnly=false,detailMap=null,detailComplete=false,kind='reward'}={})=>{
+    const rows=[...map.values()].map(row=>{
+      const detail=detailMap?.get?.(row.address);
+      return {...row,count:(row.count!=null?row.count:(detailComplete&&detail?.count!=null?detail.count:null))};
+    });
+    const intro=kind==='referral'
+      ?'Referral-Rewards werden je Token zusammengefasst. Einzelne Claims werden darunter angezeigt.'
+      :kind==='bonus'
+        ?'Bonus-Rewards werden je Token zusammengefasst. Einzelne Auszahlungen und Claims werden darunter angezeigt.'
+        :'Staking-Rewards werden je Token zusammengefasst. Zugeordnete Einzeltransaktionen sind in den Staking-Positionen aufklappbar.';
+    const countNote=cacheOnly&&!detailComplete
+      ?' Die Anzahl der Reward-Tx wird angezeigt, sobald für alle Wallets vollständige Detaildaten vorliegen.'
+      :'';
+    return `<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${intro}${countNote}</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Reward-Tx</th><th>Menge</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count==null?'–':x.count}</td><td class="num"><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})}</b></td></tr>`).join(''):`<tr><td colspan="3">${detailSnapshots?'Keine belegten Rewards.':'Noch keine Reward-Summary verfügbar.'}</td></tr>`}</tbody></table></div></div>`;
   };
   if(st){
     st.style.display='block';
     const stakingDetailState=detailGap<=0?'complete':detailSnapshots>0?'partial':'missing';
-    st.innerHTML=`${rewardTable('🏆 Staking-Rewards · Summary',stakingSummary,d.stakingClaims,{cacheOnly:cacheOnlyStaking})}${projectStakingPositionOverviewHtml(d.lots,scopeTitle,all,{detailState:stakingDetailState,detailSnapshots,expectedDetailSnapshots})}`;
+    st.innerHTML=`${rewardTable('🏆 Staking-Rewards · Summary',stakingSummary,d.stakingClaims,{cacheOnly:cacheOnlyStaking,detailMap:d.stakingByToken,detailComplete:detailGap===0,kind:'staking'})}${projectStakingPositionOverviewHtml(d.lots,scopeTitle,all,{detailState:stakingDetailState,detailSnapshots,expectedDetailSnapshots})}`;
   }
   if(rf){
     rf.style.display='block';
-    rf.innerHTML=rewardTable('🤝 Referral Rewards · Summary',referralSummary,d.referralClaims,{cacheOnly:cacheOnlyReferral})
+    rf.innerHTML=rewardTable('🤝 Referral Rewards · Summary',referralSummary,d.referralClaims,{cacheOnly:cacheOnlyReferral,detailMap:d.referralByToken,detailComplete:detailGap===0,kind:'referral'})
       +(missingReferralDetails?projectRewardDetailStateHtml('referral',true,{detailSnapshots,expectedDetailSnapshots}):projectReferralDetailHtml(d.referralRows,all));
   }
   if(bo){
     bo.style.display='block';
-    bo.innerHTML=`${rewardTable('🎁 Bonus-Rewards',bonusSummary,d.bonusClaims,{cacheOnly:cacheOnlyBonus})}
+    bo.innerHTML=`${rewardTable('🎁 Bonus-Rewards',bonusSummary,d.bonusClaims,{cacheOnly:cacheOnlyBonus,detailMap:d.bonusByToken,detailComplete:detailGap===0,kind:'bonus'})}
       <div class="card"><h2>🎁 Bonus-Rewards · Ausschüttungen und Claims</h2>
       ${missingBonusDetails?projectRewardDetailStateHtml('bonus',true,{detailSnapshots,expectedDetailSnapshots}):`<p class="muted">Der Reward-Transfer/Mint ist im selben verifizierten Receipt wie die explizite <code>claimBonus</code>-Transaktion belegt. Ethereum/BSC liefert dafür einen Block-Zeitstempel; deshalb sind Ausschüttungs- und Claim-Zeit hier identisch. Das ist kein separat sekundengenau belegter Ausschüttungszeitpunkt außerhalb der Claim-Tx.</p>${projectBonusDetailTableHtml(d.bonusRows,all)}`}</div>`;
   }
