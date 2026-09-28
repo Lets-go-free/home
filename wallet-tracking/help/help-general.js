@@ -1,3 +1,4 @@
+// Phase 6.64 · 28.09.2026 14:12:28 CEST: Hilfe/Technikstand: native Token-Projektzuordnung ist in „Vordefinierte Token“ direkt administrierbar; Dark-Mode-Tabellenzeilen nutzen zentrale dunkle Theme-Flächen. Build 20260928-141228.
 // Phase 6.63 · 28.09.2026 13:54:47 CEST: Hilfe dokumentiert native Projektwerte, Safe-vor-Spam-Regel im Entdecken-Tab und Ausschluss bestätigter Spam-Token aus der 31.12.-Bestandesaufnahme. Build 20260928-135447.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: Hilfe dokumentiert täglichen kontrollierten Delta-Refresh, zentrale Dashboard-Aktionen und Admin-only Preisrefresh. Build 20260928-133530.
 // Phase 6.26 · 26.09.2026 17:56:20 CEST: P5 Start-Repricing für offene native APTM-Claim-Preise + DAO1 Dark-Mode-Tabellenfix. Build 20260926-175620.

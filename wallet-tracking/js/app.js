@@ -1,3 +1,4 @@
+// Phase 6.64 · 28.09.2026 14:12:28 CEST: Vordefinierte Token: native Assets können DeFi-Projekt und Projekt-Kategorie direkt in der Admin-UI bearbeiten; Dark-Mode-Zeilen der Projekt-/Token-Tabellen auf dunkle Grund-/Zebra-/Hover-Flächen gehärtet. Build 20260928-141228.
 // Phase 6.63 · 28.09.2026 13:54:47 CEST: DAO1-Projektwert berücksichtigt projektzugeordnete native Assets (APTM); Discovery-Sammelspam schützt manuell sichere Token; 31.12.-Bestandesaufnahme blendet ausdrücklich als Spam markierte Token aus, Safe-Freigabe hat Vorrang. Build 20260928-135447.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: Erster aktiver Start pro Tag führt wieder einen kontrollierten automatischen Delta-Refresh für Wallet-Bestände/Projekt-Current-State/NFTs aus; DAO1/APTMDAO Transaktionen, Claims, Referral-Flows und Teamgraph werden einmal täglich inkrementell nachgeführt. Manuelle Force-/Retry-Buttons für Preise, Loans und DAO-Team sind nur noch für Admins sichtbar; zentrale Refresh-Buttons bleiben im Dashboard, Doppelungen in der Token-Übersicht entfallen. DAO Referral-Partnerzuordnung als Idee zurückgestellt. Build 20260928-133530.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-TLN-Wallet Dashboard unterscheidet Reward-Datenstatus (noch nicht ermittelt / wird ermittelt / vollständig) und bindet die kontrollierte Erst-Discovery direkt an; keine automatische Browser-Vollscan-Discovery. Build 20260928-111745.
@@ -3474,22 +3475,20 @@ function renderSafeTokenTable() {
       const category = predefinedTokenCategory[categoryKey] || "";
       const projectKey = predefinedTokenProject[categoryKey] || "";
       const projectName = defiProjectsCache.find(p=>p.project_key===projectKey)?.name || projectKey;
-      const projectCell = r.isNative ? '<span style="color:var(--muted)">–</span>' :
-        (isAdmin
-          ? `<select onchange="setPredefinedTokenDefi('${r.chain}','${r.address}','defi_project_key',this.value)">
-              <option value="" ${projectKey===""?"selected":""}>– keines –</option>
-              ${defiProjectsCache.map(p=>`<option value="${escapeAttr(p.project_key)}" ${projectKey===p.project_key?"selected":""}>${escapeAttr(p.name)}</option>`).join("")}
-            </select>`
-          : (projectKey ? escapeAttr(projectName) : '<span style="color:var(--muted)">–</span>'));
-      const categoryCell = r.isNative ? '<span style="color:var(--muted)">–</span>' :
-        (isAdmin
-          ? `<select onchange="setPredefinedTokenDefi('${r.chain}','${r.address}','defi_category',this.value)">
-              <option value="" ${category===""?"selected":""}>– keine –</option>
-              <option value="voucher_currency" ${category==="voucher_currency"?"selected":""}>Voucher-Währung</option>
-              <option value="lp_token" ${category==="lp_token"?"selected":""}>LP Token</option>
-              <option value="defi_token" ${category==="defi_token"?"selected":""}>DeFi-Token</option>
-            </select>`
-          : (category ? escapeAttr(DEFI_CATEGORY_LABELS[category] || category) : '<span style="color:var(--muted)">–</span>'));
+      const projectCell = isAdmin
+        ? `<select onchange="setPredefinedTokenDefi('${r.chain}','${r.address}','defi_project_key',this.value)" ${r.nativeMissing?"disabled":""}>
+            <option value="" ${projectKey===""?"selected":""}>– keines –</option>
+            ${defiProjectsCache.map(p=>`<option value="${escapeAttr(p.project_key)}" ${projectKey===p.project_key?"selected":""}>${escapeAttr(p.name)}</option>`).join("")}
+          </select>`
+        : (projectKey ? escapeAttr(projectName) : '<span style="color:var(--muted)">–</span>');
+      const categoryCell = isAdmin
+        ? `<select onchange="setPredefinedTokenDefi('${r.chain}','${r.address}','defi_category',this.value)" ${r.nativeMissing?"disabled":""}>
+            <option value="" ${category===""?"selected":""}>– keine –</option>
+            <option value="voucher_currency" ${category==="voucher_currency"?"selected":""}>Voucher-Währung</option>
+            <option value="lp_token" ${category==="lp_token"?"selected":""}>LP Token</option>
+            <option value="defi_token" ${category==="defi_token"?"selected":""}>DeFi-Token</option>
+          </select>`
+        : (category ? escapeAttr(DEFI_CATEGORY_LABELS[category] || category) : '<span style="color:var(--muted)">–</span>');
 
       const labelCell = (isAdmin && !r.isNative)
         ? `<input type="text" value="${escapeAttr(r.label || "")}" style="font-size:0.85rem;padding:4px 6px" onblur="updatePredefinedTokenLabel('${r.chain}','${r.address}', this.value)" onkeydown="if(event.key==='Enter') this.blur()" />`
@@ -3529,12 +3528,15 @@ window.setPredefinedTokenDashboardVisible=setPredefinedTokenDashboardVisible;
 
 async function setPredefinedTokenDefi(chain,address,field,value){
   if (!isAdmin) return;
+  const normalized=String(address||"").toLowerCase()==="native"?"native":normalizeAddress(address,chain);
   const dbValue=value||null;
-  const {error}=await matchAddressQuery(sb.from("predefined_tokens").update({[field]:dbValue}).eq("chain",chain),chain,address);
+  const {error}=await matchAddressQuery(sb.from("predefined_tokens").update({[field]:dbValue}).eq("chain",chain),chain,normalized);
   if(error){ alert("Fehler beim Speichern: "+error.message); return; }
-  const key=chain+"|"+address;
+  const key=chain+"|"+normalized;
   if(field==="defi_project_key") predefinedTokenProject[key]=dbValue;
   if(field==="defi_category") predefinedTokenCategory[key]=dbValue;
+  renderSafeTokenTable();
+  renderDashboard();
   updateTlnVowTabVisibility();
   window.DAO1Project?.updateVisibility?.();
 }

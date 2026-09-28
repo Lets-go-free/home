@@ -1,3 +1,4 @@
+/* Phase 6.64 · 28.09.2026 14:12:28 CEST · Dark Mode: project-data-table Grund-/Zebra-/Hover-Zeilen vollständig dunkel; verhindert helle Odd-Rows in „Vordefinierte Token“. Build 20260928-141228. */
 /* Phase 6.40 · 27.09.2026 13:16:34 CEST · Dark Mode: DAO1 Partner-Wallet-Detailmodal erhält explizite dunkle Grund-/Zebra-/Hover-Zeilen außerhalb des #tab-dao1 DOM-Scopes. Build 20260927-131634. */
 /* Phase 6.27 · 26.09.2026 18:08:50 CEST · Dark Mode: Projekt-Subnav-Container und Buttons vollständig dunkel; DAO1 Tabellenfix bleibt bestehen. Build 20260926-180850. */
 /* Phase 6.26 · 26.09.2026 17:56:20 CEST · DAO1 Dark-Mode Tabellenzeilen: Grund-/Zebra-/Hover-Farben explizit dunkel. Build 20260926-175620. */
@@ -1146,6 +1147,16 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 :root[data-theme="dark"] td,:root[data-theme="dark"] .project-data-table td{border-color:var(--border)!important}
 :root[data-theme="dark"] tbody tr:nth-child(even) td{background:#172235!important}
 :root[data-theme="dark"] tbody tr:hover td{background:#20314b!important}
+
+/* Phase 6.64: project-data-table setzt im Light Mode den Zeilenhintergrund direkt am <tr>.
+   Im Dark Mode deshalb auch die ungeraden Grundzeilen explizit überschreiben; td bleibt transparent,
+   Zebra und Hover erhalten eigene dunkle Flächen. */
+:root[data-theme="dark"] .project-data-table tbody tr{background:var(--card)!important}
+:root[data-theme="dark"] .project-data-table tbody tr td{background:transparent!important;color:var(--text)!important}
+:root[data-theme="dark"] .project-data-table tbody tr:nth-child(even),
+:root[data-theme="dark"] .project-data-table tbody tr:nth-child(even) td{background:#172235!important}
+:root[data-theme="dark"] .project-data-table tbody tr:hover,
+:root[data-theme="dark"] .project-data-table tbody tr:hover td{background:#20314b!important}
 
 /* Phase 6.26: DAO1 Dark-Mode-Zeilen duerfen nicht vom hellen globalen
    Tabellen-Background durchscheinen. Grundfarbe, Zebra und Hover werden
