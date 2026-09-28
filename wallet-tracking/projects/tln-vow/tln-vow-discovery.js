@@ -1,3 +1,4 @@
+// Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-Wallet Reward-Status ans Dashboard angebunden; kontrollierte Erst-Discovery meldet loading/complete/unknown und bleibt auf Steps 1–6 ohne Team-/Step-7-Vollscan begrenzt. Build 20260928-111745.
 // Phase 6.58 · 28.09.2026 04:23:01 CEST: Reward-Summary-UI bereinigt. Technische Cache-/Human-Units-Texte aus Staking-, Referral- und Bonus-Summaries entfernt. Reward-Tx-Anzahl wird aus vorhandenen Detaildaten ergänzt, aber nur wenn der Detail-Scope vollständig ist; bei partiellen Fresh-User-Daten bleibt sie bewusst offen statt eine unvollständige Zahl vorzutäuschen. Build 20260928-042301.
 // Phase 6.57 · 28.09.2026 04:12:38 CEST: Regression-Fix für die TLN/VOW Reward-/Claim-Ansichten: der in 6.53 eingeführte zentrale Helper projectChainRefHtml war an mehreren Render-Stellen verwendet, aber nicht definiert. Der Helper ist jetzt zentral vorhanden und rendert gekürzte BSC-Adresse/Tx-Links plus Copy-Funktion; dadurch brechen Staking-, Referral- und Bonus-Renderpfade nicht mehr mit ReferenceError ab. Build 20260928-041238.
 // Phase 6.55 · 28.09.2026 03:54:52 CEST: Release-Synchronisierung zu Phase 6.55; TLN/VOW Discovery-Logik fachlich unverändert. Legacy-Tab „Liquidity Pools_old“ wurde außerhalb dieses Moduls entfernt. Build 20260928-035452.
@@ -20,7 +21,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-042301';
+const BUILD_ID='20260928-111745';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -218,7 +219,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 04:23:01 CEST';
+const APP_VERSION='28.09.2026 11:17:45 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11441,10 +11442,12 @@ async function runControlledFirstDiscovery(){
   if(FIRST_DISCOVERY_INFLIGHT)return;
   await ensureInitialized();
   const targets=projectMissingDetailWalletsForScope();
-  if(!targets.length){setProjectFirstDiscoveryState('Keine fehlenden Detaildaten mehr.','ok');return;}
+  if(!targets.length){setProjectFirstDiscoveryState('Keine fehlenden Detaildaten mehr.','ok');await window.TLNVOWDiscovery?.loadDashboardSummary?.();return;}
   const labels=targets.map(projectWalletLabel).join(', ');
   if(!window.confirm(`Einmalige TLN/VOW-Erst-Discovery für ${targets.length} eigene Wallet(s) starten?\n\n${labels}\n\nDer Lauf verarbeitet nur diese Wallets (Steps 1–6), startet keinen Team-/Step-7-Vollscan und kann je nach Historie mehrere Minuten dauern.`))return;
-  FIRST_DISCOVERY_INFLIGHT=true;renderProjectUserView();
+  FIRST_DISCOVERY_INFLIGHT=true;
+  window.setDashboardProjectCacheStats?.('tln_vow',{rewardDataState:'loading',rewardDataMissing:targets.length,rewardDataWallets:targets.length});
+  renderProjectUserView();
   const completed=[],failed=[];
   try{
     for(let i=0;i<targets.length;i++){
@@ -11474,7 +11477,8 @@ async function runControlledFirstDiscovery(){
     const left=projectMissingDetailWalletsForScope().length;
     if(failed.length)setProjectFirstDiscoveryState(`Abgebrochen: ${failed[0]}`,'err');
     else setProjectFirstDiscoveryState(`Erst-Discovery abgeschlossen${completed.length?` · ${completed.length} Wallet(s) aufgebaut`:''}${left?` · ${left} weiterhin offen`:''}.`,'ok');
-    try{window.TLNVOWDiscovery?.loadDashboardSummary?.();}catch{}
+    try{await window.TLNVOWDiscovery?.loadDashboardSummary?.();}catch{}
+    if(failed.length)window.setDashboardProjectCacheStats?.('tln_vow',{rewardDataState:'error',rewardDataMissing:left,rewardDataError:failed[0]});
   }
 }
 async function hydrateProjectSnapshotValuation(wallet,payload,year=snapshotYearFromUi()){
@@ -18799,6 +18803,14 @@ async function refreshWalletAfterSave(walletId){
   return {ok:true,walletId:String(walletId||''),projectWallets:tlnWallets.length};
 }
 
+function loadedDashboardRewardPeriods(){
+  const periods=projectDashboardRewardPeriods();
+  const scope=[...new Set((tlnWallets||[]).map(w=>norm(w?.evm_address||'')).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
+  const covered=scope.filter(w=>PROJECT_WALLET_SNAPSHOTS.has(w));
+  const missingWallets=scope.filter(w=>!PROJECT_WALLET_SNAPSHOTS.has(w));
+  return {...periods,diagnostic:{wallets:scope.length,covered:covered.length,missing:missingWallets.length,missingWallets,source:'loaded-project-snapshots'}};
+}
+
 function mergeDashboardRewardPeriodSets(parts){
   const fields=['rewards','referralRewards','bonusRewards'],periods=['total','previousYear','year','month'];
   const out=Object.fromEntries(fields.map(f=>[f,Object.fromEntries(periods.map(p=>[p,[]]))]));
@@ -18823,7 +18835,7 @@ async function loadDashboardRewardPeriodsCacheOnly(walletAddresses=null){
   if(!uid||!own.length)return null;
   const byId=new Map(own.filter(w=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(w?.dbId||''))).map(w=>[String(w.dbId),norm(w?.evm||w?.evm_address||'')]));
   const byWallet=new Map(own.map(w=>[norm(w?.evm||w?.evm_address||''),w]));
-  const directEntries=[],summaryParts=[],covered=new Set();
+  const directEntries=[],lifecycleEntries=[],summaryParts=[],covered=new Set();
 
   // 1) Privater verified-discovery Snapshot des aktuellen Users bleibt die Primärquelle.
   if(ids.length){
@@ -18887,7 +18899,9 @@ async function loadDashboardRewardPeriodsCacheOnly(walletAddresses=null){
       if(!TEAM_LIFECYCLE_CACHE_COMPAT_VERSIONS.has(String(row?.scanner_version||''))||row?.payload?.verified!==true)continue;
       const wallet=norm(row.scope_address||row.payload.wallet||'');if(!byWallet.has(wallet)||covered.has(wallet))continue;
       const synthetic={kind:'verified_discovery_results',wallet,completedStep:4,process:{lots:Array.isArray(row.payload.lots)?row.payload.lots:[]},globals:{provenRewardRows:[],claimReferenceResult:null}};
-      directEntries.push([wallet,synthetic]);covered.add(wallet);
+      // Lifecycle beweist nur vorhandene Staking-Lots/-Rewards. Referral und Bonus sind
+      // damit nicht vollständig abgedeckt; deshalb hier NICHT als vollstaendig markieren.
+      lifecycleEntries.push([wallet,synthetic]);
     }
   }
 
@@ -18916,8 +18930,11 @@ async function loadDashboardRewardPeriodsCacheOnly(walletAddresses=null){
   }
 
   if(directEntries.length)summaryParts.push(projectDashboardRewardPeriods(directEntries));
+  const unresolvedLifecycleEntries=lifecycleEntries.filter(([wallet])=>!covered.has(wallet));
+  if(unresolvedLifecycleEntries.length)summaryParts.push(projectDashboardRewardPeriods(unresolvedLifecycleEntries));
   const merged=mergeDashboardRewardPeriodSets(summaryParts);
-  return {...merged,diagnostic:{wallets:own.length,covered:covered.size,missing:own.length-covered.size,privateSnapshots:directEntries.filter(([,p])=>p?.kind==='verified_discovery_results').length,globalSummaries:summaryParts.length,edgeBackfills}};
+  const missingWallets=[...byWallet.keys()].filter(w=>!covered.has(w));
+  return {...merged,diagnostic:{wallets:own.length,covered:covered.size,coveredWallets:[...covered],missing:missingWallets.length,missingWallets,privateSnapshots:directEntries.filter(([,p])=>p?.kind==='verified_discovery_results').length,globalSummaries:summaryParts.length,edgeBackfills}};
 }
 
 function dashboardOwnEvmWallets(){
@@ -18941,7 +18958,7 @@ async function loadDashboardTeamSummaryCacheOnly(){
     .select('wallet_address,node_id').eq('chain_key','bsc').in('wallet_address',ownWallets);
   if(idError)throw idError;
   const roots=[...new Set((ids||[]).filter(r=>r?.node_id!=null).map(r=>norm(r.wallet_address)).filter(Boolean))];
-  if(!roots.length)return {teamPartners:null,activePartners:null,activePartnersVerified:0,activePartnersUnknown:0,roots:0,cacheOnly:true};
+  if(!roots.length)return {teamPartners:null,activePartners:null,activePartnersVerified:0,activePartnersUnknown:0,roots:0,rootWallets:[],cacheOnly:true};
   const {data:rows,error}=await sb.rpc('wt_tln_smartnode_graph_slice',{p_wallets:roots,p_contract:norm(TEAM_SMARTNODE_CONTRACT),p_max_depth:TLN_TEAM_MAX_LEVELS});
   if(error)throw error;
   const included=dashboardDescendantsFromEdges(roots,rows||[],TLN_TEAM_MAX_LEVELS),ownSet=new Set(ownWallets);
@@ -18961,7 +18978,7 @@ async function loadDashboardTeamSummaryCacheOnly(){
     }
   }
   const unknown=Math.max(0,partners.length-verified);
-  return {teamPartners:partners.length,activePartners:unknown?null:active,activePartnersVerified:active,activePartnersUnknown:unknown,roots:roots.length,cacheOnly:true};
+  return {teamPartners:partners.length,activePartners:unknown?null:active,activePartnersVerified:active,activePartnersUnknown:unknown,roots:roots.length,rootWallets:roots,cacheOnly:true};
 }
 
 window.TLNVOWDiscovery={
@@ -18972,17 +18989,32 @@ window.TLNVOWDiscovery={
     try{
       const initialized=!!initializationPromise;
       const [r,team]=await Promise.all([
-        initialized?(await initializationPromise,projectDashboardRewardPeriods()):loadDashboardRewardPeriodsCacheOnly(),
+        initialized?(await initializationPromise,loadedDashboardRewardPeriods()):loadDashboardRewardPeriodsCacheOnly(),
         (!initialized||!CURRENT_TEAM_PROJECT_FOREST)?loadDashboardTeamSummaryCacheOnly():Promise.resolve(null)
       ]);
       const patch={updatedAt:new Date().toISOString()};
-      if(r){patch.rewards=r.rewards;patch.referralRewards=r.referralRewards;patch.bonusRewards=r.bonusRewards;}
+      if(r){
+        patch.rewards=r.rewards;patch.referralRewards=r.referralRewards;patch.bonusRewards=r.bonusRewards;
+        const d=r.diagnostic||{};
+        let walletCount=Number(d.wallets||0),covered=Number(d.covered||0),missing=Number(d.missing||0);
+        if(!initialized&&Array.isArray(team?.rootWallets)){
+          const relevant=new Set([...(team.rootWallets||[]).map(norm),...((d.coveredWallets||[]).map(norm))]);
+          const coveredSet=new Set((d.coveredWallets||[]).map(norm));
+          walletCount=relevant.size;covered=[...relevant].filter(w=>coveredSet.has(w)).length;missing=Math.max(0,walletCount-covered);
+        }
+        patch.rewardDataWallets=walletCount;patch.rewardDataCovered=covered;patch.rewardDataMissing=missing;patch.rewardDataError=null;
+        patch.rewardDataState=FIRST_DISCOVERY_INFLIGHT?'loading':missing<=0?'complete':covered>0?'partial':'unknown';
+      }
       if(team){patch.teamPartners=team.teamPartners;patch.activePartners=team.activePartners;patch.activePartnersVerified=team.activePartnersVerified;patch.activePartnersUnknown=team.activePartnersUnknown;}
       window.setDashboardProjectCacheStats?.('tln_vow',patch);
       if(initialized&&CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();
       console.info('TLN Dashboard cache-only Summary',{rewards:r?.diagnostic||null,team:team?{roots:team.roots,teamPartners:team.teamPartners,activePartnersVerified:team.activePartnersVerified,activePartnersUnknown:team.activePartnersUnknown}:null});
       return {deferred:!initialized,cacheOnly:!initialized,rewards:r?.diagnostic||null,team};
-    }catch(e){console.warn('TLN Dashboard Cache-Summary',e);return {deferred:!initializationPromise,error:String(e?.message||e)};}
+    }catch(e){
+      console.warn('TLN Dashboard Cache-Summary',e);
+      window.setDashboardProjectCacheStats?.('tln_vow',{rewardDataState:FIRST_DISCOVERY_INFLIGHT?'loading':'error',rewardDataError:String(e?.message||e)});
+      return {deferred:!initializationPromise,error:String(e?.message||e)};
+    }
   },
   switchProjectUserTab,
   runFirstDiscovery:runControlledFirstDiscovery,
