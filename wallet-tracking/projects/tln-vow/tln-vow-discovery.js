@@ -1,4 +1,4 @@
-// Phase 6.54 · 28.09.2026 03:44:15 CEST: Regression-Fix 6.53: Reward-Summary/Detailcache werden vor Staking/Referral/Bonus cache-only synchronisiert; parallele Summary-Ladevorgaenge werden awaited statt verworfen; globaler Detailcache v1 bleibt als Fallback kompatibel, waehrend v2 nur Step-6-Werte ergaenzt. Build 20260928-034415.
+// Phase 6.55 · 28.09.2026 03:54:52 CEST: Release-Synchronisierung zu Phase 6.55; TLN/VOW Discovery-Logik fachlich unverändert. Legacy-Tab „Liquidity Pools_old“ wurde außerhalb dieses Moduls entfernt. Build 20260928-035452.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: Staking-Reward-Summary direkt in Staking/Rewards integriert; separater Rewards-Summary-Tab entfernt. Globaler Fresh-User On-Chain-Detailcache v2 übernimmt serverseitig vorhandene Step-6-USD-Bewertungen; Detailstatus-Hinweise konsolidiert und lange Chain-Referenzen in Reward-/Claim-Tabellen verkürzt. Build 20260928-024440.
 // Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN/VOW Fresh-User Detail-Reuse. Rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Detaildaten können serverseitig aus einem bereits verifizierten privaten Discovery-Snapshot derselben Wallet sanitisiert in einen userfreien globalen Detailcache überführt und cache-only wiederverwendet werden. Keine fremden User-/Wallet-IDs, Aliase oder privaten Rohfelder; kein Blockchain-Scan beim Tab-Aufruf. Für erstmals überhaupt unbekannte Wallets bleibt die kontrollierte serverseitige Erst-Discovery offen. Build 20260928-022005.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: Dashboard Reward-Summary v2 speichert ausschließlich Human-Units (schemaVersion 2, amountUnit=human). 6.47/6.48-v1 wird bewusst ignoriert, damit bereits persistierte Raw-Decimals-Fehler nicht weiterverwendet werden. Edge-Backfill 6.49 normalisiert Legacy-Rawwerte zentral vor dem Speichern. Build 20260928-010115.
@@ -18,7 +18,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-034415';
+const BUILD_ID='20260928-035452';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -216,7 +216,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 03:44:15 CEST';
+const APP_VERSION='28.09.2026 03:54:52 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
