@@ -1,3 +1,4 @@
+// Phase 6.56 · 28.09.2026 04:01:06 CEST: Systemweit unbekannte eigene TLN/VOW-Wallets erhalten einen kontrollierten einmaligen Erst-Discovery-Pfad. Der Nutzer startet ihn ausdrücklich aus dem Detailhinweis; nur fehlende eigene Wallets werden nacheinander über Steps 1–6 aufgebaut, Step 7/Team bleibt ausgeschlossen. Danach werden privater Snapshot, globale Reward-Summary und sanitiserter globaler On-Chain-Detailcache nachgezogen. Kein automatischer Browser-Vollscan beim Tab-Öffnen. Build 20260928-040106.
 // Phase 6.55 · 28.09.2026 03:54:52 CEST: Release-Synchronisierung zu Phase 6.55; TLN/VOW Discovery-Logik fachlich unverändert. Legacy-Tab „Liquidity Pools_old“ wurde außerhalb dieses Moduls entfernt. Build 20260928-035452.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: Staking-Reward-Summary direkt in Staking/Rewards integriert; separater Rewards-Summary-Tab entfernt. Globaler Fresh-User On-Chain-Detailcache v2 übernimmt serverseitig vorhandene Step-6-USD-Bewertungen; Detailstatus-Hinweise konsolidiert und lange Chain-Referenzen in Reward-/Claim-Tabellen verkürzt. Build 20260928-024440.
 // Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN/VOW Fresh-User Detail-Reuse. Rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Detaildaten können serverseitig aus einem bereits verifizierten privaten Discovery-Snapshot derselben Wallet sanitisiert in einen userfreien globalen Detailcache überführt und cache-only wiederverwendet werden. Keine fremden User-/Wallet-IDs, Aliase oder privaten Rohfelder; kein Blockchain-Scan beim Tab-Aufruf. Für erstmals überhaupt unbekannte Wallets bleibt die kontrollierte serverseitige Erst-Discovery offen. Build 20260928-022005.
@@ -18,7 +19,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-035452';
+const BUILD_ID='20260928-040106';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -216,7 +217,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 03:54:52 CEST';
+const APP_VERSION='28.09.2026 04:01:06 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11406,6 +11407,75 @@ function projectWalletLabel(wallet){
   const w=norm(wallet||'');return tlnWallets.find(x=>norm(x.evm_address)===w)?.label||short(w);
 }
 function projectSnapshotForWallet(wallet){return PROJECT_WALLET_SNAPSHOTS.get(norm(wallet||''))||null}
+
+let FIRST_DISCOVERY_INFLIGHT=false;
+
+function projectMissingDetailWalletsForScope(){
+  const candidates=PROJECT_WALLET_FILTER==='all'
+    ? (tlnWallets||[]).map(w=>norm(w?.evm_address||''))
+    : [norm(PROJECT_WALLET_FILTER||'')];
+  return [...new Set(candidates.filter(w=>ethers.isAddress(w)&&!PROJECT_WALLET_SNAPSHOTS.has(w)))];
+}
+function projectFirstDiscoveryActionHtml(){
+  const missing=projectMissingDetailWalletsForScope();
+  if(!missing.length)return '';
+  const count=missing.length;
+  return `<div class="project-cache-only-note" style="margin-top:10px"><b>Einmalige Erst-Discovery erforderlich.</b><br>Für ${count===1?'dieses Wallet':`${count} Wallets`} existieren weder ein eigener verifizierter Detail-Snapshot noch wiederverwendbare globale Detaildaten. Die Ermittlung startet nur auf ausdrücklichen Klick, verarbeitet ausschließlich die fehlenden eigenen Wallets nacheinander und startet <b>keinen Team-/Step-7-Vollscan</b>. Je nach Wallet-Historie kann der Lauf mehrere Minuten dauern und RPC-Anfragen erzeugen.<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="secondary" ${FIRST_DISCOVERY_INFLIGHT?'disabled':''} onclick="window.TLNVOWDiscovery?.runFirstDiscovery?.()">${FIRST_DISCOVERY_INFLIGHT?'Erst-Discovery läuft …':`Detaildaten jetzt ermitteln${count>1?` (${count} Wallets)`:''}`}</button><span id="tlnFirstDiscoveryState" class="muted"></span></div></div>`;
+}
+function setProjectFirstDiscoveryState(text,kind=''){
+  const el=$('tlnFirstDiscoveryState');
+  if(el){el.textContent=String(text||'');el.className=kind==='ok'?'ok':kind==='err'?'err':'muted';}
+}
+async function selectDiscoveryWalletForFirstBuild(wallet){
+  const w=norm(wallet||'');if(!ethers.isAddress(w))throw new Error('Ungültige TLN/VOW-Wallet.');
+  const sel=$('walletSelect');
+  if(sel&&[...sel.options].some(o=>norm(o.value)===w))sel.value=w;
+  $('wallet').value=w;$('walletAddress').textContent=w;
+  CURRENT_DISCOVERY_RESULT_SNAPSHOT=null;
+  resetDiscoveryProcess(w);
+  const restored=await restoreDiscoveryResultSnapshot(w);
+  return restored;
+}
+async function runControlledFirstDiscovery(){
+  if(FIRST_DISCOVERY_INFLIGHT)return;
+  await ensureInitialized();
+  const targets=projectMissingDetailWalletsForScope();
+  if(!targets.length){setProjectFirstDiscoveryState('Keine fehlenden Detaildaten mehr.','ok');return;}
+  const labels=targets.map(projectWalletLabel).join(', ');
+  if(!window.confirm(`Einmalige TLN/VOW-Erst-Discovery für ${targets.length} eigene Wallet(s) starten?\n\n${labels}\n\nDer Lauf verarbeitet nur diese Wallets (Steps 1–6), startet keinen Team-/Step-7-Vollscan und kann je nach Historie mehrere Minuten dauern.`))return;
+  FIRST_DISCOVERY_INFLIGHT=true;renderProjectUserView();
+  const completed=[],failed=[];
+  try{
+    for(let i=0;i<targets.length;i++){
+      const wallet=targets[i],label=projectWalletLabel(wallet);
+      setProjectFirstDiscoveryState(`${i+1}/${targets.length}: ${label} wird ermittelt …`);
+      const restored=await selectDiscoveryWalletForFirstBuild(wallet);
+      if(restored&&Number(CURRENT_DISCOVERY_RESULT_SNAPSHOT?.completedStep||0)>=5){completed.push(wallet);continue;}
+      await processBaseData();if(!DISCOVERY_PROCESS.done.base)throw new Error(`${label}: Schritt 1 fehlgeschlagen.`);
+      await processStakingDiscovery();if(!DISCOVERY_PROCESS.done.staking)throw new Error(`${label}: Schritt 2 fehlgeschlagen.`);
+      await processDuration();if(!DISCOVERY_PROCESS.done.duration)throw new Error(`${label}: Schritt 3 fehlgeschlagen.`);
+      await processStakingRewards();if(!DISCOVERY_PROCESS.done.rewards)throw new Error(`${label}: Schritt 4 fehlgeschlagen.`);
+      await processReferralRewards();if(!DISCOVERY_PROCESS.done.referral)throw new Error(`${label}: Schritt 5 fehlgeschlagen.`);
+      // Step 6 ergänzt historische USD-Bewertungen. Ein Fehler hier soll die bereits
+      // verifizierten Steps 1–5 nicht vernichten; die Detaildaten bleiben nutzbar.
+      await processValuation({force:false});
+      completed.push(wallet);
+      try{await backfillGlobalOnchainDetailSnapshots([wallet]);}catch(e){log(`Erst-Discovery: globaler Detail-Backfill ${label} fehlgeschlagen: ${e?.message||e}`,'warn');}
+      try{await loadDashboardRewardPeriodsCacheOnly([wallet]);}catch(e){log(`Erst-Discovery: globale Reward-Summary ${label} konnte nicht nachgezogen werden: ${e?.message||e}`,'warn');}
+    }
+  }catch(e){
+    failed.push(String(e?.message||e));log(`Kontrollierte Erst-Discovery abgebrochen: ${e?.stack||e}`,'err');
+  }finally{
+    FIRST_DISCOVERY_INFLIGHT=false;
+    await loadProjectWalletSnapshots({withHistoricalValuation:true}).catch(e=>log(`Erst-Discovery: Projekt-Snapshots konnten nicht neu geladen werden: ${e?.message||e}`,'warn'));
+    await refreshProjectRewardSummaryFallback({force:true}).catch(()=>{});
+    renderProjectUserView();
+    const left=projectMissingDetailWalletsForScope().length;
+    if(failed.length)setProjectFirstDiscoveryState(`Abgebrochen: ${failed[0]}`,'err');
+    else setProjectFirstDiscoveryState(`Erst-Discovery abgeschlossen${completed.length?` · ${completed.length} Wallet(s) aufgebaut`:''}${left?` · ${left} weiterhin offen`:''}.`,'ok');
+    try{window.TLNVOWDiscovery?.loadDashboardSummary?.();}catch{}
+  }
+}
 async function hydrateProjectSnapshotValuation(wallet,payload,year=snapshotYearFromUi()){
   const w=norm(wallet||'');
   if(!ethers.isAddress(w)||!payload?.process?.lots?.length)return 0;
@@ -11814,6 +11884,7 @@ function projectStakingPositionOverviewHtml(lots,scopeTitle,showWallet,{detailSt
     return `<div class="card project-staking-overview">
       <div class="project-staking-overview-head"><div class="project-staking-title-row"><h2 style="margin:0">Staking – Übersicht</h2><span class="project-staking-count">Detaildaten noch nicht verfügbar</span></div><div class="muted">${esc(scopeTitle)}</div></div>
       <div class="project-cache-only-note"><b>Staking-Positionen noch nicht aufgebaut.</b><br>Für diesen Benutzer ist noch kein verifizierter Staking-Detail-Snapshot vorhanden. Deshalb werden hier bewusst keine 0 Positionen, 0 laufenden oder 0 abgeschlossenen Stakings behauptet. Die bereits bekannten Reward-Summen werden oberhalb dieser Übersicht angezeigt. Ein historischer Blockchain-Vollscan wird beim Öffnen dieses Tabs nicht automatisch gestartet.</div>
+      ${projectFirstDiscoveryActionHtml()}
     </div>`;
   }
   const partial=detailState==='partial';
@@ -11822,7 +11893,7 @@ function projectStakingPositionOverviewHtml(lots,scopeTitle,showWallet,{detailSt
   const countLabel=partial?`${all.length} Position(en) aus ${detailSnapshots}/${expectedDetailSnapshots} Detail-Snapshot(s)`:`${all.length} Position(en) gefunden`;
   return `<div class="card project-staking-overview">
     <div class="project-staking-overview-head"><div class="project-staking-title-row"><h2 style="margin:0">Staking – Übersicht</h2><span class="project-staking-count">${esc(countLabel)}</span></div><div class="muted">${esc(scopeTitle)}</div></div>
-    ${partial?`<div class="project-cache-only-note"><b>Detaildaten nur teilweise verfügbar.</b><br>Für ${detailSnapshots} von ${expectedDetailSnapshots} erwarteten Wallets liegen verifizierte Detaildaten vor. Die angezeigten Staking-Positionen und Detailzahlen sind deshalb unvollständig. Die aggregierten Reward-Summen oberhalb bleiben davon getrennt.</div>`:''}
+    ${partial?`<div class="project-cache-only-note"><b>Detaildaten nur teilweise verfügbar.</b><br>Für ${detailSnapshots} von ${expectedDetailSnapshots} erwarteten Wallets liegen verifizierte Detaildaten vor. Die angezeigten Staking-Positionen und Detailzahlen sind deshalb unvollständig. Die aggregierten Reward-Summen oberhalb bleiben davon getrennt.</div>${projectFirstDiscoveryActionHtml()}`:''}
     <p class="muted">Kompakte Lifecycle-Sicht mit Stake, Vertragsende, Unstake, Laufzeit, Asset und historischen USD-Werten. Aufstockungen sowie eindeutig zugeordnete Rewards/Claims bleiben je Position direkt aufklappbar.</p>
     ${section('Laufende / offene Stakings',running,'🟢')}
     ${section('Abgeschlossene Stakings',completed,'✅')}
@@ -11927,9 +11998,9 @@ function projectRewardDetailStateHtml(kind,hasSummary,{detailSnapshots=0,expecte
   if(!hasSummary)return '';
   const label=kind==='referral'?'Referral-Claims':kind==='bonus'?'Bonus-Ausschüttungen':'Staking-/Reward-Positionen';
   if(expectedDetailSnapshots>0&&detailSnapshots>0&&detailSnapshots<expectedDetailSnapshots){
-    return `<div class="project-cache-only-note"><b>Detaildaten nur teilweise verfügbar.</b><br>Für ${detailSnapshots} von ${expectedDetailSnapshots} erwarteten Wallets liegen verifizierte Detaildaten vor. Die angezeigten ${esc(label)} sind deshalb unvollständig; die aggregierten Reward-Summen darüber bleiben davon getrennt. Es wird beim Öffnen dieses Tabs kein historischer Blockchain-Vollscan gestartet.</div>`;
+    return `<div class="project-cache-only-note"><b>Detaildaten nur teilweise verfügbar.</b><br>Für ${detailSnapshots} von ${expectedDetailSnapshots} erwarteten Wallets liegen verifizierte Detaildaten vor. Die angezeigten ${esc(label)} sind deshalb unvollständig; die aggregierten Reward-Summen darüber bleiben davon getrennt. Es wird beim Öffnen dieses Tabs kein historischer Blockchain-Vollscan gestartet.</div>${projectFirstDiscoveryActionHtml()}`;
   }
-  return `<div class="project-cache-only-note"><b>Detaildaten noch nicht verfügbar.</b><br>Die aggregierten Reward-Summen sind bereits cache-only verfügbar. Verifizierte ${esc(label)} sind für den aktuellen Scope noch nicht im wiederverwendbaren Detailcache vorhanden. Es wird beim Öffnen dieses Tabs kein historischer Blockchain-Vollscan gestartet.</div>`;
+  return `<div class="project-cache-only-note"><b>Detaildaten noch nicht verfügbar.</b><br>Die aggregierten Reward-Summen sind bereits cache-only verfügbar. Verifizierte ${esc(label)} sind für den aktuellen Scope noch nicht im wiederverwendbaren Detailcache vorhanden. Es wird beim Öffnen dieses Tabs kein historischer Blockchain-Vollscan gestartet.</div>${projectFirstDiscoveryActionHtml()}`;
 }
 function renderProjectAggregateDetails(){
   const d=projectAggregateData(),all=PROJECT_WALLET_FILTER==='all';
@@ -18883,6 +18954,7 @@ window.TLNVOWDiscovery={
     }catch(e){console.warn('TLN Dashboard Cache-Summary',e);return {deferred:!initializationPromise,error:String(e?.message||e)};}
   },
   switchProjectUserTab,
+  runFirstDiscovery:runControlledFirstDiscovery,
   renderProjectUserView,
   renderProjectAdminContractRegistry,
   getLoanRows:()=>loanEngine?.getRows?.()||[],
