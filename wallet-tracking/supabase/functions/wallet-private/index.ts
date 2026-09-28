@@ -1,3 +1,4 @@
+// Phase 6.53 · 28.09.2026 02:44:40 CEST: TLN globaler Detailcache v2. Beim sanitisierten Fresh-User-Backfill werden vorhandene Step-6-USD-Bewertungen aus dem privaten technischen snapshot-valuation-Cache derselben Source-Wallet in die öffentlichen On-Chain-Lots übernommen. Build 20260928-024440.
 // Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN Fresh-User Detail-Reuse. Neue geschützte Aktion tln_detail_snapshot übernimmt nur rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Details aus einem bereits verifizierten Discovery-Snapshot derselben eigenen Wallet, entfernt userbezogene/private Felder, persistiert das Ergebnis im globalen technischen Cache und liefert es cache-only zurück. Kein Blockchain-Scan. Build 20260928-022005.
 // Phase 6.49 · 28.09.2026 01:01:15 CEST: TLN Fresh-User Reward-Backfill v2. Zentrale Raw→Human-Normalisierung für Staking/Bonus/Referral; verifizierte TLN/TLN+/TLNX-Decimale; Legacy raw-scaled amount als JS-Number/Scientific-Notation wird tokengebunden erkannt. Ausgabe trägt amountUnit=human/schemaVersion=2. Build 20260928-010115.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Unveränderte 5.94-Userdaten-Löschlogik, Release-Paketstruktur korrigiert. Build 20260922-140348.
@@ -953,7 +954,7 @@ function sanitizedRewardPeriodsFromSnapshot(payload: any): DashboardRewardPeriod
 
 const TLN_GLOBAL_TECH_CACHE_TABLE = 'tln_vow_technical_global_cache'
 const TLN_GLOBAL_DETAIL_CACHE_KEY = 'global-onchain-detail'
-const TLN_GLOBAL_DETAIL_CACHE_VERSION = 'global-onchain-detail-v1'
+const TLN_GLOBAL_DETAIL_CACHE_VERSION = 'global-onchain-detail-v2'
 
 const TLN_DETAIL_PRIVATE_KEYS = new Set([
   'user_id','userid','userId','wallet_id','walletId','owner_name','ownerName','owner_label','ownerLabel',
@@ -975,12 +976,42 @@ function sanitizeTlnPublicOnchainValue(value: any, depth = 0): any {
   return out
 }
 
-function sanitizedTlnDetailSnapshot(payload: any, wallet: string, row: any) {
+function tlnDetailLotKey(lot: any, index = 0) {
+  const tx = String(lot?.stakeTx || lot?.stakeHash || '').toLowerCase()
+  if (/^0x[0-9a-f]{64}$/.test(tx)) return `stake:${tx}`
+  const key = String(lot?.key || '')
+  if (key) return `key:${key}`
+  const contract = normalizeEvmAddress(lot?.staking?.contract_address || lot?.counterparty || '') || ''
+  return `fallback:${contract}|${String(lot?.stakeTime || '')}|${Number(lot?.original || 0)}|${index}`
+}
+
+const TLN_DETAIL_VALUATION_FIELDS = [
+  'stakeUsd','stakeUsdSource','stakeUsdOrigin','stakeValuation',
+  'contractEndBlockHex','contractEndValuation','contractEndUsd','contractEndUsdSource',
+  'unstakeBlockHex','unstakeValuation','unstakeUsd','unstakeUsdSource','snapshotValuation',
+]
+
+function mergeTlnValuationsIntoLots(lots: any[], valuationPayload: any) {
+  if (!Array.isArray(lots) || !Array.isArray(valuationPayload?.lots)) return lots
+  const byKey = new Map<string, any>()
+  for (const row of valuationPayload.lots) if (row?.key) byKey.set(String(row.key), row)
+  return lots.map((lot, index) => {
+    const row = byKey.get(tlnDetailLotKey(lot, index))
+    if (!row) return lot
+    const merged = { ...lot }
+    for (const field of TLN_DETAIL_VALUATION_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(row, field)) merged[field] = row[field]
+    }
+    return merged
+  })
+}
+
+function sanitizedTlnDetailSnapshot(payload: any, wallet: string, row: any, valuationPayload: any = null) {
   const process = payload?.process || {}
   const globals = payload?.globals || {}
   return {
     kind: 'global_onchain_detail_snapshot',
-    schemaVersion: 1,
+    schemaVersion: 2,
     wallet,
     completedStep: Number(payload?.completedStep || 0),
     sourceBuildId: String(payload?.buildId || ''),
@@ -988,7 +1019,7 @@ function sanitizedTlnDetailSnapshot(payload: any, wallet: string, row: any) {
     sourceLastBlock: Number(payload?.lastCheckedBlock || payload?.sourceLastBlock || row?.last_scanned_block || 0),
     sanitizedAt: new Date().toISOString(),
     process: {
-      lots: sanitizeTlnPublicOnchainValue(Array.isArray(process?.lots) ? process.lots : []),
+      lots: sanitizeTlnPublicOnchainValue(mergeTlnValuationsIntoLots(Array.isArray(process?.lots) ? process.lots : [], valuationPayload)),
       done: {
         base: !!process?.done?.base,
         staking: !!process?.done?.staking,
@@ -1048,7 +1079,7 @@ async function loadSanitizedTlnDetailSnapshots(
 
     const { data, error } = await service
       .from('tln_vow_staking_scan_cache')
-      .select('payload,last_scanned_block,updated_at,scanner_version')
+      .select('user_id,wallet_id,payload,last_scanned_block,updated_at,scanner_version')
       .eq('chain_key', 'bsc')
       .eq('cache_key', 'verified-discovery-results')
       .eq('payload->>wallet', wallet)
@@ -1065,7 +1096,23 @@ async function loadSanitizedTlnDetailSnapshots(
       continue
     }
 
-    const sanitized = sanitizedTlnDetailSnapshot(payload, wallet, row)
+    let valuationPayload = null
+    if (row?.user_id && row?.wallet_id) {
+      const { data: valuationRows, error: valuationError } = await service
+        .from('tln_vow_staking_scan_cache')
+        .select('payload,updated_at,cache_key')
+        .eq('user_id', row.user_id)
+        .eq('chain_key', 'bsc')
+        .eq('wallet_id', row.wallet_id)
+        .like('cache_key', 'snapshot-valuation:%')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+      if (valuationError) throw new Error(`TLN Step-6-Bewertung ${wallet}: ${valuationError.message}`)
+      const candidate = valuationRows?.[0]?.payload
+      if (candidate?.kind === 'snapshot_valuation_result') valuationPayload = candidate
+    }
+
+    const sanitized = sanitizedTlnDetailSnapshot(payload, wallet, row, valuationPayload)
     const { error: upsertError } = await service
       .from(TLN_GLOBAL_TECH_CACHE_TABLE)
       .upsert({
@@ -1126,7 +1173,7 @@ async function loadSanitizedTlnRewardSummaries(
   for (const wallet of wallets) {
     const { data, error } = await service
       .from('tln_vow_staking_scan_cache')
-      .select('payload,last_scanned_block,updated_at,scanner_version')
+      .select('user_id,wallet_id,payload,last_scanned_block,updated_at,scanner_version')
       .eq('chain_key', 'bsc')
       .eq('cache_key', 'verified-discovery-results')
       .eq('payload->>wallet', wallet)
