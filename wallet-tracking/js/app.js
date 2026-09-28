@@ -1,4 +1,4 @@
-// Phase 6.64 · 28.09.2026 14:12:28 CEST: Vordefinierte Token: native Assets können DeFi-Projekt und Projekt-Kategorie direkt in der Admin-UI bearbeiten; Dark-Mode-Zeilen der Projekt-/Token-Tabellen auf dunkle Grund-/Zebra-/Hover-Flächen gehärtet. Build 20260928-141228.
+// Phase 6.65 · 28.09.2026 17:19:53 CEST: Token-Stammdaten/Safe-Klassifizierung lösen keinen globalen loadAll mehr aus; gezielter Chain-Refresh statt Vollrefresh, Chain-abhängiger Token-Subfilter und Datenstand-pro-Wallet standardmäßig eingeklappt innerhalb Datenaktualisierung. Build 20260928-171953.
 // Phase 6.63 · 28.09.2026 13:54:47 CEST: DAO1-Projektwert berücksichtigt projektzugeordnete native Assets (APTM); Discovery-Sammelspam schützt manuell sichere Token; 31.12.-Bestandesaufnahme blendet ausdrücklich als Spam markierte Token aus, Safe-Freigabe hat Vorrang. Build 20260928-135447.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: Erster aktiver Start pro Tag führt wieder einen kontrollierten automatischen Delta-Refresh für Wallet-Bestände/Projekt-Current-State/NFTs aus; DAO1/APTMDAO Transaktionen, Claims, Referral-Flows und Teamgraph werden einmal täglich inkrementell nachgeführt. Manuelle Force-/Retry-Buttons für Preise, Loans und DAO-Team sind nur noch für Admins sichtbar; zentrale Refresh-Buttons bleiben im Dashboard, Doppelungen in der Token-Übersicht entfallen. DAO Referral-Partnerzuordnung als Idee zurückgestellt. Build 20260928-133530.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-TLN-Wallet Dashboard unterscheidet Reward-Datenstatus (noch nicht ermittelt / wird ermittelt / vollständig) und bindet die kontrollierte Erst-Discovery direkt an; keine automatische Browser-Vollscan-Discovery. Build 20260928-111745.
@@ -1911,7 +1911,7 @@ const ADMIN_SYSTEM_TREE = [
 
   {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
   {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 5.82: Speichern startet kein breites loadAll() über alle Wallets mehr. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie sofort, falls das Modul bereits initialisiert ist – sonst beim ersten Öffnen."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
-  {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","–","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin, danach Dashboard aus RAM neu rendern"]]},
+  {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","gezielt nur betroffene Chain bei neuem Token","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin. Token-/Stammdatenänderungen starten keinen globalen loadAll(); neue sichere/vordefinierte Token aktualisieren höchstens die betroffene Chain."]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
   {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
 
@@ -3090,10 +3090,12 @@ async function ensureNativeAssetsConfigured(){
   return changed;
 }
 
-async function refreshPredefinedTokens() {
+async function refreshPredefinedTokens(options={}) {
   await loadPredefinedTokensFromDb();
   renderSafeTokenTable();
-  loadAll(); // neue/geänderte vordefinierte Token sollen sofort im Wallet-Tracking berücksichtigt werden
+  renderDashboard();
+  const chain=String(options?.refreshChain||"").trim();
+  if(chain) await refreshTokenChainTargeted(chain,{reason:options?.reason||"Token-Stammdaten geändert"});
 }
 
 async function loadDefiProjectsCache(){
@@ -3130,7 +3132,7 @@ async function addPredefinedToken() {
   document.getElementById("newPredefLabel").value = "";
   document.getElementById("newPredefDefiProject").value = "";
   document.getElementById("newPredefDefiCategory").value = "";
-  await refreshPredefinedTokens();
+  await refreshPredefinedTokens({refreshChain:chain,reason:"Vordefinierten Token hinzugefügt"});
 }
 
 // Case-insensitiver Adress-Abgleich für UPDATE/DELETE-Abfragen (ausser Tron, dort ist
@@ -3173,7 +3175,9 @@ async function deletePredefinedToken(chain, address, label) {
   if (!confirm(`"${label}" (${chain}) wirklich aus der vordefinierten Liste löschen? Betrifft ALLE User.`)) return;
   const { error } = await matchAddressQuery(sb.from("predefined_tokens").delete().eq("chain", chain), chain, address);
   if (error) { alert("Fehler beim Löschen: " + error.message); return; }
+  removeTokenFromWalletData(chain,address);
   await refreshPredefinedTokens();
+  rerenderTokenViews();
 }
 
 async function loadPredefinedTokensFromDb() {
@@ -3272,6 +3276,39 @@ function taxRemoveUserMarkedSpamRows() {
   taxRows = (taxRows || []).filter(r => r?.asset === "native" || !isUserMarkedSpamToken(r?.asset, r?.chain));
 }
 
+// Kleine Token-/Stammdatenänderungen dürfen keinen globalen loadAll() starten.
+// Falls ein neu freigegebener Token sofort sichtbar sein soll, aktualisieren wir nur
+// die betroffene Chain der Wallets, die auf dieser Chain überhaupt eine Adresse besitzen.
+function rerenderTokenViews(){
+  renderResults();
+  renderSafeTokenTable();
+  renderCustomTokenList();
+  renderAllocationChart();
+  renderDashboard();
+}
+function removeTokenFromWalletData(chain,address){
+  const normalized=normalizeAddress(address,chain);
+  for(const w of wallets){
+    const cd=walletData?.[w.id]?.[chain];
+    if(!cd||!Array.isArray(cd.tokens))continue;
+    cd.tokens=cd.tokens.filter(t=>normalizeAddress(String(t?.address||""),chain)!==normalized);
+  }
+}
+async function refreshTokenChainTargeted(chain,{reason="Token geändert"}={}){
+  const relevant=wallets.filter(w=>walletAddressForChain(w,chain));
+  if(!relevant.length){rerenderTokenViews();return {ok:true,skipped:true};}
+  const failures=[];
+  for(const w of relevant){
+    try{
+      const r=await loadWalletChain(w,chain,true);
+      if(r?.ok===false)failures.push(`${w.label}: ${r.error||"Aktualisierung fehlgeschlagen"}`);
+    }catch(e){failures.push(`${w.label}: ${e?.message||e}`);}
+  }
+  rerenderTokenViews();
+  if(failures.length)console.warn(reason,failures);
+  return {ok:failures.length===0,failures};
+}
+
 // ---- Eigene sichere Token (Supabase-gestützt, an den Account gebunden) ----
 let customSafeTokens = [];
 
@@ -3321,8 +3358,7 @@ async function addCustomSafeToken() {
   document.getElementById("customLabel").value = "";
   renderCustomTokenList();
   renderSafeTokenTable();
-  loadAll(); // neuer Token soll sofort im Wallet-Tracking berücksichtigt werden, nicht erst nach manuellem Neuladen
-  renderResults();
+  await refreshTokenChainTargeted(chain,{reason:"Sicheren Token hinzugefügt"});
 }
 
 async function removeCustomSafeToken(chain, address) {
@@ -3334,9 +3370,8 @@ async function removeCustomSafeToken(chain, address) {
     if (error) { alert("Token konnte nicht gelöscht werden: " + error.message); return; }
   }
   customSafeTokens = customSafeTokens.filter(t => !(t.chain === chain && t.address === address));
-  renderCustomTokenList();
-  renderSafeTokenTable();
-  loadAll(); // Entfernter Token soll sofort aus dem Wallet-Tracking verschwinden, falls dort ein Bestand angezeigt war
+  removeTokenFromWalletData(chain,address);
+  rerenderTokenViews();
 }
 
 function renderCustomChainSelect(){
@@ -3407,13 +3442,16 @@ function renderSafeTokenTable() {
     });
   });
 
-  // Filter-Dropdowns befüllen (Auswahl dabei erhalten)
+  // Filter-Dropdowns befüllen (Auswahl dabei erhalten). Der Token-Subfilter richtet
+  // sich immer nach der aktuell gewählten Chain; nicht passende alte Auswahl fällt
+  // automatisch auf „Alle Token“ zurück.
   populateSelectPreserving("predefChainFilter", Object.keys(CHAIN_META).sort(), c => c.toUpperCase(), "Alle Chains");
-  const distinctLabels = [...new Set(rows.map(r => r.label).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const chainFilter = document.getElementById("predefChainFilter").value;
+  const tokenRows = chainFilter ? rows.filter(r => r.chain === chainFilter) : rows;
+  const distinctLabels = [...new Set(tokenRows.map(r => r.label).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   populateSelectPreserving("predefTokenFilter", distinctLabels, l => l, "Alle Token");
 
   // Filter anwenden
-  const chainFilter = document.getElementById("predefChainFilter").value;
   const tokenFilter = document.getElementById("predefTokenFilter").value;
   const textFilter = document.getElementById("predefTextFilter").value.trim().toLowerCase();
 
@@ -5135,15 +5173,26 @@ async function evmRelevantActivitySince(w,chain,state){
   // Ohne geeigneten Activity-Indexer wird aus Sicherheitsgründen aktualisiert statt Aktivität zu übersehen.
   return {changed:true,latestBlock,reason:'kein sicherer Activity-Indexer'};
 }
+function walletDataFreshnessMarkup(){
+  const fmtState=(r,required=1)=>{if(!r?.last_checked_at)return 'noch nie geprüft';if(Number(r.data_version||0)<Number(required||1))return `Neuaufbau erforderlich · Cache v${Number(r.data_version||0)}, Soll v${required}`;const checked=new Date(r.last_checked_at).toLocaleString('de-CH');if(r.last_result==='no_relevant_activity')return `geprüft ${checked} · keine relevante Aktivität`;if(r.last_result==='no_nfts')return `geprüft ${checked} · keine NFTs gefunden`;const refreshed=r.last_refreshed_at?new Date(r.last_refreshed_at).toLocaleString('de-CH'):checked;return `aktualisiert ${refreshed}`;};
+  const body=wallets.map(w=>{
+    const balanceStates=Object.keys(CHAIN_CONFIG).filter(c=>walletAddressForChain(w,c)&&CHAIN_CONFIG[c]?.balanceProvider).map(c=>walletRefreshStates.get(refreshStateKey(walletDbId(w),c,'balances'))).filter(Boolean);
+    const newest=balanceStates.sort((a,b)=>new Date(b.last_checked_at||0)-new Date(a.last_checked_at||0))[0];
+    const proj=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow')),nft=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
+    return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${escapeAttr(fmtState(newest))}</td><td>${w.evm?escapeAttr(fmtState(proj,requiredDataVersion('bsc','project:tln_vow'))):'–'}</td><td>${escapeAttr(fmtState(nft,requiredDataVersion('','nft')))}</td></tr>`;
+  }).join('');
+  return `<details class="wt-wallet-freshness" style="margin-top:10px"><summary style="cursor:pointer;font-weight:700;user-select:none">Datenstand pro Wallet</summary><div class="note" style="margin:9px 0 8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></details>`;
+}
 function renderCentralRefreshProgress(lines=[],options={}){
   const el=document.getElementById('centralRefreshProgress');if(!el)return;
-  if(!lines.length){el.innerHTML='';return;}
+  if(!lines.length&&!options.showWhenEmpty){el.innerHTML='';return;}
   const collapsed=options.collapsed===true;
   const finished=options.finished===true;
   const summary=finished?'Datenaktualisierung · abgeschlossen':'Datenaktualisierung · läuft…';
   el.innerHTML=`<details class="custom-token-card" ${collapsed?'':'open'}>
     <summary style="cursor:pointer;font-weight:700;user-select:none">${summary}</summary>
-    <div class="note" style="margin-top:9px">${lines.map(x=>escapeAttr(x)).join('<br>')}</div>
+    ${lines.length?`<div class="note" style="margin-top:9px">${lines.map(x=>escapeAttr(x)).join('<br>')}</div>`:''}
+    <div class="wt-wallet-freshness-slot">${walletDataFreshnessMarkup()}</div>
   </details>`;
 }
 async function refreshNftsForWallet(w,onProgress=null,options={}){
@@ -5212,15 +5261,10 @@ async function maybeAutoRefreshProject(projectKey,chain,targetId){
 }
 
 function renderWalletDataFreshness(){
-  const el=document.getElementById('walletDataFreshness');if(!el)return;
-  const fmtState=(r,required=1)=>{if(!r?.last_checked_at)return 'noch nie geprüft';if(Number(r.data_version||0)<Number(required||1))return `Neuaufbau erforderlich · Cache v${Number(r.data_version||0)}, Soll v${required}`;const checked=new Date(r.last_checked_at).toLocaleString('de-CH');if(r.last_result==='no_relevant_activity')return `geprüft ${checked} · keine relevante Aktivität`;if(r.last_result==='no_nfts')return `geprüft ${checked} · keine NFTs gefunden`;const refreshed=r.last_refreshed_at?new Date(r.last_refreshed_at).toLocaleString('de-CH'):checked;return `aktualisiert ${refreshed}`;};
-  const body=wallets.map(w=>{
-    const balanceStates=Object.keys(CHAIN_CONFIG).filter(c=>walletAddressForChain(w,c)&&CHAIN_CONFIG[c]?.balanceProvider).map(c=>walletRefreshStates.get(refreshStateKey(walletDbId(w),c,'balances'))).filter(Boolean);
-    const newest=balanceStates.sort((a,b)=>new Date(b.last_checked_at||0)-new Date(a.last_checked_at||0))[0];
-    const proj=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow')),nft=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
-    return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${escapeAttr(fmtState(newest))}</td><td>${w.evm?escapeAttr(fmtState(proj,requiredDataVersion('bsc','project:tln_vow'))):'–'}</td><td>${escapeAttr(fmtState(nft,requiredDataVersion('','nft')))}</td></tr>`;
-  }).join('');
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Datenstand pro Wallet</div><div class="note" style="margin-bottom:8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></div>`;
+  const slot=document.querySelector('#centralRefreshProgress .wt-wallet-freshness-slot');
+  if(slot){slot.innerHTML=walletDataFreshnessMarkup();return;}
+  const hasState=walletRefreshStates&&walletRefreshStates.size>0;
+  renderCentralRefreshProgress([],{showWhenEmpty:true,collapsed:true,finished:hasState});
 }
 
 async function loadAllCore(options = {}) {
