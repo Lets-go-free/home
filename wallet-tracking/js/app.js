@@ -1,3 +1,4 @@
+// Phase 6.63 · 28.09.2026 13:54:47 CEST: DAO1-Projektwert berücksichtigt projektzugeordnete native Assets (APTM); Discovery-Sammelspam schützt manuell sichere Token; 31.12.-Bestandesaufnahme blendet ausdrücklich als Spam markierte Token aus, Safe-Freigabe hat Vorrang. Build 20260928-135447.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: Erster aktiver Start pro Tag führt wieder einen kontrollierten automatischen Delta-Refresh für Wallet-Bestände/Projekt-Current-State/NFTs aus; DAO1/APTMDAO Transaktionen, Claims, Referral-Flows und Teamgraph werden einmal täglich inkrementell nachgeführt. Manuelle Force-/Retry-Buttons für Preise, Loans und DAO-Team sind nur noch für Admins sichtbar; zentrale Refresh-Buttons bleiben im Dashboard, Doppelungen in der Token-Übersicht entfallen. DAO Referral-Partnerzuordnung als Idee zurückgestellt. Build 20260928-133530.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-TLN-Wallet Dashboard unterscheidet Reward-Datenstatus (noch nicht ermittelt / wird ermittelt / vollständig) und bindet die kontrollierte Erst-Discovery direkt an; keine automatische Browser-Vollscan-Discovery. Build 20260928-111745.
 // Phase 6.58 · 28.09.2026 04:23:01 CEST: TLN/VOW Reward-Summary-UI bereinigt; technische Cache-Texte entfernt und Reward-Tx-Zählung bei vollständig vorhandenen Detaildaten aktiviert. Build 20260928-042301.
@@ -957,6 +958,7 @@ function taxSnapshotWalletId(row){
 }
 async function loadTaxSnapshot(date,walletSel="__all"){
   if(!currentUser||!date)return false;
+  await ensureDiscoveryCacheLoaded().catch(e=>console.warn("31.12. Spam-Klassifikation laden",e));
   let q=sb.from("year_end_positions").select("*").eq("snapshot_date",date).order("wallet_id").order("chain_key").order("symbol");
   if(walletSel!=="__all")q=q.eq("wallet_id",walletSel);
   const {data,error}=await q;
@@ -967,6 +969,7 @@ async function loadTaxSnapshot(date,walletSel="__all"){
     if(!w)return null;
     return {wallet:w.label,wallet_address:walletAddressForChain(w,r.chain_key),chain:r.chain_key,asset:r.asset_key,symbol:r.symbol,amount:r.amount==null?null:Number(r.amount),decimals:r.decimals,block:r.block_ref,price_usd:r.price_usd==null?null:Number(r.price_usd),value_usd:r.value_usd==null?null:Number(r.value_usd),price_source:r.price_source,status:r.status,balance_source:r.balance_source,error:r.error_message||null,wallet_id:r.wallet_id};
   }).filter(Boolean);
+  taxRemoveUserMarkedSpamRows();
   let cq=sb.from("year_end_coverage").select("*").eq("snapshot_date",date);
   if(walletSel!=="__all")cq=cq.eq("wallet_scope",walletSel);
   else cq=cq.eq("wallet_scope","__all");
@@ -994,6 +997,8 @@ async function saveTaxSnapshot(date,tz,walletSel){
 }
 async function refreshTaxPricesOnly(){
   const date=document.getElementById("taxDate")?.value,walletSel=document.getElementById("taxWalletSelect")?.value||"__all";if(!date)return;
+  await ensureDiscoveryCacheLoaded().catch(e=>console.warn("31.12. Spam-Klassifikation laden",e));
+  taxRemoveUserMarkedSpamRows();
   if(!taxRows.length && !(await loadTaxSnapshot(date,walletSel)))return alert("Für diesen Stichtag ist noch keine gespeicherte Bestandesaufnahme vorhanden.");
   const btn=document.getElementById("taxPriceRefreshBtn");btn.disabled=true;btn.textContent="Kurse werden aktualisiert…";taxPriceCache.clear();
   try{for(let i=0;i<taxRows.length;i++){const r=taxRows[i];if(r.status!=="verifiziert"||!(Number(r.amount)>0))continue;const asset=r.asset==="native"?"native":{address:r.asset,symbol:r.symbol,decimals:r.decimals,coingeckoId:predefinedTokenCoinGeckoIds[r.chain+"|"+normalizeAddress(r.asset,r.chain)]||null};const hp=await taxHistoricalPrice(r.chain,asset,date,r.block);if(hp){r.price_usd=hp.price;r.value_usd=Number(r.amount)*hp.price;r.price_source=hp.source;}}
@@ -1499,7 +1504,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     const wa=walletAddressForChain(w,chain);
     for(const a of await historicalErc20Candidates(chain,wa,bi.block)){if(!histMap.has(a)){const k=chain+"|"+a;histMap.set(a,{address:a,symbol:predefinedTokenSymbols[k]||a.slice(0,8)+"…",decimals:predefinedTokenDecimals[k],label:predefinedTokenLabels[k]||"",coingeckoId:predefinedTokenCoinGeckoIds[k]||null});}}
   }
-  tokens=[...histMap.values()];
+  tokens=[...histMap.values()].filter(t=>!isUserMarkedSpamToken(t.address,chain));
   let verified=0,errors=0,priceMissing=0;
   for(let wi=0;wi<ws.length;wi++){
     const w=ws[wi],address=walletAddressForChain(w,chain);
@@ -1687,6 +1692,7 @@ function renderTaxCoverage(){
 
 async function runTaxSnapshot(){
   const btn=document.getElementById("taxRunBtn");
+  await ensureDiscoveryCacheLoaded().catch(e=>console.warn("31.12. Spam-Klassifikation laden",e));
   const date=document.getElementById("taxDate")?.value;
   const tz=document.getElementById("taxTimezone")?.value||"Europe/Zurich";
   const walletSel=document.getElementById("taxWalletSelect")?.value||"__all";
@@ -1718,6 +1724,7 @@ async function runTaxSnapshot(){
     }
     await taxSolanaChains(selectedWallets,targetEpoch,date);
 
+    taxRemoveUserMarkedSpamRows();
     renderTaxResults(date,tz);
     await saveTaxSnapshot(date,tz,walletSel);
     document.getElementById("taxExcelBtn").disabled=taxRows.length===0;
@@ -1733,6 +1740,7 @@ async function runTaxSnapshot(){
 }
 
 function renderTaxResults(date="",tz=""){
+  taxRemoveUserMarkedSpamRows();
   const summary=document.getElementById("taxSummary"),out=document.getElementById("taxResults");
   if(!summary||!out)return;
   const ok=taxRows.filter(r=>r.status==="verifiziert"),bad=taxRows.filter(r=>r.status!=="verifiziert");
@@ -3242,6 +3250,25 @@ function isSafeTokenAddress(address, chain) {
   const a = normalizeAddress(address, chain);
   if ((SAFE_ADDRESSES[chain] || []).includes(a)) return true;
   return customSafeTokens.some(t => t.chain === chain && t.address === a);
+}
+
+function isUserMarkedSpamToken(address, chain) {
+  if (!address || String(address).toLowerCase() === "native") return false;
+  // Eine ausdrueckliche Safe-Freigabe hat Vorrang vor einem alten Discovery-Spamstatus.
+  if (isSafeTokenAddress(address, chain)) return false;
+  const normalized = normalizeAddress(address, chain);
+  try {
+    for (const cache of (discoveryCaches?.values?.() || [])) {
+      for (const finding of (Array.isArray(cache?.findings) ? cache.findings : [])) {
+        if (finding?.userMarkedScam === true && finding.chain === chain && normalizeAddress(finding.address, chain) === normalized) return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+function taxRemoveUserMarkedSpamRows() {
+  taxRows = (taxRows || []).filter(r => r?.asset === "native" || !isUserMarkedSpamToken(r?.asset, r?.chain));
 }
 
 // ---- Eigene sichere Token (Supabase-gestützt, an den Account gebunden) ----
@@ -5517,8 +5544,12 @@ function dashboardPortfolio(targetWallets){
           if(row.address)integratedLpKeys.add(`${String(w.dbId||w.id||'')}|${chain}|${normalizeAddress(row.address,chain)}`);
         }
         if(Number.isFinite(usdValue)){boundUsd+=rowBound;freeUsd+=Math.max(0,usdValue-rowBound);}else {unknownValues++;const uk=`${chain}|${row.isNative?"native":normalizeAddress(row.address||"",chain)}`;if(!unknownAssets.has(uk))unknownAssets.set(uk,{symbol:row.symbol||row.name||"Token",chain,address:row.isNative?"native":row.address||null});}
-        if(!row.isNative&&row.address){
-          const key=chain+"|"+normalizeAddress(row.address,chain),projectKey=predefinedTokenProject[key];
+        {
+          // Projektzuordnung gilt auch fuer native Assets (z. B. Apertum APTM).
+          // Der kanonische Stammdaten-Key ist <chain>|native; unbekannte native Coins
+          // bleiben wie bisher ausserhalb einer Projekt-Kachel.
+          const projectAssetKey=row.isNative?`${chain}|native`:(row.address?`${chain}|${normalizeAddress(row.address,chain)}`:null);
+          const projectKey=projectAssetKey?predefinedTokenProject[projectAssetKey]:null;
           if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0};if(Number.isFinite(usdValue)){p.valueUsd+=usdValue;p.freeUsd+=Math.max(0,usdValue-rowBound);}p.boundUsd+=rowBound;p.assets++;projects.set(projectKey,p);}
         }
       }
@@ -9890,7 +9921,10 @@ let discoveryHideMarkedScam = true;
 
 function renderDiscoveryResults(findings) {
   const el = document.getElementById("discoveryResults");
-  if (findings.length === 0) {
+  // Alte Discovery-Caches duerfen einen inzwischen manuell als sicher hinterlegten Token
+  // nicht weiter als unbekannt/Spam-Kandidat anbieten.
+  const actionableFindings=(findings||[]).filter(f=>!isSafeTokenAddress(f.address,f.chain));
+  if (actionableFindings.length === 0) {
     el.innerHTML = `<div class="empty">Keine unbekannten Token gefunden - alles, was deine Wallets halten, steht bereits auf der sicheren Liste (oder es gibt nichts Nennenswertes).</div>`;
     return;
   }
@@ -9898,17 +9932,17 @@ function renderDiscoveryResults(findings) {
   const suspectEl=document.getElementById("hideScamSuspectToggle"), markedEl=document.getElementById("hideMarkedScamToggle");
   if(suspectEl) discoveryHideSuspect=suspectEl.checked;
   if(markedEl) discoveryHideMarkedScam=markedEl.checked;
-  const visible = findings.filter(f => !(discoveryHideMarkedScam && f.userMarkedScam) && !(discoveryHideSuspect && isFindingScamSuspect(f)));
-  const suspectCount=findings.filter(f=>isFindingScamSuspect(f)).length, markedCount=findings.filter(f=>f.userMarkedScam).length;
+  const visible = actionableFindings.filter(f => !(discoveryHideMarkedScam && f.userMarkedScam) && !(discoveryHideSuspect && isFindingScamSuspect(f)));
+  const suspectCount=actionableFindings.filter(f=>isFindingScamSuspect(f)).length, markedCount=actionableFindings.filter(f=>f.userMarkedScam).length;
   const filterBar = `<div class="custom-token-card" style="margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;align-items:center">
     ${suspectCount?`<button class="remove" onclick="markAllDiscoverySuspectsAsSpam()">Alle Spam-Verdachte als Spam markieren</button>`:""}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideScamSuspectToggle" style="width:auto" onchange="discoveryHideSuspect=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideSuspect ? "checked" : ""} />
-      Spam-Verdacht ausblenden (${suspectCount} von ${findings.length})
+      Spam-Verdacht ausblenden (${suspectCount} von ${actionableFindings.length})
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideMarkedScamToggle" style="width:auto" onchange="discoveryHideMarkedScam=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideMarkedScam ? "checked" : ""} />
-      Als Spam markierte ausblenden (${markedCount} von ${findings.length})
+      Als Spam markierte ausblenden (${markedCount} von ${actionableFindings.length})
     </label>
   </div>`;
 
@@ -9950,10 +9984,10 @@ function renderDiscoveryResults(findings) {
 
 
 async function markAllDiscoverySuspectsAsSpam(){
-  const suspects=lastDiscoveryFindings.filter(f=>isFindingScamSuspect(f)&&!f.userMarkedScam);
+  const suspects=lastDiscoveryFindings.filter(f=>isFindingScamSuspect(f)&&!f.userMarkedScam&&!isSafeTokenAddress(f.address,f.chain));
   if(!suspects.length)return;
   if(!confirm(`${suspects.length} Spam-Verdacht(e) dieser Wallet wirklich als Spam markieren?`))return;
-  lastDiscoveryFindings=lastDiscoveryFindings.map(f=>isFindingScamSuspect(f)?{...f,userMarkedScam:true}:f);
+  lastDiscoveryFindings=lastDiscoveryFindings.map(f=>(isFindingScamSuspect(f)&&!isSafeTokenAddress(f.address,f.chain))?{...f,userMarkedScam:true}:f);
   renderDiscoveryResults(lastDiscoveryFindings);
   const walletId=currentDiscoveryWalletId(),cache=getDiscoveryCacheForWallet(walletId);if(!cache)return;
   const {data,error}=await sb.from('discovery_cache').update({findings:lastDiscoveryFindings}).eq('user_id',currentUser.id).eq('wallet_id',String(walletId)).select().single();
@@ -9962,6 +9996,7 @@ async function markAllDiscoverySuspectsAsSpam(){
 }
 
 async function setDiscoveryUserScam(chain, address, marked) {
+  if(marked && isSafeTokenAddress(address,chain)) return;
   const normAddr = normalizeAddress(address, chain);
   let changed = false;
 
