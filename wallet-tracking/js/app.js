@@ -1,3 +1,4 @@
+// Phase 6.85 · 30.09.2026 01:11:09 CEST: 31.12.-ESTV nur fuer echte 31.12.-Stichtage mit vorhandenem ESTV-USD/CHF-Jahreskurs; fehlende ESTV-Daten blockieren Berechnung statt stille Null-/Leerpreise zu erzeugen. Performance: Stichtagsblock je User+Chain+Epoch persistent in Supabase gecacht und pro Lauf vorab geladen; Apertum/LP-/Preis-Memos werden pro exaktem Recompute kontrolliert wiederverwendet. Build 20260930-011109.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt mit Copy; Preisfelder USD/CHF dynamisch nach Groessenordnung (bis 8 Dezimalstellen), Positions-/Gesamtwerte weiter 2 Dezimalstellen. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter Supabase-Cache fuer exakte historische Wallet/Chain/Asset/Block-Balances und ERC-20-Kandidaten. Wiederholte Stichtage verwenden Cache statt Explorer/RPC; neue Cachewerte werden gebuendelt geschrieben. Build 20260930-003245.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
@@ -997,6 +998,11 @@ const taxDirectV2PriceMemo=new Map();
 const taxV2LpPriceMemo=new Map();
 const taxPairStateMemo=new Map();
 const taxApertumLpStateCache=new Map();
+// Phase 6.85: persistenter Stichtagsblock-Cache. Der exakte Block zu einem Datum ist
+// user-unabhaengig on-chain, wird aber aus RLS-/Poisoning-Gruenden userbezogen gespeichert.
+// So spart ein Hard-Reload die teure Archive-RPC-Binaersuche, ohne global schreibbare Fakten.
+const taxPersistentBlockContext=new Map();
+let taxPersistentBlockContextLoadedEpoch=null;
 let taxEstvFxRate = null;
 let taxEstvAssetPrices = new Map();
 let taxEstvLoadedYear = null;
@@ -1004,6 +1010,30 @@ let taxEstvLoadedYear = null;
 function taxPriceBasisValue(){ return document.getElementById("taxPriceBasis")?.value || "usd"; }
 function taxIsEstvMode(){ return taxPriceBasisValue()==="chf_estv"; }
 function taxYearFromDate(dateStr){ const y=Number(String(dateStr||"").slice(0,4)); return Number.isInteger(y)?y:null; }
+function taxIsYearEndDate(dateStr){ return /^\d{4}-12-31$/.test(String(dateStr||"")); }
+function taxEstvDateEligible(dateStr){ return taxIsYearEndDate(dateStr); }
+function taxUpdatePriceBasisAvailability(){
+  const date=document.getElementById("taxDate")?.value||"";
+  const sel=document.getElementById("taxPriceBasis");
+  if(!sel)return;
+  const opt=[...sel.options].find(o=>o.value==="chf_estv");
+  const eligible=taxEstvDateEligible(date);
+  if(opt){opt.disabled=!eligible;opt.title=eligible?"":"ESTV-Steuerwerte sind nur fuer den Stichtag 31.12. verfuegbar.";}
+  if(!eligible&&sel.value==="chf_estv")sel.value="usd";
+}
+async function taxEnsureEstvAvailable(dateStr,{alertUser=false}={}){
+  if(!taxEstvDateEligible(dateStr)){
+    if(alertUser)alert("CHF (ESTV) ist nur fuer einen Stichtag per 31.12. verfuegbar. Fuer andere Daten bitte USD-Marktpreise verwenden.");
+    return false;
+  }
+  await loadTaxEstvContext(dateStr,true);
+  if(!Number.isFinite(taxEstvFxRate)){
+    const year=taxYearFromDate(dateStr);
+    if(alertUser)alert(`Fuer ${year||"dieses Jahr"} ist noch kein offizieller ESTV-USD/CHF-Kurs hinterlegt. Bitte zuerst im Admin-Bereich Steuerkurse importieren.`);
+    return false;
+  }
+  return true;
+}
 function fmtChf(v){ return Number.isFinite(Number(v)) ? `CHF ${Number(v).toLocaleString("de-CH",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "–"; }
 function taxPriceFractionDigits(v){
   const n=Math.abs(Number(v));
@@ -1065,13 +1095,23 @@ function taxDisplayValuation(r){
 }
 function updateTaxPriceBasisNote(){
   const el=document.getElementById("taxPriceBasisNote");if(!el)return;
-  if(!taxIsEstvMode()){el.textContent="USD-Marktpreise: historische USD-Bewertung per gewähltem Stichtag.";return;}
   const date=document.getElementById("taxDate")?.value||"",year=taxYearFromDate(date);
+  taxUpdatePriceBasisAvailability();
+  if(!taxIsEstvMode()){
+    el.textContent=taxEstvDateEligible(date)
+      ?"USD-Marktpreise: historische USD-Bewertung per gewähltem Stichtag. Alternativ ist fuer den 31.12. die Schweiz/ESTV-Bewertung verfuegbar."
+      :"USD-Marktpreise: historische USD-Bewertung per gewähltem Stichtag. CHF (ESTV) ist nur fuer den 31.12. eines Jahres verfuegbar.";
+    return;
+  }
   el.textContent=`Schweiz / ESTV ${year||""}: direkter ESTV-Steuerwert in CHF, sofern vorhanden; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs.`;
 }
 async function onTaxPriceBasisChange(){
-  const date=document.getElementById("taxDate")?.value||"";updateTaxPriceBasisNote();
-  if(taxIsEstvMode())await loadTaxEstvContext(date,true);
+  const date=document.getElementById("taxDate")?.value||"";
+  taxUpdatePriceBasisAvailability();
+  if(taxIsEstvMode()&&!(await taxEnsureEstvAvailable(date,{alertUser:true}))){
+    const sel=document.getElementById("taxPriceBasis");if(sel)sel.value="usd";
+  }
+  updateTaxPriceBasisNote();
   renderTaxResults(date,document.getElementById("taxTimezone")?.value||"Europe/Zurich");
 }
 window.onTaxPriceBasisChange=onTaxPriceBasisChange;
@@ -1123,6 +1163,7 @@ async function saveTaxSnapshot(date,tz,walletSel){
 }
 async function refreshTaxPricesOnly(){
   const date=document.getElementById("taxDate")?.value,walletSel=document.getElementById("taxWalletSelect")?.value||"__all";if(!date)return;
+  if(taxIsEstvMode()&&!(await taxEnsureEstvAvailable(date,{alertUser:true})))return;
   await ensureDiscoveryCacheLoaded().catch(e=>console.warn("31.12. Spam-Klassifikation laden",e));
   taxRemoveUserMarkedSpamRows();
   if(!taxRows.length && !(await loadTaxSnapshot(date,walletSel)))return alert("Für diesen Stichtag ist noch keine gespeicherte Bestandesaufnahme vorhanden.");
@@ -1148,7 +1189,11 @@ function renderTaxWalletSelect(){
   else el.value="__all";
   const date=document.getElementById("taxDate");
   if(date && !date.value){const y=new Date().getFullYear()-1;date.value=`${y}-12-31`;}
-  if(date&&!date.dataset.snapshotBound){date.dataset.snapshotBound="1";date.addEventListener("change",async()=>{taxEstvLoadedYear=null;updateTaxPriceBasisNote();if(taxIsEstvMode())await loadTaxEstvContext(date.value,true);await loadTaxSnapshot(date.value,el.value);});el.addEventListener("change",()=>loadTaxSnapshot(date.value,el.value));updateTaxPriceBasisNote();setTimeout(()=>loadTaxSnapshot(date.value,el.value),0);}
+  if(date&&!date.dataset.snapshotBound){date.dataset.snapshotBound="1";date.addEventListener("change",async()=>{
+    taxEstvLoadedYear=null;taxUpdatePriceBasisAvailability();updateTaxPriceBasisNote();
+    if(taxIsEstvMode()&&!(await taxEnsureEstvAvailable(date.value,{alertUser:false}))){const sel=document.getElementById("taxPriceBasis");if(sel)sel.value="usd";updateTaxPriceBasisNote();}
+    await loadTaxSnapshot(date.value,el.value);
+  });el.addEventListener("change",()=>loadTaxSnapshot(date.value,el.value));taxUpdatePriceBasisAvailability();updateTaxPriceBasisNote();setTimeout(()=>loadTaxSnapshot(date.value,el.value),0);}
 }
 
 function taxSetStatus(kind,text,detail=""){
@@ -1296,9 +1341,49 @@ function taxHistoricalErc20CandidateDiscoverySupported(chain){
   return !!String(CHAIN_CONFIG[chain]?.discoveryApiBase||CHAIN_CONFIG[chain]?.balanceApiBase||"").replace(/\/$/,"");
 }
 
+async function taxLoadPersistentBlockContexts(targetEpoch,chains=[]){
+  if(!currentUser?.id||!Number.isFinite(Number(targetEpoch)))return;
+  const epoch=Number(targetEpoch);
+  if(taxPersistentBlockContextLoadedEpoch===epoch)return;
+  taxPersistentBlockContextLoadedEpoch=epoch;
+  const wanted=[...new Set((chains||[]).filter(Boolean))];
+  if(!wanted.length)return;
+  try{
+    const {data,error}=await sb.from("historical_tax_chain_context_cache")
+      .select("chain_key,target_epoch,block_number,block_source")
+      .eq("user_id",currentUser.id).eq("target_epoch",epoch).in("chain_key",wanted);
+    if(error)throw error;
+    for(const r of data||[]){
+      const key=`${r.chain_key}|${epoch}`;
+      if(Number.isFinite(Number(r.block_number))&&Number(r.block_number)>0){
+        const out={block:Number(r.block_number),source:r.block_source||"Supabase Stichtagsblock-Cache",persistent:true};
+        taxPersistentBlockContext.set(key,out);
+        taxEvmBlockByTimeCache.set(key,Promise.resolve(out));
+      }
+    }
+  }catch(e){console.warn("31.12. persistenten Stichtagsblock-Cache laden",e);}
+}
+async function taxRememberPersistentBlockContext(chain,targetEpoch,result){
+  if(!currentUser?.id||!result?.block)return;
+  const epoch=Number(targetEpoch),key=`${chain}|${epoch}`;
+  const out={block:Number(result.block),source:result.source||"Stichtagsblock",persistent:true};
+  taxPersistentBlockContext.set(key,out);
+  try{
+    const {error}=await sb.from("historical_tax_chain_context_cache").upsert({
+      user_id:currentUser.id,chain_key:chain,target_epoch:epoch,block_number:Number(result.block),block_source:result.source||null,checked_at:new Date().toISOString()
+    },{onConflict:"user_id,chain_key,target_epoch"});
+    if(error)throw error;
+  }catch(e){console.warn("31.12. Stichtagsblock-Cache speichern",chain,e);}
+}
+
 async function taxEvmBlockByTime(chain,targetEpoch){
   const memoKey=`${chain}|${Number(targetEpoch)}`;
   if(taxEvmBlockByTimeCache.has(memoKey))return await taxEvmBlockByTimeCache.get(memoKey);
+  if(taxPersistentBlockContext.has(memoKey)){
+    const hit=taxPersistentBlockContext.get(memoKey);
+    taxEvmBlockByTimeCache.set(memoKey,Promise.resolve(hit));
+    return hit;
+  }
   const work=(async()=>{
   // Free source first. Unsupported Routescan networks are remembered for this page session.
   if (!taxRoutescanUnavailable.has(chain)) {
@@ -1334,7 +1419,12 @@ async function taxEvmBlockByTime(chain,targetEpoch){
   return {block:best,source:"Alchemy Archive"};
   })();
   taxEvmBlockByTimeCache.set(memoKey,work);
-  try{return await work;}catch(e){taxEvmBlockByTimeCache.delete(memoKey);throw e;}
+  try{
+    const result=await work;
+    // Nicht blockierend: der aktuelle Lauf soll nicht auf einen Cache-Upsert warten.
+    void taxRememberPersistentBlockContext(chain,targetEpoch,result);
+    return result;
+  }catch(e){taxEvmBlockByTimeCache.delete(memoKey);throw e;}
 }
 
 async function taxEvmNativeBalance(chain,address,block,persistCtx=null,walletId=null){
@@ -2107,9 +2197,14 @@ async function runTaxSnapshot(){
   const tz=document.getElementById("taxTimezone")?.value||"Europe/Zurich";
   const walletSel=document.getElementById("taxWalletSelect")?.value||"__all";
   if(!date)return alert("Bitte Stichtag wählen.");
+  if(taxIsEstvMode()&&!(await taxEnsureEstvAvailable(date,{alertUser:true})))return;
   const targetEpoch=zonedEndOfDayEpoch(date,tz);
   const selectedWallets=walletSel==="__all"?wallets:wallets.filter(w=>String(w.id)===String(walletSel));
   taxRows=[];taxCoverage=[];taxPriceCache.clear();
+  // Phase 6.85: alle bekannten Stichtagsbloecke fuer den Lauf mit genau EINER Supabase-Abfrage vorladen.
+  // Das spart nach Reload die Archive-RPC-Binaersuche je EVM-Chain.
+  const evmChainsForRun=Object.keys(CHAIN_CONFIG).filter(c=>CHAIN_CONFIG[c]?.walletType==="evm"&&taxChainWallets(selectedWallets,c).length);
+  await taxLoadPersistentBlockContexts(targetEpoch,evmChainsForRun);
   btn.disabled=true;btn.textContent="Stichtagsbestand wird ermittelt…";
   document.getElementById("taxExcelBtn").disabled=true;
   document.getElementById("taxPdfBtn").disabled=true;
@@ -2408,7 +2503,7 @@ const ADMIN_SYSTEM_TREE = [
     ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Der zentrale Ladebalken bleibt bis zum Abschluss von Beständen, Projekt-/NFT-/Reward-Daten, Summaries und erfolgreichem Snapshot sichtbar. DAO1/APTMDAO baut für relevante Wallets die ERC-20 Asset-Flows inkrementell mit auf. Historische NFT-Ownership wird aus Wallet-Transferhistorien reproduziert; bei nur belegtem Abgang bleibt der Erwerbsbeginn bewusst unbekannt statt geschätzt. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
     ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
-  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"in_progress",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","year_end_positions / year_end_coverage","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung USD","Cache","historische Markt-/DEX-/LP-Preise","Archive RPC/API bei Bedarf","Stichtagsberechnung"],["Schweiz / ESTV CHF","globaler Stammdatencache","tax_asset_prices + tax_fx_rates","keine externe API im User-Flow","Direkter ESTV-CHF-Wert je Symbol; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs. Pflege nur im Admin-Tab Steuerkurse."]]},
+  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"in_progress",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","year_end_positions / year_end_coverage","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung USD","Cache + persistenter Stichtagsblock-Cache","historische Markt-/DEX-/LP-Preise + historical_tax_chain_context_cache","Archive RPC/API nur bei Cache-Miss","Stichtagsberechnung"],["Schweiz / ESTV CHF","globaler Stammdatencache","tax_asset_prices + tax_fx_rates","keine externe API im User-Flow","Direkter ESTV-CHF-Wert je Symbol; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs. Pflege nur im Admin-Tab Steuerkurse."]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
   {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"Current-State DB-Registry",daily:"kein Blind-Refresh",open:"RAM zuerst · History danach",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.75: zentrale NFT-Registry lädt beim App-Start nur den für Current State nötigen Bestand/Ownership. Globale Ersterwerbs- und Kaufpreis-Historie wird erst beim Öffnen des NFT-Tabs nachgeladen. NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe zentrale Datenbasis. Manuelle/gezielte Chain-Refreshs bleiben inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet. Phase 6.29 startet Audit P6: nft_cache (aktueller Wallet-NFT-Bestand) und project_nft_ownership (Besitzhistorie) sind die persistenten Wahrheiten; DAO1-Session-Sichten werden nach ihrer Initialisierung gegen diese zentralen Read-Models geprüft und als „DAO1 NFT Read-Model Audit“ protokolliert."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
@@ -4623,7 +4718,7 @@ async function purgeHistoricalTaxCachesForWallet(w){
 }
 async function purgeAllHistoricalTaxCaches(){
   if(!currentUser?.id)return;
-  for(const table of ['historical_token_balance_cache','historical_token_candidate_cache']){
+  for(const table of ['historical_token_balance_cache','historical_token_candidate_cache','historical_tax_chain_context_cache']){
     const {error}=await sb.from(table).delete().eq('user_id',currentUser.id);
     if(error)throw error;
   }
