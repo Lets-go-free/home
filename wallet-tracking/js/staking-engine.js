@@ -1,6 +1,7 @@
+// Phase 6.78 · 29.09.2026 17:48:45 CEST: Projektübergreifender Staking-Katalog ergänzt: verifizierte generische Staking-Kandidaten werden chainweit und optional projektbezogen klassifiziert. Build 20260929-174845.
 window.WalletStakingEngine = (() => {
   let ctx=()=>({});
-  const catalogCache=new Map();
+  const catalogCache=new Map(), allCatalogCache=new Map();
   const norm=x=>String(x||"").trim().toLowerCase();
 
   async function loadCatalog(projectKey,chain,force=false){
@@ -14,13 +15,56 @@ window.WalletStakingEngine = (() => {
       .eq("chain_key",chain)
       .eq("enabled",true);
     if(error)throw error;
-    const rows=data||[];catalogCache.set(key,rows);return rows;
+    let rows=data||[];
+    // Projektzugeordnete, administrativ verifizierte generische LP-Staking-Ziele
+    // ergänzen den bestehenden Contract-Katalog. Die Tabelle ist ab Migration 077 vorhanden.
+    try{
+      const {data:extra,error:extraError}=await c.sb.from("lp_staking_candidates").select("*")
+        .eq("chain_key",chain).eq("project_key",projectKey).eq("status","verified");
+      if(!extraError) rows=rows.concat((extra||[]).map(r=>({
+        project_key:r.project_key||projectKey,chain_key:r.chain_key,
+        contract_address:r.contract_address,pair_address:r.pair_address,
+        label:r.label||"Verifiziertes LP-Staking",role:"staking",enabled:true,classify_transfers:true,
+        _genericRegistry:true
+      })));
+    }catch{}
+    catalogCache.set(key,rows);return rows;
+  }
+
+  async function loadCatalogAll(chain,force=false){
+    const key=String(chain||"");
+    if(allCatalogCache.has(key)&&!force)return allCatalogCache.get(key);
+    const c=ctx();if(!c.sb||!c.currentUser?.id){allCatalogCache.set(key,[]);return [];}
+    let rows=[];
+    try{
+      const {data,error}=await c.sb.from("defi_staking_contracts").select("*").eq("chain_key",chain).eq("enabled",true);
+      if(!error)rows=data||[];
+    }catch{}
+    try{
+      const {data,error}=await c.sb.from("lp_staking_candidates").select("*").eq("chain_key",chain).eq("status","verified");
+      if(!error)rows=rows.concat((data||[]).map(r=>({
+        project_key:r.project_key||"generic_lp",chain_key:r.chain_key,
+        contract_address:r.contract_address,pair_address:r.pair_address,
+        label:r.label||"Verifiziertes LP-Staking",role:"staking",enabled:true,classify_transfers:true,
+        _genericRegistry:true
+      })));
+    }catch{}
+    const seen=new Set();rows=rows.filter(r=>{const k=`${norm(r.contract_address)}|${norm(r.pair_address||"")}`;if(seen.has(k))return false;seen.add(k);return true;});
+    allCatalogCache.set(key,rows);return rows;
   }
 
   async function contractInfo(projectKey,chain,address){
     if(!address)return null;
     const rows=await loadCatalog(projectKey,chain);
     return rows.find(r=>norm(r.contract_address)===norm(address))||null;
+  }
+
+  async function classifyTransferAny(chain,direction,counterparty,pairAddress=null){
+    const fallback=direction==="out"?"send":"receive";
+    const rows=await loadCatalogAll(chain);
+    const info=rows.find(r=>norm(r.contract_address)===norm(counterparty) && (!r.pair_address||!pairAddress||norm(r.pair_address)===norm(pairAddress)))||null;
+    if(!info||!info.classify_transfers)return {eventType:fallback,staking:null};
+    return {eventType:direction==="out"?"stake":"unstake",staking:info};
   }
 
   async function classifyTransfer(projectKey,chain,direction,counterparty,pairAddress=null){
@@ -78,6 +122,7 @@ window.WalletStakingEngine = (() => {
     return event?.staking_label||event?.stakingLabel||`Staking – ${String(pairLabel||"LP").replace(/^PancakeSwap\s*(V2)?\s*/i,"").replace(/\s*LP$/i,"")}`;
   }
 
-  function configure(fn){ctx=fn||ctx;}
-  return {configure,loadCatalog,contractInfo,classifyTransfer,stakeBalanceAt,buildLots,displayName};
+  function clearCache(){catalogCache.clear();allCatalogCache.clear();}
+  function configure(fn){ctx=fn||ctx;clearCache();}
+  return {configure,clearCache,loadCatalog,loadCatalogAll,contractInfo,classifyTransfer,classifyTransferAny,stakeBalanceAt,buildLots,displayName};
 })();

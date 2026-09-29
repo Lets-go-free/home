@@ -1,3 +1,4 @@
+// Phase 6.78 · 29.09.2026 17:48:45 CEST: Generische LP-Discovery ergänzt um lightweight Transfer-Gegenstellenanalyse für Staking-Kandidaten. Build 20260929-174845.
 window.WalletLPEngine = (() => {
   const V2 = new ethers.Interface([
     "function token0() view returns(address)","function token1() view returns(address)",
@@ -107,6 +108,19 @@ window.WalletLPEngine = (() => {
     const b=await rpc(chain,"eth_getBlockByNumber",[hex(blockNumber),false]);
     const ts=b?.timestamp?Number(BigInt(b.timestamp)):null;blockCache.set(k,ts);return ts;
   }
+
+  async function lpTransferCounterparties(chain,pairAddress,wallet,txHash){
+    const receipt=await rpc(chain,"eth_getTransactionReceipt",[txHash]);if(!receipt)return [];
+    const pa=norm(pairAddress),wa=norm(wallet),zero=norm(ethers.ZeroAddress),out=[];
+    for(const l of receipt.logs||[]){
+      if(norm(l.address)!==pa||norm(l.topics?.[0])!==TRANSFER_TOPIC||!l.topics?.[1]||!l.topics?.[2])continue;
+      const from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
+      if(from===wa&&to!==zero)out.push({direction:"out",counterparty:to,logIndex:Number(l.logIndex?BigInt(l.logIndex):0n)});
+      else if(to===wa&&from!==zero)out.push({direction:"in",counterparty:from,logIndex:Number(l.logIndex?BigInt(l.logIndex):0n)});
+    }
+    return out;
+  }
+
   async function historyEventFromReceipt(chain,pair,wallet,txHash,blockNumber,options={}){
     const receipt=await rpc(chain,"eth_getTransactionReceipt",[txHash]);if(!receipt)return null;
     const wa=norm(wallet),pa=norm(pair.address),t0=norm(pair.t0.address),t1=norm(pair.t1.address),zero=norm(ethers.ZeroAddress);
@@ -240,5 +254,5 @@ window.WalletLPEngine = (() => {
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairTokens,pairDescriptor,pairInfo,balance,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,loadPositionCacheBatch,replacePositionCache,getScanState,getScanStateInfo,setScanState};
+  return {configure,pairTokens,pairDescriptor,pairInfo,balance,positions,valuePosition,label,meta,rpc,latestBlock,lpTransferCounterparties,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,loadPositionCacheBatch,replacePositionCache,getScanState,getScanStateInfo,setScanState};
 })();

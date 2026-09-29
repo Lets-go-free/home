@@ -125,6 +125,7 @@
         </div></div>
         <div class="tab-nav-group" data-nav-section="analysis"><div class="tab-nav">
           <button type="button" class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
+          <button type="button" class="tab-btn" data-tab="liquidity" onclick="showTab('liquidity')">💧 Liquidity Pools</button>
           <button type="button" class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
           <button type="button" class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
         </div></div>
@@ -132,6 +133,7 @@
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="lpregistry" onclick="showTab('admin');showAdminTab('lpregistry')">🔗 LP / Staking</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="taxprices" onclick="showTab('admin');showAdminTab('taxprices')">🇨🇭 Steuerkurse</button>
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Audit</button>
@@ -413,6 +415,12 @@
       <div id="feesResults"></div>
     </div>
 
+    <div id="tab-liquidity" class="tab-panel">
+      <div class="section-title">💧 Liquidity Pools</div>
+      <div class="note" style="margin-bottom:12px">Projektübergreifende Sicht auf verifizierte LP-Positionen. Angezeigt werden LP im Wallet, verifiziert gestakter Principal und die wirtschaftliche Gesamtposition. Eine Projektzuordnung ist optional; projektlose LPs sind ausdrücklich erlaubt.</div>
+      <div id="genericLpOverview"><div class="empty">LP-Cache wird geladen …</div></div>
+    </div>
+
     <div id="tab-approvals" class="tab-panel">
       <div class="custom-token-card">
         <div class="note" style="margin-bottom:12px">
@@ -618,6 +626,16 @@
         <div id="adminDefiProjectsList"></div>
         <h3 style="margin-top:22px">Projekt-Token / Referenzen</h3>
         <div id="adminDefiProjectTokensList"></div>
+      </div>
+
+      <div id="admintab-lpregistry" class="admin-tab-panel">
+        <div class="section-title">🔗 LP- / Staking-Registry</div>
+        <div class="note" style="margin-bottom:14px">
+          Projektübergreifende Discovery. WalletTracking erkennt Uniswap-V2-kompatible LP-Token über <code>token0()</code>/<code>token1()</code>/<code>factory()</code> – auch ohne DeFi-Projektzuordnung. Neue Pairs und mögliche Staking-Ziele werden <strong>nie automatisch verifiziert</strong>. Erst ein administrativ verifiziertes Staking-Ziel darf gebundenen LP-Principal zum Vermögen zählen.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><button class="secondary" onclick="loadAdminLpRegistry(true)">🔄 Neu laden</button></div>
+        <h3>LP-Paare</h3><div id="adminLpPairRegistry"></div>
+        <h3 style="margin-top:24px">Mögliche Staking-Contracts</h3><div id="adminLpStakingRegistry"></div>
       </div>
 
       <div id="admintab-dex" class="admin-tab-panel">
@@ -1168,7 +1186,7 @@
   </div>
 
   <footer>
-    Version vom 29.09.2026 17:15:17 CEST · Phase 6.77 · Staking-Vermögen blockgenau verifiziert; DAO1-Katalog-Pairs vollständig berücksichtigt.<br>
+    Version vom 29.09.2026 17:48:45 CEST · Phase 6.78 · LP/Staking projektübergreifend mit Admin-Verifikation.<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1179,19 +1197,19 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="./js/browser-cache.js?v=20260922-140348"></script>
 <script src="./js/price-engine.js"></script>
-<script src="./js/lp-engine.js?v=20260921-000207"></script>
-<script src="./js/staking-engine.js?v=20260929-171517"></script>
+<script src="./js/lp-engine.js?v=20260929-174845"></script>
+<script src="./js/staking-engine.js?v=20260929-174845"></script>
 <script src="./projects/tln-vow/tln-vow-loans.js?v=20260928-133530"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20260923-001500"></script>
 <script src="./projects/dao1/dao1.js?v=20260929-152557"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260929-171517"></script>
-<script src="./help/help-general.js?v=20260929-171517"></script>
+<script src="./admin/ideas.js?v=20260929-174845"></script>
+<script src="./help/help-general.js?v=20260929-174845"></script>
 <script src="./projects/tln-vow/help.js?v=20260929-152557"></script>
 <script src="./projects/dao1/help.js?v=20260928-133530"></script>
-<script src="./js/app.js?v=20260929-171517"></script>
+<script src="./js/app.js?v=20260929-174845"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260929-152557"></script>
 
 
@@ -1210,6 +1228,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 29.09.2026 17:15:17 CEST · Phase 6.77 · Build 20260929-171517</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 29.09.2026 17:48:45 CEST · Phase 6.78 · Build 20260929-174845</div>
 </body>
 </html>
