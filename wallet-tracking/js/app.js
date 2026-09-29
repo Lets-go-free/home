@@ -1,3 +1,4 @@
+// Phase 6.80 · 29.09.2026 18:46:00 CEST: 31.12.-Performance II: verifizierte ERC-20 werden pro Wallet vor tokenbalancehistory gegen historische Transfer-Evidenz bis zum Stichtagsblock gefiltert; Kandidaten- und Balance-Abfragen werden sessionweit blockgenau memoisiert. Build 20260929-184600.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
 // Phase 6.78 · 29.09.2026 17:48:45 CEST: Generische LP-/Staking-Registry: LP-Paare projektübergreifend/on-chain erkannt; neue Pairs und mögliche Staking-Ziele bleiben bis Admin-Verifikation pending. Verifizierte projektlose/project-zugeordnete LP-Stakings zählen aktuell und per 31.12. als Vermögen. Build 20260929-174845.
 // Phase 6.77 · 29.09.2026 17:15:17 CEST: Staking-Vermögensverifikation gehärtet: DAO1-Staking-Katalog pair_address ist autoritative LP-Quelle auch ohne predefined lp_token; 31.12.-Staking-Cutoff nutzt exakten Stichtagsblock vor Zeitstempel und verhindert Future-Stake/-Unstake bei fehlender Event-Zeit. Build 20260929-171517.
@@ -1175,6 +1176,17 @@ async function routescanCall(chain,params){
 }
 
 const taxRoutescanUnavailable = new Set();
+// Phase 6.80: Request-Memoisierung fuer historische Steuerabfragen.
+// Keys enthalten den exakten Stichtagsblock, daher kann der Cache gefahrlos auch
+// mehrere Berechnungen innerhalb derselben Browser-Session beschleunigen.
+const taxHistoricalErc20CandidateCache = new Map();
+const taxHistoricalTokenBalanceCache = new Map();
+
+function taxHistoricalErc20CandidateDiscoverySupported(chain){
+  if(!CHAIN_CONFIG[chain]?.evmChainId)return false;
+  if(CHAIN_CONFIG[chain]?.discoveryProvider==="alchemy")return true;
+  return !!String(CHAIN_CONFIG[chain]?.discoveryApiBase||CHAIN_CONFIG[chain]?.balanceApiBase||"").replace(/\/$/,"");
+}
 
 async function taxEvmBlockByTime(chain,targetEpoch){
   // Free source first. Unsupported Routescan networks are remembered for this page session.
@@ -1233,16 +1245,22 @@ async function taxEvmNativeBalance(chain,address,block){
 }
 
 async function taxEvmTokenBalance(chain,address,token,block){
+  const tokenAddress=normalizeAddress(token?.address||"",chain);
+  const cacheKey=`${chain}|${String(address).toLowerCase()}|${tokenAddress}|${Number(block)}`;
+  if(taxHistoricalTokenBalanceCache.has(cacheKey))return {...taxHistoricalTokenBalanceCache.get(cacheKey)};
   const decimals=await taxTokenDecimalsCurrent(chain,token);
+  let result;
   if(!taxRoutescanUnavailable.has(chain)){
     try{
       const r=await routescanCall(chain,{
         module:"account",action:"tokenbalancehistory",
-        contractaddress:token.address,address,blockno:String(block)
+        contractaddress:tokenAddress,address,blockno:String(block)
       });
       const raw=typeof r==="object"?(r.balance??r.Balance??r.result):r;
       if(raw!=null && /^\d+$/.test(String(raw))){
-        return {amount:Number(BigInt(String(raw)))/Math.pow(10,decimals),decimals,source:`Routescan tokenbalancehistory @ Block ${block}`};
+        result={amount:Number(BigInt(String(raw)))/Math.pow(10,decimals),decimals,source:`Routescan tokenbalancehistory @ Block ${block}`};
+        taxHistoricalTokenBalanceCache.set(cacheKey,result);
+        return {...result};
       }
       throw new Error("Historischer Token-Bestand nicht lesbar.");
     }catch(e){
@@ -1251,18 +1269,18 @@ async function taxEvmTokenBalance(chain,address,token,block){
     }
   }
   const ownerArg=String(address).toLowerCase().replace(/^0x/,"").padStart(64,"0");
-  const raw=await archiveRpc(chain,"eth_call",[{to:token.address,data:"0x70a08231"+ownerArg},taxBlockHex(block)]);
-  // Ein historischer eth_call kann bei einem Contract, der am Zielblock noch nicht
-  // existierte bzw. dort keinen decodierbaren Rückgabewert hatte, lediglich "0x"
-  // liefern. Das bedeutet für balanceOf wirtschaftlich 0 und darf nicht an BigInt()
-  // weitergegeben werden (BigInt("0x") wirft SyntaxError).
+  const raw=await archiveRpc(chain,"eth_call",[{to:tokenAddress,data:"0x70a08231"+ownerArg},taxBlockHex(block)]);
   const normalizedRaw = (!raw || raw === "0x") ? "0x0" : raw;
-  return {amount:Number(BigInt(normalizedRaw))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
+  result={amount:Number(BigInt(normalizedRaw))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
+  taxHistoricalTokenBalanceCache.set(cacheKey,result);
+  return {...result};
 }
 
-async function historicalErc20Candidates(chain,address,targetBlock=null){
+async function historicalErc20Candidates(chain,address,targetBlock=null,{strict=false}={}){
   // Nur EVM-Chains: Tron/Solana verwenden eigene Discovery-Wege.
   if (!CHAIN_CONFIG[chain]?.evmChainId) return [];
+  const cacheKey=targetBlock==null?null:`${chain}|${String(address).toLowerCase()}|${Number(targetBlock)}`;
+  if(cacheKey&&taxHistoricalErc20CandidateCache.has(cacheKey))return [...taxHistoricalErc20CandidateCache.get(cacheKey)];
   const found=new Set();
   // Alchemy: Transferhistorie findet auch vollständig verkaufte Token/LPs.
   if(CHAIN_CONFIG[chain]?.discoveryProvider==="alchemy"){
@@ -1282,10 +1300,12 @@ async function historicalErc20Candidates(chain,address,targetBlock=null){
   if(base && CHAIN_CONFIG[chain]?.discoveryProvider!=="alchemy"){
     try{
       let url=`${base}/addresses/${address}/token-transfers?type=ERC-20`,pages=0;
-      while(url&&pages++<200){const res=await fetch(url);if(!res.ok)break;const j=await res.json();for(const t of (j.items||[])){const a=t.token?.address;if(a&&/^0x[0-9a-f]{40}$/i.test(a)){if(targetBlock==null||Number(t.block_number||0)<=Number(targetBlock))found.add(normalizeAddress(a,chain));}}const np=j.next_page_params;url=np?`${base}/addresses/${address}/token-transfers?type=ERC-20&${new URLSearchParams(np)}`:null;}
-    }catch(e){console.warn("Historische Token-Kandidaten",chain,e);}
+      while(url&&pages++<200){const res=await fetch(url);if(!res.ok){if(strict)throw new Error(`Historische Token-Kandidaten HTTP ${res.status}`);break;}const j=await res.json();for(const t of (j.items||[])){const a=t.token?.address;if(a&&/^0x[0-9a-f]{40}$/i.test(a)){if(targetBlock==null||Number(t.block_number||0)<=Number(targetBlock))found.add(normalizeAddress(a,chain));}}const np=j.next_page_params;url=np?`${base}/addresses/${address}/token-transfers?type=ERC-20&${new URLSearchParams(np)}`:null;}
+    }catch(e){if(strict)throw e;console.warn("Historische Token-Kandidaten",chain,e);}
   }
-  return [...found];
+  const result=[...found];
+  if(cacheKey)taxHistoricalErc20CandidateCache.set(cacheKey,result);
+  return [...result];
 }
 
 function taxTokenUniverse(chain){
@@ -1601,14 +1621,33 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   // Steuerposition gelten. Historische Safe-/Predefined-Token sind bereits im
   // taxTokenUniverse; verifizierte LPs werden unten aus dem persistenten LP-Cache ergänzt.
   const baseTokens=taxTokenUniverse(chain).filter(t=>!isUserMarkedSpamToken(t.address,chain));
-  let verified=0,errors=0,priceMissing=0;
+  let verified=0,errors=0,priceMissing=0,tokenChecksBeforeFilter=0,tokenChecksAfterFilter=0;
   for(let wi=0;wi<ws.length;wi++){
     const w=ws[wi],address=walletAddressForChain(w,chain);
     // LP-/Staking-Historie wird exakt EINMAL je Projekt+Wallet geladen. Daraus werden
     // sowohl die relevanten LP-Adressen als auch der Staking-Bestand am Stichtag
     // berechnet. taxCachedStakedLp() im Token-Loop würde dieselbe Supabase-Historie
     // sonst für jedes einzelne Token erneut lesen.
-    const walletTokens=new Map(baseTokens.map(t=>[normalizeAddress(t.address,chain),t]));
+    // Phase 6.80: Nicht mehr jedes erlaubte Token gegen jede Wallet abfragen.
+    // Zuerst wird einmal die historische ERC-20-Transfer-Evidenz dieser Wallet bis
+    // zum Stichtagsblock geladen. Danach bleiben nur verifizierte Token uebrig, die
+    // diese Wallet tatsaechlich beruehrt hat. Das reduziert tokenbalancehistory von
+    // Wallet x globaler Tokenliste auf Wallet x eigene relevante Token.
+    tokenChecksBeforeFilter+=baseTokens.length;
+    let walletBaseTokens=baseTokens;
+    if(taxHistoricalErc20CandidateDiscoverySupported(chain)){
+      try{
+        const touched=new Set((await historicalErc20Candidates(chain,address,bi.block,{strict:true})).map(a=>normalizeAddress(a,chain)));
+        walletBaseTokens=baseTokens.filter(t=>touched.has(normalizeAddress(t.address,chain)));
+      }catch(e){
+        // Korrektheit vor Performance: falls die Kandidatenquelle ausfaellt, wird
+        // auf die vollstaendige verifizierte Tokenliste zurueckgefallen.
+        console.warn("31.12. Token-Kandidaten-Fallback",chain,w.label,e);
+        walletBaseTokens=baseTokens;
+      }
+    }
+    tokenChecksAfterFilter+=walletBaseTokens.length;
+    const walletTokens=new Map(walletBaseTokens.map(t=>[normalizeAddress(t.address,chain),t]));
     const stakingAtCutoff=new Map();
     if(window.WalletLPEngine&&window.WalletStakingEngine){
       const projectsForChain=[...(chain==="bsc"?["tln_vow"]:(chain==="apertum"?["dao1"]:[])),GENERIC_LP_PROJECT_KEY];
@@ -1673,7 +1712,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
       }
     }
   }
-  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · nur verifizierte Token + persistente LP-Historie; keine Vollsuche über historische Spam-/Airdrop-Contracts`;
+  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert; LP-/Staking-Historie wird wiederverwendet`;
   taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
