@@ -1,4 +1,4 @@
-// Phase 6.85 · 30.09.2026 01:11:09 CEST: 31.12.-ESTV nur fuer echte 31.12.-Stichtage mit vorhandenem ESTV-USD/CHF-Jahreskurs; fehlende ESTV-Daten blockieren Berechnung statt stille Null-/Leerpreise zu erzeugen. Performance: Stichtagsblock je User+Chain+Epoch persistent in Supabase gecacht und pro Lauf vorab geladen; Apertum/LP-/Preis-Memos werden pro exaktem Recompute kontrolliert wiederverwendet. Build 20260930-011109.
+// Phase 6.86 · 30.09.2026 01:38:13 CEST: 31.12.-Performance fuer neue benachbarte Stichtage: vorhandene historische Kandidaten-/Balance-Caches werden inkrementell weiterverwendet; nur ERC-20-Aktivitaet seit dem naechsten aelteren Cacheblock wird gelesen, unveraenderte Tokenbestaende werden ohne erneuten Explorer-/RPC-Balancecheck uebernommen. Build 20260930-013813.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt mit Copy; Preisfelder USD/CHF dynamisch nach Groessenordnung (bis 8 Dezimalstellen), Positions-/Gesamtwerte weiter 2 Dezimalstellen. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter Supabase-Cache fuer exakte historische Wallet/Chain/Asset/Block-Balances und ERC-20-Kandidaten. Wiederholte Stichtage verwenden Cache statt Explorer/RPC; neue Cachewerte werden gebuendelt geschrieben. Build 20260930-003245.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
@@ -1258,6 +1258,10 @@ const taxRoutescanUnavailable = new Set();
 // mehrere Berechnungen innerhalb derselben Browser-Session beschleunigen.
 const taxHistoricalErc20CandidateCache = new Map();
 const taxHistoricalTokenBalanceCache = new Map();
+// Phase 6.86: fuer benachbarte neue Stichtage wird nur noch die ERC-20-Aktivitaet
+// seit dem naechsten bereits persistent gecachten Stichtag gelesen. Unveraenderte
+// Tokenbestaende koennen dadurch exakt vom aelteren Block uebernommen werden.
+const taxHistoricalErc20IntervalCache = new Map();
 
 // Phase 6.82: persistenter technischer Cache fuer exakte historische Balance-/
 // Kandidaten-Abfragen. Der fertige Steuerbericht bleibt weiterhin in
@@ -1276,8 +1280,9 @@ function taxHistoricalCandidateMapKey(chain,walletAddress,block){
 }
 async function taxLoadPersistentHistoricalCaches(chain,block,walletRefs){
   const addresses=[...new Set((walletRefs||[]).map(r=>String(r.address||'').toLowerCase()).filter(Boolean))];
-  const balances=new Map(),candidates=new Map();
-  if(!currentUser?.id||!addresses.length)return {balances,candidates,balanceWrites:[],candidateWrites:[],hits:0,misses:0};
+  const balances=new Map(),candidates=new Map(),priorCandidates=new Map(),priorBalances=new Map(),intervalTouched=new Map();
+  const ctx={balances,candidates,priorCandidates,priorBalances,intervalTouched,balanceWrites:[],candidateWrites:[],hits:0,misses:0,reused:0,intervalQueries:0};
+  if(!currentUser?.id||!addresses.length)return ctx;
   try{
     const {data,error}=await sb.from('historical_token_balance_cache')
       .select('wallet_id,wallet_address,asset_key,amount,decimals,balance_source')
@@ -1299,7 +1304,39 @@ async function taxLoadPersistentHistoricalCaches(chain,block,walletRefs){
       candidates.set(key,list.map(a=>normalizeAddress(a,chain)).filter(Boolean));
     }
   }catch(e){console.warn('Historischen Kandidaten-Cache laden',chain,e);}
-  return {balances,candidates,balanceWrites:[],candidateWrites:[],hits:0,misses:0};
+
+  // Fuer Wallets ohne exakten Kandidaten-Cache den naechsten aelteren persistenten
+  // Stichtag bestimmen. Damit kann ein neuer, spaeterer Stichtag inkrementell aufgebaut
+  // werden, statt die komplette Transferhistorie erneut ab Genesis zu lesen.
+  const needPrior=addresses.filter(a=>!candidates.has(taxHistoricalCandidateMapKey(chain,a,block)));
+  if(needPrior.length){
+    try{
+      const {data,error}=await sb.from('historical_token_candidate_cache')
+        .select('wallet_id,wallet_address,block_number,token_addresses,discovery_source')
+        .eq('user_id',currentUser.id).eq('chain_key',chain).lt('block_number',Number(block)).in('wallet_address',needPrior)
+        .order('block_number',{ascending:false}).limit(Math.max(100,needPrior.length*20));
+      if(error)throw error;
+      for(const row of (data||[])){
+        const wa=String(row.wallet_address||'').toLowerCase();
+        if(priorCandidates.has(wa))continue;
+        const list=Array.isArray(row.token_addresses)?row.token_addresses:[];
+        priorCandidates.set(wa,{block:Number(row.block_number),tokens:list.map(a=>normalizeAddress(a,chain)).filter(Boolean),source:row.discovery_source||null});
+      }
+      const priorBlocks=[...new Set([...priorCandidates.values()].map(x=>Number(x.block)).filter(Number.isFinite))];
+      if(priorBlocks.length){
+        const {data:bdata,error:berror}=await sb.from('historical_token_balance_cache')
+          .select('wallet_id,wallet_address,asset_key,block_number,amount,decimals,balance_source')
+          .eq('user_id',currentUser.id).eq('chain_key',chain).in('block_number',priorBlocks).in('wallet_address',needPrior);
+        if(berror)throw berror;
+        for(const row of (bdata||[])){
+          const wa=String(row.wallet_address||'').toLowerCase(),prior=priorCandidates.get(wa);
+          if(!prior||Number(row.block_number)!==Number(prior.block))continue;
+          priorBalances.set(`${wa}|${taxHistoricalAssetKey(chain,row.asset_key)}`,{amount:Number(row.amount||0),decimals:row.decimals==null?null:Number(row.decimals),source:row.balance_source||'Supabase historischer Balance-Cache',block:Number(row.block_number)});
+        }
+      }
+    }catch(e){console.warn('Benachbarten historischen Cache laden',chain,e);}
+  }
+  return ctx;
 }
 async function taxFlushPersistentHistoricalCaches(ctx){
   if(!currentUser?.id||!ctx)return;
@@ -1466,6 +1503,17 @@ async function taxEvmTokenBalance(chain,address,token,block,persistCtx=null,wall
     taxHistoricalTokenBalanceCache.set(cacheKey,hit);
     return {...hit};
   }
+  const walletKey=String(address||'').toLowerCase();
+  const prior=persistCtx?.priorCandidates?.get(walletKey);
+  const touched=persistCtx?.intervalTouched?.get(walletKey);
+  const priorBalance=persistCtx?.priorBalances?.get(`${walletKey}|${tokenAddress}`);
+  if(prior&&touched&&priorBalance&&Number(priorBalance.block)===Number(prior.block)&&Number(prior.block)<Number(block)&&!touched.has(tokenAddress)){
+    const reused={amount:Number(priorBalance.amount||0),decimals:priorBalance.decimals,source:`Supabase historischer Balance-Cache · unveraendert seit Block ${prior.block}`};
+    persistCtx.hits++;persistCtx.reused=(persistCtx.reused||0)+1;
+    taxHistoricalTokenBalanceCache.set(cacheKey,reused);
+    taxRememberPersistentBalance(persistCtx,{walletId,walletAddress:address,chain,block,asset:tokenAddress,amount:reused.amount,decimals:reused.decimals,source:reused.source});
+    return {...reused};
+  }
   if(persistCtx)persistCtx.misses++;
   const decimals=await taxTokenDecimalsCurrent(chain,token);
   let result;
@@ -1497,6 +1545,46 @@ async function taxEvmTokenBalance(chain,address,token,block,persistCtx=null,wall
   return {...result};
 }
 
+async function historicalErc20ActivityBetween(chain,address,fromBlock,toBlock,{strict=false}={}){
+  const from=Math.max(0,Number(fromBlock||0)),to=Number(toBlock||0);
+  if(!Number.isFinite(to)||from>to)return [];
+  const cacheKey=`${chain}|${String(address).toLowerCase()}|${from}|${to}`;
+  if(taxHistoricalErc20IntervalCache.has(cacheKey))return [...taxHistoricalErc20IntervalCache.get(cacheKey)];
+  const found=new Set();
+  try{
+    if(CHAIN_CONFIG[chain]?.discoveryProvider==='alchemy'){
+      for(const direction of ['fromAddress','toAddress']){
+        let pageKey=null,pages=0;
+        do{
+          const q={fromBlock:taxBlockHex(from),toBlock:taxBlockHex(to),category:['erc20'],withMetadata:false,excludeZeroValue:false,maxCount:'0x3e8'};
+          q[direction]=address;if(pageKey)q.pageKey=pageKey;
+          const r=await alchemyRpc(chain,'alchemy_getAssetTransfers',[q],'discovery');
+          for(const t of (r?.transfers||[])){const a=t.rawContract?.address;if(a&&/^0x[0-9a-f]{40}$/i.test(a))found.add(normalizeAddress(a,chain));}
+          pageKey=r?.pageKey||null;pages++;
+        }while(pageKey&&pages<50);
+      }
+    }else{
+      const base=String(CHAIN_CONFIG[chain]?.discoveryApiBase||CHAIN_CONFIG[chain]?.balanceApiBase||'').replace(/\/$/,'');
+      if(base){
+        let url=`${base}/addresses/${address}/token-transfers?type=ERC-20`,pages=0,done=false;
+        while(url&&!done&&pages++<80){
+          const res=await fetch(url);if(!res.ok){if(strict)throw new Error(`Historische Token-Aktivitaet HTTP ${res.status}`);break;}
+          const j=await res.json(),items=j.items||[];
+          let oldest=Infinity;
+          for(const t of items){
+            const bn=Number(t.block_number||0);if(Number.isFinite(bn)&&bn>0)oldest=Math.min(oldest,bn);
+            if(bn<from||bn>to)continue;
+            const a=t.token?.address;if(a&&/^0x[0-9a-f]{40}$/i.test(a))found.add(normalizeAddress(a,chain));
+          }
+          if(oldest<from)done=true;
+          const np=j.next_page_params;url=!done&&np?`${base}/addresses/${address}/token-transfers?type=ERC-20&${new URLSearchParams(np)}`:null;
+        }
+      }
+    }
+  }catch(e){if(strict)throw e;console.warn('Historische Token-Aktivitaet Intervall',chain,e);}
+  const out=[...found];taxHistoricalErc20IntervalCache.set(cacheKey,out);return [...out];
+}
+
 async function historicalErc20Candidates(chain,address,targetBlock=null,{strict=false,persistCtx=null,walletId=null}={}){
   // Nur EVM-Chains: Tron/Solana verwenden eigene Discovery-Wege.
   if (!CHAIN_CONFIG[chain]?.evmChainId) return [];
@@ -1507,6 +1595,20 @@ async function historicalErc20Candidates(chain,address,targetBlock=null,{strict=
     const hit=[...persistCtx.candidates.get(persistentKey)];
     taxHistoricalErc20CandidateCache.set(cacheKey,hit);
     return hit;
+  }
+  const walletKey=String(address||'').toLowerCase();
+  const prior=persistCtx?.priorCandidates?.get(walletKey);
+  if(targetBlock!=null&&prior&&Number(prior.block)<Number(targetBlock)){
+    try{
+      const touched=await historicalErc20ActivityBetween(chain,address,Number(prior.block)+1,Number(targetBlock),{strict});
+      const touchedSet=new Set(touched.map(a=>normalizeAddress(a,chain)));
+      persistCtx.intervalTouched.set(walletKey,touchedSet);
+      persistCtx.intervalQueries=(persistCtx.intervalQueries||0)+1;
+      const result=[...new Set([...(prior.tokens||[]),...touched].map(a=>normalizeAddress(a,chain)).filter(Boolean))];
+      if(cacheKey)taxHistoricalErc20CandidateCache.set(cacheKey,result);
+      taxRememberPersistentCandidates(persistCtx,{walletId,walletAddress:address,chain,block:targetBlock,addresses:result,source:`inkrementell ab Block ${prior.block}`});
+      return [...result];
+    }catch(e){if(strict)throw e;console.warn('Historische Token-Kandidaten inkrementell',chain,e);}
   }
   const found=new Set();
   // Alchemy: Transferhistorie findet auch vollständig verkaufte Token/LPs.
@@ -1995,7 +2097,8 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     }
   }
   await taxFlushPersistentHistoricalCaches(persistCtx);
-  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu; LP-/Staking-Historie ${lpHistoryByProject.size?"gebündelt vorab geladen":"cacheweise geladen"}; Preis-/Pair-Grundlagen pro Stichtagsblock memoisiert`;
+  const neighborNote=(persistCtx.intervalQueries||persistCtx.reused)?` · Nachbar-Stichtag ${persistCtx.intervalQueries||0} Intervall-Scan(s), ${persistCtx.reused||0} Balance(n) unverändert übernommen`:"";
+  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu${neighborNote}; LP-/Staking-Historie ${lpHistoryByProject.size?"gebündelt vorab geladen":"cacheweise geladen"}; Preis-/Pair-Grundlagen pro Stichtagsblock memoisiert`;
   taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · persistenter Supabase-Cache → kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
