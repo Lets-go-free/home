@@ -1482,6 +1482,13 @@ body.wt-modal-open{overflow:hidden}
 @media(max-width:820px){.sidebar-collapse-btn{display:none}.app-shell.sidebar-collapsed{--sidebar-w:180px}.app-shell.sidebar-collapsed .sidebar-brand-text,.app-shell.sidebar-collapsed .main-nav-btn>span{display:initial}.app-shell.sidebar-collapsed .main-nav-btn{font-size:inherit;justify-content:flex-start}}
 
 .wt-global-data-status{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 10px;padding:7px 10px;font-size:.92rem;color:var(--muted);border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.wt-global-refresh-wrap{flex:0 0 100%;width:100%;margin-top:1px}
+.wt-refresh-details{margin:0;padding-top:5px;border-top:1px solid color-mix(in srgb,var(--border) 72%,transparent);color:var(--muted);font-size:.84rem}
+.wt-refresh-details>summary,.wt-wallet-freshness>summary{cursor:pointer;user-select:none;color:var(--muted);font-size:.84rem;font-weight:600}
+.wt-refresh-details .note,.wt-wallet-freshness .note{font-size:.82rem;color:var(--muted)}
+.wt-wallet-freshness{margin-top:7px;color:var(--muted)}
+.wt-wallet-freshness .chain-table-wrap{margin-top:7px}
+
 
 /* Release Phase 4.94 · 18.09.2026 13:06:01 CEST · Build 20260918-130601 */
 

@@ -1,3 +1,4 @@
+// Phase 6.73 · 29.09.2026 13:41:24 CEST: doppelten Daten-/Preisstatus im Wallet-Bestand entfernt; Datenaktualisierung samt eingeklapptem Wallet-Datenstand in den globalen Statusrahmen verschoben und visuell als sekundäre graue Statusinfo vereinheitlicht. Build 20260929-134124.
 // Phase 6.71 · 29.09.2026 13:20:32 CEST: DeFi-Projekte ins Dashboard verschoben; CoinGecko-Preisquellen-Audit: nur erforderliche IDs, 403/429-Circuit-Breaker statt Wiederholschleifen, stale-while-refresh bleibt erhalten und Teilfehler werden im Preisstatus sichtbar. Build 20260929-132032.
 // Phase 6.70 · 29.09.2026 13:12:21 CEST: 31.12.-PDF blendet interne Prüfdetails standardmäßig aus; optional per Checkbox einblendbar. Gesamtwert und Chain-Summary bleiben immer enthalten. Build 20260929-131221.
 // Phase 6.68 · 28.09.2026 19:21:53 CEST: Refresh-/Button-Audit abgeschlossen: Dashboard-„Daten aktualisieren“ erzwingt auch DAO1/APTMDAO Delta-Sync; täglicher DAO-Lauf nutzt frisch geladene NFT-Current-State-Caches ohne Doppelabruf; technische DAO-NFT-/Reprice-Reparaturaktionen nur Admin. Build 20260928-192153.
@@ -181,12 +182,12 @@ function toggleUiTheme(){applyUiTheme(document.documentElement.dataset.theme==="
 window.toggleUiTheme=toggleUiTheme;
 
 const MAIN_SECTION_TABS={
-  dashboard:["dashboard","projects-overview","tracking","tax"],
+  dashboard:["dashboard","projects-overview","tlnvow","dao1","tracking","tax"],
   wallets:["wallets"],
   tokens:["predefined","custom","discovery"],
   analysis:["fees","nfts","approvals"],
   support:["chat","help","account-data"],
-  admin:["admin"], projects:["tlnvow","dao1"]
+  admin:["admin"]
 };
 function mainSectionForTab(name){
   for(const [section,tabs] of Object.entries(MAIN_SECTION_TABS)) if(tabs.includes(name)) return section;
@@ -5357,7 +5358,7 @@ function walletDataFreshnessMarkup(){
     const proj=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow')),nft=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
     return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${escapeAttr(fmtState(newest))}</td><td>${w.evm?escapeAttr(fmtState(proj,requiredDataVersion('bsc','project:tln_vow'))):'–'}</td><td>${escapeAttr(fmtState(nft,requiredDataVersion('','nft')))}</td></tr>`;
   }).join('');
-  return `<details class="wt-wallet-freshness" style="margin-top:10px"><summary style="cursor:pointer;font-weight:700;user-select:none">Datenstand pro Wallet</summary><div class="note" style="margin:9px 0 8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></details>`;
+  return `<details class="wt-wallet-freshness"><summary>Datenstand pro Wallet</summary><div class="note" style="margin:9px 0 8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></details>`;
 }
 function renderCentralRefreshProgress(lines=[],options={}){
   const el=document.getElementById('centralRefreshProgress');if(!el)return;
@@ -5365,8 +5366,8 @@ function renderCentralRefreshProgress(lines=[],options={}){
   const collapsed=options.collapsed===true;
   const finished=options.finished===true;
   const summary=finished?'Datenaktualisierung · abgeschlossen':'Datenaktualisierung · läuft…';
-  el.innerHTML=`<details class="custom-token-card" ${collapsed?'':'open'}>
-    <summary style="cursor:pointer;font-weight:700;user-select:none">${summary}</summary>
+  el.innerHTML=`<details class="wt-refresh-details" ${collapsed?'':'open'}>
+    <summary>${summary}</summary>
     ${lines.length?`<div class="note" style="margin-top:9px">${lines.map(x=>escapeAttr(x)).join('<br>')}</div>`:''}
     <div class="wt-wallet-freshness-slot">${walletDataFreshnessMarkup()}</div>
   </details>`;

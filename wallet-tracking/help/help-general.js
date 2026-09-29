@@ -1,3 +1,4 @@
+// Phase 6.73 · 29.09.2026 13:41:24 CEST: Daten-/Preisstatus nur noch einmal im globalen Statusrahmen; Aktualisierungsdetails und Wallet-Datenstand dort kompakt eingeklappt. Build 20260929-134124.
 // Phase 6.71 · 29.09.2026 13:20:32 CEST: DeFi-Projekte als Dashboard-Tab; aktueller globaler Preisjob gegen CoinGecko 403/429 gehaertet: keine Retry-Schleife, letzter gueltiger Snapshot bleibt sichtbar. Build 20260929-132032.
 // Phase 6.70 · 29.09.2026 13:12:21 CEST: Hilfe dokumentiert optionale Prüfdetails im 31.12.-PDF. Build 20260929-131221.
 // Phase 6.68 · 28.09.2026 19:21:53 CEST: zentraler Dashboard-Refresh umfasst nun auch DAO1/APTMDAO Delta-Daten; technische DAO-Reparaturbuttons nur Admin, täglicher Lauf vermeidet doppelten Apertum-NFT-Liveabruf. Build 20260928-192153.
