@@ -1,3 +1,4 @@
+// Phase 6.74 · 29.09.2026 15:25:57 CEST: Persistente Projekt-Auswahl TLN/VOW | DAO1 bleibt auch innerhalb der DAO1-Projektseite sichtbar. Build 20260929-152557.
 // Phase 6.68 · 28.09.2026 19:21:53 CEST: zentraler Dashboard-Refresh kann DAO1/APTMDAO Delta-Sync erzwingen; frisch zentral geladener Apertum-NFT-Current-State wird wiederverwendet; NFT-Ownership-Repair und historische Reprice-Aktion nur Admin. Build 20260928-192153.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: DAO1/APTMDAO Transaktionen/Flows/Claims/Referral-Rewards und Teamgraph werden beim ersten aktiven Start pro Tag inkrementell nachgeführt; manuelle Transaktions-/Team-Force-Buttons nur Admin. Build 20260928-133530.
 // Phase 6.34 · 27.09.2026 03:45:02 CEST: P8 Auth-Gate: apertum-nft-history prüft aktive Session vor dem Edge-Aufruf; fehlende Session stoppt den Request und meldet zentralen Re-Login-Zustand statt 401-Kaskade. Build 20260927-034502.
@@ -341,6 +342,7 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
+        <div class="project-context-switch" aria-label="Projekt auswählen"><span class="field-label">Projekt</span><button type="button" class="tab-btn" id="tlnVowProjectSwitchBtnDao" onclick="showTab('tlnvow')">TLN / VOW</button><button type="button" class="tab-btn active" id="dao1ProjectSwitchBtnDao" onclick="showTab('dao1')">DAO1</button></div>
         <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('team',this)">Team</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
         <div id="dao1-subtab-claims" class="project-subtab-panel" style="display:none"><div id="dao1ClaimsContent"></div></div>
@@ -457,6 +459,8 @@ window.DAO1Project = (() => {
     const visible = hasProjectAsset();
     const btn = document.getElementById("dao1TabBtn");
     if (btn) btn.style.display = visible ? "inline-block" : "none";
+    const persistentBtn=document.getElementById("dao1ProjectSwitchBtn");if(persistentBtn)persistentBtn.style.display=visible?"inline-block":"none";
+    const persistentBtnDao=document.getElementById("dao1ProjectSwitchBtnDao");if(persistentBtnDao)persistentBtnDao.style.display=visible?"inline-block":"none";
     window.updateDefiProjectsNavGroupVisibility?.();
     const panel = document.getElementById("tab-dao1");
     if (!visible && panel?.classList.contains("active")) window.showTab?.("tracking");

@@ -1612,3 +1612,7 @@ body.wt-modal-open{overflow:hidden}
 :root[data-theme="dark"] .wt-team-details-modal .project-data-table tbody tr:hover td {
   background:#20314b!important;
 }
+
+/* Phase 6.74 · persistente Projekt-Auswahl innerhalb der Projektseiten */
+.project-context-switch{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.project-context-switch .field-label{margin-right:4px;color:var(--muted);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em}

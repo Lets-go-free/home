@@ -1,3 +1,4 @@
+// Phase 6.74 · 29.09.2026 15:25:57 CEST: TLN/VOW-Staking-Principal bleibt Vermögen bis zum tatsächlichen Unstake – Vertragsende allein beendet Eigentum nicht. Cache-only Bridge liefert offene PCLP/LPT-Positionen für Wallet-Bestand/Dashboard und historischen 31.12.-Stichtag; persistente Projekt-Navigation ergänzt. Build 20260929-152557.
 // Phase 6.61 · 28.09.2026 12:16:20 CEST: Team-Leerzustand trennt User- und Admin-Sicht. Normale User sehen bei fehlendem Slice keine internen Cache-/Step-7-/Fullscan-Hinweise, sondern einen fachlichen Hinweis auf den vorhandenen Team-Datenstand; Admins sehen die technische Diagnose weiterhin. Build 20260928-121620.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-Wallet Reward-Status ans Dashboard angebunden; kontrollierte Erst-Discovery meldet loading/complete/unknown und bleibt auf Steps 1–6 ohne Team-/Step-7-Vollscan begrenzt. Build 20260928-111745.
 // Phase 6.58 · 28.09.2026 04:23:01 CEST: Reward-Summary-UI bereinigt. Technische Cache-/Human-Units-Texte aus Staking-, Referral- und Bonus-Summaries entfernt. Reward-Tx-Anzahl wird aus vorhandenen Detaildaten ergänzt, aber nur wenn der Detail-Scope vollständig ist; bei partiellen Fresh-User-Daten bleibt sie bewusst offen statt eine unvollständige Zahl vorzutäuschen. Build 20260928-042301.
@@ -22,7 +23,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260928-121620';
+const BUILD_ID='20260929-152557';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -220,7 +221,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='28.09.2026 11:46:14 CEST';
+const APP_VERSION='29.09.2026 15:25:57 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4153,7 +4154,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   discoveryResults:'discovery-results-v1',
   dashboardRewardSummary:'dashboard-reward-summary-v2',
   globalOnchainDetail:'global-onchain-detail-v2',
-  snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
+  snapshotValuation:'snapshot-valuation-v5-unstake-ownership',
   teamLifecycle:'team-lifecycle-v9-partial-lifecycle-persist',
   teamLifecycleQueue:'team-lifecycle-queue-v1',
   teamContractHistory:'team-contract-history-v1',
@@ -18117,12 +18118,9 @@ function snapshotCutoffForYear(year){
 function snapshotPrincipalAt(lot,cutoffMs){
   const stakeMs=Date.parse(lot?.stakeTime||'');
   if(!Number.isFinite(stakeMs)||stakeMs>cutoffMs)return {amount:0,contributed:0,unstaked:0,reason:'Erst-Stake liegt nach dem Stichtag'};
-  // Stichtag uses the same normalized lifecycle as the staking card:
-  // top-ups belong to the parent position and cannot survive its common contractual end.
-  const contractualEndMs=Date.parse(lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime||'');
-  if(Number.isFinite(contractualEndMs)&&contractualEndMs<=cutoffMs){
-    return {amount:0,contributed:0,unstaked:0,reason:'gemeinsames Vertragsende der Position liegt vor/am Stichtag'};
-  }
+  // Eigentumsregel 6.74: Ein Vertrags-/Lock-Ende beendet NICHT den wirtschaftlichen
+  // Besitz der PCLP/LPT. Solange kein tatsächlicher Unstake bis zum Stichtag belegt ist,
+  // bleibt der Principal vollständig Vermögen. Das Vertragsende ist nur Lifecycle-/Freigabeinfo.
   const topUps=Array.isArray(lot?.topUps)?lot.topUps:[];
   const allTopUpAmount=topUps.reduce((sum,x)=>sum+Math.max(0,Number(x?.amount||0)),0);
   const initial=Math.max(0,Number(lot?.original||0)-allTopUpAmount);
@@ -18144,7 +18142,7 @@ function snapshotPrincipalAt(lot,cutoffMs){
   const exitMs=Date.parse(lot?.unstakeTime||'');
   if(lot?.status==='closed'&&Number.isFinite(exitMs)&&exitMs<=cutoffMs&&unstaked<=1e-12)unstaked=contributed;
   const amount=Math.max(0,Math.min(contributed,contributed-unstaked));
-  return {amount,contributed,unstaked,reason:amount>1e-12?'am Stichtag wirtschaftlich gebunden':'am Stichtag nicht mehr offen'};
+  return {amount,contributed,unstaked,reason:amount>1e-12?'am Stichtag noch gehalten (aktiv oder freigegeben, aber nicht unstaked)':'vor/am Stichtag tatsächlich unstaked'};
 }
 function snapshotUnderlyingText(lot,val){
   if(!val)return '–';
@@ -18965,6 +18963,90 @@ async function loadDashboardRewardPeriodsCacheOnly(walletAddresses=null){
   return {...merged,diagnostic:{wallets:own.length,covered:covered.size,coveredWallets:[...covered],missing:missingWallets.length,missingWallets,privateSnapshots:directEntries.filter(([,p])=>p?.kind==='verified_discovery_results').length,globalSummaries:summaryParts.length,edgeBackfills}};
 }
 
+
+async function loadOwnedDiscoveryPayloadsCacheOnly(){
+  const ctx=dashboardContextGetter?.()||{};
+  const client=ctx.sb||sb;
+  const uid=ctx.currentUser?.id||null;
+  const own=(ctx.wallets||[]).filter(w=>w?.isOwnWallet!==false).map(w=>({
+    wallet:norm(w?.evm||w?.evm_address||''),walletId:String(w?.dbId||w?.id||'')
+  })).filter(x=>/^0x[0-9a-f]{40}$/.test(x.wallet));
+  const out=new Map();
+  if(!client||!own.length)return out;
+  const byId=new Map(own.filter(x=>x.walletId).map(x=>[x.walletId,x.wallet]));
+  if(uid&&byId.size){
+    try{
+      const {data,error}=await client.from(STAKING_SCAN_CACHE_TABLE)
+        .select('wallet_id,scanner_version,payload').eq('user_id',uid).eq('chain_key','bsc')
+        .eq('cache_key',TECH_CACHE_KEYS.discoveryResults).in('wallet_id',[...byId.keys()]);
+      if(error)throw error;
+      for(const row of (data||[])){
+        if(row?.scanner_version!==TECH_CACHE_VERSIONS.discoveryResults||row?.payload?.kind!=='verified_discovery_results')continue;
+        const wallet=byId.get(String(row.wallet_id||''));
+        if(wallet&&norm(row.payload.wallet||wallet)===wallet)out.set(wallet,row.payload);
+      }
+    }catch(e){console.warn('TLN/VOW Staking-Principal privater Cache',e);}
+  }
+  const missing=own.map(x=>x.wallet).filter(w=>!out.has(w));
+  for(let i=0;i<missing.length;i+=50){
+    const chunk=missing.slice(i,i+50);
+    try{
+      const {data,error}=await client.from(TLN_GLOBAL_TECH_CACHE_TABLE)
+        .select('scope_address,scanner_version,payload').eq('chain_key','bsc')
+        .eq('cache_key',TECH_CACHE_KEYS.globalOnchainDetail).in('scope_address',chunk);
+      if(error)throw error;
+      for(const row of (data||[])){
+        if(![TECH_CACHE_VERSIONS.globalOnchainDetail,'global-onchain-detail-v1'].includes(String(row?.scanner_version||'')))continue;
+        const wallet=norm(row?.scope_address||row?.payload?.wallet||'');
+        if(!chunk.includes(wallet))continue;
+        const payload=projectPayloadFromGlobalOnchainDetail(row?.payload,wallet);
+        if(payload)out.set(wallet,payload);
+      }
+    }catch(e){console.warn('TLN/VOW Staking-Principal globaler Cache',e);}
+  }
+  return out;
+}
+function stakingPositionExportRow(wallet,lot,amount,reason){
+  const pair=lot?.pair||lot?.p||{};
+  const address=norm(safePairAddress(lot)||lot?.pair_address||pair?.address||'');
+  if(!ethers.isAddress(address)||!(Number(amount)>1e-12))return null;
+  const decimals=Number.isFinite(Number(pair?.decimals))?Number(pair.decimals):18;
+  const symbol=String(pair?.symbol||lot?.pair_symbol||lot?.staking_asset_symbol||'PCLP').trim()||'PCLP';
+  return {
+    wallet:norm(wallet),pairAddress:address,symbol,decimals,amount:Number(amount),reason:reason||null,
+    status:lot?.status||'open',expiryTime:lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime||null,
+    unstakeTime:lot?.unstakeTime||null,stakingContract:lot?.staking?.contract_address||lot?.counterparty||null,
+    token0:{address:pair?.token0?.address||pair?.t0?.address||null,symbol:pair?.token0?.symbol||pair?.t0?.symbol||'Token0',decimals:Number(pair?.token0?.decimals??pair?.t0?.decimals??18)},
+    token1:{address:pair?.token1?.address||pair?.t1?.address||null,symbol:pair?.token1?.symbol||pair?.t1?.symbol||'Token1',decimals:Number(pair?.token1?.decimals??pair?.t1?.decimals??18)}
+  };
+}
+async function loadOwnedStakingPositionsCacheOnly(options={}){
+  const payloads=await loadOwnedDiscoveryPayloadsCacheOnly();
+  const cutoffIso=options?.cutoffIso||null,cutoffMs=cutoffIso?Date.parse(cutoffIso):null;
+  const rows=[];
+  for(const [wallet,payload] of payloads){
+    for(const lot of (payload?.process?.lots||[])){
+      let principal;
+      if(Number.isFinite(cutoffMs)) principal=snapshotPrincipalAt(lot,cutoffMs);
+      else {
+        const actualClosed=lot?.status==='closed' || (lot?.unstakeTime && Number(lot?.remaining||0)<=1e-12);
+        principal={amount:actualClosed?0:Math.max(0,Number(lot?.remaining||0)),reason:actualClosed?'tatsächlich unstaked':'aktuell noch gehalten'};
+      }
+      const row=stakingPositionExportRow(wallet,lot,principal.amount,principal.reason);
+      if(row)rows.push(row);
+    }
+  }
+  // Mehrere Lots desselben PCLP/LPT pro Wallet werden wirtschaftlich aggregiert.
+  const grouped=new Map();
+  for(const r of rows){
+    const key=`${r.wallet}|${r.pairAddress}`;
+    const cur=grouped.get(key);
+    if(cur){cur.amount+=r.amount;cur.reason='mehrere offene Lots aggregiert';}
+    else grouped.set(key,{...r});
+  }
+  return [...grouped.values()];
+}
+
 function dashboardOwnEvmWallets(){
   const ctx=dashboardContextGetter?.();
   return [...new Set((ctx?.wallets||[]).filter(w=>w?.isOwnWallet!==false).map(w=>norm(w?.evm||w?.evm_address||'')).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
@@ -19050,6 +19132,7 @@ window.TLNVOWDiscovery={
   renderProjectAdminContractRegistry,
   getLoanRows:()=>loanEngine?.getRows?.()||[],
   refreshLoans:()=>initCentralLoanEngine().discover({force:false}),
+  loadOwnedStakingPositionsCacheOnly,
   getBuildId:()=>BUILD_ID,
   getVersion:()=>APP_VERSION
 };

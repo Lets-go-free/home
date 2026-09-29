@@ -1,3 +1,4 @@
+// Phase 6.74 · 29.09.2026 15:25:57 CEST: Staking-Principal projektübergreifend gehärtet: TLN/VOW und DAO1-LP bleiben bis zum tatsächlichen Unstake Vermögen – aktuell und per 31.12. zum historischen LP-Stichtagspreis. DAO1-Staking wird aus verifiziertem Staking-Contract-Katalog klassifiziert, täglich im zentralen Refresh nachgeführt; persistente Projekt-Navigation bleibt enthalten. Build 20260929-152557.
 // Phase 6.73 · 29.09.2026 13:41:24 CEST: doppelten Daten-/Preisstatus im Wallet-Bestand entfernt; Datenaktualisierung samt eingeklapptem Wallet-Datenstand in den globalen Statusrahmen verschoben und visuell als sekundäre graue Statusinfo vereinheitlicht. Build 20260929-134124.
 // Phase 6.71 · 29.09.2026 13:20:32 CEST: DeFi-Projekte ins Dashboard verschoben; CoinGecko-Preisquellen-Audit: nur erforderliche IDs, 403/429-Circuit-Breaker statt Wiederholschleifen, stale-while-refresh bleibt erhalten und Teilfehler werden im Preisstatus sichtbar. Build 20260929-132032.
 // Phase 6.70 · 29.09.2026 13:12:21 CEST: 31.12.-PDF blendet interne Prüfdetails standardmäßig aus; optional per Checkbox einblendbar. Gesamtwert und Chain-Summary bleiben immer enthalten. Build 20260929-131221.
@@ -864,7 +865,7 @@ async function onLoggedIn(session) {
 
   if (window.TLNVOWDiscovery?.configure) {
     window.TLNVOWDiscovery.configure({
-      getContext: () => ({ currentUser, wallets, tokenFormat: window.WalletTokenFormat })
+      getContext: () => ({ sb, currentUser, wallets, tokenFormat: window.WalletTokenFormat })
     });
   }
 
@@ -923,6 +924,12 @@ async function onLoggedIn(session) {
   // Cache-first: Beim Start ausschliesslich den gespeicherten Preisstand laden.
   // APIs, Pool-RPC und TLN-Infrastruktur werden nur durch die manuelle Preisaktualisierung gestartet.
   await loadCachedCurrentPricesAtStart().catch(e=>console.warn("Gespeicherter Preisstand:",e));
+  // Cache-only Staking-Bridge: verifizierte TLN/VOW-PCLP/LPT bleiben auch dann Vermögen,
+  // wenn sie im Staking-Contract liegen und deshalb im normalen Wallet-Balance-Scan fehlen.
+  // Kein Chain-Scan; ausschließlich persistente Discovery-/Positionscaches.
+  await mergeTlnBscStakingCacheIntoWalletData().catch(e=>console.warn("TLN/VOW Staking-Principal Start:",e));
+  await mergeProjectStakingCacheIntoWalletData("dao1","apertum").catch(e=>console.warn("DAO1 Staking-Principal Start:",e));
+  renderResults();renderAllocationChart();renderDashboard();
   // Zentrale NFT-Current-State-Registry beim App-Start aus Supabase restaurieren. Alle Verbraucher
   // (NFT-Tab, DAO-Team, Dashboard/Alerts) sehen damit denselben Bestand, ohne dass
   // der NFT-Tab zuerst geöffnet werden muss. Historische Ersterwerbs-/Kaufpreisarbeit bleibt getrennt.
@@ -1594,12 +1601,16 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   let verified=0,errors=0,priceMissing=0;
   for(let wi=0;wi<ws.length;wi++){
     const w=ws[wi],address=walletAddressForChain(w,chain);
-    // Für BSC/TLN/VOW gelten auch per Legacy-Discovery bestätigte historische LPs
-    // als Projekt-LPs. Sie müssen am Steuerstichtag um gestakte LP-Mengen ergänzt werden,
-    // selbst wenn die LP-Adresse heute nicht mehr als lp_token in predefined_tokens steht.
-    let tlnBscHistoryPairs=new Set();
-    if(chain==="bsc"&&window.WalletLPEngine){
-      try{const ev=await window.WalletLPEngine.loadHistory("tln_vow",chain,address);tlnBscHistoryPairs=new Set((ev||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean));}catch{}
+    // Projekt-LP-Staking gehört am Stichtag zum Vermögen, solange kein tatsächlicher
+    // Unstake erfolgt ist. Neben der heutigen lp_token-Klassifikation werden deshalb
+    // auch bereits verifizierte historische LP-History-Paare berücksichtigt.
+    const stakingHistoryPairs=new Map();
+    if(window.WalletLPEngine){
+      const projectsForChain=chain==="bsc"?["tln_vow"]:(chain==="apertum"?["dao1"]:[]);
+      for(const projectKey of projectsForChain){
+        try{const ev=await window.WalletLPEngine.loadHistory(projectKey,chain,address);stakingHistoryPairs.set(projectKey,new Set((ev||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean)));}
+        catch{stakingHistoryPairs.set(projectKey,new Set());}
+      }
     }
     taxSetStatus("loading",`${CHAIN_META[chain]?.label||chain}: ${w.label}…`,`Block ${bi.block} · Wallet ${wi+1}/${ws.length}`);
     try{
@@ -1617,16 +1628,22 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     for(const token of tokens){
       try{
         const b=await taxEvmTokenBalance(chain,address,token,bi.block);
-        const tk=chain+"|"+normalizeAddress(token.address,chain);
-        const isTlnBscLp=chain==="bsc"&&((predefinedTokenProject[tk]==="tln_vow"&&predefinedTokenCategory[tk]==="lp_token")||tlnBscHistoryPairs.has(normalizeAddress(token.address,chain)));
-        const stakedLp=isTlnBscLp?await taxCachedStakedLp("tln_vow",chain,address,token.address,new Date(targetEpoch*1000).toISOString()):0;
+        const tokenAddress=normalizeAddress(token.address,chain),tk=chain+"|"+tokenAddress;
+        const configuredProject=predefinedTokenCategory[tk]==="lp_token"?predefinedTokenProject[tk]:null;
+        let stakingProject=null;
+        for(const [projectKey,pairs] of stakingHistoryPairs){
+          if((configuredProject===projectKey)||pairs.has(tokenAddress)){stakingProject=projectKey;break;}
+        }
+        const stakedLp=stakingProject?await taxCachedStakedLp(stakingProject,chain,address,token.address,new Date(targetEpoch*1000).toISOString()):0;
         const economicAmount=Number(b.amount||0)+Number(stakedLp||0);
         if(economicAmount>0){
           const hp=await taxHistoricalPrice(chain,token,dateStr,bi.block);
           if(!hp)priceMissing++;
+          const projectLabel=stakingProject==="tln_vow"?"TLN/VOW":stakingProject==="dao1"?"DAO1":stakingProject;
           taxRows.push({wallet:w.label,wallet_address:address,chain,block:bi.block,block_timestamp:targetEpoch,asset:token.address,
             symbol:token.symbol,amount:economicAmount,decimals:b.decimals,price_usd:hp?.price??null,value_usd:hp?economicAmount*hp.price:null,
-            price_source:hp?.source||null,status:"verifiziert",balance_source:isTlnBscLp&&stakedLp>0?`${b.source} + TLN/VOW Staking-Cache (${stakedLp} LP gestakt)`:b.source});
+            price_source:hp?.source||null,status:"verifiziert",balance_source:stakingProject&&stakedLp>0?`${b.source} + ${projectLabel} Staking-Cache (${stakedLp} LP gestakt)`:b.source,
+            _tlnGenericStakedAmount:stakingProject==="tln_vow"?Number(stakedLp||0):0,_genericStakedProject:stakingProject||null,_trustedStakingAsset:stakedLp>0});
           verified++;
         }
       }catch(e){
@@ -1776,6 +1793,60 @@ function renderTaxCoverage(){
     </tbody></table></div></div>`;
 }
 
+
+async function appendTlnStakingToTaxSnapshot(selectedWallets,targetEpoch,dateStr){
+  if(!window.TLNVOWDiscovery?.loadOwnedStakingPositionsCacheOnly)return {positions:0,valued:0};
+  const cutoffIso=new Date(Number(targetEpoch)*1000).toISOString();
+  let positions=[];
+  try{positions=await window.TLNVOWDiscovery.loadOwnedStakingPositionsCacheOnly({cutoffIso});}
+  catch(e){console.warn('31.12. TLN/VOW Staking-Principal Cache',e);return {positions:0,valued:0,error:e};}
+  if(!positions.length)return {positions:0,valued:0};
+  const allowed=new Map((selectedWallets||[]).map(w=>[normalizeAddress(walletAddressForChain(w,'bsc')||'','bsc'),w]).filter(([a])=>a));
+  const relevant=positions.filter(p=>allowed.has(normalizeAddress(p.wallet,'bsc'))&&Number(p.amount)>DUST_THRESHOLD);
+  if(!relevant.length)return {positions:0,valued:0};
+  let block=taxRows.find(r=>r.chain==='bsc'&&r.block!=null)?.block||null;
+  if(block==null){try{block=(await taxEvmBlockByTime('bsc',targetEpoch)).block;}catch(e){console.warn('31.12. TLN/VOW Stichtagsblock',e);}}
+  let valued=0;
+  for(const pos of relevant){
+    const w=allowed.get(normalizeAddress(pos.wallet,'bsc'));if(!w)continue;
+    const asset=normalizeAddress(pos.pairAddress,'bsc');if(!asset)continue;
+    const key='bsc|'+asset;
+    const token={address:asset,symbol:predefinedTokenSymbols[key]||pos.symbol||'PCLP',decimals:Number(predefinedTokenDecimals[key]??pos.decimals??18),coingeckoId:predefinedTokenCoinGeckoIds[key]||null};
+    let hp=null;
+    if(block!=null){
+      try{
+        hp=await taxHistoricalPrice('bsc',token,dateStr,block);
+        // Legacy-PCLP/LPT kann im heutigen predefined-Stand fehlen. Für einen verifizierten
+        // Staking-Principal bleibt die LP-Adresse selbst aber die historische Preisquelle.
+        if(!hp)hp=await taxV2LpHistoricalPrice('bsc',token,block,dateStr);
+      }catch(e){console.warn('31.12. TLN/VOW PCLP-Preis',token.symbol,e);}
+    }
+    if(hp?.price!=null)valued++;
+    const walletAddress=walletAddressForChain(w,'bsc');
+    const existing=taxRows.find(r=>r.status==='verifiziert'&&r.chain==='bsc'&&normalizeAddress(r.wallet_address,'bsc')===normalizeAddress(walletAddress,'bsc')&&normalizeAddress(r.asset,'bsc')===asset);
+    if(existing){
+      // taxEvmChain kann denselben LP-Principal bereits über den generischen LP-History-Cache
+      // ergänzt haben. Der verifizierte TLN/VOW-Lifecycle ist die fachliche Quelle: wir
+      // ersetzen deshalb den generischen Staking-Anteil statt ihn nochmals zu addieren.
+      const genericStaked=Number(existing._tlnGenericStakedAmount||0);
+      const walletHeld=Math.max(0,Number(existing.amount||0)-genericStaked);
+      existing.amount=walletHeld+Number(pos.amount||0);
+      existing._tlnGenericStakedAmount=Number(pos.amount||0);
+      if(hp?.price!=null){existing.price_usd=hp.price;existing.value_usd=existing.amount*hp.price;existing.price_source=hp.source;}
+      else if(existing.price_usd!=null)existing.value_usd=existing.amount*Number(existing.price_usd);
+      existing.balance_source=[String(existing.balance_source||'').replace(/\s*\+\s*TLN\/VOW Staking-Cache \([^)]*\)/g,''),'TLN/VOW Staking-Principal · bis tatsächlicher Unstake Eigentum'].filter(Boolean).join(' + ');
+      existing._trustedStakingAsset=true;
+    }else{
+      taxRows.push({wallet:w.label,wallet_address:walletAddress,chain:'bsc',asset,symbol:token.symbol,amount:Number(pos.amount),decimals:token.decimals,block,
+        price_usd:hp?.price??null,value_usd:hp?.price!=null?Number(pos.amount)*hp.price:null,price_source:hp?.source||null,status:'verifiziert',
+        balance_source:'TLN/VOW Staking-Principal · aktiv oder freigegeben, aber am Stichtag noch nicht unstaked',_trustedStakingAsset:true});
+    }
+  }
+  const cov=taxCoverage.find(c=>c.chain==='bsc');
+  if(cov&&relevant.length){cov.detail=`${cov.detail||''}${cov.detail?' · ':''}${relevant.length} TLN/VOW-Staking-Principal-Position(en) inkl. aktiv/abgelaufen-offen`};
+  return {positions:relevant.length,valued};
+}
+
 async function runTaxSnapshot(){
   const btn=document.getElementById("taxRunBtn");
   await ensureDiscoveryCacheLoaded().catch(e=>console.warn("31.12. Spam-Klassifikation laden",e));
@@ -1809,6 +1880,11 @@ async function runTaxSnapshot(){
       await taxXrpChain(chain,selectedWallets,targetEpoch,date);
     }
     await taxSolanaChains(selectedWallets,targetEpoch,date);
+    // Projekt-LP-Staking wird bereits in taxEvmChain aus der LP-/Staking-Historie ergänzt.
+    // TLN/VOW besitzt zusätzlich einen verifizierten Discovery-Lifecycle für Legacy-/Proxy-
+    // Stakings; dieser überschreibt nur den generischen Staking-Anteil und verhindert
+    // Doppelzählung. Vertrags-/Lock-Ende allein beendet den Vermögensbestand nie.
+    await appendTlnStakingToTaxSnapshot(selectedWallets,targetEpoch,date);
 
     taxRemoveUserMarkedSpamRows();
     if(taxIsEstvMode())await loadTaxEstvContext(date);
@@ -3395,7 +3471,7 @@ function isUserMarkedSpamToken(address, chain) {
 }
 
 function taxRemoveUserMarkedSpamRows() {
-  taxRows = (taxRows || []).filter(r => r?.asset === "native" || !isUserMarkedSpamToken(r?.asset, r?.chain));
+  taxRows = (taxRows || []).filter(r => r?._trustedStakingAsset===true || /TLN\/VOW Staking-Principal/i.test(String(r?.balance_source||"")) || r?.asset === "native" || !isUserMarkedSpamToken(r?.asset, r?.chain));
 }
 
 // Kleine Token-/Stammdatenänderungen dürfen keinen globalen loadAll() starten.
@@ -4498,6 +4574,7 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
 
   await timed("Summen",async()=>{
     await mergeTlnBscStakingCacheIntoWalletData().catch(e=>wtReportAsyncIssue("partial","TLN/BSC Staking-Cache Merge",e,{context:"fresh-wallet-sums"}));
+    await mergeProjectStakingCacheIntoWalletData("dao1","apertum").catch(e=>wtReportAsyncIssue("partial","DAO1/Apertum Staking-Cache Merge",e,{context:"fresh-wallet-sums"}));
     renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
   });
   // Audit P2 / Snapshot-Gate: Ein automatischer Fresh-Build-Snapshot ist ein
@@ -5264,10 +5341,38 @@ async function mergeTlnBscStakingCacheIntoWalletData(){
     try{batchByWallet=await window.WalletLPEngine.loadPositionCacheBatch(projectKey,chain,targets.map(x=>x.wa));}
     catch(e){console.warn("TLN/VOW Staking-Cache Batch",e);}
   }
+  // Fachlicher Fallback 6.74: Die detaillierte TLN/VOW-Discovery kennt den echten
+  // Lifecycle auch bei Legacy-/Proxy-Stakings, die der generische LP-Transfer-Classifier
+  // nicht immer erkennt. Ein offener Principal bleibt bis zum realen Unstake Vermögen;
+  // ein abgelaufenes Vertragsende allein darf ihn nicht auf 0 setzen.
+  let verifiedPositions=[];
+  try{verifiedPositions=await window.TLNVOWDiscovery?.loadOwnedStakingPositionsCacheOnly?.()||[];}
+  catch(e){console.warn("TLN/VOW verifizierter Staking-Principal",e);}
+  const verifiedByWallet=new Map();
+  for(const pos of verifiedPositions){const w=normalizeAddress(pos.wallet,chain);if(!verifiedByWallet.has(w))verifiedByWallet.set(w,[]);verifiedByWallet.get(w).push(pos);}
+
   for(const {w,wa} of targets){
     let cached=[];
-    try{cached=batchByWallet?.get(normalizeAddress(wa,chain))||(!batchByWallet?await window.WalletLPEngine.loadPositionCache(projectKey,chain,wa):[]);}
+    try{cached=[...(batchByWallet?.get(normalizeAddress(wa,chain))||(!batchByWallet?await window.WalletLPEngine.loadPositionCache(projectKey,chain,wa):[]))];}
     catch(e){console.warn("TLN/VOW Staking-Cache",w.label,e);continue;}
+    const byPair=new Map(cached.map(c=>[normalizeAddress(c.pair_address,chain),c]));
+    for(const pos of (verifiedByWallet.get(normalizeAddress(wa,chain))||[])){
+      const addr=normalizeAddress(pos.pairAddress,chain);if(!addr)continue;
+      const existing=byPair.get(addr);
+      if(existing){
+        const oldStaked=Number(existing.current_staked_lp||0),walletLp=Number(existing.current_wallet_lp||0),verified=Number(pos.amount||0);
+        if(Math.abs(oldStaked-verified)>DUST_THRESHOLD){existing.current_staked_lp=verified;existing.current_lp=walletLp+verified;existing.current_usd=null;}
+        existing._trustedStakingAsset=true;
+        existing._verifiedLifecycleSource='tln_discovery';
+      }else{
+        const synthetic={project_key:projectKey,chain_key:chain,wallet_id:walletDbId(w),wallet_address:wa,pair_address:addr,lp_label:pos.symbol||'PCLP',
+          token0_address:pos.token0?.address||null,token0_symbol:pos.token0?.symbol||'Token0',token0_decimals:Number(pos.token0?.decimals||18),
+          token1_address:pos.token1?.address||null,token1_symbol:pos.token1?.symbol||'Token1',token1_decimals:Number(pos.token1?.decimals||18),
+          current_wallet_lp:0,current_staked_lp:Number(pos.amount||0),current_lp:Number(pos.amount||0),current_amount0:0,current_amount1:0,current_share:0,current_usd:null,
+          _trustedStakingAsset:true,_verifiedLifecycleSource:'tln_discovery'};
+        cached.push(synthetic);byPair.set(addr,synthetic);
+      }
+    }
     if(!walletData[w.id]?.[chain])walletData[w.id][chain]={native:null,nativeSymbol:CHAIN_META[chain]?.nativeSymbol||"BNB",tokens:[]};
     const cd=walletData[w.id][chain];if(cd.error)continue;cd.tokens=cd.tokens||[];
     for(const c of cached||[]){
@@ -5276,10 +5381,42 @@ async function mergeTlnBscStakingCacheIntoWalletData(){
       let t=cd.tokens.find(x=>normalizeAddress(x.address,chain)===addr);
       if(!t){t={symbol:predefinedTokenSymbols[key]||c.lp_label||"PCLP",address:addr,amount:0};cd.tokens.push(t);}
       const walletOnly=Number(t._walletOnlyAmount??t.amount??0);t._walletOnlyAmount=walletOnly;t.stakingAmount=staked;t.amount=walletOnly+staked;
-      t.lpInfo={lpLabel:c.lp_label||"PCLP",t0:{address:c.token0_address,symbol:c.token0_symbol||"Token0",decimals:Number(c.token0_decimals||18)},t1:{address:c.token1_address,symbol:c.token1_symbol||"Token1",decimals:Number(c.token1_decimals||18)},balance:t.amount,walletBalance:walletOnly,stakedBalance:staked,amount0:Number(c.current_amount0||0),amount1:Number(c.current_amount1||0),share:Number(c.current_share||0),usd:c.current_usd==null?null:Number(c.current_usd)};
+      if(c._trustedStakingAsset)t._trustedStakingAsset=true;
+      t.lpInfo={lpLabel:c.lp_label||"PCLP",t0:{address:c.token0_address,symbol:c.token0_symbol||"Token0",decimals:Number(c.token0_decimals||18)},t1:{address:c.token1_address,symbol:c.token1_symbol||"Token1",decimals:Number(c.token1_decimals||18)},balance:t.amount,walletBalance:walletOnly,stakedBalance:staked,amount0:Number(c.current_amount0||0),amount1:Number(c.current_amount1||0),share:Number(c.current_share||0),usd:c.current_usd==null?null:Number(c.current_usd),lifecycleSource:c._verifiedLifecycleSource||null};
     }
   }
 }
+
+
+async function mergeProjectStakingCacheIntoWalletData(projectKey,chain){
+  if(!window.WalletLPEngine)return;
+  const targets=wallets.map(w=>({w,wa:walletAddressForChain(w,chain)})).filter(x=>x.wa);
+  if(!targets.length)return;
+  let batchByWallet=null;
+  if(window.WalletLPEngine.loadPositionCacheBatch){
+    try{batchByWallet=await window.WalletLPEngine.loadPositionCacheBatch(projectKey,chain,targets.map(x=>x.wa));}
+    catch(e){console.warn(`${projectKey}/${chain} Staking-Cache Batch`,e);}
+  }
+  for(const {w,wa} of targets){
+    let cached=[];
+    try{cached=[...(batchByWallet?.get(normalizeAddress(wa,chain))||(!batchByWallet?await window.WalletLPEngine.loadPositionCache(projectKey,chain,wa):[]))];}
+    catch(e){console.warn(`${projectKey}/${chain} Staking-Cache`,w.label,e);continue;}
+    if(!walletData[w.id]?.[chain])walletData[w.id][chain]={native:null,nativeSymbol:CHAIN_META[chain]?.nativeSymbol||chain.toUpperCase(),tokens:[]};
+    const cd=walletData[w.id][chain];if(cd.error)continue;cd.tokens=cd.tokens||[];
+    for(const c of cached){
+      const staked=Number(c.current_staked_lp||0),addr=normalizeAddress(c.pair_address,chain),key=chain+"|"+addr;
+      let t=cd.tokens.find(x=>normalizeAddress(x.address,chain)===addr);
+      if(!t&&staked<=DUST_THRESHOLD)continue;
+      if(!t){t={symbol:predefinedTokenSymbols[key]||c.lp_label||window.WalletLPEngine.label(chain),address:addr,amount:0};cd.tokens.push(t);}
+      const walletOnly=Number(t._walletOnlyAmount??c.current_wallet_lp??t.amount??0);
+      t._walletOnlyAmount=walletOnly;t.stakingAmount=Math.max(0,staked);t.amount=walletOnly+Math.max(0,staked);
+      if(staked>DUST_THRESHOLD)t._trustedStakingAsset=true;
+      else {delete t._trustedStakingAsset;if(t.amount<=DUST_THRESHOLD){t.lpInfo=null;continue;}}
+      t.lpInfo={lpLabel:c.lp_label||window.WalletLPEngine.label(chain),t0:{address:c.token0_address,symbol:c.token0_symbol||'Token0',decimals:Number(c.token0_decimals||18)},t1:{address:c.token1_address,symbol:c.token1_symbol||'Token1',decimals:Number(c.token1_decimals||18)},balance:t.amount,walletBalance:walletOnly,stakedBalance:Math.max(0,staked),amount0:Number(c.current_amount0||0),amount1:Number(c.current_amount1||0),share:Number(c.current_share||0),usd:c.current_usd==null?null:Number(c.current_usd),lifecycleSource:`${projectKey}_lp_history`};
+    }
+  }
+}
+
 
 
 // ---- Zentraler Refresh-/Activity-Status (Phase 2au) ----
@@ -5292,7 +5429,10 @@ let walletRefreshStates = new Map();
 const DATA_VERSIONS = Object.freeze({
   balances: 1,
   nft: 1,
-  "project:tln_vow:bsc": 7
+  "project:tln_vow:bsc": 7,
+  // DAO1/Apertum LP-Historie v3 klassifiziert verifizierte Staking-Gegenstellen
+  // projektübergreifend und muss bestehende send/receive-Caches einmal neu prüfen.
+  "project:dao1:apertum": 3
 });
 function requiredDataVersion(chain,dataType){
   return Number(DATA_VERSIONS[`${dataType}:${chain}`] ?? DATA_VERSIONS[dataType] ?? 1);
@@ -5474,6 +5614,13 @@ async function loadAllCore(options = {}) {
         try{progress.push('  TLN/VOW: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'tln_vow','bsc');walletChanged=true;}catch(e){failures.push({ok:false,error:`${w.label} TLN/VOW: ${e.message}`});}
       }else await saveWalletRefreshState(w,'bsc','project:tln_vow',{last_checked_at:new Date().toISOString(),last_refreshed_at:ps?.last_refreshed_at||null,last_result:'no_relevant_activity'});
     }
+    if(walletAddressForChain(w,'apertum')&&(!automatic||needsDataRebuild(w,'apertum','project:dao1')||!refreshedToday(w,'apertum','project:dao1'))){
+      const ps=walletRefreshStates.get(refreshStateKey(walletDbId(w),'apertum','project:dao1'));
+      const forceProjectRebuild=needsDataRebuild(w,'apertum','project:dao1');
+      if(!automatic||forceProjectRebuild||changedChains.has('apertum')||!ps?.last_checked_at){
+        try{progress.push('  DAO1: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'dao1','apertum');walletChanged=true;}catch(e){failures.push({ok:false,error:`${w.label} DAO1 LP/Staking: ${e.message}`});}
+      }else await saveWalletRefreshState(w,'apertum','project:dao1',{last_checked_at:new Date().toISOString(),last_refreshed_at:ps?.last_refreshed_at||null,last_result:'no_relevant_activity'});
+    }
     // NFTs als letzter zentraler Current-State-Prozess pro Wallet. Die allgemeine Token-Discovery läuft nur bei neu erfassten Wallets einmal automatisch; Gebühren bleiben bewusst manuell.
     if(!automatic||!refreshedToday(w,'','nft')){
       const ns=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
@@ -5484,7 +5631,10 @@ async function loadAllCore(options = {}) {
   }
   // LP-/Staking-Cache in die Tokenübersicht einmischen und aktuelle LP-Werte für Wallet-LPs bewerten.
   if(window.WalletLPEngine){for(const w of wallets){for(const chain of Object.keys(walletData[w.id]||{})){const cd=walletData[w.id]?.[chain];if(!cd?.tokens||!w.evm)continue;for(const t of cd.tokens){try{const p=await window.WalletLPEngine.pairInfo(chain,t.address);if(!p)continue;const pos=(await window.WalletLPEngine.positions(chain,w.evm,[t.address]))[0];if(pos)t.lpInfo=pos;}catch{}}}}}
-  await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();
+  await mergeTlnBscStakingCacheIntoWalletData();
+  await mergeProjectStakingCacheIntoWalletData("dao1","apertum");
+  await loadDashboardLpPositionCache().catch(e=>console.warn("Dashboard LP-Positionscache nach Refresh",e));
+  renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();
   if(failures.length===0){
     await createSnapshot(true);
     renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');
@@ -5601,7 +5751,7 @@ function chainRows(chainData, chainKey) {
     });
   }
   (chainData.tokens || []).forEach(t => {
-    const safe = isSafeTokenAddress(t.address, chainKey);
+    const safe = isSafeTokenAddress(t.address, chainKey) || t._trustedStakingAsset===true;
     if (t.amount >= DUST_THRESHOLD && safe) {
       const p = priceForToken(chainKey, t.address);
       rows.push({
@@ -5783,7 +5933,9 @@ function dashboardPortfolio(targetWallets){
           // Der kanonische Stammdaten-Key ist <chain>|native; unbekannte native Coins
           // bleiben wie bisher ausserhalb einer Projekt-Kachel.
           const projectAssetKey=row.isNative?`${chain}|native`:(row.address?`${chain}|${normalizeAddress(row.address,chain)}`:null);
-          const projectKey=projectAssetKey?predefinedTokenProject[projectAssetKey]:null;
+          // Verifizierter TLN/VOW-Staking-Principal ist auch dann dem Projekt zuzuordnen,
+          // wenn ein Legacy-PCLP/LPT nicht mehr als aktueller predefined lp_token geführt wird.
+          const projectKey=(projectAssetKey?predefinedTokenProject[projectAssetKey]:null) || (chain==='bsc'&&row.lpInfo?.lifecycleSource==='tln_discovery'?'tln_vow':null);
           if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0};if(Number.isFinite(usdValue)){p.valueUsd+=usdValue;p.freeUsd+=Math.max(0,usdValue-rowBound);}p.boundUsd+=rowBound;p.assets++;projects.set(projectKey,p);}
         }
       }
@@ -6653,6 +6805,8 @@ function updateTlnVowTabVisibility() {
   const visible = hasTlnVowTokenInSummary();
 
   if (btn) btn.style.display = visible ? "inline-block" : "none";
+  const persistentBtn=document.getElementById("tlnVowProjectSwitchBtn");if(persistentBtn)persistentBtn.style.display=visible?"inline-block":"none";
+  const persistentBtnDao=document.getElementById("tlnVowProjectSwitchBtnDao");if(persistentBtnDao)persistentBtnDao.style.display=visible?"inline-block":"none";
   updateDefiProjectsNavGroupVisibility();
 
   // Falls der User gerade im Projekt-Tab ist und der letzte passende Bestand
@@ -6840,15 +6994,43 @@ function lpPairBelongsToProject(pair,chain,projectKey){
   return predefinedTokenProject[k0]===projectKey||predefinedTokenProject[k1]===projectKey;
 }
 
+function projectLpClassifiedOnly(projectKey,chain){
+  return (projectKey==="tln_vow"&&["bsc","eth"].includes(chain)) || (projectKey==="dao1"&&chain==="apertum");
+}
 function projectLpScanType(projectKey,chain){
-  const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
-  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v7_legacy_discovery":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
+  const classifiedOnly=projectLpClassifiedOnly(projectKey,chain);
+  if(projectKey==="tln_vow"&&chain==="bsc")return "lp_history_v7_legacy_discovery";
+  if(projectKey==="dao1"&&chain==="apertum")return "lp_history_v3_staking_classified";
+  return classifiedOnly?"lp_history_v3_classified":"lp_history_v2";
 }
 
 async function syncProjectLpHistory(projectKey,chain,walletAddress){
   if(!window.WalletLPEngine)return {events:[],scanned:0,newEvents:0,pairs:[]};
-  const engine=window.WalletLPEngine,cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>[]);
-  const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
+  const engine=window.WalletLPEngine;let cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>[]);
+  // Bestehende generische send/receive-Ereignisse einmal gegen den verifizierten
+  // Staking-Contract-Katalog neu klassifizieren. Das ist für DAO1 wichtig, weil die
+  // alte Engine Staking absichtlich nur für TLN/VOW/BSC aktiviert hatte.
+  if(window.WalletStakingEngine&&cached.length){
+    let changed=false;
+    for(const e of cached){
+      if(!["send","receive"].includes(String(e?.event_type||""))||!e?.counterparty)continue;
+      try{
+        const direction=Number(e.lp_delta||0)<0?"out":"in";
+        const classified=await window.WalletStakingEngine.classifyTransfer(projectKey,chain,direction,e.counterparty,e.pair_address);
+        if(!["stake","unstake"].includes(classified?.eventType))continue;
+        const patch={event_type:classified.eventType,staking_contract:classified.staking?.contract_address||e.counterparty,staking_label:classified.staking?.label||null,updated_at:new Date().toISOString()};
+        if(currentUser?.id){
+          let q=sb.from("lp_history_events").update(patch).eq("user_id",currentUser.id);
+          if(e.id)q=q.eq("id",e.id);
+          else q=q.eq("project_key",projectKey).eq("chain_key",chain).eq("wallet_id",e.wallet_id).eq("pair_address",e.pair_address).eq("tx_hash",e.tx_hash).eq("event_type",e.event_type);
+          const {error}=await q;if(error)throw error;
+        }
+        Object.assign(e,patch);changed=true;
+      }catch(err){console.warn("LP-History Staking-Reklassifikation",projectKey,chain,e?.tx_hash,err);}
+    }
+    if(changed)cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>cached);
+  }
+  const classifiedOnly=projectLpClassifiedOnly(projectKey,chain);
   const legacyDiscovery=projectKey==="tln_vow"&&chain==="bsc";
   const configuredPairs=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):[];
   const projectUnderlying=new Set(projectUnderlyingTokenAddresses(projectKey,chain));
@@ -6930,10 +7112,16 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
 }
 
 const projectLpWalletFilters={};
-window.setProjectLpWalletFilter=function(targetId,value){projectLpWalletFilters[targetId]=value||'all';const chain=targetId.includes('Eth')?'eth':'bsc';return renderProjectLpTab('tln_vow',[chain],targetId,'2025-12-31',false);};
+const projectLpContexts={};
+window.setProjectLpWalletFilter=function(targetId,value){
+  projectLpWalletFilters[targetId]=value||'all';
+  const ctx=projectLpContexts[targetId]||{projectKey:'tln_vow',chains:[targetId.includes('Eth')?'eth':'bsc'],dateStr:'2025-12-31'};
+  return renderProjectLpTab(ctx.projectKey,ctx.chains,targetId,ctx.dateStr||'2025-12-31',false);
+};
 
 async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31",refresh=false,options={}){
   const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
+  projectLpContexts[targetId]={projectKey,chains:[...(chains||[])],dateStr};
   const chainArg=chains.length===1?chains[0]:"";
   const refreshButton=`<button class="secondary" style="margin-top:10px" onclick="refreshProjectLpData('${projectKey}','${chainArg}','${targetId}')">Daten aktualisieren</button>`;
   // Der Button wird absichtlich VOR allen asynchronen Arbeiten gerendert. Beim normalen
@@ -6943,6 +7131,12 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const scopeWallets=options.walletId?wallets.filter(w=>walletDbId(w)===String(options.walletId)):wallets;
   const rows=[],history=[],scanStatuses=[];let cacheNew=0,cacheErrors=[],cacheWarnings=[],latestCacheRefresh=null;
   const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);
+  const verifiedTlnCurrentByWallet=new Map(),verifiedTlnHistoricalByWallet=new Map();
+  const addVerified=(map,pos)=>{const w=normalizeAddress(pos?.wallet||'',"bsc"),a=normalizeAddress(pos?.pairAddress||'',"bsc");if(!w||!a)return;if(!map.has(w))map.set(w,new Map());map.get(w).set(a,pos);};
+  if(projectKey==="tln_vow"&&chains.includes("bsc")&&window.TLNVOWDiscovery?.loadOwnedStakingPositionsCacheOnly){
+    try{for(const pos of await window.TLNVOWDiscovery.loadOwnedStakingPositionsCacheOnly())addVerified(verifiedTlnCurrentByWallet,pos);}catch(e){cacheWarnings.push(`TLN/VOW Staking-Principal-Cache aktuell: ${e?.message||e}`);}
+    try{for(const pos of await window.TLNVOWDiscovery.loadOwnedStakingPositionsCacheOnly({cutoffIso:new Date(dateStr+'T23:59:59+01:00').toISOString()}))addVerified(verifiedTlnHistoricalByWallet,pos);}catch(e){cacheWarnings.push(`TLN/VOW Staking-Principal-Cache ${dateStr}: ${e?.message||e}`);}
+  }
 
   for(const chain of chains){
     // Wichtig: Stichtagsblock nur bei explizitem Refresh bestimmen. Das war der versteckte
@@ -6962,8 +7156,17 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
             window.WalletLPEngine.loadPositionCache(projectKey,chain,wa)
           ]);
           sync.events=events||[];
+          const effectivePosRows=[...(posRows||[])];
+          if(projectKey==="tln_vow"&&chain==="bsc"){
+            const byPair=new Map(effectivePosRows.map(c=>[normalizeAddress(c.pair_address,chain),c]));
+            for(const pos of (verifiedTlnCurrentByWallet.get(normalizeAddress(wa,chain))?.values()||[])){
+              const a=normalizeAddress(pos.pairAddress,chain),existing=byPair.get(a);
+              if(existing){const walletLp=Number(existing.current_wallet_lp||0),oldStaked=Number(existing.current_staked_lp||0),verified=Number(pos.amount||0);existing.current_staked_lp=verified;existing.current_lp=walletLp+verified;if(Math.abs(oldStaked-verified)>DUST_THRESHOLD)existing.current_usd=null;existing._trustedStakingAsset=true;}
+              else{const synthetic={pair_address:a,lp_label:pos.symbol||'PCLP',token0_address:pos.token0?.address||null,token0_symbol:pos.token0?.symbol||'Token0',token0_decimals:Number(pos.token0?.decimals||18),token1_address:pos.token1?.address||null,token1_symbol:pos.token1?.symbol||'Token1',token1_decimals:Number(pos.token1?.decimals||18),current_wallet_lp:0,current_staked_lp:Number(pos.amount||0),current_lp:Number(pos.amount||0),current_amount0:0,current_amount1:0,current_share:0,current_usd:null,snapshot_date:dateStr,snapshot_wallet_lp:0,snapshot_staked_lp:Number(verifiedTlnHistoricalByWallet.get(normalizeAddress(wa,chain))?.get(a)?.amount||0),snapshot_lp:Number(verifiedTlnHistoricalByWallet.get(normalizeAddress(wa,chain))?.get(a)?.amount||0),snapshot_usd:null,_trustedStakingAsset:true};effectivePosRows.push(synthetic);byPair.set(a,synthetic);}
+            }
+          }
           const cachedPairSet=new Set();
-          for(const c of (posRows||[])){
+          for(const c of effectivePosRows){
             const pairAddress=normalizeAddress(c.pair_address,chain);cachedPairSet.add(pairAddress);
             const refreshed=c.refreshed_at?new Date(c.refreshed_at):null;if(refreshed&&(!latestCacheRefresh||refreshed>latestCacheRefresh))latestCacheRefresh=refreshed;
             rows.push({
@@ -6993,7 +7196,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
       }else{
         try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;if(sync.warning)cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${sync.warning}`);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
 
-        const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
+        const classifiedOnly=projectLpClassifiedOnly(projectKey,chain);
         const currentCandidates=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);
         const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].filter(Boolean).map(a=>normalizeAddress(a,chain)));
         const walletPositionCache=[];
@@ -7005,11 +7208,13 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
           let walletCur=null,walletCurBal=0;
           if(fullPair){try{walletCur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;walletCurBal=Number(walletCur?.balance||0);}catch{}}
           else if(window.WalletLPEngine.balance){try{walletCurBal=Number(await window.WalletLPEngine.balance(chain,pair,wa)||0);}catch{}}
-          const stakedCur=(projectKey==="tln_vow"&&chain==="bsc"&&window.WalletStakingEngine)?window.WalletStakingEngine.stakeBalanceAt(sync.events,a):0;
+          const genericStakedCur=window.WalletStakingEngine?window.WalletStakingEngine.stakeBalanceAt(sync.events,a):0;
+          const verifiedStakedCur=projectKey==="tln_vow"&&chain==="bsc"?Number(verifiedTlnCurrentByWallet.get(normalizeAddress(wa,chain))?.get(a)?.amount||0):0;
+          const stakedCur=Math.max(Number(genericStakedCur||0),verifiedStakedCur);
           const economicCurBal=walletCurBal+Number(stakedCur||0);
           let cur=null;if(economicCurBal>DUST_THRESHOLD&&fullPair){try{cur={...fullPair,...await window.WalletLPEngine.valuePosition(chain,fullPair,economicCurBal),walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0)};}catch{cur=walletCur?{...walletCur,walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0),balance:economicCurBal}:null;}}
           if(!cur&&economicCurBal>DUST_THRESHOLD)cur={balance:economicCurBal,walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0),amount0:0,amount1:0,share:0,usd:null,valuationUnavailable:true};
-          let histWalletBal=0,histStakedBal=0,histBal=0,histPrice=null,histUsd=null;if(block){try{histWalletBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;histStakedBal=(projectKey==="tln_vow"&&chain==="bsc"&&window.WalletStakingEngine)?window.WalletStakingEngine.stakeBalanceAt(sync.events,a,new Date(dateStr+'T23:59:59Z')):0;histBal=Number(histWalletBal||0)+Number(histStakedBal||0);if(histBal>DUST_THRESHOLD){histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);histUsd=histPrice?.price!=null?histBal*histPrice.price:null;}}catch(e){console.warn('LP historisch',chain,a,e);}}
+          let histWalletBal=0,histStakedBal=0,histBal=0,histPrice=null,histUsd=null;if(block){try{histWalletBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;{const genericHist=window.WalletStakingEngine?window.WalletStakingEngine.stakeBalanceAt(sync.events,a,new Date(dateStr+'T23:59:59Z')):0;const verifiedHist=projectKey==="tln_vow"&&chain==="bsc"?Number(verifiedTlnHistoricalByWallet.get(normalizeAddress(wa,chain))?.get(a)?.amount||0):0;histStakedBal=Math.max(Number(genericHist||0),verifiedHist);}histBal=Number(histWalletBal||0)+Number(histStakedBal||0);if(histBal>DUST_THRESHOLD){histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);histUsd=histPrice?.price!=null?histBal*histPrice.price:null;}}catch(e){console.warn('LP historisch',chain,a,e);}}
           if(cur||histBal>DUST_THRESHOLD||sync.events.some(e=>normalizeAddress(e.pair_address,chain)===a)){
             rows.push({chain,w,pair,cur,histBal,histWalletBal,histStakedBal,histPrice,histUsd});
             walletPositionCache.push({pair_address:pair.address,lp_label:window.WalletLPEngine.label(chain),token0_address:pair.t0.address,token0_symbol:pair.t0.symbol,token0_decimals:pair.t0.decimals,token1_address:pair.t1.address,token1_symbol:pair.t1.symbol,token1_decimals:pair.t1.decimals,current_wallet_lp:walletCurBal,current_staked_lp:Number(stakedCur||0),current_lp:economicCurBal,current_amount0:cur?.amount0||0,current_amount1:cur?.amount1||0,current_share:cur?.share||0,current_usd:cur?.usd??null,snapshot_date:dateStr,snapshot_wallet_lp:histWalletBal,snapshot_staked_lp:histStakedBal,snapshot_lp:histBal||0,snapshot_usd:histUsd});
@@ -7058,12 +7263,13 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const actionBadge=e=>['add','stake','receive'].includes(e.event_type)?'safe':['remove','unstake'].includes(e.event_type)?'danger':'';
   const historyTable=`<h3 class="lp-section-title">LP-/Staking-Historie</h3><div class="chain-table-wrap lp-history-scroll${projectLpWrapClass}"><table class="lp-history-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Aktion</th><th>Pool</th><th>Gegenstelle / Staking</th><th>LP Δ</th><th>Wallet-LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td><span class="badge ${actionBadge(e)}">${escapeAttr(actionLabel(e))}</span></td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta lp-address">${escapeAttr(e.pair_address||'')}</div></td><td>${e.staking_label?`<strong>${escapeAttr(e.staking_label)}</strong><div class="meta lp-address">${escapeAttr(e.staking_contract||e.counterparty||'')}</div>`:`<div class="meta lp-address">${escapeAttr(e.counterparty||'–')}</div>`}</td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta,{chain:e.chain,address:e.pair_address,symbol:e.lp_label||window.WalletLPEngine.label(e.chain)})}</td><td>${f(e.running_balance,{chain:e.chain,address:e.pair_address,symbol:e.lp_label||window.WalletLPEngine.label(e.chain)})}</td><td><div>${f(e.amount0,{chain:e.chain,address:e.token0_address,symbol:e.token0_symbol})} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1,{chain:e.chain,address:e.token1_address,symbol:e.token1_symbol})} ${escapeAttr(e.token1_symbol||'')}</div></td><td><strong>${u(e.value_usd)}</strong>${e.price_source?`<div class="meta lp-price-source">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine LP-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
 
-  const stakingLots=(projectKey==="tln_vow"&&chains.includes("bsc")&&window.WalletStakingEngine)?scopeWallets.flatMap(w=>window.WalletStakingEngine.buildLots(displayHistory.filter(e=>e.chain==="bsc"&&e.w?.id===w.id)).map(l=>({...l,w}))):[];
-  const stakingTable=projectKey==="tln_vow"&&chains.includes("bsc")?`<h3 class="lp-section-title">Staking-Positionen</h3><div class="note" style="margin-bottom:8px">Jeder Stake bleibt als eigenes Lot sichtbar. Unstakes reduzieren die offenen Lots chronologisch (FIFO). Eine Lock-Dauer wird nur angezeigt, wenn sie im Staking-Contract-Katalog verifiziert hinterlegt ist.</div><div class="chain-table-wrap lp-table-scroll project-data-table"><table class="lp-staking-table"><thead><tr><th>Wallet</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>Stake-Datum</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th></tr></thead><tbody>${stakingLots.length?stakingLots.slice().reverse().map(l=>`<tr><td>${escapeAttr(l.w?.label||'')}</td><td class="meta lp-address">${escapeAttr(l.pair_address||'')}</td><td><strong>${escapeAttr(l.staking_label||window.WalletStakingEngine.displayName(l,'LP'))}</strong></td><td class="meta lp-address">${escapeAttr(l.staking_contract||'–')}</td><td>${dt(l.stake_timestamp)}</td><td>${f(l.original_lp,{chain:'bsc',address:l.pair_address,symbol:'LP'})}</td><td><strong>${f(l.remaining_lp,{chain:'bsc',address:l.pair_address,symbol:'LP'})}</strong></td><td>${l.status==='closed'?'<span class="badge">beendet</span>':l.status==='partial'?'<span class="badge">teilweise unstaked</span>':'<span class="badge safe">offen</span>'}</td></tr>`).join(''):'<tr><td colspan="8">Keine Staking-Positionen im Cache erkannt.</td></tr>'}</tbody></table></div>`:'';
+  const stakingLots=window.WalletStakingEngine?scopeWallets.flatMap(w=>(chains||[]).flatMap(chain=>window.WalletStakingEngine.buildLots(displayHistory.filter(e=>e.chain===chain&&e.w?.id===w.id)).map(l=>({...l,w,chain})))):[];
+  const stakingTable=window.WalletStakingEngine?`<h3 class="lp-section-title">Staking-Positionen</h3><div class="note" style="margin-bottom:8px">Jeder verifizierte LP-Stake bleibt bis zum tatsächlichen Unstake Vermögen. Unstakes reduzieren die offenen Lots chronologisch (FIFO); ein Lock-/Vertragsende allein beendet den Vermögensbestand nicht.</div><div class="chain-table-wrap lp-table-scroll project-data-table"><table class="lp-staking-table"><thead><tr><th>Wallet</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>Stake-Datum</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th></tr></thead><tbody>${stakingLots.length?stakingLots.slice().reverse().map(l=>`<tr><td>${escapeAttr(l.w?.label||'')}</td><td class="meta lp-address">${escapeAttr(l.pair_address||'')}</td><td><strong>${escapeAttr(l.staking_label||window.WalletStakingEngine.displayName(l,window.WalletLPEngine.label(l.chain)))}</strong></td><td class="meta lp-address">${escapeAttr(l.staking_contract||'–')}</td><td>${dt(l.stake_timestamp)}</td><td>${f(l.original_lp,{chain:l.chain,address:l.pair_address,symbol:window.WalletLPEngine.label(l.chain)})}</td><td><strong>${f(l.remaining_lp,{chain:l.chain,address:l.pair_address,symbol:window.WalletLPEngine.label(l.chain)})}</strong></td><td>${l.status==='closed'?'<span class="badge">beendet</span>':l.status==='partial'?'<span class="badge">teilweise unstaked</span>':'<span class="badge safe">offen</span>'}</td></tr>`).join(''):'<tr><td colspan="8">Keine verifizierten Staking-Positionen im Cache erkannt.</td></tr>'}</tbody></table></div>`:'';
 
   const cacheStand=latestCacheRefresh?`<div class="lp-cache-stand">Cache-Stand: ${latestCacheRefresh.toLocaleString('de-CH')}</div>`:'<div class="lp-cache-stand">Cache-Stand: noch kein Positions-Cache vorhanden</div>';
   el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${walletFilterHtml}${cacheStand}${scanStatusTable}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${stakingTable}${currentTable}${historyTable}`;
   if(refresh&&projectKey==="tln_vow"&&chains.includes("bsc")){await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderAllocationChart();}
+  if(refresh&&projectKey==="dao1"&&chains.includes("apertum")){await mergeProjectStakingCacheIntoWalletData("dao1","apertum");await loadDashboardLpPositionCache().catch(()=>{});renderResults();renderAllocationChart();renderDashboard();}
   return {errors:cacheErrors,warnings:cacheWarnings,newEvents:cacheNew};
 
 }

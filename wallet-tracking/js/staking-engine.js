@@ -25,8 +25,9 @@ window.WalletStakingEngine = (() => {
 
   async function classifyTransfer(projectKey,chain,direction,counterparty,pairAddress=null){
     const fallback=direction==="out"?"send":"receive";
-    // Staking-Erkennung ist aktuell bewusst nur für TLN/VOW auf BSC aktiviert.
-    if(projectKey!=="tln_vow"||chain!=="bsc")return {eventType:fallback,staking:null};
+    // Projektübergreifend: Ein Transfer gilt ausschließlich dann als Stake/Unstake,
+    // wenn die Gegenadresse im verifizierten Staking-Contract-Katalog des jeweiligen
+    // Projekts/der Chain steht und classify_transfers=true gesetzt ist.
     const info=await contractInfo(projectKey,chain,counterparty);
     if(!info||!info.classify_transfers)return {eventType:fallback,staking:null};
     if(info.pair_address&&pairAddress&&norm(info.pair_address)!==norm(pairAddress))return {eventType:fallback,staking:null};
@@ -69,7 +70,7 @@ window.WalletStakingEngine = (() => {
   }
 
   function displayName(event,pairLabel="LP"){
-    return event?.staking_label||event?.stakingLabel||`TLN Staking – ${String(pairLabel||"LP").replace(/^PancakeSwap\s*(V2)?\s*/i,"").replace(/\s*LP$/i,"")}`;
+    return event?.staking_label||event?.stakingLabel||`Staking – ${String(pairLabel||"LP").replace(/^PancakeSwap\s*(V2)?\s*/i,"").replace(/\s*LP$/i,"")}`;
   }
 
   function configure(fn){ctx=fn||ctx;}
