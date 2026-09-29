@@ -1,3 +1,4 @@
+// Phase 6.76 · 29.09.2026 17:08:12 CEST: Steuer-PDF blendet technische Preisrouten/Blocknummern standardmäßig aus; Details nur bei aktivierten Prüfdetails. Build 20260929-170812.
 // Phase 6.75 · 29.09.2026 16:40:48 CEST: CoinGecko Current-/31.12.-Historienpreise laufen authentifiziert über Supabase Edge Function coingecko-proxy; Demo-Key bleibt serverseitiges Secret. Build 20260929-164048.
 // Phase 6.74 · 29.09.2026 15:25:57 CEST: Staking-Principal gilt projektübergreifend auch für DAO1-LP: bis zum tatsächlichen Unstake Vermögen; 31.12. bewertet am historischen LP-Stichtagspreis. Projektwechsel TLN/VOW | DAO1 bleibt innerhalb der Projektseiten sichtbar. Build 20260929-152557.
 // Phase 6.73 · 29.09.2026 13:41:24 CEST: Daten-/Preisstatus nur noch einmal im globalen Statusrahmen; Aktualisierungsdetails und Wallet-Datenstand dort kompakt eingeklappt. Build 20260929-134124.
