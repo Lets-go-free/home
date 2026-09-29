@@ -1,3 +1,4 @@
+// Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
 // Phase 6.78 · 29.09.2026 17:48:45 CEST: Generische LP-/Staking-Registry: LP-Paare projektübergreifend/on-chain erkannt; neue Pairs und mögliche Staking-Ziele bleiben bis Admin-Verifikation pending. Verifizierte projektlose/project-zugeordnete LP-Stakings zählen aktuell und per 31.12. als Vermögen. Build 20260929-174845.
 // Phase 6.77 · 29.09.2026 17:15:17 CEST: Staking-Vermögensverifikation gehärtet: DAO1-Staking-Katalog pair_address ist autoritative LP-Quelle auch ohne predefined lp_token; 31.12.-Staking-Cutoff nutzt exakten Stichtagsblock vor Zeitstempel und verhindert Future-Stake/-Unstake bei fehlender Event-Zeit. Build 20260929-171517.
 // Phase 6.75 · 29.09.2026 16:40:48 CEST: CoinGecko-Zugriffe vollständig aus dem Browser entfernt. Aktuelle und historische Preise laufen authentifiziert über Supabase Edge Function coingecko-proxy; Demo-Key bleibt serverseitig im Secret COINGECKO_DEMO_API_KEY. Build 20260929-164048.
@@ -1592,29 +1593,48 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   try{bi=await taxEvmBlockByTime(chain,targetEpoch);}
   catch(e){taxCoverageSet(chain,"fehlgeschlagen",e.message,"EVM");return;}
 
-  let tokens=taxTokenUniverse(chain);
-  // Zusätzlich alle bis zum Stichtag jemals transferierten ERC-20-Contracts aufnehmen.
-  // So erscheinen auch vollständig verkaufte Token und entfernte LP-Positionen.
-  const histMap=new Map(tokens.map(t=>[normalizeAddress(t.address,chain),t]));
-  for(const w of ws){
-    const wa=walletAddressForChain(w,chain);
-    for(const a of await historicalErc20Candidates(chain,wa,bi.block)){if(!histMap.has(a)){const k=chain+"|"+a;histMap.set(a,{address:a,symbol:predefinedTokenSymbols[k]||a.slice(0,8)+"…",decimals:predefinedTokenDecimals[k],label:predefinedTokenLabels[k]||"",coingeckoId:predefinedTokenCoinGeckoIds[k]||null});}}
-  }
-  tokens=[...histMap.values()].filter(t=>!isUserMarkedSpamToken(t.address,chain));
+  // Phase 6.79: Die Steuerberechnung fragt nur verifizierte/benannte Token ab.
+  // Früher wurde für jede Wallet zuerst die komplette ERC-20-Transferhistorie als
+  // Kandidatenliste eingelesen und anschließend für jeden jemals berührten Contract
+  // ein historisches balanceOf ausgeführt. Bei Spam-/Airdrop-Wallets erzeugte das
+  // tausende Requests, obwohl unbekannte Token ohnehin nicht als verifizierte
+  // Steuerposition gelten. Historische Safe-/Predefined-Token sind bereits im
+  // taxTokenUniverse; verifizierte LPs werden unten aus dem persistenten LP-Cache ergänzt.
+  const baseTokens=taxTokenUniverse(chain).filter(t=>!isUserMarkedSpamToken(t.address,chain));
   let verified=0,errors=0,priceMissing=0;
   for(let wi=0;wi<ws.length;wi++){
     const w=ws[wi],address=walletAddressForChain(w,chain);
-    // Projekt-LP-Staking gehört am Stichtag zum Vermögen, solange kein tatsächlicher
-    // Unstake erfolgt ist. Neben der heutigen lp_token-Klassifikation werden deshalb
-    // auch bereits verifizierte historische LP-History-Paare berücksichtigt.
-    const stakingHistoryPairs=new Map();
-    if(window.WalletLPEngine){
+    // LP-/Staking-Historie wird exakt EINMAL je Projekt+Wallet geladen. Daraus werden
+    // sowohl die relevanten LP-Adressen als auch der Staking-Bestand am Stichtag
+    // berechnet. taxCachedStakedLp() im Token-Loop würde dieselbe Supabase-Historie
+    // sonst für jedes einzelne Token erneut lesen.
+    const walletTokens=new Map(baseTokens.map(t=>[normalizeAddress(t.address,chain),t]));
+    const stakingAtCutoff=new Map();
+    if(window.WalletLPEngine&&window.WalletStakingEngine){
       const projectsForChain=[...(chain==="bsc"?["tln_vow"]:(chain==="apertum"?["dao1"]:[])),GENERIC_LP_PROJECT_KEY];
       for(const projectKey of projectsForChain){
-        try{const ev=await window.WalletLPEngine.loadHistory(projectKey,chain,address);stakingHistoryPairs.set(projectKey,new Set((ev||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean)));}
-        catch{stakingHistoryPairs.set(projectKey,new Set());}
+        try{
+          const ev=await window.WalletLPEngine.loadHistory(projectKey,chain,address);
+          const byPair=new Map();
+          for(const e of (ev||[])){
+            const pair=normalizeAddress(e.pair_address,chain);if(!pair)continue;
+            if(!byPair.has(pair))byPair.set(pair,e);
+          }
+          for(const [pair,sample] of byPair){
+            if(!walletTokens.has(pair)){
+              const k=chain+"|"+pair;
+              walletTokens.set(pair,{address:pair,symbol:predefinedTokenSymbols[k]||sample?.lp_label||"LP",decimals:predefinedTokenDecimals[k]??18,label:predefinedTokenLabels[k]||sample?.lp_label||"LP",coingeckoId:predefinedTokenCoinGeckoIds[k]||null});
+            }
+            const amount=Number(window.WalletStakingEngine.stakeBalanceAt(ev,pair,{block:bi.block,time:new Date(targetEpoch*1000).toISOString()})||0);
+            const prior=stakingAtCutoff.get(pair);
+            // Dasselbe Paar kann zusätzlich in der generischen Registry vorkommen.
+            // Nie doppelt addieren: projekt-spezifische Quelle hat Vorrang, sonst max.
+            if(!prior||projectKey!==GENERIC_LP_PROJECT_KEY&&prior.projectKey===GENERIC_LP_PROJECT_KEY||amount>prior.amount){stakingAtCutoff.set(pair,{amount,projectKey});}
+          }
+        }catch(e){console.warn("31.12. LP-/Staking-Historie",projectKey,chain,w.label,e);}
       }
     }
+    const tokens=[...walletTokens.values()].filter(t=>!isUserMarkedSpamToken(t.address,chain));
     taxSetStatus("loading",`${CHAIN_META[chain]?.label||chain}: ${w.label}…`,`Block ${bi.block} · Wallet ${wi+1}/${ws.length}`);
     try{
       const nativeBalance=await taxEvmNativeBalance(chain,address,bi.block);
@@ -1633,11 +1653,9 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
         const b=await taxEvmTokenBalance(chain,address,token,bi.block);
         const tokenAddress=normalizeAddress(token.address,chain),tk=chain+"|"+tokenAddress;
         const configuredProject=predefinedTokenCategory[tk]==="lp_token"?predefinedTokenProject[tk]:null;
-        let stakingProject=null;
-        for(const [projectKey,pairs] of stakingHistoryPairs){
-          if((configuredProject===projectKey)||pairs.has(tokenAddress)){stakingProject=projectKey;break;}
-        }
-        const stakedLp=stakingProject?await taxCachedStakedLp(stakingProject,chain,address,token.address,{block:bi.block,time:new Date(targetEpoch*1000).toISOString()}):0;
+        const stakingInfo=stakingAtCutoff.get(tokenAddress)||null;
+        const stakingProject=stakingInfo?.projectKey||configuredProject||null;
+        const stakedLp=Number(stakingInfo?.amount||0);
         const economicAmount=Number(b.amount||0)+Number(stakedLp||0);
         if(economicAmount>0){
           const hp=await taxHistoricalPrice(chain,token,dateStr,bi.block);
@@ -1655,7 +1673,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
       }
     }
   }
-  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Preise: APTM-Pool bzw. CoinGecko-Tageshistorie, soweit ID vorhanden`;
+  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · nur verifizierte Token + persistente LP-Historie; keine Vollsuche über historische Spam-/Airdrop-Contracts`;
   taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
@@ -5615,8 +5633,22 @@ async function maybeAutoRefreshProject(projectKey,chain,targetId){
   const flightKey=`${projectKey}|${chain}`;
   if(projectAutoRefreshInFlight.has(flightKey))return projectAutoRefreshInFlight.get(flightKey);
   const job=(async()=>{
-    const eligible=wallets.filter(w=>walletAddressForChain(w,chain)&&!refreshedToday(w,chain,`project:${projectKey}`));
+    const eligible=[];
+    for(const w of wallets){
+      const wa=walletAddressForChain(w,chain);if(!wa)continue;
+      let scanReady=false;
+      try{
+        const info=await window.WalletLPEngine?.getScanStateInfo?.(projectKey,chain,wa,projectLpScanType(projectKey,chain));
+        scanReady=Number(info?.last_scanned_block||0)>0;
+      }catch(e){console.warn('LP-Scan-State Auto-Refresh',projectKey,chain,w.label,e);}
+      // Nicht nur den Tagesmarker prüfen: ein fehlender Projekt-Scan-State bedeutet,
+      // dass der Tab trotz eines allgemeinen Tageslaufs noch keinen belastbaren LP-Cache hat.
+      if(!scanReady||!refreshedToday(w,chain,`project:${projectKey}`))eligible.push(w);
+    }
     if(!eligible.length)return renderProjectLpTab(projectKey,[chain],targetId,'2025-12-31',false);
+    // Cache sofort sichtbar machen; der inkrementelle Refresh läuft danach gezielt nur
+    // für die fehlenden/veralteten Wallets.
+    await renderProjectLpTab(projectKey,[chain],targetId,'2025-12-31',false);
     const scratch=document.getElementById('centralProjectRefreshScratch');
     for(const w of eligible){try{const rebuild=needsDataRebuild(w,chain,`project:${projectKey}`);if(scratch)scratch.innerHTML=`<div class="note">${escapeAttr(w.label)} · ${escapeAttr(CHAIN_META[chain]?.label||chain)} ${rebuild?'Projekt-Cache wird wegen neuer Datenlogik neu aufgebaut…':'Projekt-Daten werden automatisch aktualisiert…'}</div>`;await refreshProjectWallet(w,projectKey,chain);}catch(e){console.warn('Projekt-Autoload',w.label,e);}}
     return renderProjectLpTab(projectKey,[chain],targetId,'2025-12-31',false);
@@ -5624,6 +5656,8 @@ async function maybeAutoRefreshProject(projectKey,chain,targetId){
   projectAutoRefreshInFlight.set(flightKey,job);
   try{return await job;}finally{projectAutoRefreshInFlight.delete(flightKey);}
 }
+
+window.maybeAutoRefreshProject=maybeAutoRefreshProject;
 
 function renderWalletDataFreshness(){
   const slot=document.querySelector('#centralRefreshProgress .wt-wallet-freshness-slot');
@@ -7257,10 +7291,10 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
   projectLpContexts[targetId]={projectKey,chains:[...(chains||[])],dateStr};
   const chainArg=chains.length===1?chains[0]:"";
-  const refreshButton=`<button class="secondary" style="margin-top:10px" onclick="refreshProjectLpData('${projectKey}','${chainArg}','${targetId}')">Daten aktualisieren</button>`;
+  const refreshButton=isAdmin?`<button class="secondary" style="margin-top:10px" onclick="refreshProjectLpData('${projectKey}','${chainArg}','${targetId}')">Daten aktualisieren</button>`:"";
   // Der Button wird absichtlich VOR allen asynchronen Arbeiten gerendert. Beim normalen
   // Öffnen folgen ausschließlich Supabase-Lesezugriffe; RPC/Explorer laufen nur bei refresh=true.
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich die zuletzt gespeicherten Supabase-Daten</strong> angezeigt. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ neu abgefragt.</div>${refreshButton}<div class="status" style="margin-top:10px"><span class="loading">${refresh?'LP/PCLP-Daten werden aktualisiert…':'Gespeicherte LP/PCLP-Daten werden geladen…'}</span></div></div>`;
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Der gespeicherte Stand wird sofort angezeigt. Fehlt der Cache oder wurde das Projekt heute noch nicht geprüft, startet beim Öffnen automatisch eine kontrollierte inkrementelle Aktualisierung. Ein Vollscan wird nicht bei jedem Tab-Wechsel gestartet.${isAdmin?' Der manuelle Button ist nur als Admin-Retry/Force-Refresh gedacht.':''}</div>${refreshButton}<div class="status" style="margin-top:10px"><span class="loading">${refresh?'LP/PCLP-Daten werden aktualisiert…':'Gespeicherte LP/PCLP-Daten werden geladen…'}</span></div></div>`;
 
   const scopeWallets=options.walletId?wallets.filter(w=>walletDbId(w)===String(options.walletId)):wallets;
   const rows=[],history=[],scanStatuses=[];let cacheNew=0,cacheErrors=[],cacheWarnings=[],latestCacheRefresh=null;
@@ -7406,7 +7440,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const stakingTable=window.WalletStakingEngine?`<h3 class="lp-section-title">Staking-Positionen</h3><div class="note" style="margin-bottom:8px">Jeder verifizierte LP-Stake bleibt bis zum tatsächlichen Unstake Vermögen. Unstakes reduzieren die offenen Lots chronologisch (FIFO); ein Lock-/Vertragsende allein beendet den Vermögensbestand nicht.</div><div class="chain-table-wrap lp-table-scroll project-data-table"><table class="lp-staking-table"><thead><tr><th>Wallet</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>Stake-Datum</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th></tr></thead><tbody>${stakingLots.length?stakingLots.slice().reverse().map(l=>`<tr><td>${escapeAttr(l.w?.label||'')}</td><td class="meta lp-address">${escapeAttr(l.pair_address||'')}</td><td><strong>${escapeAttr(l.staking_label||window.WalletStakingEngine.displayName(l,window.WalletLPEngine.label(l.chain)))}</strong></td><td class="meta lp-address">${escapeAttr(l.staking_contract||'–')}</td><td>${dt(l.stake_timestamp)}</td><td>${f(l.original_lp,{chain:l.chain,address:l.pair_address,symbol:window.WalletLPEngine.label(l.chain)})}</td><td><strong>${f(l.remaining_lp,{chain:l.chain,address:l.pair_address,symbol:window.WalletLPEngine.label(l.chain)})}</strong></td><td>${l.status==='closed'?'<span class="badge">beendet</span>':l.status==='partial'?'<span class="badge">teilweise unstaked</span>':'<span class="badge safe">offen</span>'}</td></tr>`).join(''):'<tr><td colspan="8">Keine verifizierten Staking-Positionen im Cache erkannt.</td></tr>'}</tbody></table></div>`:'';
 
   const cacheStand=latestCacheRefresh?`<div class="lp-cache-stand">Cache-Stand: ${latestCacheRefresh.toLocaleString('de-CH')}</div>`:'<div class="lp-cache-stand">Cache-Stand: noch kein Positions-Cache vorhanden</div>';
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${walletFilterHtml}${cacheStand}${scanStatusTable}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${stakingTable}${currentTable}${historyTable}`;
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Der gespeicherte LP-/Staking-Stand wird sofort verwendet. Beim ersten Öffnen pro Tag bzw. bei fehlendem/veraltetem Cache wird kontrolliert inkrementell aktualisiert; danach bleiben Tab-Wechsel cache-only. Add-/Remove-Historie und Positionsdaten werden persistent gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.${isAdmin?' „Daten aktualisieren“ ist ein Admin-Retry/Force-Refresh.':''}</div>${refreshButton}${walletFilterHtml}${cacheStand}${scanStatusTable}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${stakingTable}${currentTable}${historyTable}`;
   if(refresh&&projectKey==="tln_vow"&&chains.includes("bsc")){await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderAllocationChart();}
   if(refresh&&projectKey==="dao1"&&chains.includes("apertum")){await mergeProjectStakingCacheIntoWalletData("dao1","apertum");await loadDashboardLpPositionCache().catch(()=>{});renderResults();renderAllocationChart();renderDashboard();}
   if(refresh&&isGenericLpProject(projectKey)){for(const c of chains)await mergeProjectStakingCacheIntoWalletData(GENERIC_LP_PROJECT_KEY,c);await loadDashboardLpPositionCache().catch(()=>{});renderResults();renderAllocationChart();renderDashboard();}
