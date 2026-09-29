@@ -1,3 +1,4 @@
+// Phase 6.83 · 30.09.2026 00:50:30 CEST: loadHistoryBatch bündelt LP-History pro Projekt/Chain für mehrere Wallets; reduziert 31.12.-Supabase-Requests. Build 20260930-005030.
 // Phase 6.78 · 29.09.2026 17:48:45 CEST: Generische LP-Discovery ergänzt um lightweight Transfer-Gegenstellenanalyse für Staking-Kandidaten. Build 20260929-174845.
 window.WalletLPEngine = (() => {
   const V2 = new ethers.Interface([
@@ -192,6 +193,25 @@ window.WalletLPEngine = (() => {
     }
     return out;
   }
+
+  async function loadHistoryBatch(projectKey,chain,wallets){
+    const c=ctx();if(!c.sb||!c.currentUser?.id)return new Map();
+    const addresses=[...new Set((wallets||[]).map(norm).filter(Boolean))];
+    const out=new Map(addresses.map(a=>[a,[]]));if(!addresses.length)return out;
+    const ids=[],idToAddress=new Map();
+    for(const a of addresses){const id=walletIdForAddress(a);ids.push(id);idToAddress.set(String(id),a);}
+    let from=0;
+    while(true){
+      const {data,error}=await c.sb.from("lp_history_events").select("*")
+        .eq("user_id",c.currentUser.id).eq("project_key",projectKey).eq("chain_key",chain)
+        .in("wallet_id",ids).order("block_number",{ascending:true}).order("log_index",{ascending:true}).range(from,from+999);
+      if(error)throw error;
+      for(const row of (data||[])){const a=idToAddress.get(String(row.wallet_id))||norm(row.wallet_address);if(!out.has(a))out.set(a,[]);out.get(a).push(row);}
+      if(!data||data.length<1000)break;from+=1000;
+    }
+    return out;
+  }
+
   async function saveHistory(projectKey,chain,wallet,pair,event){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return;
     const row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_id:walletIdForAddress(wallet),pair_address:norm(pair.address),lp_label:label(chain),token0_address:norm(pair.t0.address),token0_symbol:String(pair.t0.symbol||""),token0_decimals:pair.t0.decimals,token1_address:norm(pair.t1.address),token1_symbol:String(pair.t1.symbol||""),token1_decimals:pair.t1.decimals,...event,updated_at:new Date().toISOString()};
@@ -254,5 +274,5 @@ window.WalletLPEngine = (() => {
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairTokens,pairDescriptor,pairInfo,balance,positions,valuePosition,label,meta,rpc,latestBlock,lpTransferCounterparties,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,loadPositionCacheBatch,replacePositionCache,getScanState,getScanStateInfo,setScanState};
+  return {configure,pairTokens,pairDescriptor,pairInfo,balance,positions,valuePosition,label,meta,rpc,latestBlock,lpTransferCounterparties,historyEventFromReceipt,loadHistory,loadHistoryBatch,saveHistory,loadPositionCache,loadPositionCacheBatch,replacePositionCache,getScanState,getScanStateInfo,setScanState};
 })();

@@ -1,3 +1,4 @@
+// Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt mit Copy; Preisfelder USD/CHF dynamisch nach Groessenordnung (bis 8 Dezimalstellen), Positions-/Gesamtwerte weiter 2 Dezimalstellen. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter Supabase-Cache fuer exakte historische Wallet/Chain/Asset/Block-Balances und ERC-20-Kandidaten. Wiederholte Stichtage verwenden Cache statt Explorer/RPC; neue Cachewerte werden gebuendelt geschrieben. Build 20260930-003245.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
 // Phase 6.78 · 29.09.2026 17:48:45 CEST: Generische LP-/Staking-Registry: LP-Paare projektübergreifend/on-chain erkannt; neue Pairs und mögliche Staking-Ziele bleiben bis Admin-Verifikation pending. Verifizierte projektlose/project-zugeordnete LP-Stakings zählen aktuell und per 31.12. als Vermögen. Build 20260929-174845.
@@ -986,6 +987,16 @@ async function onLoggedIn(session) {
 let taxRows = [];
 let taxCoverage = [];
 const taxPriceCache = new Map();
+// Phase 6.83: gemeinsamer Stichtags-Kontext fuer teure, wallet-unabhaengige Grundlagen.
+// Keys enthalten Chain + exakten Stichtagsblock bzw. Datum; dadurch koennen dieselben
+// DEX-/LP-/Preis-Grunddaten fuer alle Wallets desselben Laufs wiederverwendet werden.
+const taxEvmBlockByTimeCache=new Map();
+const taxHistoricalPriceMemo=new Map();
+const taxV2PairMemo=new Map();
+const taxDirectV2PriceMemo=new Map();
+const taxV2LpPriceMemo=new Map();
+const taxPairStateMemo=new Map();
+const taxApertumLpStateCache=new Map();
 let taxEstvFxRate = null;
 let taxEstvAssetPrices = new Map();
 let taxEstvLoadedYear = null;
@@ -994,6 +1005,27 @@ function taxPriceBasisValue(){ return document.getElementById("taxPriceBasis")?.
 function taxIsEstvMode(){ return taxPriceBasisValue()==="chf_estv"; }
 function taxYearFromDate(dateStr){ const y=Number(String(dateStr||"").slice(0,4)); return Number.isInteger(y)?y:null; }
 function fmtChf(v){ return Number.isFinite(Number(v)) ? `CHF ${Number(v).toLocaleString("de-CH",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "–"; }
+function taxPriceFractionDigits(v){
+  const n=Math.abs(Number(v));
+  if(!Number.isFinite(n)||n===0)return 2;
+  // Rund vier aussagekraeftige Stellen anzeigen, aber mindestens 2 und hoechstens 8 Nachkommastellen.
+  // Beispiele: 681.91 · 0.7923 · 0.1642 · 0.01983 · 0.00004752
+  const digits=3-Math.floor(Math.log10(n));
+  return Math.max(2,Math.min(8,digits));
+}
+function taxFormatUnitPrice(v,currency="USD"){
+  const n=Number(v);
+  if(!Number.isFinite(n))return "–";
+  const max=taxPriceFractionDigits(n);
+  const formatted=n.toLocaleString("de-CH",{minimumFractionDigits:2,maximumFractionDigits:max});
+  return currency==="CHF"?`CHF ${formatted}`:`$${formatted}`;
+}
+function taxWalletAddressBrowserHtml(r){
+  const full=String(r?.wallet_address||"").trim();
+  if(!full)return "";
+  const short=dashboardShortAddress(full)||full;
+  return `<div class="meta tax-wallet-address"><code title="${escapeAttr(full)}">${escapeAttr(short)}</code><button type="button" class="dashboard-copy-address" style="padding:0 3px;margin-left:4px;border:0;background:transparent;color:inherit;box-shadow:none;font-size:.9em;vertical-align:baseline" onclick="copyDashboardAddress('${escapeAttr(full)}',this)" title="Wallet-Adresse kopieren" aria-label="Wallet-Adresse kopieren">⧉</button></div>`;
+}
 async function loadTaxEstvContext(dateStr,force=false){
   const year=taxYearFromDate(dateStr);
   if(!year)return;
@@ -1265,6 +1297,9 @@ function taxHistoricalErc20CandidateDiscoverySupported(chain){
 }
 
 async function taxEvmBlockByTime(chain,targetEpoch){
+  const memoKey=`${chain}|${Number(targetEpoch)}`;
+  if(taxEvmBlockByTimeCache.has(memoKey))return await taxEvmBlockByTimeCache.get(memoKey);
+  const work=(async()=>{
   // Free source first. Unsupported Routescan networks are remembered for this page session.
   if (!taxRoutescanUnavailable.has(chain)) {
     try {
@@ -1297,6 +1332,9 @@ async function taxEvmBlockByTime(chain,targetEpoch){
   }
   if(!best)throw new Error("Historischer Stichtagsblock konnte nicht bestimmt werden.");
   return {block:best,source:"Alchemy Archive"};
+  })();
+  taxEvmBlockByTimeCache.set(memoKey,work);
+  try{return await work;}catch(e){taxEvmBlockByTimeCache.delete(memoKey);throw e;}
 }
 
 async function taxEvmNativeBalance(chain,address,block,persistCtx=null,walletId=null){
@@ -1555,6 +1593,9 @@ async function taxProjectReference(project,chain){
   const r=!error?(data||[]).find(x=>String(x.role||"").toLowerCase()==="reference"):null,out=r?.contract_address?normalizeAddress(r.contract_address,chain):null;taxProjectReferenceCache.set(k,out);return out;
 }
 async function taxV2Pair(chain,a,b,block){
+  const aa=normalizeAddress(a,chain),bb=normalizeAddress(b,chain),memoKey=`${chain}|${[aa,bb].sort().join('|')}|${Number(block)}`;
+  if(taxV2PairMemo.has(memoKey))return await taxV2PairMemo.get(memoKey);
+  const work=(async()=>{
   const f=await taxDexFactory(chain);if(!f)return null;
   // Apertum: Factory/Pair-Metadaten werden aktuell gelesen; ob der Pool am Stichtag schon
   // existierte, entscheidet anschließend der letzte Sync <= Stichtagsblock. Das vermeidet
@@ -1562,6 +1603,9 @@ async function taxV2Pair(chain,a,b,block){
   const callBlock=chain==="apertum"?"latest":taxBlockHex(block);
   const raw=await archiveRpc(chain,"eth_call",[{to:f,data:taxV2Iface.encodeFunctionData("getPair",[a,b])},callBlock]),[pair]=taxV2Iface.decodeFunctionResult("getPair",raw);
   return !pair||/^0x0{40}$/i.test(pair)?null:normalizeAddress(pair,chain);
+  })();
+  taxV2PairMemo.set(memoKey,work);
+  try{return await work;}catch(e){taxV2PairMemo.delete(memoKey);throw e;}
 }
 const taxApertumSyncCache=new Map();
 async function taxApertumLastSync(pair,block){
@@ -1571,6 +1615,9 @@ async function taxApertumLastSync(pair,block){
   taxApertumSyncCache.set(key,null);return null;
 }
 async function taxDirectV2Price(chain,base,quote,block,bd,qd){
+  const memoKey=`${chain}|${normalizeAddress(base,chain)}|${normalizeAddress(quote,chain)}|${Number(block)}|${Number(bd)}|${Number(qd)}`;
+  if(taxDirectV2PriceMemo.has(memoKey))return await taxDirectV2PriceMemo.get(memoKey);
+  const work=(async()=>{
   const pair=await taxV2Pair(chain,base,quote,block);if(!pair)return null;
   const token0Block=chain==="apertum"?"latest":taxBlockHex(block);
   const t0raw=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},token0Block]);
@@ -1579,16 +1626,28 @@ async function taxDirectV2Price(chain,base,quote,block,bd,qd){
   else{const rr=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},taxBlockHex(block)]);[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr);}
   const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),is0=normalizeAddress(t0,chain)===normalizeAddress(base,chain);
   const rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);return rb>0&&rq>0?{price:rq/rb,pair,sourceBlock}:null;
+  })();
+  taxDirectV2PriceMemo.set(memoKey,work);
+  try{return await work;}catch(e){taxDirectV2PriceMemo.delete(memoKey);throw e;}
 }
 async function taxApertumLpStateFromEvents(pair,block){
+  const memoKey=`${normalizeAddress(pair,"apertum")}|${Number(block)}`;
+  if(taxApertumLpStateCache.has(memoKey))return await taxApertumLpStateCache.get(memoKey);
+  const work=(async()=>{
   const syncTopic="0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
   const transferTopic="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
   const zeroTopic="0x"+"0".repeat(64),step=50000;let sync=null,supply=0n;
   for(let from=0;from<=block;from+=step){const to=Math.min(block,from+step-1);let logs=[];try{logs=await archiveRpc("apertum","eth_getLogs",[{address:pair,fromBlock:taxBlockHex(from),toBlock:taxBlockHex(to),topics:[[syncTopic,transferTopic]]}]);}catch(e){console.warn("Apertum LP Logbereich",from,to,e);continue;}for(const l of logs||[]){const t0=String(l.topics?.[0]||"").toLowerCase();if(t0===syncTopic){const x=String(l.data||"").replace(/^0x/,"");if(x.length>=128)sync={r0:BigInt("0x"+x.slice(0,64)),r1:BigInt("0x"+x.slice(64,128)),block:Number(BigInt(l.blockNumber))};}else if(t0===transferTopic&&l.topics?.length>=3){const f=String(l.topics[1]).toLowerCase(),t=String(l.topics[2]).toLowerCase(),v=BigInt(l.data||"0x0");if(f===zeroTopic)supply+=v;if(t===zeroTopic)supply-=v;}}}
   return sync&&supply>0n?{...sync,supply}:null;
+  })();
+  taxApertumLpStateCache.set(memoKey,work);
+  try{return await work;}catch(e){taxApertumLpStateCache.delete(memoKey);throw e;}
 }
 async function taxV2LpHistoricalPrice(chain,asset,block,dateStr){
-  const pair=normalizeAddress(asset.address,chain),iface=new ethers.Interface(["function token0() view returns (address)","function token1() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)","function totalSupply() view returns (uint256)"]);
+  const pair=normalizeAddress(asset.address,chain),memoKey=`${chain}|${pair}|${Number(block)}|${dateStr||""}`;
+  if(taxV2LpPriceMemo.has(memoKey))return await taxV2LpPriceMemo.get(memoKey);
+  const work=(async()=>{
+  const iface=new ethers.Interface(["function token0() view returns (address)","function token1() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)","function totalSupply() view returns (uint256)"]);
   let a0,a1,r0,r1,supply;
   // Apertum: historische Reserven/LP-Supply eventbasiert, weil der öffentliche RPC bei alten
   // getReserves()-eth_calls unzuverlässige Nullzustände liefern kann.
@@ -1604,6 +1663,9 @@ async function taxV2LpHistoricalPrice(chain,asset,block,dateStr){
   const [p0,p1]=await Promise.all([taxHistoricalPrice(chain,x0,dateStr,block),taxHistoricalPrice(chain,x1,dateStr,block)]);if(!p0||!p1)return null;
   const q0=Number(r0)/10**d0,q1=Number(r1)/10**d1,lp=Number(supply)/10**lpd;if(!(lp>0))return null;
   return {price:(q0*p0.price+q1*p1.price)/lp,source:`V2 LP historisch · ${chain==="apertum"?"Sync/Transfer-Events":"Reserven + TotalSupply"} · ${pair} · Block ${block}`};
+  })();
+  taxV2LpPriceMemo.set(memoKey,work);
+  try{return await work;}catch(e){taxV2LpPriceMemo.delete(memoKey);throw e;}
 }
 
 async function taxTlnVowHistoricalPriceLegacy(chain,asset,block,dateStr=""){
@@ -1619,13 +1681,19 @@ async function taxTlnVowHistoricalPriceLegacy(chain,asset,block,dateStr=""){
 }
 
 async function taxWalletPriceEnginePairState(chain,address,block){
-  const pair=normalizeAddress(address,chain),callBlock=block==="latest"?"latest":taxBlockHex(block);
+  const pair=normalizeAddress(address,chain),memoKey=`${chain}|${pair}|${String(block)}`;
+  if(taxPairStateMemo.has(memoKey))return await taxPairStateMemo.get(memoKey);
+  const work=(async()=>{
+  const callBlock=block==="latest"?"latest":taxBlockHex(block);
   const iface=new ethers.Interface(["function token0() view returns (address)","function token1() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)","function totalSupply() view returns (uint256)","function decimals() view returns (uint8)","function factory() view returns (address)"]);
   const [a0,a1,rr,ts,ld,fa]=await Promise.all(["token0","token1","getReserves","totalSupply","decimals","factory"].map(fn=>archiveRpc(chain,"eth_call",[{to:pair,data:iface.encodeFunctionData(fn,[])},callBlock])));
   const [t0]=iface.decodeFunctionResult("token0",a0),[t1]=iface.decodeFunctionResult("token1",a1),[r0,r1,blockTimestampLast]=iface.decodeFunctionResult("getReserves",rr),[supply]=iface.decodeFunctionResult("totalSupply",ts),[lpDecimalsRaw]=iface.decodeFunctionResult("decimals",ld),[factory]=iface.decodeFunctionResult("factory",fa);
   const mk=async t=>{const a=normalizeAddress(t,chain),k=chain+"|"+a,meta={address:a,symbol:predefinedTokenSymbols[k]||predefinedTokenLabels[k]||predefinedTokenNames[k]||a.slice(0,8)+"…",name:predefinedTokenNames[k]||predefinedTokenLabels[k]||predefinedTokenSymbols[k]||a.slice(0,8)+"…",decimals:predefinedTokenDecimals[k]??18};meta.decimals=await taxTokenDecimalsCurrent(chain,meta);return meta;};
   const [m0,m1]=await Promise.all([mk(t0),mk(t1)]),lpDecimals=Number(lpDecimalsRaw);
   return {token0:m0,token1:m1,reserve0:Number(ethers.formatUnits(r0,m0.decimals)),reserve1:Number(ethers.formatUnits(r1,m1.decimals)),totalSupply:Number(ethers.formatUnits(supply,lpDecimals)),lpDecimals,factory:normalizeAddress(factory,chain),blockTimestampLast:Number(blockTimestampLast)};
+  })();
+  taxPairStateMemo.set(memoKey,work);
+  try{return await work;}catch(e){taxPairStateMemo.delete(memoKey);throw e;}
 }
 async function taxConfigureTlnVowPriceEngine(chain,block){
   if(!window.WalletPriceEngine)return null;
@@ -1677,6 +1745,10 @@ async function taxApertumWrappedPrice(chain,asset,block,dateStr=""){
 
 
 async function taxHistoricalPrice(chain,asset,dateStr,block=null,skipWrapped=false){
+  const assetKey=asset==="native"?"native":normalizeAddress(asset?.address||asset?.symbol||"unknown",chain);
+  const memoKey=`${chain}|${assetKey}|${dateStr||""}|${block==null?"none":Number(block)}|${skipWrapped?1:0}`;
+  if(taxHistoricalPriceMemo.has(memoKey))return await taxHistoricalPriceMemo.get(memoKey);
+  const work=(async()=>{
   if(chain==="apertum"&&asset==="native"&&block!=null){
     try{
       const hp=await window.DAO1Project?.historicalAptmPriceAtBlock?.(Number(block));
@@ -1691,6 +1763,10 @@ async function taxHistoricalPrice(chain,asset,dateStr,block=null,skipWrapped=fal
   if(block!=null&&asset!=="native"){try{const t=await taxTlnVowHistoricalPrice(chain,asset,block,dateStr);if(t)return t;if(!skipWrapped){const a=await taxApertumWrappedPrice(chain,asset,block,dateStr);if(a)return a;}if(asset?.address&&window.WalletLPEngine){const pi=await window.WalletLPEngine.pairInfo(chain,asset.address);if(pi){const lp=await taxV2LpHistoricalPrice(chain,{...asset,decimals:pi.decimals},block,dateStr);if(lp)return lp;}}}catch(e){console.warn("Historischer DEX-/LP-Preis:",chain,asset?.symbol,e);}}
   if(chain==="apertum")return null; // Apertum wird bewusst vollständig on-chain bewertet; kein CoinGecko-Fallback.
   const id=asset==="native"?taxNativeCoinGeckoId(chain):(asset?.coingeckoId||null);return dateStr?taxCoinGeckoPrice(id,dateStr):null;
+
+  })();
+  taxHistoricalPriceMemo.set(memoKey,work);
+  try{return await work;}catch(e){taxHistoricalPriceMemo.delete(memoKey);throw e;}
 }
 
 
@@ -1714,6 +1790,20 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   catch(e){taxCoverageSet(chain,"fehlgeschlagen",e.message,"EVM");return;}
   const walletRefs=ws.map(w=>({walletId:w.dbId||w.id,address:walletAddressForChain(w,chain)})).filter(r=>r.address);
   const persistCtx=await taxLoadPersistentHistoricalCaches(chain,bi.block,walletRefs);
+
+  // Phase 6.83: LP-/Staking-Historie pro Projekt/Chain einmal gebuendelt laden.
+  // Vorher erzeugte loadHistory(project,chain,wallet) je Wallet einen eigenen Supabase-Request.
+  const projectsForChain=[...(chain==="bsc"?["tln_vow"]:(chain==="apertum"?["dao1"]:[])),GENERIC_LP_PROJECT_KEY];
+  const lpHistoryByProject=new Map();
+  if(window.WalletLPEngine&&window.WalletStakingEngine&&walletRefs.length){
+    for(const projectKey of projectsForChain){
+      try{
+        if(typeof window.WalletLPEngine.loadHistoryBatch==="function"){
+          lpHistoryByProject.set(projectKey,await window.WalletLPEngine.loadHistoryBatch(projectKey,chain,walletRefs.map(r=>r.address)));
+        }
+      }catch(e){console.warn("31.12. LP-History-Prefetch",projectKey,chain,e);}
+    }
+  }
 
   // Phase 6.79: Die Steuerberechnung fragt nur verifizierte/benannte Token ab.
   // Früher wurde für jede Wallet zuerst die komplette ERC-20-Transferhistorie als
@@ -1752,10 +1842,10 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     const walletTokens=new Map(walletBaseTokens.map(t=>[normalizeAddress(t.address,chain),t]));
     const stakingAtCutoff=new Map();
     if(window.WalletLPEngine&&window.WalletStakingEngine){
-      const projectsForChain=[...(chain==="bsc"?["tln_vow"]:(chain==="apertum"?["dao1"]:[])),GENERIC_LP_PROJECT_KEY];
       for(const projectKey of projectsForChain){
         try{
-          const ev=await window.WalletLPEngine.loadHistory(projectKey,chain,address);
+          const batch=lpHistoryByProject.get(projectKey);
+          const ev=batch?.get(normalizeAddress(address,chain)) ?? await window.WalletLPEngine.loadHistory(projectKey,chain,address);
           const byPair=new Map();
           for(const e of (ev||[])){
             const pair=normalizeAddress(e.pair_address,chain);if(!pair)continue;
@@ -1815,7 +1905,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     }
   }
   await taxFlushPersistentHistoricalCaches(persistCtx);
-  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu; LP-/Staking-Historie wird wiederverwendet`;
+  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu; LP-/Staking-Historie ${lpHistoryByProject.size?"gebündelt vorab geladen":"cacheweise geladen"}; Preis-/Pair-Grundlagen pro Stichtagsblock memoisiert`;
   taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · persistenter Supabase-Cache → kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
@@ -2106,7 +2196,7 @@ function renderTaxResults(date="",tz=""){
   if(!taxRows.length){out.innerHTML='<div class="empty">Keine Positionen gefunden oder keine Chain konnte verifiziert werden.</div>';return;}
   const debugCols=!!(isAdmin&&adminDebugMode);
   out.innerHTML=`<div class="chain-table-wrap project-data-table tax-position-table"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th class="num">Bestand</th><th class="num">Preis ${currency}</th><th class="num">Wert ${currency}</th>${debugCols?'<th>Block / Ledger</th><th>Status / Quelle</th>':''}</tr></thead><tbody>
-    ${taxRows.map(r=>{const v=taxDisplayValuation(r),assetName=taxResolvedAssetName(r);return `<tr><td>${escapeAttr(r.wallet)}<div class="meta">${escapeAttr(r.wallet_address||"")}</div></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(assetName)}</strong>${taxAssetAddressBrowserHtml(r)}</td><td class="num">${r.amount==null?"–":fmt(r.amount,{chain:r.chain,address:r.asset&&r.asset!=="native"?r.asset:null,symbol:assetName})}</td><td class="num">${v.price==null?"–":(currency==="CHF"?fmtChf(v.price):fmtUsd(v.price))}</td><td class="num">${v.value==null?"–":(currency==="CHF"?fmtChf(v.value):fmtUsd(v.value))}</td>${debugCols?`<td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${v.source?` · Preis: ${escapeAttr(v.source)}`:""}</div></td>`:''}</tr>`}).join("")}
+    ${taxRows.map(r=>{const v=taxDisplayValuation(r),assetName=taxResolvedAssetName(r);return `<tr><td>${escapeAttr(r.wallet)}${taxWalletAddressBrowserHtml(r)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(assetName)}</strong>${taxAssetAddressBrowserHtml(r)}</td><td class="num">${r.amount==null?"–":fmt(r.amount,{chain:r.chain,address:r.asset&&r.asset!=="native"?r.asset:null,symbol:assetName})}</td><td class="num">${v.price==null?"–":taxFormatUnitPrice(v.price,currency)}</td><td class="num">${v.value==null?"–":(currency==="CHF"?fmtChf(v.value):fmtUsd(v.value))}</td>${debugCols?`<td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${v.source?` · Preis: ${escapeAttr(v.source)}`:""}</div></td>`:''}</tr>`}).join("")}
     </tbody></table></div>`;
 }
 
@@ -2151,7 +2241,7 @@ function exportTaxPdf(){
     : `<div class="cards"><div class="card">Gesamtwert<b>${fmtMoney(total)}</b></div></div>`;
   const grouped=new Map();for(const r of ok){const v=taxDisplayValuation(r),k=r.chain+"|"+(r.asset||r.symbol),x=grouped.get(k)||{chain:r.chain,symbol:taxResolvedAssetName(r),asset:r.asset,amount:0,value:0,priced:true,price:v.price,source:v.source};x.amount+=Number(r.amount||0);if(v.value==null)x.priced=false;else x.value+=Number(v.value||0);if(x.price==null&&v.price!=null)x.price=v.price;if(!x.source&&v.source)x.source=v.source;grouped.set(k,x);}
   const chainKeys=[...new Set([...grouped.values()].map(x=>x.chain))].sort((a,b)=>(CHAIN_CONFIG[a]?.sortOrder||999)-(CHAIN_CONFIG[b]?.sortOrder||999));
-  const chainSummary=chainKeys.map(chain=>{const ar=[...grouped.values()].filter(x=>x.chain===chain),sum=ar.filter(x=>x.priced).reduce((q,x)=>q+x.value,0),rows=ar.map(x=>{const sourceLabel=taxPdfPriceSourceLabel(x.source,showAuditDetails);return `<tr><td class="token"><b>${escapeAttr(x.symbol||"–")}</b><small>${escapeAttr(x.asset&&x.asset!=="native"?dashboardShortAddress(x.asset):"nativ")}</small></td><td class="n">${fmt(x.amount,{chain:x.chain,address:x.asset&&x.asset!=="native"?x.asset:null,symbol:x.symbol},{summary:true})}</td><td class="n">${x.price==null?"–":fmtMoney(x.price)}${sourceLabel?`<small>${escapeAttr(sourceLabel)}</small>`:""}</td><td class="n">${x.priced?fmtMoney(x.value):"–"}</td></tr>`}).join("");return `<h2>${escapeAttr(CHAIN_META[chain]?.label||chain)}</h2><table class="summary"><thead><tr><th class="token">Token</th><th class="n">Gesamtbestand</th><th class="n">Kurs ${currency}</th><th class="n">Wert ${currency}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">SUBTOTAL ${escapeAttr(CHAIN_META[chain]?.label||chain)}</td><td class="n">${fmtMoney(sum)}</td></tr></tfoot></table>`}).join("");
+  const chainSummary=chainKeys.map(chain=>{const ar=[...grouped.values()].filter(x=>x.chain===chain),sum=ar.filter(x=>x.priced).reduce((q,x)=>q+x.value,0),rows=ar.map(x=>{const sourceLabel=taxPdfPriceSourceLabel(x.source,showAuditDetails);return `<tr><td class="token"><b>${escapeAttr(x.symbol||"–")}</b><small>${escapeAttr(x.asset&&x.asset!=="native"?dashboardShortAddress(x.asset):"nativ")}</small></td><td class="n">${fmt(x.amount,{chain:x.chain,address:x.asset&&x.asset!=="native"?x.asset:null,symbol:x.symbol},{summary:true})}</td><td class="n">${x.price==null?"–":taxFormatUnitPrice(x.price,currency)}${sourceLabel?`<small>${escapeAttr(sourceLabel)}</small>`:""}</td><td class="n">${x.priced?fmtMoney(x.value):"–"}</td></tr>`}).join("");return `<h2>${escapeAttr(CHAIN_META[chain]?.label||chain)}</h2><table class="summary"><thead><tr><th class="token">Token</th><th class="n">Gesamtbestand</th><th class="n">Kurs ${currency}</th><th class="n">Wert ${currency}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">SUBTOTAL ${escapeAttr(CHAIN_META[chain]?.label||chain)}</td><td class="n">${fmtMoney(sum)}</td></tr></tfoot></table>`}).join("");
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme ${date}</title><style>@page{size:A4 landscape;margin:15mm}body{font:9px Arial;color:#18202a;margin:0}h1{font-size:22px;margin:0 0 5px}h2{margin:14px 0 5px}.head{border-bottom:2px solid #ccd2d9;padding-bottom:9px}.cards{display:flex;gap:8px;margin:12px 0}.card{border:1px solid #ccd2d9;border-radius:6px;padding:8px;min-width:150px}.card b{display:block;font-size:14px}table{border-collapse:collapse;width:100%;margin:8px 0;table-layout:fixed}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #c8ced5;padding:4px;vertical-align:top;overflow:hidden}th,tfoot td{background:#eef1f4;font-weight:bold}.summary .token{width:34%}.summary .n{width:22%}.n{text-align:right;white-space:normal;overflow-wrap:anywhere}th.n{text-align:right}small{display:block;color:#666;font-size:7px;overflow-wrap:anywhere;word-break:break-word;white-space:normal}tfoot td{border-top:2px solid #18202a;font-size:10px}</style></head><body><div class="head"><h1>Bestandesaufnahme per 31.12</h1><p><b>Stichtag:</b> ${escapeAttr(date)} · ${escapeAttr(tz)} &nbsp; <b>Preisgrundlage:</b> ${escapeAttr(basis)} &nbsp; <b>Erstellt:</b> ${new Date().toLocaleString("de-CH")}</p></div>${pdfCards}<h1>Summary nach Chain</h1><p>Tokenbestände sind über alle ausgewählten Wallets je Chain zusammengefasst.</p>${chainSummary}<table><tfoot><tr><td>GESAMTSUMME – bewertete Positionen</td><td class="n">${fmtMoney(total)}</td></tr></tfoot></table><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
 }
 
