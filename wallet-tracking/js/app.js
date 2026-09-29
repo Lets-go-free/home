@@ -1,3 +1,4 @@
+// Phase 6.77 · 29.09.2026 17:15:17 CEST: Staking-Vermögensverifikation gehärtet: DAO1-Staking-Katalog pair_address ist autoritative LP-Quelle auch ohne predefined lp_token; 31.12.-Staking-Cutoff nutzt exakten Stichtagsblock vor Zeitstempel und verhindert Future-Stake/-Unstake bei fehlender Event-Zeit. Build 20260929-171517.
 // Phase 6.75 · 29.09.2026 16:40:48 CEST: CoinGecko-Zugriffe vollständig aus dem Browser entfernt. Aktuelle und historische Preise laufen authentifiziert über Supabase Edge Function coingecko-proxy; Demo-Key bleibt serverseitig im Secret COINGECKO_DEMO_API_KEY. Build 20260929-164048.
 // Phase 6.74 · 29.09.2026 15:25:57 CEST: Staking-Principal projektübergreifend gehärtet: TLN/VOW und DAO1-LP bleiben bis zum tatsächlichen Unstake Vermögen – aktuell und per 31.12. zum historischen LP-Stichtagspreis. DAO1-Staking wird aus verifiziertem Staking-Contract-Katalog klassifiziert, täglich im zentralen Refresh nachgeführt; persistente Projekt-Navigation bleibt enthalten. Build 20260929-152557.
 // Phase 6.73 · 29.09.2026 13:41:24 CEST: doppelten Daten-/Preisstatus im Wallet-Bestand entfernt; Datenaktualisierung samt eingeklapptem Wallet-Datenstand in den globalen Statusrahmen verschoben und visuell als sekundäre graue Statusinfo vereinheitlicht. Build 20260929-134124.
@@ -1567,11 +1568,11 @@ async function taxHistoricalPrice(chain,asset,dateStr,block=null,skipWrapped=fal
 }
 
 
-async function taxCachedStakedLp(projectKey,chain,walletAddress,pairAddress,cutoffIso){
+async function taxCachedStakedLp(projectKey,chain,walletAddress,pairAddress,cutoff){
   if(!window.WalletLPEngine||!window.WalletStakingEngine)return 0;
   try{
     const events=await window.WalletLPEngine.loadHistory(projectKey,chain,walletAddress);
-    return window.WalletStakingEngine.stakeBalanceAt(events,pairAddress,cutoffIso);
+    return window.WalletStakingEngine.stakeBalanceAt(events,pairAddress,cutoff);
   }catch(e){
     console.warn("Staking-Stichtagsbestand aus Cache",chain,pairAddress,e);
     return 0;
@@ -1631,7 +1632,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
         for(const [projectKey,pairs] of stakingHistoryPairs){
           if((configuredProject===projectKey)||pairs.has(tokenAddress)){stakingProject=projectKey;break;}
         }
-        const stakedLp=stakingProject?await taxCachedStakedLp(stakingProject,chain,address,token.address,new Date(targetEpoch*1000).toISOString()):0;
+        const stakedLp=stakingProject?await taxCachedStakedLp(stakingProject,chain,address,token.address,{block:bi.block,time:new Date(targetEpoch*1000).toISOString()}):0;
         const economicAmount=Number(b.amount||0)+Number(stakedLp||0);
         if(economicAmount>0){
           const hp=await taxHistoricalPrice(chain,token,dateStr,bi.block);
@@ -7033,13 +7034,19 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   const classifiedOnly=projectLpClassifiedOnly(projectKey,chain);
   const legacyDiscovery=projectKey==="tln_vow"&&chain==="bsc";
   const configuredPairs=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):[];
+  // Verifizierte Staking-Kataloge sind für ihre pair_address selbst eine autoritative
+  // Projektquelle. Das ist besonders für DAO1 wichtig: ein gestakter LP darf nicht nur
+  // deshalb fehlen, weil seine LP-Adresse nicht zusätzlich als predefined lp_token gepflegt ist.
+  const stakingCatalog=window.WalletStakingEngine?await window.WalletStakingEngine.loadCatalog(projectKey,chain).catch(()=>[]):[];
+  const catalogPairs=new Set((stakingCatalog||[]).map(r=>normalizeAddress(r?.pair_address||'',chain)).filter(Boolean));
+  for(const a of catalogPairs)if(!configuredPairs.includes(a))configuredPairs.push(a);
   const projectUnderlying=new Set(projectUnderlyingTokenAddresses(projectKey,chain));
   // BSC/TLN/VOW: historische LPs werden aus der Wallet-Transferhistorie entdeckt.
   // Ein Kandidat gilt als Projekt-LP, wenn token0 ODER token1 ein aktueller/Legacy-
   // Projekt-Underlying aus predefined_tokens ist. Dadurch bleiben alte VOW/v$-Pools
   // auffindbar, auch wenn ihre LP-Adresse heute nicht mehr als lp_token geführt wird.
   if(classifiedOnly&&!legacyDiscovery&&configuredPairs.length===0){
-    return {events:cached,scanned:0,newEvents:0,pairs:[],warning:`${chain}: Keine als lp_token klassifizierten ${projectKey}-Pools konfiguriert; Live-LP-Scan übersprungen.`};
+    return {events:cached,scanned:0,newEvents:0,pairs:[],warning:`${chain}: Keine verifizierten ${projectKey}-LPs in predefined_tokens oder defi_staking_contracts konfiguriert; Live-LP-Scan übersprungen.`};
   }
   if(legacyDiscovery&&projectUnderlying.size===0){
     return {events:cached,scanned:0,newEvents:0,pairs:[],warning:`${chain}: Keine TLN/VOW-Projekt-Underlyings konfiguriert; Legacy-LP-Discovery übersprungen.`};
@@ -7064,7 +7071,7 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
     // Für History reicht die LP-Identität. Aktuelle Reserven/Supply dürfen Discovery
     // nicht blockieren; genau das war die Regression gegenüber der isolierten Testseite.
     const p=engine.pairDescriptor?await engine.pairDescriptor(chain,a):await engine.pairInfo(chain,a);
-    if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(normalizeAddress(a,chain),p);
+    if(p&&(lpPairBelongsToProject(p,chain,projectKey)||catalogPairs.has(normalizeAddress(a,chain))))pairMap.set(normalizeAddress(a,chain),p);
   }
 
   let candidateContracts=[];
@@ -7204,7 +7211,12 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
           let fullPair=null;try{fullPair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}
           let pair=fullPair||(sync.pairs||[]).find(p=>normalizeAddress(p.address,chain)===a)||null;
           if(!pair&&window.WalletLPEngine.pairDescriptor){try{pair=await window.WalletLPEngine.pairDescriptor(chain,a);}catch{}}
-          if(!pair||!lpPairBelongsToProject(pair,chain,projectKey))continue;
+          if(!pair)continue;
+          if(!lpPairBelongsToProject(pair,chain,projectKey)){
+            const cat=window.WalletStakingEngine?await window.WalletStakingEngine.loadCatalog(projectKey,chain).catch(()=>[]):[];
+            const trusted=(cat||[]).some(r=>normalizeAddress(r?.pair_address||'',chain)===a);
+            if(!trusted)continue;
+          }
           let walletCur=null,walletCurBal=0;
           if(fullPair){try{walletCur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;walletCurBal=Number(walletCur?.balance||0);}catch{}}
           else if(window.WalletLPEngine.balance){try{walletCurBal=Number(await window.WalletLPEngine.balance(chain,pair,wa)||0);}catch{}}
@@ -7214,7 +7226,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
           const economicCurBal=walletCurBal+Number(stakedCur||0);
           let cur=null;if(economicCurBal>DUST_THRESHOLD&&fullPair){try{cur={...fullPair,...await window.WalletLPEngine.valuePosition(chain,fullPair,economicCurBal),walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0)};}catch{cur=walletCur?{...walletCur,walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0),balance:economicCurBal}:null;}}
           if(!cur&&economicCurBal>DUST_THRESHOLD)cur={balance:economicCurBal,walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0),amount0:0,amount1:0,share:0,usd:null,valuationUnavailable:true};
-          let histWalletBal=0,histStakedBal=0,histBal=0,histPrice=null,histUsd=null;if(block){try{histWalletBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;{const genericHist=window.WalletStakingEngine?window.WalletStakingEngine.stakeBalanceAt(sync.events,a,new Date(dateStr+'T23:59:59Z')):0;const verifiedHist=projectKey==="tln_vow"&&chain==="bsc"?Number(verifiedTlnHistoricalByWallet.get(normalizeAddress(wa,chain))?.get(a)?.amount||0):0;histStakedBal=Math.max(Number(genericHist||0),verifiedHist);}histBal=Number(histWalletBal||0)+Number(histStakedBal||0);if(histBal>DUST_THRESHOLD){histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);histUsd=histPrice?.price!=null?histBal*histPrice.price:null;}}catch(e){console.warn('LP historisch',chain,a,e);}}
+          let histWalletBal=0,histStakedBal=0,histBal=0,histPrice=null,histUsd=null;if(block){try{histWalletBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;{const genericHist=window.WalletStakingEngine?window.WalletStakingEngine.stakeBalanceAt(sync.events,a,{block,time:new Date(dateStr+'T23:59:59Z')}):0;const verifiedHist=projectKey==="tln_vow"&&chain==="bsc"?Number(verifiedTlnHistoricalByWallet.get(normalizeAddress(wa,chain))?.get(a)?.amount||0):0;histStakedBal=Math.max(Number(genericHist||0),verifiedHist);}histBal=Number(histWalletBal||0)+Number(histStakedBal||0);if(histBal>DUST_THRESHOLD){histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);histUsd=histPrice?.price!=null?histBal*histPrice.price:null;}}catch(e){console.warn('LP historisch',chain,a,e);}}
           if(cur||histBal>DUST_THRESHOLD||sync.events.some(e=>normalizeAddress(e.pair_address,chain)===a)){
             rows.push({chain,w,pair,cur,histBal,histWalletBal,histStakedBal,histPrice,histUsd});
             walletPositionCache.push({pair_address:pair.address,lp_label:window.WalletLPEngine.label(chain),token0_address:pair.t0.address,token0_symbol:pair.t0.symbol,token0_decimals:pair.t0.decimals,token1_address:pair.t1.address,token1_symbol:pair.t1.symbol,token1_decimals:pair.t1.decimals,current_wallet_lp:walletCurBal,current_staked_lp:Number(stakedCur||0),current_lp:economicCurBal,current_amount0:cur?.amount0||0,current_amount1:cur?.amount1||0,current_share:cur?.share||0,current_usd:cur?.usd??null,snapshot_date:dateStr,snapshot_wallet_lp:histWalletBal,snapshot_staked_lp:histStakedBal,snapshot_lp:histBal||0,snapshot_usd:histUsd});

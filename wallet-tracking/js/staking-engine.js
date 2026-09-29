@@ -36,10 +36,15 @@ window.WalletStakingEngine = (() => {
 
   function stakeBalanceAt(events,pairAddress,cutoff=null){
     const pair=norm(pairAddress);let staked=0;
-    const cut=cutoff?new Date(cutoff).getTime():null;
+    const cutBlock=(cutoff&&typeof cutoff==="object"&&Number.isFinite(Number(cutoff.block)))?Number(cutoff.block):null;
+    const cutRaw=(cutoff&&typeof cutoff==="object")?(cutoff.time??cutoff.date??null):cutoff;
+    const cutTime=cutRaw?new Date(cutRaw).getTime():null;
     for(const e of [...(events||[])].sort((a,b)=>Number(a.block_number||0)-Number(b.block_number||0)||Number(a.log_index||0)-Number(b.log_index||0))){
       if(norm(e.pair_address)!==pair)continue;
-      if(cut&&e.tx_timestamp&&new Date(e.tx_timestamp).getTime()>cut)continue;
+      // Der historische Stichtagsblock ist die stärkere Evidenz als ein optionaler Zeitstempel.
+      // So kann ein späterer Stake/Unstake ohne tx_timestamp nie in einen früheren 31.12. hineinfallen.
+      if(cutBlock!=null&&Number(e.block_number||0)>cutBlock)continue;
+      if(cutBlock==null&&Number.isFinite(cutTime)&&e.tx_timestamp&&new Date(e.tx_timestamp).getTime()>cutTime)continue;
       const amount=Math.abs(Number(e.lp_delta||0));
       if(e.event_type==="stake")staked+=amount;
       else if(e.event_type==="unstake")staked-=amount;
