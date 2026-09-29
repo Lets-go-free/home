@@ -1,4 +1,4 @@
-// Phase 6.80 · 29.09.2026 18:46:00 CEST: 31.12.-Performance II: verifizierte ERC-20 werden pro Wallet vor tokenbalancehistory gegen historische Transfer-Evidenz bis zum Stichtagsblock gefiltert; Kandidaten- und Balance-Abfragen werden sessionweit blockgenau memoisiert. Build 20260929-184600.
+// Phase 6.81 · 29.09.2026 19:40:29 CEST: 31.12.-Performance-Diagnose: aggregierte Token-Balancecheck-Vorfilterung wird nach jedem Neu-Berechnen direkt im sichtbaren Coverage-Status ausgegeben, statt nur in den chain-spezifischen Coverage-Details zu liegen. Build 20260929-194029.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
 // Phase 6.78 · 29.09.2026 17:48:45 CEST: Generische LP-/Staking-Registry: LP-Paare projektübergreifend/on-chain erkannt; neue Pairs und mögliche Staking-Ziele bleiben bis Admin-Verifikation pending. Verifizierte projektlose/project-zugeordnete LP-Stakings zählen aktuell und per 31.12. als Vermögen. Build 20260929-174845.
 // Phase 6.77 · 29.09.2026 17:15:17 CEST: Staking-Vermögensverifikation gehärtet: DAO1-Staking-Katalog pair_address ist autoritative LP-Quelle auch ohne predefined lp_token; 31.12.-Staking-Cutoff nutzt exakten Stichtagsblock vor Zeitstempel und verhindert Future-Stake/-Unstake bei fehlender Event-Zeit. Build 20260929-171517.
@@ -1956,8 +1956,16 @@ async function runTaxSnapshot(){
     const ok=taxRows.filter(r=>r.status==="verifiziert").length,bad=taxRows.filter(r=>r.status!=="verifiziert").length;
     const covered=taxCoverage.filter(r=>r.status==="berücksichtigt").length,partial=taxCoverage.filter(r=>r.status==="teilweise").length;
     const omitted=taxCoverage.length-covered-partial;
+    const balanceFilterTotals=taxCoverage.reduce((acc,row)=>{
+      const m=String(row?.detail||"").match(/Token-Balancechecks\s+(\d+)→(\d+)\s+vorgefiltert/i);
+      if(m){acc.before+=Number(m[1]||0);acc.after+=Number(m[2]||0);acc.matches++;}
+      return acc;
+    },{before:0,after:0,matches:0});
+    const balanceFilterNote=balanceFilterTotals.matches
+      ?` · Token-Balancechecks ${balanceFilterTotals.before}→${balanceFilterTotals.after} vorgefiltert`
+      :"";
     taxSetStatus("ready",`Bereit – ${ok} verifizierte Position(en)${bad?`, ${bad} nicht verifizierbar`:""}.`,
-      `${covered}/${taxCoverage.length} relevante Chain(s) vollständig berücksichtigt · ${partial} teilweise · ${omitted} nicht berücksichtigt. Keine Bestände wurden geschätzt.`);
+      `${covered}/${taxCoverage.length} relevante Chain(s) vollständig berücksichtigt · ${partial} teilweise · ${omitted} nicht berücksichtigt. Keine Bestände wurden geschätzt.${balanceFilterNote}`);
   }catch(e){
     console.error("Bestandesaufnahme per 31.12:",e);taxSetStatus("error",e.message||String(e));
   }finally{btn.disabled=false;btn.textContent="Exakten Stichtagsbestand ermitteln";}
