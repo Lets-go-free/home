@@ -1,3 +1,4 @@
+// Phase 6.69 · 29.09.2026 12:23:47 CEST: Navigation neu strukturiert (Dashboard/Wallets/Token/Analyse); Dashboard bündelt Übersicht, Wallet-Bestände und 31.12.; neue Wallets starten einmalig automatische Token-Discovery; offene Token-Prüfungen erscheinen unter „Was muss ich tun?“. Build 20260929-122347.
 // Phase 6.68 · 28.09.2026 19:21:53 CEST: Refresh-/Button-Audit abgeschlossen: Dashboard-„Daten aktualisieren“ erzwingt auch DAO1/APTMDAO Delta-Sync; täglicher DAO-Lauf nutzt frisch geladene NFT-Current-State-Caches ohne Doppelabruf; technische DAO-NFT-/Reprice-Reparaturaktionen nur Admin. Build 20260928-192153.
 // Phase 6.67 · 28.09.2026 18:38:22 CEST: 31.12.-Browser/PDF/Excel lösen bekannte Token zentral aus Stammdaten auf (u.a. VOW); Contract-Adressen nur noch sekundär/gekürzt in UI/PDF, PDF-Spalten gegen Überlappung fixiert. Build 20260928-183822.
 // Phase 6.66 · 28.09.2026 18:04:55 CEST: 31.12.-Bericht unterstützt USD-Marktpreise oder CHF Schweiz/ESTV; neue globale Steuerkurs-Stammdaten mit Admin-Import für USD/CHF und direkte ESTV-Assetwerte. Build 20260928-180455.
@@ -179,25 +180,29 @@ function toggleUiTheme(){applyUiTheme(document.documentElement.dataset.theme==="
 window.toggleUiTheme=toggleUiTheme;
 
 const MAIN_SECTION_TABS={
-  dashboard:["dashboard"],
-  overview:["tracking","tax","fees","nfts","approvals"],
-  wallets:["wallets","predefined","custom","discovery"],
+  dashboard:["dashboard","tracking","tax"],
+  wallets:["wallets"],
+  tokens:["predefined","custom","discovery"],
+  analysis:["fees","nfts","approvals"],
   support:["chat","help","account-data"],
   admin:["admin"], projects:["projects-overview","tlnvow","dao1"]
 };
 function mainSectionForTab(name){
   for(const [section,tabs] of Object.entries(MAIN_SECTION_TABS)) if(tabs.includes(name)) return section;
-  return "overview";
+  return "analysis";
 }
 function updateContextNavigation(tabName){
   const section=mainSectionForTab(tabName);
   document.querySelectorAll("[data-main-section]").forEach(b=>b.classList.toggle("active",b.dataset.mainSection===section));
   document.querySelectorAll("[data-nav-section]").forEach(g=>g.style.display=(g.dataset.navSection===section?"block":"none"));
   const context=document.getElementById("contextNav");
-  if(context) context.style.display=section==="dashboard"?"none":"block";
+  if(context){
+    const hasGroup=!!document.querySelector(`[data-nav-section="${section}"]`);
+    context.style.display=hasGroup?"block":"none";
+  }
 }
 function showMainSection(section,preferredTab){
-  const tabs=MAIN_SECTION_TABS[section]||["tracking"];
+  const tabs=MAIN_SECTION_TABS[section]||["dashboard"];
   showTab(preferredTab||tabs[0]);
 }
 window.showMainSection=showMainSection;
@@ -877,6 +882,9 @@ async function onLoggedIn(session) {
   activeDiscoveryChains = new Set(discoveryChains());
   renderDiscoveryChainFilter();
   renderDiscoveryWalletSelect();
+  // Der Dashboard-Aufgabenbereich benötigt den letzten walletbezogenen Discovery-Stand.
+  // Das ist nur ein Supabase-Cache-Read; es startet keinerlei Chain-/Provider-Scan.
+  await ensureDiscoveryCacheLoaded().catch(e=>console.warn("Discovery-Cache Start:",e));
   await loadWalletRefreshStates();
   renderWalletDataFreshness();
   activeFeesChains = new Set(feeChains());
@@ -2007,13 +2015,14 @@ const ADMIN_SYSTEM_TREE = [
   {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
   {id:"support-data",level:1,label:"🗑️ Daten & Konto",status:"done",idea:"Vollständige userbezogene Datenlöschung",start:"–",daily:"–",open:"cache-only",manual:"User bestätigt Löschung",details:[["Alle WalletTracking-Daten löschen","–","wallettracking_delete_all_user_data() + wallet-private","keine externe API","Phase 5.97: löscht transaktional alle public-Tabellenzeilen mit user_id des angemeldeten Users, anonymisiert created_by/updated_by in globalen Caches und leert lokale Browserdaten. Normale User werden danach abgemeldet; Admin-User behalten für wiederholte Lifecycle-Tests ausschließlich ihre Supabase-Auth-Session und starten leer neu. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten und das Auth-Login bleiben erhalten."]]},
 
-  {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
-  {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 5.82: Speichern startet kein breites loadAll() über alle Wallets mehr. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie sofort, falls das Modul bereits initialisiert ist – sonst beim ersten Öffnen."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
+  {id:"walletsgrp",level:0,label:"👛 Meine Wallets",status:"done",start:"DB",daily:"–",open:"Cache/DB",manual:"gezielt speichern / löschen",details:[]},
+  {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 6.69: Speichern startet kein breites loadAll() über alle Wallets. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie gezielt. Bei einer neuen Wallet läuft anschließend genau einmal die allgemeine Token-Discovery für die verfügbaren Discovery-Chains; offene Klassifizierungen erscheinen im Dashboard."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
+  {id:"tokensgrp",level:0,label:"🪙 Meine Token",status:"done",start:"DB",daily:"–",open:"Cache/DB",manual:"Entdecken & prüfen",details:[]},
   {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","gezielt nur betroffene Chain bei neuem Token","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin. Token-/Stammdatenänderungen starten keinen globalen loadAll(); neue sichere/vordefinierte Token aktualisieren höchstens die betroffene Chain."]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
-  {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
+  {id:"discovery",level:1,label:"🔍 Entdecken & prüfen",status:"done",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Neue Wallet: einmalige automatische Erstprüfung; danach manuell bei Bedarf. Dashboard zeigt offene Klassifizierungen unter „Was muss ich tun?“."]]},
 
-  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Dashboard sofort + Caches",daily:"kontrollierter Delta-Refresh",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","1× täglich Delta-Prüfung nach Cache-Render","Phase 6.62: Login zeigt zuerst persistierte Current-State-Caches; danach startet höchstens einmal pro Kalendertag eine kontrollierte Delta-Prüfung. Wallet-Bestände nutzen Activity-Checks, Projekt/NFT-Daten werden nur bei Bedarf nachgezogen. Spezialhistorien bleiben getrennt."]]},
+  {id:"analysis",level:0,label:"📊 Dashboard & Analyse / Berichte",status:"in_progress",start:"Dashboard sofort + Caches",daily:"kontrollierter Delta-Refresh",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","1× täglich Delta-Prüfung nach Cache-Render","Phase 6.62: Login zeigt zuerst persistierte Current-State-Caches; danach startet höchstens einmal pro Kalendertag eine kontrollierte Delta-Prüfung. Wallet-Bestände nutzen Activity-Checks, Projekt/NFT-Daten werden nur bei Bedarf nachgezogen. Spezialhistorien bleiben getrennt."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
     ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","kein allgemeiner Start-RPC","Dashboard sofort aus Cache. Phase 5.75: Ein normaler Seitenreload startet keinen allgemeinen Grunddatenlauf; Aktualisierung erfolgt gezielt manuell, beim Erstaufbau einer neuen Wallet oder über projektspezifische Tab-Logik."],
     ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; Phase 6.49: TLN Dashboard lädt bei Fresh-Usern Partnerzahlen cache-only aus globaler TLN-ID + SmartNode-Slice; Reward-Summaries bevorzugen private UUID-wallet_id-Snapshots, danach userfreie globale Summaries/Chain-Caches und können bei einer eigenen Wallet fehlende Summaries über wallet-private serverseitig aus einem vorhandenen verifizierten privaten Snapshot derselben On-Chain-Adresse sanitisiert backfillen. Reward-Mengen werden dabei kanonisch in Human-Units normalisiert; der globale Summary-Cache v2 akzeptiert keine alten v1-Raw-Unit-Summaries mehr. Phase 6.51 nutzt diese Summary v2 auch direkt in den TLN/VOW-Tabs Staking/Rewards, Referral und Bonus; fehlende private Detail-Snapshots werden als noch nicht aufgebaut gekennzeichnet und lösen keinen automatischen History-Scan aus. Phase 6.52 ergänzt einen separaten globalen On-Chain-Detailcache: wallet-private darf für eine beim aktuellen User als eigene Wallet gespeicherte Adresse einen bereits verifizierten fremden privaten Discovery-Snapshot serverseitig auf die rein öffentlichen Staking-/Reward-/Referral-/Bonus-Fakten reduzieren, userbezogene/private Felder entfernen und das Ergebnis global persistieren. Die Projekttabs laden diesen Detailcache vor einem Backfill und zeigen dadurch Fresh-Usern Positions-/Claim-Details ohne historischen Browser-Scan. Erstmals überhaupt unbekannte Wallets bleiben als kontrollierte serverseitige Erst-Discovery offen. Phase 6.53 hebt diesen globalen Detailcache auf v2 an und übernimmt zusätzlich vorhandene Step-6-USD-Bewertungen (Stake/Vertragsende/Unstake) aus dem privaten technischen Snapshot derselben Wallet. Der separate Rewards-Summary-Tab entfällt; die Staking-Reward-Summary ist direkt in Staking/Rewards integriert. Phase 6.54 behebt die dabei entstandene Fresh-User-Regression: Staking/Referral/Bonus synchronisieren Summary und Detailcache vor dem Rendern, parallele Summary-Ladevorgänge werden awaited und v1-Detailcache bleibt als Fallback gültig, falls v2/Valuation noch nicht bereitsteht. Transiente Client-IDs wie local1 werden weiterhin nie als DB-wallet_id verwendet. TLN Team nutzt im geöffneten Projekt weiterhin denselben Forest/Lifecycle. TLN Staking-/Referral-/Bonus-Rewards und DAO Rewards/Referral Rewards sind in Originaltoken angeschlossen; DAO1/APTMDAO-Bezüge stammen aus getrennten Tree-Caches; die übergreifende Partnerzahl wird wallet-zentriert dedupliziert (1 Wallet = 1 Partner), während die beiden Einzelzahlen separat sichtbar bleiben. DAO-Aktivstatus bleibt bis zum Bot-Target-Proof offen."],
@@ -2177,7 +2186,7 @@ function renderAdminDocumentation(){
   <p><strong>Entscheidungsreihenfolge:</strong> Datenversion prüfen → nötigen Neuaufbau erzwingen → Tagesstatus prüfen → Activity-Check → inkrementell aktualisieren.</p>
   <p><strong>Activity-Check:</strong> bei aktuellem Cache zuerst relevante Blockchain-Aktivität prüfen. Nur vom User bestätigter Spam darf ignoriert werden.</p>
   <p><strong>Leeres Ergebnis = erfolgreich:</strong> 0 NFTs, 0 LP-/Staking-Positionen, 0 Gebühren oder 0 relevante Aktivitäten dürfen niemals als „noch nie geprüft“ erscheinen, wenn der Prozess erfolgreich abgeschlossen wurde.</p>
-  <p><strong>Entdecken / Gebühren:</strong> ausschließlich manuell. Projekt-Detail-Discovery bleibt projektbezogen; Dashboard-Grunddaten dürfen unabhängig vom Tab aus vorhandenen Caches bzw. dem zentralen Tageslauf nachgeführt werden.</p></div></div>
+  <p><strong>Entdecken &amp; prüfen:</strong> bei einer neu erfassten Wallet einmal automatisch, danach nur bei Bedarf manuell. Gebühren bleiben manuell. Projekt-Detail-Discovery bleibt projektbezogen; Dashboard-Grunddaten dürfen unabhängig vom Tab aus vorhandenen Caches bzw. dem zentralen Tageslauf nachgeführt werden.</p></div></div>
 
   <div class="custom-token-card"><h3 style="margin-top:0">3. Cache-/Scan-Versionierung</h3><div class="note">
   <p>Version nur erhöhen, wenn eine fachliche Änderung vorhandene Daten unvollständig/falsch macht. UI-/Layout-/Textänderungen benötigen keine neue Datenversion.</p>
@@ -4418,6 +4427,22 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
     try{await window.TLNVOWDiscovery?.refreshWalletAfterSave?.(w.dbId||w.id,{isNew,autoFirstDiscovery:isNew&&w.isOwnWallet!==false});}catch(e){failures.push(`TLN/VOW: ${e.message||e}`);}
   });
 
+  // Neue Wallets werden genau einmal automatisch auf unbekannte Token geprüft.
+  // Die Discovery ist ein Onboarding-/Review-Schritt und kein Teil der fachlichen
+  // Wallet-Lifecycle-Gültigkeit: ein Discovery-Fehler blockiert deshalb weder Snapshot
+  // noch den erfolgreichen Wallet-Erstaufbau.
+  let tokenDiscovery=null;
+  if(isNew){
+    await timed("Token-Prüfung",async()=>{
+      try{
+        tokenDiscovery=await runInitialDiscoveryForWallet(w);
+      }catch(e){
+        tokenDiscovery={ok:false,error:e?.message||String(e)};
+        console.warn("Initiale Token-Discovery",e);
+      }
+    });
+  }
+
   await timed("Summen",async()=>{
     await mergeTlnBscStakingCacheIntoWalletData().catch(e=>wtReportAsyncIssue("partial","TLN/BSC Staking-Cache Merge",e,{context:"fresh-wallet-sums"}));
     renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
@@ -4454,7 +4479,7 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
   const detail=Object.entries(timings).map(([name,ms])=>`${name} ${Math.round(ms/100)/10}s`).join(" · ");
   const lifecycleStatus=failures.length?"failed":preSnapshotLifecycleStatus;
   console.info("Wallet-Erstimport Laufzeit",{wallet:w.label||w.id,isNew,durationMs,timings,lifecycleStatus,daoLifecycle,snapshotGate,failures:[...failures]});
-  return {ok:lifecycleStatus==="complete",status:lifecycleStatus,parts:{dao1:daoLifecycle,snapshot:snapshotGate},failures,isNew,durationMs,timings,durationText:formatWalletImportDuration(durationMs),detail};
+  return {ok:lifecycleStatus==="complete",status:lifecycleStatus,parts:{dao1:daoLifecycle,snapshot:snapshotGate,tokenDiscovery},failures,isNew,durationMs,timings,durationText:formatWalletImportDuration(durationMs),detail};
 }
 
 function formatWalletImportDuration(ms){
@@ -4518,6 +4543,7 @@ async function saveWallet(id) {
   sortWalletsByLabel();
   renderWalletInputs();
   renderGlobalWalletPersonFilter();
+  renderDiscoveryWalletSelect();
   renderDashboard();
 
   // Der Wallet-Aufbau ist fachlich Teil des Speichervorgangs und darf nicht als
@@ -5395,7 +5421,7 @@ async function loadAllCore(options = {}) {
         try{progress.push('  TLN/VOW: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'tln_vow','bsc');walletChanged=true;}catch(e){failures.push({ok:false,error:`${w.label} TLN/VOW: ${e.message}`});}
       }else await saveWalletRefreshState(w,'bsc','project:tln_vow',{last_checked_at:new Date().toISOString(),last_refreshed_at:ps?.last_refreshed_at||null,last_result:'no_relevant_activity'});
     }
-    // NFTs als letzter automatischer Prozess pro Wallet. Discovery und Gebühren bleiben bewusst manuell.
+    // NFTs als letzter zentraler Current-State-Prozess pro Wallet. Die allgemeine Token-Discovery läuft nur bei neu erfassten Wallets einmal automatisch; Gebühren bleiben bewusst manuell.
     if(!automatic||!refreshedToday(w,'','nft')){
       const ns=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
       if(!automatic||changedChains.size>0||!ns?.last_checked_at){
@@ -5833,7 +5859,7 @@ function renderDashboard(){
       ${rewardKpi("Referral Rewards",globalReferralRewards)}
     </section>
     ${portfolio.unknownValues?`<div class="dashboard-data-warning"><strong>${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs:</strong> ${portfolio.unknownAssets.map(x=>`${escapeAttr(x.symbol)} (${escapeAttr(CHAIN_META[x.chain]?.label||x.chain.toUpperCase())})`).join(", ")} – nicht in den Geldsummen enthalten.</div>`:""}
-    <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div>${isAdmin?`<button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>`:""}</div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur aus bestätigten Cache-Daten</p></div></div><div class="dashboard-action-list">${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}${(()=>{const tlnStats=dashboardProjectCacheStats.tln_vow||{};const rows=Array.isArray(tlnStats.expiredPartnerStakings)?tlnStats.expiredPartnerStakings:[];if(!tlnStats.updatedAt)return `<div><span class="dashboard-action-icon">↻</span><p><strong>TLN / VOW</strong><small>Partner-Stakings werden aus dem persistenten Lifecycle-Cache geladen …</small></p></div>`;if(!rows.length)return `<div><span class="dashboard-action-icon ok">✓</span><p><strong>TLN / VOW</strong><small>Keine verifizierten abgelaufenen, noch gestakten Partner-Positionen im aktuellen Team-Cache.</small></p></div>`;return `<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>TLN / VOW</strong><details style="margin-top:5px"><summary style="cursor:pointer;font-weight:700">${rows.length} abgelaufene Partner-Staking${rows.length===1?'':'s'} noch zu unstaken</summary><div class="meta" style="margin-top:6px">${rows.map(r=>`${escapeAttr(r.name||r.tlnId||'Partner')} · ${escapeAttr(r.asset||'Staking')} · abgelaufen ${escapeAttr(r.expiry||'')}`).join('<br>')}</div></details></div></div>`})()}</div></article></section>
+    <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div>${isAdmin?`<button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>`:""}</div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur Aufgaben, bei denen wirklich eine Aktion nötig ist</p></div></div><div class="dashboard-action-list">${(()=>{const d=discoveryReviewSummary(targetWallets);if(!d.unresolved&&!d.unscanned)return `<div><span class="dashboard-action-icon ok">✓</span><p><strong>Token geprüft</strong><small>Alle gefundenen Token sind als sicher oder Spam klassifiziert.</small></p></div>`;const parts=[];if(d.unresolved)parts.push(`${d.unresolved} unbekannte Token`);if(d.suspects)parts.push(`${d.suspects} Spam-Verdacht`);if(d.needsReview)parts.push(`${d.needsReview} ohne Warnung`);if(d.unscanned)parts.push(`${d.unscanned} Wallet(s) noch nicht geprüft`);return `<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Token prüfen</strong><small style="display:block;margin-top:2px">${parts.join(" · ")}</small><button class="secondary" style="margin-top:8px" onclick="openDiscoveryReview('${escapeAttr(d.firstWalletId||"")}')">Jetzt prüfen</button></div></div>`})()}${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}${(()=>{const tlnStats=dashboardProjectCacheStats.tln_vow||{};const rows=Array.isArray(tlnStats.expiredPartnerStakings)?tlnStats.expiredPartnerStakings:[];if(!tlnStats.updatedAt)return `<div><span class="dashboard-action-icon">↻</span><p><strong>TLN / VOW</strong><small>Partner-Stakings werden aus dem persistenten Lifecycle-Cache geladen …</small></p></div>`;if(!rows.length)return `<div><span class="dashboard-action-icon ok">✓</span><p><strong>TLN / VOW</strong><small>Keine verifizierten abgelaufenen, noch gestakten Partner-Positionen im aktuellen Team-Cache.</small></p></div>`;return `<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>TLN / VOW</strong><details style="margin-top:5px"><summary style="cursor:pointer;font-weight:700">${rows.length} abgelaufene Partner-Staking${rows.length===1?'':'s'} noch zu unstaken</summary><div class="meta" style="margin-top:6px">${rows.map(r=>`${escapeAttr(r.name||r.tlnId||'Partner')} · ${escapeAttr(r.asset||'Staking')} · abgelaufen ${escapeAttr(r.expiry||'')}`).join('<br>')}</div></details></div></div>`})()}</div></article></section>
     ${(()=>{const acts=Object.values(dashboardProjectCacheStats).flatMap(x=>Array.isArray(x?.recentPartnerActivities)?x.recentPartnerActivities:[]).filter(x=>x?.date).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);if(!acts.length)return `<section class="dashboard-card dashboard-activities"><div class="dashboard-card-head"><div><h3>Letzte Partneraktivitäten</h3><p>Noch keine bestätigten Aktivitäten im geladenen Projektcache.</p></div></div></section>`;return `<section class="dashboard-card dashboard-activities"><div class="dashboard-card-head"><div><h3>Letzte Partneraktivitäten</h3><p>Die letzten 10 bestätigten Bot-Käufe bzw. Partner-Stakings · projektübergreifend</p></div></div><div class="dashboard-activity-list">${acts.map(a=>`<div><time>${escapeAttr(new Date(a.date).toLocaleDateString("de-CH"))}</time><strong>${escapeAttr(a.project||"")}</strong><span>${escapeAttr(a.partner||"Partner")}</span><span>${escapeAttr(a.what||"Aktivität")}</span></div>`).join("")}</div></section>`;})()}
     <div class="dashboard-section-title"><h3>Projekte</h3><span>Nur vorhandene Projekte</span></div>
     <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}</section>
@@ -9928,7 +9954,7 @@ function renderDiscoveryCacheState(extraMessage) {
       : `Gespeicherter Scan: ${scanned}${walletText}. ${allowed ? "Ein neuer Scan ist jetzt möglich." : `Nächster Scan ab ${next}.`}`);
 }
 
-async function saveDiscoveryCache(w, findings, scanNotes) {
+async function saveDiscoveryCache(w, findings, scanNotes, selectedChains=[...activeDiscoveryChains]) {
   const scannedAt = new Date();
   const nextAt = new Date(scannedAt.getTime() + DISCOVERY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
   const walletId = persistedWalletDbId(w,{required:true,context:"Discovery-Cache"});
@@ -9937,7 +9963,7 @@ async function saveDiscoveryCache(w, findings, scanNotes) {
     user_id: currentUser.id,
     wallet_id: walletId,
     wallet_label: w.label,
-    selected_chains: [...activeDiscoveryChains],
+    selected_chains: [...selectedChains],
     findings,
     scan_notes: scanNotes || [],
     scanned_at: scannedAt.toISOString(),
@@ -9962,6 +9988,116 @@ async function saveDiscoveryCache(w, findings, scanNotes) {
   renderDiscoveryCacheState();
 }
 
+async function scanDiscoveryForWallet(w,{chains=null}={}) {
+  if(!w) throw new Error("Wallet nicht gefunden.");
+  const selectedChains=new Set((chains||discoveryChains()).filter(c=>discoveryChains().includes(c)));
+  if(!selectedChains.size) return {findings:[],scanNotes:["Keine Discovery-Chain für diese Wallet verfügbar."],selectedChains:[]};
+
+  const allFindings=[];
+  const scanNotes=[];
+
+  // Chains mit discovery_provider=wallet_data: volle Tokenliste liegt bereits im normalen Wallet-Load vor.
+  discoveryChains().filter(c => selectedChains.has(c) && CHAIN_CONFIG[c]?.discoveryProvider === "wallet_data").forEach(chain => {
+    const cd = (walletData[w.id] || {})[chain];
+    if (!cd || cd.error) return;
+    (cd.tokens || []).forEach(t => {
+      if (!isSafeTokenAddress(t.address, chain) && t.amount >= DUST_THRESHOLD) {
+        const nameScamFlag = isLikelyScamName(t.symbol) || isLikelyScamName(t.name);
+        allFindings.push({ walletLabel: w.label, chain, address: t.address, symbol: t.symbol, name: t.name, amount: t.amount, risk: null, nameScamFlag });
+      }
+    });
+  });
+
+  // EVM-Chains: Alchemy Token API pro Chain
+  if (w.evm) {
+    for (const chain of discoveryChains().filter(c => selectedChains.has(c) && CHAIN_CONFIG[c]?.discoveryProvider === "alchemy")) {
+      try {
+        const found = await discoverEvmTokens(chain, w.evm);
+        found.forEach(f => allFindings.push({ walletLabel: w.label, ...f, risk: null }));
+      } catch (e) {
+        scanNotes.push(`${CHAIN_META[chain].label}: Scan fehlgeschlagen (${e.message}).`);
+      }
+    }
+  }
+
+  // Historische Kandidaten + generische V2-LP-Erkennung.
+  if(w.evm){
+    for(const chain of discoveryChains().filter(c=>selectedChains.has(c) && CHAIN_CONFIG[c]?.evmChainId)){
+      try{
+        const hist=await historicalErc20Candidates(chain,w.evm,null);
+        const unknown=hist.filter(a=>!isSafeTokenAddress(a,chain));
+        const metas=await fetchEvmTokenMetadata(chain,unknown);
+        const knownFinding=new Set(allFindings.filter(f=>f.chain===chain).map(f=>f.address.toLowerCase()));
+        for(const a of unknown){
+          if(knownFinding.has(a))continue;
+          const k=chain+"|"+a,m=metas[a]||tokenMetaCache[k]||{};
+          allFindings.push({
+            walletLabel:w.label,chain,address:a,
+            symbol:predefinedTokenSymbols[k]||m.symbol||a.slice(0,8)+"…",
+            name:predefinedTokenNames[k]||m.name||null,
+            decimals:predefinedTokenDecimals[k]??m.decimals,
+            amount:0,risk:null,nameScamFlag:false,historical:true
+          });
+        }
+      }catch(e){scanNotes.push(`${CHAIN_META[chain]?.label||chain}: historische Kandidaten unvollständig (${e.message}).`);}
+    }
+    if(window.WalletLPEngine){
+      for(const f of allFindings){
+        if(!CHAIN_CONFIG[f.chain]?.evmChainId)continue;
+        try{
+          const pair=await window.WalletLPEngine.pairInfo(f.chain,f.address);
+          if(pair){
+            f.isLp=true;
+            f.lpLabel=window.WalletLPEngine.label(f.chain);
+            f.symbol=`${f.lpLabel} ${pair.t0.symbol}/${pair.t1.symbol}`;
+            f.name=`${pair.t0.symbol}/${pair.t1.symbol} Liquidity Pool`;
+          }
+        }catch{}
+      }
+    }
+  }
+
+  // GoPlus-Risiko-Check, gebündelt pro Chain
+  const byChain = {};
+  allFindings.forEach(f => {
+    if (!CHAIN_CONFIG[f.chain]?.evmChainId) return;
+    byChain[f.chain] = byChain[f.chain] || new Set();
+    byChain[f.chain].add(f.address);
+  });
+  for (const chain of Object.keys(byChain)) {
+    const addrs = [...byChain[chain]];
+    const result = await checkGoPlusRisk(chain, addrs);
+    allFindings.forEach(f => {
+      if (f.chain === chain && result[f.address.toLowerCase()]) {
+        f.risk = riskFlags(result[f.address.toLowerCase()]);
+      }
+    });
+  }
+
+  await saveDiscoveryCache(w, allFindings, scanNotes, [...selectedChains]);
+  return {findings:allFindings,scanNotes,selectedChains:[...selectedChains]};
+}
+
+async function runInitialDiscoveryForWallet(w){
+  if(!w||!currentUser)return {skipped:true,reason:"no-wallet"};
+  await ensureDiscoveryCacheLoaded();
+  const walletId=String(persistedWalletDbId(w,{required:true,context:"Initial Token Discovery"}));
+  const existing=getDiscoveryCacheForWallet(walletId);
+  if(existing)return {skipped:true,reason:"already-scanned",cache:existing};
+  const chains=discoveryChains().filter(chain=>walletAddressForChain(w,chain));
+  if(!chains.length)return {skipped:true,reason:"no-discovery-chain"};
+  const result=await scanDiscoveryForWallet(w,{chains});
+  if(String(currentDiscoveryWalletId())===walletId){
+    discoveryCache=getDiscoveryCacheForWallet(walletId);
+    lastDiscoveryFindings=Array.isArray(discoveryCache?.findings)?discoveryCache.findings:[];
+    renderDiscoveryCacheState();
+    renderDiscoveryResults(lastDiscoveryFindings);
+  }
+  renderDashboard();
+  return {ok:true,...result};
+}
+window.runInitialDiscoveryForWallet=runInitialDiscoveryForWallet;
+
 async function runDiscoveryScan() {
   const btn = document.getElementById("discoveryBtn");
   const status = document.getElementById("discoveryStatus");
@@ -9982,84 +10118,58 @@ async function runDiscoveryScan() {
 
   btn.disabled = true;
   resultsEl.innerHTML = "";
+  status.textContent = `Durchsuche ${w.label} …`;
 
-  const allFindings = []; // {walletLabel, chain, address, symbol, name, amount, risk: [] | null, nameScamFlag}
-  const scanNotes = [];
-
-  // Chains mit discovery_provider=wallet_data: volle Tokenliste liegt bereits im normalen Wallet-Load vor.
-  discoveryChains().filter(c => activeDiscoveryChains.has(c) && CHAIN_CONFIG[c]?.discoveryProvider === "wallet_data").forEach(chain => {
-    const cd = (walletData[w.id] || {})[chain];
-    if (!cd || cd.error) return;
-    (cd.tokens || []).forEach(t => {
-      if (!isSafeTokenAddress(t.address, chain) && t.amount >= DUST_THRESHOLD) {
-        const nameScamFlag = isLikelyScamName(t.symbol) || isLikelyScamName(t.name);
-        allFindings.push({ walletLabel: w.label, chain, address: t.address, symbol: t.symbol, name: t.name, amount: t.amount, risk: null, nameScamFlag });
-      }
-    });
-  });
-
-  // EVM-Chains: Alchemy Token API pro Chain
-  if (w.evm) {
-    for (const chain of discoveryChains().filter(c => activeDiscoveryChains.has(c) && CHAIN_CONFIG[c]?.discoveryProvider === "alchemy")) {
-      status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}...`;
-      try {
-        const found = await discoverEvmTokens(chain, w.evm);
-        found.forEach(f => allFindings.push({ walletLabel: w.label, ...f, risk: null }));
-      } catch (e) {
-        scanNotes.push(`${CHAIN_META[chain].label}: Scan fehlgeschlagen (${e.message}).`);
-      }
-    }
-  }
-
-  // Historische Kandidaten + generische V2-LP-Erkennung.
-  if(w.evm){
-    for(const chain of discoveryChains().filter(c=>activeDiscoveryChains.has(c) && CHAIN_CONFIG[c]?.evmChainId)){
-      try{
-        const hist=await historicalErc20Candidates(chain,w.evm,null);
-        const unknown=hist.filter(a=>!isSafeTokenAddress(a,chain));
-        const metas=await fetchEvmTokenMetadata(chain,unknown);
-        const knownFinding=new Set(allFindings.filter(f=>f.chain===chain).map(f=>f.address.toLowerCase()));
-        for(const a of unknown){if(knownFinding.has(a))continue;const k=chain+"|"+a,m=metas[a]||tokenMetaCache[k]||{};allFindings.push({walletLabel:w.label,chain,address:a,symbol:predefinedTokenSymbols[k]||m.symbol||a.slice(0,8)+"…",name:predefinedTokenNames[k]||m.name||null,decimals:predefinedTokenDecimals[k]??m.decimals,amount:0,risk:null,nameScamFlag:false,historical:true});}
-      }catch(e){scanNotes.push(`${CHAIN_META[chain]?.label||chain}: historische Kandidaten unvollständig (${e.message}).`);}
-    }
-    if(window.WalletLPEngine){for(const f of allFindings){if(!CHAIN_CONFIG[f.chain]?.evmChainId)continue;try{const p=await window.WalletLPEngine.pairInfo(f.chain,f.address);if(p){f.isLp=true;f.lpLabel=window.WalletLPEngine.label(f.chain);f.symbol=`${f.lpLabel} ${p.t0.symbol}/${p.t1.symbol}`;f.name=`${p.t0.symbol}/${p.t1.symbol} Liquidity Pool`;}}catch{}}}
-  }
-
-  // GoPlus-Risiko-Check, gebündelt pro Chain
-  status.textContent = "Prüfe Risiko-Signale...";
-  const byChain = {};
-  allFindings.forEach(f => {
-    if (!CHAIN_CONFIG[f.chain]?.evmChainId) return;
-    byChain[f.chain] = byChain[f.chain] || new Set();
-    byChain[f.chain].add(f.address);
-  });
-  for (const chain of Object.keys(byChain)) {
-    const addrs = [...byChain[chain]];
-    const result = await checkGoPlusRisk(chain, addrs);
-    allFindings.forEach(f => {
-      if (f.chain === chain && result[f.address.toLowerCase()]) {
-        f.risk = riskFlags(result[f.address.toLowerCase()]);
-      }
-    });
-  }
-
-  lastDiscoveryFindings = allFindings;
-  renderDiscoveryResults(allFindings);
-  const scamCount = allFindings.filter(f => isFindingScam(f)).length;
-  let statusText = `Fertig. ${allFindings.length} unbekannte(r) Token gefunden` + (scamCount > 0 ? `, davon ${scamCount} als möglicher Scam markiert.` : ".");
-  if (scanNotes.length > 0) statusText += " Hinweis: " + scanNotes.join(" ");
-
-  try {
-    await saveDiscoveryCache(w, allFindings, scanNotes);
+  try{
+    const {findings,scanNotes}=await scanDiscoveryForWallet(w,{chains:[...activeDiscoveryChains]});
+    lastDiscoveryFindings=findings;
+    renderDiscoveryResults(findings);
+    const scamCount = findings.filter(f => isFindingScam(f)).length;
+    let statusText = `Fertig. ${findings.length} unbekannte(r) Token gefunden` + (scamCount > 0 ? `, davon ${scamCount} als möglicher Scam markiert.` : ".");
+    if (scanNotes.length > 0) statusText += " Hinweis: " + scanNotes.join(" ");
     statusText += " Ergebnis in Supabase gespeichert.";
-  } catch (e) {
+    status.textContent=statusText;
+  }catch(e){
     console.error(e);
-    statusText += " Achtung: " + e.message;
+    status.textContent="Discovery fehlgeschlagen: "+(e?.message||e);
+  }finally{
+    renderDiscoveryCacheState();
+    renderDashboard();
   }
-
-  status.textContent = statusText;
-  renderDiscoveryCacheState();
 }
+
+function discoveryReviewSummary(targetWallets=wallets){
+  const walletIds=new Set((targetWallets||[]).map(w=>String(w.dbId||w.id)));
+  let unresolved=0,suspects=0,unscanned=0,firstWalletId="";
+  for(const w of (targetWallets||[])){
+    const walletId=String(w.dbId||w.id);
+    if(!walletIds.has(walletId))continue;
+    const eligibleChains=discoveryChains().filter(chain=>walletAddressForChain(w,chain));
+    if(!eligibleChains.length)continue;
+    const cache=getDiscoveryCacheForWallet(walletId);
+    if(!cache){
+      unscanned++;
+      if(!firstWalletId)firstWalletId=walletId;
+      continue;
+    }
+    const findings=Array.isArray(cache.findings)?cache.findings:[];
+    const open=findings.filter(f=>!isSafeTokenAddress(f.address,f.chain)&&!f.userMarkedScam);
+    if(open.length&&!firstWalletId)firstWalletId=walletId;
+    unresolved+=open.length;
+    suspects+=open.filter(isFindingScamSuspect).length;
+  }
+  return {unresolved,suspects,needsReview:Math.max(0,unresolved-suspects),unscanned,firstWalletId};
+}
+
+function openDiscoveryReview(walletId=""){
+  showTab("discovery");
+  const select=document.getElementById("discoveryWalletSelect");
+  if(select&&walletId&&[...select.options].some(o=>String(o.value)===String(walletId))){
+    select.value=String(walletId);
+    onDiscoveryWalletChange();
+  }
+}
+window.openDiscoveryReview=openDiscoveryReview;
 
 // Fasst GoPlus-Risiko-Flags + Namens-Heuristik zu einer einzigen Scam-Einschätzung zusammen
 function isFindingScamSuspect(f) {
@@ -10147,7 +10257,7 @@ async function markAllDiscoverySuspectsAsSpam(){
   const walletId=currentDiscoveryWalletId(),cache=getDiscoveryCacheForWallet(walletId);if(!cache)return;
   const {data,error}=await sb.from('discovery_cache').update({findings:lastDiscoveryFindings}).eq('user_id',currentUser.id).eq('wallet_id',String(walletId)).select().single();
   if(error){alert('Spam-Markierungen konnten nicht gespeichert werden: '+error.message);return;}
-  discoveryCaches.set(String(walletId),data);discoveryCache=data;renderDiscoveryCacheState();
+  discoveryCaches.set(String(walletId),data);discoveryCache=data;renderDiscoveryCacheState();renderDashboard();
 }
 
 async function setDiscoveryUserScam(chain, address, marked) {
@@ -10195,6 +10305,7 @@ async function setDiscoveryUserScam(chain, address, marked) {
   discoveryCaches.set(String(walletId), data || updatedCache);
   discoveryCache = data || updatedCache;
   renderDiscoveryCacheState();
+  renderDashboard();
 }
 
 async function addDiscoveredToken(chain, address, symbol) {
@@ -10208,7 +10319,9 @@ async function addDiscoveredToken(chain, address, symbol) {
   lastDiscoveryFindings = lastDiscoveryFindings.filter(f =>
     !(f.chain === chain && normalizeAddress(f.address, chain) === normalizeAddress(address, chain))
   );
-  showTab("custom");
+  renderDiscoveryResults(lastDiscoveryFindings);
+  renderDiscoveryCacheState();
+  renderDashboard();
 }
 
 // ---- Initialisierung ----

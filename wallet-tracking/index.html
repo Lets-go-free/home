@@ -90,10 +90,11 @@
       <div class="sidebar-brand"><div class="sidebar-brand-text"><strong>WalletTracking</strong><small>Bereiche</small></div><button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" onclick="toggleSidebarCollapsed()" aria-label="Navigation ein-/ausklappen" title="Navigation ein-/ausklappen">‹</button></div>
       <nav class="main-nav">
         <button type="button" class="main-nav-btn" data-main-section="dashboard" onclick="showMainSection('dashboard')"><span class="main-nav-icon">⌂</span> <span>Dashboard</span></button>
-        <button type="button" class="main-nav-btn" data-main-section="support" onclick="showMainSection('support')"><span class="main-nav-icon">💬</span> <span>Support &amp; Info</span></button>
-        <button type="button" class="main-nav-btn" data-main-section="wallets" onclick="showMainSection('wallets')"><span class="main-nav-icon">🧰</span> <span>Wallets &amp; Token</span></button>
-        <button type="button" class="main-nav-btn" data-main-section="overview" onclick="showMainSection('overview')"><span class="main-nav-icon">📊</span> <span>Übersicht &amp; Analyse</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="wallets" onclick="showMainSection('wallets')"><span class="main-nav-icon">👛</span> <span>Meine Wallets</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="tokens" onclick="showMainSection('tokens')"><span class="main-nav-icon">🪙</span> <span>Meine Token</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="analysis" onclick="showMainSection('analysis')"><span class="main-nav-icon">📊</span> <span>Analyse / Berichte</span></button>
         <button type="button" class="main-nav-btn" data-main-section="projects" onclick="showMainSection('projects')"><span class="main-nav-icon">🏦</span> <span>DeFi-Projekte</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="support" onclick="showMainSection('support')"><span class="main-nav-icon">💬</span> <span>Support &amp; Info</span></button>
         <button type="button" class="main-nav-btn" data-main-section="admin" id="adminMainNavBtn" onclick="showMainSection('admin')" style="display:none"><span class="main-nav-icon">⚙️</span> <span>Admin-Bereich</span></button>
       </nav>
     </aside>
@@ -106,15 +107,17 @@
           <button type="button" class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
           <button type="button" class="tab-btn" data-tab="account-data" onclick="showTab('account-data')">🗑️ Daten &amp; Konto</button>
         </div></div>
-        <div class="tab-nav-group" data-nav-section="wallets"><div class="tab-nav">
-          <button type="button" class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
+        <div class="tab-nav-group" data-nav-section="dashboard"><div class="tab-nav">
+          <button type="button" class="tab-btn" data-tab="dashboard" onclick="showTab('dashboard')">Übersicht</button>
+          <button type="button" class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Bestände</button>
+          <button type="button" class="tab-btn" data-tab="tax" onclick="showTab('tax')">Bestand per 31.12.</button>
+        </div></div>
+        <div class="tab-nav-group" data-nav-section="tokens"><div class="tab-nav">
           <button type="button" class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
           <button type="button" class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
-          <button type="button" class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
+          <button type="button" class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken &amp; prüfen</button>
         </div></div>
-        <div class="tab-nav-group" data-nav-section="overview"><div class="tab-nav">
-          <button type="button" class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking · Token-Übersicht</button>
-          <button type="button" class="tab-btn" data-tab="tax" onclick="showTab('tax')">🧾 Bestandesaufnahme per 31.12</button>
+        <div class="tab-nav-group" data-nav-section="analysis"><div class="tab-nav">
           <button type="button" class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
           <button type="button" class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
           <button type="button" class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
@@ -152,7 +155,7 @@
       <div id="centralRefreshProgress"></div>
       <div id="centralProjectRefreshScratch" style="display:none"></div>
       <div class="note" style="margin-bottom:14px">
-        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Beim ersten aktiven Start pro Kalendertag folgt automatisch eine kontrollierte Delta-Prüfung. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. Der zentrale manuelle Button „Daten aktualisieren“ bleibt im Dashboard. Aktuelle Kurse werden global automatisch je 15-Minuten-Slot nachgeführt; der manuelle Preis-Refresh ist nur für Admins sichtbar. Entdecken und Gebühren bleiben bewusst manuell.
+        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Beim ersten aktiven Start pro Kalendertag folgt automatisch eine kontrollierte Delta-Prüfung. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. Der zentrale manuelle Button „Daten aktualisieren“ bleibt im Dashboard. Aktuelle Kurse werden global automatisch je 15-Minuten-Slot nachgeführt; der manuelle Preis-Refresh ist nur für Admins sichtbar. Die Token-Discovery läuft bei einer neu erfassten Wallet genau einmal automatisch; spätere Discovery-Aktualisierungen und Gebühren bleiben bewusst manuell.
         Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
       </div>
 
@@ -341,12 +344,12 @@
     </div>
 
     <div id="tab-discovery" class="tab-panel">
+      <div class="section-title">🔍 Entdecken &amp; prüfen</div>
       <div class="custom-token-card">
         <div class="note" style="margin-bottom:12px">
-          Sucht in der ausgewählten Wallet nach Token, die du tatsächlich hältst, aber die noch nicht auf der sicheren Liste stehen.
-          EVM-Chains nutzen dafür aktuell noch Alchemy. Um das API-Kontingent zu schützen, ist pro Benutzer nur
-          <strong>ein manueller Discovery-Scan alle 30 Tage</strong> möglich; Admins sind von dieser Sperre ausgenommen. Das Ergebnis wird in Supabase gespeichert und bis zum nächsten
-          möglichen Scan hier wieder angezeigt. Apertum/Tron werden soweit verfügbar aus kostenlosen Datenquellen ergänzt.
+          Eine neu erfasste Wallet wird genau einmal automatisch auf unbekannte Token geprüft. Danach zeigt das Dashboard unter „Was muss ich tun?“ offene Treffer, bis jeder Token als sicher oder als Spam klassifiziert wurde.
+          Hier kannst du den gespeicherten Stand prüfen und später bei Bedarf erneut scannen. EVM-Chains nutzen dafür aktuell noch Alchemy. Um das API-Kontingent zu schützen, ist für normale Benutzer nach einem Scan
+          <strong>30 Tage bis zur nächsten manuellen Aktualisierung</strong> vorgesehen; Admins sind von dieser Sperre ausgenommen. Das Ergebnis wird in Supabase gespeichert.
         </div>
 
         <div class="field-grid" style="margin-bottom:14px">
@@ -1156,8 +1159,8 @@
   </div>
 
   <footer>
-    Version vom 28.09.2026 19:21:53 CEST · Phase 6.68 · Refresh-/Button-Audit & zentraler DAO-Delta-Refresh.<br>
-    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
+    Version vom 29.09.2026 12:23:47 CEST · Phase 6.69 · Navigation & Token-Onboarding.<br>
+    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
 
@@ -1175,11 +1178,11 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260928-192153"></script>
-<script src="./help/help-general.js?v=20260928-192153"></script>
+<script src="./admin/ideas.js?v=20260929-122347"></script>
+<script src="./help/help-general.js?v=20260929-122347"></script>
 <script src="./projects/tln-vow/help.js?v=20260928-133530"></script>
 <script src="./projects/dao1/help.js?v=20260928-133530"></script>
-<script src="./js/app.js?v=20260928-192153"></script>
+<script src="./js/app.js?v=20260929-122347"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260928-121620"></script>
 
 
@@ -1198,6 +1201,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.09.2026 19:21:53 CEST · Phase 6.68 · Build 20260928-192153</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 29.09.2026 12:23:47 CEST · Phase 6.69 · Build 20260929-122347</div>
 </body>
 </html>
