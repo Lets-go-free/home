@@ -1,3 +1,4 @@
+// Phase 6.75 · 29.09.2026 16:40:48 CEST: CoinGecko-Zugriffe vollständig aus dem Browser entfernt. Aktuelle und historische Preise laufen authentifiziert über Supabase Edge Function coingecko-proxy; Demo-Key bleibt serverseitig im Secret COINGECKO_DEMO_API_KEY. Build 20260929-164048.
 // Phase 6.74 · 29.09.2026 15:25:57 CEST: Staking-Principal projektübergreifend gehärtet: TLN/VOW und DAO1-LP bleiben bis zum tatsächlichen Unstake Vermögen – aktuell und per 31.12. zum historischen LP-Stichtagspreis. DAO1-Staking wird aus verifiziertem Staking-Contract-Katalog klassifiziert, täglich im zentralen Refresh nachgeführt; persistente Projekt-Navigation bleibt enthalten. Build 20260929-152557.
 // Phase 6.73 · 29.09.2026 13:41:24 CEST: doppelten Daten-/Preisstatus im Wallet-Bestand entfernt; Datenaktualisierung samt eingeklapptem Wallet-Datenstand in den globalen Statusrahmen verschoben und visuell als sekundäre graue Statusinfo vereinheitlicht. Build 20260929-134124.
 // Phase 6.71 · 29.09.2026 13:20:32 CEST: DeFi-Projekte ins Dashboard verschoben; CoinGecko-Preisquellen-Audit: nur erforderliche IDs, 403/429-Circuit-Breaker statt Wiederholschleifen, stale-while-refresh bleibt erhalten und Teilfehler werden im Preisstatus sichtbar. Build 20260929-132032.
@@ -1316,6 +1317,18 @@ async function taxTokenDecimalsCurrent(chain,token){
   return 18;
 }
 
+async function coinGeckoProxy(body){
+  if(!currentUser?.id)throw new Error("CoinGecko-Proxy erfordert eine Anmeldung.");
+  const {data,error}=await sb.functions.invoke("coingecko-proxy",{body});
+  if(error)throw new Error(`CoinGecko-Proxy: ${error.message||error}`);
+  if(!data?.ok){
+    const status=Number(data?.upstreamStatus||0);
+    if(status===401||status===403||status===429)coinGeckoPublicBackoff(status,"Edge-Proxy");
+    throw new Error(data?.error||`CoinGecko-Proxy fehlgeschlagen${status?` (HTTP ${status})`:""}.`);
+  }
+  return data.data;
+}
+
 function taxDateForCoinGecko(dateStr){
   const [y,m,d]=dateStr.split("-");
   return `${d}-${m}-${y}`;
@@ -1329,34 +1342,17 @@ async function taxCoinGeckoPrice(id,dateStr){
     taxPriceCache.set(key,null);
     return null;
   }
-  const url=`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/history?date=${taxDateForCoinGecko(dateStr)}&localization=false`;
-  for(let attempt=0;attempt<3;attempt++){
-    try{
-      if(attempt)await new Promise(r=>setTimeout(r,1200*attempt));
-      const res=await fetch(url);
-      if(!res.ok){
-        if(res.status===401||res.status===403||res.status===429){
-          coinGeckoPublicBackoff(res.status,`Historie ${id}`);
-          taxPriceCache.set(key,null);
-          return null;
-        }
-        if(res.status>=500 && attempt<2)continue;
-        throw new Error(`CoinGecko HTTP ${res.status}`);
-      }
-      const j=await res.json();
-      const p=Number(j?.market_data?.current_price?.usd);
-      const out=Number.isFinite(p)&&p>0?{price:p,source:`CoinGecko Tageskurs · ${dateStr}`} : null;
-      taxPriceCache.set(key,out);
-      return out;
-    }catch(e){
-      if(attempt===2){
-        console.warn("Historischer CoinGecko-Preis:",id,e);
-        taxPriceCache.set(key,null);
-        return null;
-      }
-    }
+  try{
+    const j=await coinGeckoProxy({action:"history",id,date:dateStr});
+    const p=Number(j?.market_data?.current_price?.usd);
+    const out=Number.isFinite(p)&&p>0?{price:p,source:`CoinGecko Tageskurs · ${dateStr}`} : null;
+    taxPriceCache.set(key,out);
+    return out;
+  }catch(e){
+    console.warn("Historischer CoinGecko-Preis via Edge-Proxy:",id,e);
+    taxPriceCache.set(key,null);
+    return null;
   }
-  return null;
 }
 
 function taxNativeCoinGeckoId(chain){
@@ -4047,13 +4043,7 @@ async function loadNativePrices() {
       // CoinGecko dokumentiert bis zu 515 IDs fuer /simple/price. Der gemessene
       // WalletTracking-Request liegt weit darunter; zusaetzliches Batching wuerde
       // nur API-Calls vervielfachen und loest einen 403 nicht ursächlich.
-      const ids=encodeURIComponent(idList.join(","));
-      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`);
-      if (!res.ok) {
-        if(res.status===401||res.status===403||res.status===429)coinGeckoPublicBackoff(res.status,"Aktuelle Preise");
-        throw new Error("HTTP " + res.status);
-      }
-      const data = await res.json();
+      const data = await coinGeckoProxy({action:"simple_price",ids:idList});
 
       const prices = {};
       Object.keys(CHAIN_META).forEach(chain => {
