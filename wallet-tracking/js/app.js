@@ -1,4 +1,4 @@
-// Phase 6.81 · 29.09.2026 19:40:29 CEST: 31.12.-Performance-Diagnose: aggregierte Token-Balancecheck-Vorfilterung wird nach jedem Neu-Berechnen direkt im sichtbaren Coverage-Status ausgegeben, statt nur in den chain-spezifischen Coverage-Details zu liegen. Build 20260929-194029.
+// Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter Supabase-Cache fuer exakte historische Wallet/Chain/Asset/Block-Balances und ERC-20-Kandidaten. Wiederholte Stichtage verwenden Cache statt Explorer/RPC; neue Cachewerte werden gebuendelt geschrieben. Build 20260930-003245.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
 // Phase 6.78 · 29.09.2026 17:48:45 CEST: Generische LP-/Staking-Registry: LP-Paare projektübergreifend/on-chain erkannt; neue Pairs und mögliche Staking-Ziele bleiben bis Admin-Verifikation pending. Verifizierte projektlose/project-zugeordnete LP-Stakings zählen aktuell und per 31.12. als Vermögen. Build 20260929-174845.
 // Phase 6.77 · 29.09.2026 17:15:17 CEST: Staking-Vermögensverifikation gehärtet: DAO1-Staking-Katalog pair_address ist autoritative LP-Quelle auch ohne predefined lp_token; 31.12.-Staking-Cutoff nutzt exakten Stichtagsblock vor Zeitstempel und verhindert Future-Stake/-Unstake bei fehlender Event-Zeit. Build 20260929-171517.
@@ -1182,6 +1182,82 @@ const taxRoutescanUnavailable = new Set();
 const taxHistoricalErc20CandidateCache = new Map();
 const taxHistoricalTokenBalanceCache = new Map();
 
+// Phase 6.82: persistenter technischer Cache fuer exakte historische Balance-/
+// Kandidaten-Abfragen. Der fertige Steuerbericht bleibt weiterhin in
+// year_end_positions/year_end_coverage; diese Tabellen vermeiden lediglich, dass
+// derselbe Wallet/Chain/Asset/Stichtagsblock in spaeteren Sessions erneut beim
+// Explorer bzw. Archive-RPC abgefragt werden muss.
+function taxHistoricalAssetKey(chain,asset){
+  if(!asset||asset==='native')return 'native';
+  return normalizeAddress(asset,chain);
+}
+function taxHistoricalBalanceMapKey(chain,walletAddress,asset,block){
+  return `${chain}|${String(walletAddress||'').toLowerCase()}|${taxHistoricalAssetKey(chain,asset)}|${Number(block)}`;
+}
+function taxHistoricalCandidateMapKey(chain,walletAddress,block){
+  return `${chain}|${String(walletAddress||'').toLowerCase()}|${Number(block)}`;
+}
+async function taxLoadPersistentHistoricalCaches(chain,block,walletRefs){
+  const addresses=[...new Set((walletRefs||[]).map(r=>String(r.address||'').toLowerCase()).filter(Boolean))];
+  const balances=new Map(),candidates=new Map();
+  if(!currentUser?.id||!addresses.length)return {balances,candidates,balanceWrites:[],candidateWrites:[],hits:0,misses:0};
+  try{
+    const {data,error}=await sb.from('historical_token_balance_cache')
+      .select('wallet_id,wallet_address,asset_key,amount,decimals,balance_source')
+      .eq('user_id',currentUser.id).eq('chain_key',chain).eq('block_number',Number(block)).in('wallet_address',addresses);
+    if(error)throw error;
+    for(const row of (data||[])){
+      const key=taxHistoricalBalanceMapKey(chain,row.wallet_address,row.asset_key,block);
+      balances.set(key,{amount:Number(row.amount||0),decimals:row.decimals==null?null:Number(row.decimals),source:row.balance_source||'Supabase historischer Balance-Cache',persistent:true});
+    }
+  }catch(e){console.warn('Historischen Balance-Cache laden',chain,e);}
+  try{
+    const {data,error}=await sb.from('historical_token_candidate_cache')
+      .select('wallet_id,wallet_address,token_addresses,discovery_source')
+      .eq('user_id',currentUser.id).eq('chain_key',chain).eq('block_number',Number(block)).in('wallet_address',addresses);
+    if(error)throw error;
+    for(const row of (data||[])){
+      const key=taxHistoricalCandidateMapKey(chain,row.wallet_address,block);
+      const list=Array.isArray(row.token_addresses)?row.token_addresses:[];
+      candidates.set(key,list.map(a=>normalizeAddress(a,chain)).filter(Boolean));
+    }
+  }catch(e){console.warn('Historischen Kandidaten-Cache laden',chain,e);}
+  return {balances,candidates,balanceWrites:[],candidateWrites:[],hits:0,misses:0};
+}
+async function taxFlushPersistentHistoricalCaches(ctx){
+  if(!currentUser?.id||!ctx)return;
+  const dedupe=(rows,keyFn)=>[...new Map(rows.map(r=>[keyFn(r),r])).values()];
+  const balances=dedupe(ctx.balanceWrites||[],r=>`${r.wallet_address}|${r.asset_key}|${r.block_number}`);
+  const candidates=dedupe(ctx.candidateWrites||[],r=>`${r.wallet_address}|${r.block_number}`);
+  if(balances.length){
+    for(let i=0;i<balances.length;i+=500){
+      const {error}=await sb.from('historical_token_balance_cache').upsert(balances.slice(i,i+500),{onConflict:'user_id,chain_key,wallet_address,asset_key,block_number'});
+      if(error){console.warn('Historischen Balance-Cache speichern',error);break;}
+    }
+  }
+  if(candidates.length){
+    for(let i=0;i<candidates.length;i+=200){
+      const {error}=await sb.from('historical_token_candidate_cache').upsert(candidates.slice(i,i+200),{onConflict:'user_id,chain_key,wallet_address,block_number'});
+      if(error){console.warn('Historischen Kandidaten-Cache speichern',error);break;}
+    }
+  }
+}
+function taxRememberPersistentBalance(ctx,{walletId,walletAddress,chain,block,asset,amount,decimals=null,source=null}){
+  if(!ctx||!currentUser?.id)return;
+  const assetKey=taxHistoricalAssetKey(chain,asset),address=String(walletAddress||'').toLowerCase();
+  const key=taxHistoricalBalanceMapKey(chain,address,assetKey,block);
+  const cached={amount:Number(amount||0),decimals:decimals==null?null:Number(decimals),source:source||null,persistent:true};
+  ctx.balances.set(key,cached);
+  ctx.balanceWrites.push({user_id:currentUser.id,wallet_id:walletId?String(walletId):null,chain_key:chain,wallet_address:address,asset_key:assetKey,block_number:Number(block),amount:String(amount??0),decimals:decimals==null?null:Number(decimals),balance_source:source||null,checked_at:new Date().toISOString()});
+}
+function taxRememberPersistentCandidates(ctx,{walletId,walletAddress,chain,block,addresses,source}){
+  if(!ctx||!currentUser?.id)return;
+  const address=String(walletAddress||'').toLowerCase();
+  const list=[...new Set((addresses||[]).map(a=>normalizeAddress(a,chain)).filter(Boolean))];
+  ctx.candidates.set(taxHistoricalCandidateMapKey(chain,address,block),list);
+  ctx.candidateWrites.push({user_id:currentUser.id,wallet_id:walletId?String(walletId):null,chain_key:chain,wallet_address:address,block_number:Number(block),token_addresses:list,discovery_source:source||null,checked_at:new Date().toISOString()});
+}
+
 function taxHistoricalErc20CandidateDiscoverySupported(chain){
   if(!CHAIN_CONFIG[chain]?.evmChainId)return false;
   if(CHAIN_CONFIG[chain]?.discoveryProvider==="alchemy")return true;
@@ -1223,7 +1299,10 @@ async function taxEvmBlockByTime(chain,targetEpoch){
   return {block:best,source:"Alchemy Archive"};
 }
 
-async function taxEvmNativeBalance(chain,address,block){
+async function taxEvmNativeBalance(chain,address,block,persistCtx=null,walletId=null){
+  const persistentKey=taxHistoricalBalanceMapKey(chain,address,'native',block);
+  if(persistCtx?.balances?.has(persistentKey)){persistCtx.hits++;return {...persistCtx.balances.get(persistentKey),source:'Supabase historischer Balance-Cache'};}
+  if(persistCtx)persistCtx.misses++;
   if(!taxRoutescanUnavailable.has(chain)){
     try{
       const r=await routescanCall(chain,{
@@ -1232,7 +1311,9 @@ async function taxEvmNativeBalance(chain,address,block){
       });
       const raw=typeof r==="object"?(r.balance??r.Balance??r.result):r;
       if(raw!=null && /^\d+$/.test(String(raw))){
-        return {amount:Number(BigInt(String(raw)))/1e18,source:`Routescan balancehistory @ Block ${block}`};
+        const result={amount:Number(BigInt(String(raw)))/1e18,source:`Routescan balancehistory @ Block ${block}`};
+        taxRememberPersistentBalance(persistCtx,{walletId,walletAddress:address,chain,block,asset:'native',amount:result.amount,decimals:18,source:result.source});
+        return result;
       }
       throw new Error("Historischer Native-Bestand nicht lesbar.");
     }catch(e){
@@ -1241,13 +1322,23 @@ async function taxEvmNativeBalance(chain,address,block){
     }
   }
   const raw=await archiveRpc(chain,"eth_getBalance",[address,taxBlockHex(block)]);
-  return {amount:Number(BigInt(raw||"0x0"))/1e18,source:`Alchemy eth_getBalance @ Block ${block}`};
+  const result={amount:Number(BigInt(raw||"0x0"))/1e18,source:`Alchemy eth_getBalance @ Block ${block}`};
+  taxRememberPersistentBalance(persistCtx,{walletId,walletAddress:address,chain,block,asset:'native',amount:result.amount,decimals:18,source:result.source});
+  return result;
 }
 
-async function taxEvmTokenBalance(chain,address,token,block){
+async function taxEvmTokenBalance(chain,address,token,block,persistCtx=null,walletId=null){
   const tokenAddress=normalizeAddress(token?.address||"",chain);
   const cacheKey=`${chain}|${String(address).toLowerCase()}|${tokenAddress}|${Number(block)}`;
   if(taxHistoricalTokenBalanceCache.has(cacheKey))return {...taxHistoricalTokenBalanceCache.get(cacheKey)};
+  const persistentKey=taxHistoricalBalanceMapKey(chain,address,tokenAddress,block);
+  if(persistCtx?.balances?.has(persistentKey)){
+    persistCtx.hits++;
+    const hit={...persistCtx.balances.get(persistentKey),source:'Supabase historischer Balance-Cache'};
+    taxHistoricalTokenBalanceCache.set(cacheKey,hit);
+    return {...hit};
+  }
+  if(persistCtx)persistCtx.misses++;
   const decimals=await taxTokenDecimalsCurrent(chain,token);
   let result;
   if(!taxRoutescanUnavailable.has(chain)){
@@ -1260,6 +1351,7 @@ async function taxEvmTokenBalance(chain,address,token,block){
       if(raw!=null && /^\d+$/.test(String(raw))){
         result={amount:Number(BigInt(String(raw)))/Math.pow(10,decimals),decimals,source:`Routescan tokenbalancehistory @ Block ${block}`};
         taxHistoricalTokenBalanceCache.set(cacheKey,result);
+        taxRememberPersistentBalance(persistCtx,{walletId,walletAddress:address,chain,block,asset:tokenAddress,amount:result.amount,decimals,source:result.source});
         return {...result};
       }
       throw new Error("Historischer Token-Bestand nicht lesbar.");
@@ -1273,14 +1365,21 @@ async function taxEvmTokenBalance(chain,address,token,block){
   const normalizedRaw = (!raw || raw === "0x") ? "0x0" : raw;
   result={amount:Number(BigInt(normalizedRaw))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
   taxHistoricalTokenBalanceCache.set(cacheKey,result);
+  taxRememberPersistentBalance(persistCtx,{walletId,walletAddress:address,chain,block,asset:tokenAddress,amount:result.amount,decimals,source:result.source});
   return {...result};
 }
 
-async function historicalErc20Candidates(chain,address,targetBlock=null,{strict=false}={}){
+async function historicalErc20Candidates(chain,address,targetBlock=null,{strict=false,persistCtx=null,walletId=null}={}){
   // Nur EVM-Chains: Tron/Solana verwenden eigene Discovery-Wege.
   if (!CHAIN_CONFIG[chain]?.evmChainId) return [];
   const cacheKey=targetBlock==null?null:`${chain}|${String(address).toLowerCase()}|${Number(targetBlock)}`;
   if(cacheKey&&taxHistoricalErc20CandidateCache.has(cacheKey))return [...taxHistoricalErc20CandidateCache.get(cacheKey)];
+  const persistentKey=targetBlock==null?null:taxHistoricalCandidateMapKey(chain,address,targetBlock);
+  if(persistentKey&&persistCtx?.candidates?.has(persistentKey)){
+    const hit=[...persistCtx.candidates.get(persistentKey)];
+    taxHistoricalErc20CandidateCache.set(cacheKey,hit);
+    return hit;
+  }
   const found=new Set();
   // Alchemy: Transferhistorie findet auch vollständig verkaufte Token/LPs.
   if(CHAIN_CONFIG[chain]?.discoveryProvider==="alchemy"){
@@ -1305,6 +1404,7 @@ async function historicalErc20Candidates(chain,address,targetBlock=null,{strict=
   }
   const result=[...found];
   if(cacheKey)taxHistoricalErc20CandidateCache.set(cacheKey,result);
+  if(targetBlock!=null)taxRememberPersistentCandidates(persistCtx,{walletId,walletAddress:address,chain,block:targetBlock,addresses:result,source:CHAIN_CONFIG[chain]?.discoveryProvider||'explorer'});
   return [...result];
 }
 
@@ -1612,6 +1712,8 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   let bi;
   try{bi=await taxEvmBlockByTime(chain,targetEpoch);}
   catch(e){taxCoverageSet(chain,"fehlgeschlagen",e.message,"EVM");return;}
+  const walletRefs=ws.map(w=>({walletId:w.dbId||w.id,address:walletAddressForChain(w,chain)})).filter(r=>r.address);
+  const persistCtx=await taxLoadPersistentHistoricalCaches(chain,bi.block,walletRefs);
 
   // Phase 6.79: Die Steuerberechnung fragt nur verifizierte/benannte Token ab.
   // Früher wurde für jede Wallet zuerst die komplette ERC-20-Transferhistorie als
@@ -1637,7 +1739,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     let walletBaseTokens=baseTokens;
     if(taxHistoricalErc20CandidateDiscoverySupported(chain)){
       try{
-        const touched=new Set((await historicalErc20Candidates(chain,address,bi.block,{strict:true})).map(a=>normalizeAddress(a,chain)));
+        const touched=new Set((await historicalErc20Candidates(chain,address,bi.block,{strict:true,persistCtx,walletId:w.dbId||w.id})).map(a=>normalizeAddress(a,chain)));
         walletBaseTokens=baseTokens.filter(t=>touched.has(normalizeAddress(t.address,chain)));
       }catch(e){
         // Korrektheit vor Performance: falls die Kandidatenquelle ausfaellt, wird
@@ -1676,7 +1778,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     const tokens=[...walletTokens.values()].filter(t=>!isUserMarkedSpamToken(t.address,chain));
     taxSetStatus("loading",`${CHAIN_META[chain]?.label||chain}: ${w.label}…`,`Block ${bi.block} · Wallet ${wi+1}/${ws.length}`);
     try{
-      const nativeBalance=await taxEvmNativeBalance(chain,address,bi.block);
+      const nativeBalance=await taxEvmNativeBalance(chain,address,bi.block,persistCtx,w.dbId||w.id);
         const amount=nativeBalance.amount;
       if(amount>0){
         const hp=await taxHistoricalPrice(chain,"native",dateStr,bi.block);
@@ -1689,7 +1791,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     }catch(e){errors++;taxRows.push({wallet:w.label,wallet_address:address,chain,block:bi.block,asset:"native",symbol:NATIVE_SYMBOL[chain]||chain.toUpperCase(),status:"nicht verifizierbar",error:e.message,balance_source:"Routescan balancehistory"});}
     for(const token of tokens){
       try{
-        const b=await taxEvmTokenBalance(chain,address,token,bi.block);
+        const b=await taxEvmTokenBalance(chain,address,token,bi.block,persistCtx,w.dbId||w.id);
         const tokenAddress=normalizeAddress(token.address,chain),tk=chain+"|"+tokenAddress;
         const configuredProject=predefinedTokenCategory[tk]==="lp_token"?predefinedTokenProject[tk]:null;
         const stakingInfo=stakingAtCutoff.get(tokenAddress)||null;
@@ -1712,8 +1814,9 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
       }
     }
   }
-  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert; LP-/Staking-Historie wird wiederverwendet`;
-  taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · kostenlose Quelle → Alchemy Archive-Fallback");
+  await taxFlushPersistentHistoricalCaches(persistCtx);
+  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu; LP-/Staking-Historie wird wiederverwendet`;
+  taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · persistenter Supabase-Cache → kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
 async function taxBitcoinWallet(chain,w,targetEpoch,dateStr){
@@ -1964,8 +2067,16 @@ async function runTaxSnapshot(){
     const balanceFilterNote=balanceFilterTotals.matches
       ?` · Token-Balancechecks ${balanceFilterTotals.before}→${balanceFilterTotals.after} vorgefiltert`
       :"";
+    const persistentCacheTotals=taxCoverage.reduce((acc,row)=>{
+      const m=String(row?.detail||"").match(/historischer Balance-Cache\s+(\d+)\s+Treffer\s*\/\s*(\d+)\s+neu/i);
+      if(m){acc.hits+=Number(m[1]||0);acc.misses+=Number(m[2]||0);acc.matches++;}
+      return acc;
+    },{hits:0,misses:0,matches:0});
+    const persistentCacheNote=persistentCacheTotals.matches
+      ?` · Historischer Cache ${persistentCacheTotals.hits} Treffer / ${persistentCacheTotals.misses} neu`
+      :"";
     taxSetStatus("ready",`Bereit – ${ok} verifizierte Position(en)${bad?`, ${bad} nicht verifizierbar`:""}.`,
-      `${covered}/${taxCoverage.length} relevante Chain(s) vollständig berücksichtigt · ${partial} teilweise · ${omitted} nicht berücksichtigt. Keine Bestände wurden geschätzt.${balanceFilterNote}`);
+      `${covered}/${taxCoverage.length} relevante Chain(s) vollständig berücksichtigt · ${partial} teilweise · ${omitted} nicht berücksichtigt. Keine Bestände wurden geschätzt.${balanceFilterNote}${persistentCacheNote}`);
   }catch(e){
     console.error("Bestandesaufnahme per 31.12:",e);taxSetStatus("error",e.message||String(e));
   }finally{btn.disabled=false;btn.textContent="Exakten Stichtagsbestand ermitteln";}
@@ -4411,8 +4522,28 @@ function addWallet() {
   renderWalletInputs();
 }
 
+async function purgeHistoricalTaxCachesForWallet(w){
+  if(!currentUser?.id||!w)return;
+  const walletId=String(w.dbId||w.id||'');
+  const addresses=[...new Set(Object.keys(CHAIN_CONFIG).map(chain=>String(walletAddressForChain(w,chain)||'').toLowerCase()).filter(Boolean))];
+  for(const table of ['historical_token_balance_cache','historical_token_candidate_cache']){
+    if(walletId){const {error}=await sb.from(table).delete().eq('user_id',currentUser.id).eq('wallet_id',walletId);if(error)throw error;}
+    if(addresses.length){const {error}=await sb.from(table).delete().eq('user_id',currentUser.id).in('wallet_address',addresses);if(error)throw error;}
+  }
+}
+async function purgeAllHistoricalTaxCaches(){
+  if(!currentUser?.id)return;
+  for(const table of ['historical_token_balance_cache','historical_token_candidate_cache']){
+    const {error}=await sb.from(table).delete().eq('user_id',currentUser.id);
+    if(error)throw error;
+  }
+}
+
 async function deleteWalletCompletely(w) {
   if (!currentUser || !w?.dbId) throw new Error("Gespeicherte Wallet-ID fehlt.");
+  // Technischer History-Cache darf bei einer vollständigen Wallet-Löschung nicht zurückbleiben.
+  // Vorab löschen ist unkritisch: bei einem späteren Wallet-Delete-Fehler kann der Cache jederzeit neu aufgebaut werden.
+  await purgeHistoricalTaxCachesForWallet(w);
   return invokeWalletPrivate("wallet_delete", {wallet_id:String(w.dbId)});
 }
 
@@ -4470,6 +4601,7 @@ async function deleteAllWalletTrackingUserData() {
   if(status)status.textContent="Vollständige Löschung läuft…";
 
   try {
+    await purgeAllHistoricalTaxCaches();
     const result = await invokeWalletPrivate("user_data_delete");
     if(status)status.textContent=`Serverseitig gelöscht${Number(result?.result?.deleted_rows||0)?`: ${Number(result.result.deleted_rows)} Datensätze`: ""}. Lokale Daten werden entfernt…`;
 
