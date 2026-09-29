@@ -1,3 +1,4 @@
+// Phase 6.71 · 29.09.2026 13:20:32 CEST: DeFi-Projekte ins Dashboard verschoben; CoinGecko-Preisquellen-Audit: nur erforderliche IDs, 403/429-Circuit-Breaker statt Wiederholschleifen, stale-while-refresh bleibt erhalten und Teilfehler werden im Preisstatus sichtbar. Build 20260929-132032.
 // Phase 6.70 · 29.09.2026 13:12:21 CEST: 31.12.-PDF blendet interne Prüfdetails standardmäßig aus; optional per Checkbox einblendbar. Gesamtwert und Chain-Summary bleiben immer enthalten. Build 20260929-131221.
 // Phase 6.68 · 28.09.2026 19:21:53 CEST: Refresh-/Button-Audit abgeschlossen: Dashboard-„Daten aktualisieren“ erzwingt auch DAO1/APTMDAO Delta-Sync; täglicher DAO-Lauf nutzt frisch geladene NFT-Current-State-Caches ohne Doppelabruf; technische DAO-NFT-/Reprice-Reparaturaktionen nur Admin. Build 20260928-192153.
 // Phase 6.67 · 28.09.2026 18:38:22 CEST: 31.12.-Browser/PDF/Excel lösen bekannte Token zentral aus Stammdaten auf (u.a. VOW); Contract-Adressen nur noch sekundär/gekürzt in UI/PDF, PDF-Spalten gegen Überlappung fixiert. Build 20260928-183822.
@@ -180,12 +181,12 @@ function toggleUiTheme(){applyUiTheme(document.documentElement.dataset.theme==="
 window.toggleUiTheme=toggleUiTheme;
 
 const MAIN_SECTION_TABS={
-  dashboard:["dashboard","tracking","tax"],
+  dashboard:["dashboard","projects-overview","tracking","tax"],
   wallets:["wallets"],
   tokens:["predefined","custom","discovery"],
   analysis:["fees","nfts","approvals"],
   support:["chat","help","account-data"],
-  admin:["admin"], projects:["projects-overview","tlnvow","dao1"]
+  admin:["admin"], projects:["tlnvow","dao1"]
 };
 function mainSectionForTab(name){
   for(const [section,tabs] of Object.entries(MAIN_SECTION_TABS)) if(tabs.includes(name)) return section;
@@ -1316,13 +1317,22 @@ async function taxCoinGeckoPrice(id,dateStr){
   if(!id)return null;
   const key=`${id}|${dateStr}`;
   if(taxPriceCache.has(key))return taxPriceCache.get(key);
+  if(!coinGeckoPublicAvailable()){
+    taxPriceCache.set(key,null);
+    return null;
+  }
   const url=`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/history?date=${taxDateForCoinGecko(dateStr)}&localization=false`;
   for(let attempt=0;attempt<3;attempt++){
     try{
       if(attempt)await new Promise(r=>setTimeout(r,1200*attempt));
       const res=await fetch(url);
       if(!res.ok){
-        if((res.status===429 || res.status>=500) && attempt<2)continue;
+        if(res.status===401||res.status===403||res.status===429){
+          coinGeckoPublicBackoff(res.status,`Historie ${id}`);
+          taxPriceCache.set(key,null);
+          return null;
+        }
+        if(res.status>=500 && attempt<2)continue;
         throw new Error(`CoinGecko HTTP ${res.status}`);
       }
       const j=await res.json();
@@ -3715,6 +3725,26 @@ let currentPriceCacheState = { capturedAt:null, source:"none" };
 let allCurrentPricesPromise = null;
 let globalPriceTimer = null;
 
+// CoinGecko Public/Demo wird bewusst nur vom globalen 15-Minuten-Preisjob bzw.
+// von expliziten historischen 31.12.-Abfragen verwendet. Seit 2026 verlangt
+// CoinGecko fuer den stabilen Demo-Zugriff einen API-Key. Solange WalletTracking
+// noch keinen serverseitigen Key-Proxy besitzt, verhindert dieser Circuit-Breaker
+// 403/429-Wiederholungsschleifen. Der letzte gueltige globale Snapshot bleibt aktiv.
+let coinGeckoPublicBlockedUntil = 0;
+let coinGeckoPublicBlockReason = "";
+let coinGeckoPublicWarned = false;
+function coinGeckoPublicAvailable(){ return Date.now() >= coinGeckoPublicBlockedUntil; }
+function coinGeckoPublicBackoff(status, context="") {
+  const code=Number(status)||0;
+  const ms=(code===401||code===403) ? 60*60*1000 : (code===429 ? 15*60*1000 : 5*60*1000);
+  coinGeckoPublicBlockedUntil=Math.max(coinGeckoPublicBlockedUntil,Date.now()+ms);
+  coinGeckoPublicBlockReason=`HTTP ${code||"Fehler"}${context?` · ${context}`:""}`;
+  if(!coinGeckoPublicWarned){
+    coinGeckoPublicWarned=true;
+    console.warn(`CoinGecko voruebergehend pausiert (${coinGeckoPublicBlockReason}). Letzter gueltiger Preisstand bleibt aktiv.`);
+  }
+}
+
 function priceSlotKey(value=new Date()){
   const d=value instanceof Date?value:new Date(value);
   if(Number.isNaN(d.getTime()))return "";
@@ -3776,16 +3806,18 @@ async function loadCachedCurrentPricesAtStart(){
 function rerenderAllCurrentPriceViews(){renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();if(document.getElementById("tab-predefined")?.classList.contains("active"))renderSafeTokenTable();}
 async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   setCentralPriceBusy(true);setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Globaler 15-Minuten-Preisstand wird aktualisiert…","note");
-  await loadNativePrices();
+  const generalSources=await loadNativePrices();
   let tlnState=null;
   if(window.TLNVOWProject){await window.TLNVOWProject.refreshPrices();tlnState=window.TLNVOWProject.getPriceState?.()||null;}
   const saved=await saveGlobalCurrentPriceSnapshot(slotKey);
   rerenderAllCurrentPriceViews();await refreshFeePriceViews().catch(e=>console.warn("Gebühren-Kursansicht aktualisieren:",e));
   const stamp=formatCurrentPriceTimestamp(currentPriceCacheState.capturedAt);
-  setCentralPriceStatus(`${stamp} · globaler Preisstand${saved?" gespeichert":" (Speichern fehlgeschlagen)"}.`,saved?"success":"warning");
+  const cgOk=generalSources?.coinGecko?.ok===true;
+  const partialNote=!cgOk&&generalSources?.coinGecko?.ids?" · teilweise aktualisiert; CoinGecko nicht erreichbar, letzte gueltige CoinGecko-Kurse beibehalten":"";
+  setCentralPriceStatus(`${stamp} · globaler Preisstand${saved?" gespeichert":" (Speichern fehlgeschlagen)"}${partialNote}.`,saved&&cgOk?"success":"warning");
   setWtDataStatus("tracking",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Wallet-Tracking"});
-  window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,tln:tlnState}}));
-  return {general:currentPriceCacheState,tln:tlnState};
+  window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,sources:generalSources,tln:tlnState}}));
+  return {general:currentPriceCacheState,sources:generalSources,tln:tlnState};
 }
 async function refreshAllCurrentPrices({manual=false}={}){
   if(allCurrentPricesPromise)return allCurrentPricesPromise;
@@ -3880,7 +3912,7 @@ async function apertumCurrentDirectPrice(base,quote,bd,qd,explicitPair=null){
 async function loadApertumCurrentPrices(){
   const refreshedAt=new Date().toISOString();
   const chain="apertum",u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");
-  if(!u||!wa){console.warn("Apertum Live-Kurse: wAPTM oder wUSDT nicht in predefined_tokens gefunden");return;}
+  if(!u||!wa){console.warn("Apertum Live-Kurse: wAPTM oder wUSDT nicht in predefined_tokens gefunden");return false;}
   const ud=await taxTokenDecimalsCurrent(chain,u),wd=await taxTokenDecimalsCurrent(chain,wa);
   // Gleiche Referenz wie im DAO1-Projekt: der validierte wAPTM/wUSDT-Pool wird direkt
   // verwendet. Damit hängt der Basispreis nicht von Symbolfeldern oder der Factory-Suche ab.
@@ -3890,7 +3922,7 @@ async function loadApertumCurrentPrices(){
   if(!aptmLeg){
     try{aptmLeg=await apertumCurrentDirectPrice(wa.address,u.address,wd,ud);}catch(e){console.warn("Apertum Referenzpool via Factory",e);}
   }
-  const aptm=aptmLeg?.price;if(!(aptm>0)){console.warn("Apertum Live-Kurse: kein wAPTM/wUSDT-Preis ermittelbar");return;}
+  const aptm=aptmLeg?.price;if(!(aptm>0)){console.warn("Apertum Live-Kurse: kein wAPTM/wUSDT-Preis ermittelbar");return false;}
   nativePrices[chain]={price:aptm,change24h:undefined,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};
   tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD",refreshedAt};
   tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};
@@ -3914,73 +3946,89 @@ async function loadApertumCurrentPrices(){
       else if(via)tokenPrices[key]={price:via.price*aptm,source:`Apertum DEX ${sym||"Token"}/wAPTM → wUSDT · ${via.pair} · ${aptmLeg.pair}`,refreshedAt};
     }catch(e){console.warn("Apertum Live-Kurs",sym||addr,e);}
   }
+  return true;
 }
 
 async function loadNativePrices() {
   const refreshedAt=new Date().toISOString();
-  const ids = [...new Set(
-    Object.entries(CHAIN_META).filter(([chain])=>chain!=="apertum").map(([,m]) => m.coingeckoId)
-      .concat(Object.entries(predefinedTokenCoinGeckoIds).filter(([key])=>!key.startsWith("apertum|")).map(([,id])=>id))
-      .filter(Boolean)
-  )].join(",");
+  // Nur IDs abfragen, die der aktuelle globale Preisstand tatsaechlich benoetigt:
+  // native Chain-Coins plus aktive vordefinierte Safe-Token. Keine unbenutzten
+  // Metadaten-IDs aus predefined_tokens in den CoinGecko-Request ziehen.
+  const requestedIds=[
+    ...Object.entries(CHAIN_META).filter(([chain])=>chain!=="apertum").map(([,m])=>m.coingeckoId),
+    ...Object.keys(SAFE_ADDRESSES).filter(chain=>chain!=="apertum").flatMap(chain=>(SAFE_ADDRESSES[chain]||[])
+      .filter(address=>!isTlnVowManagedToken(chain,address))
+      .map(address=>predefinedTokenCoinGeckoIds[chain+"|"+address]))
+  ].filter(Boolean);
+  const idList=[...new Set(requestedIds)];
 
   const alreadyPriced = {}; // "chain|adresse" -> true, deckt USDT/USDC ab (kein Doppel-Fetch via GeckoTerminal)
+  let coinGeckoState={ok:false,status:"skipped",ids:idList.length};
 
-  try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-
-    const prices = {};
-    Object.keys(CHAIN_META).forEach(chain => {
-      if(chain === "apertum") return; // Apertum: ausschließlich On-Chain-Kurse
-      const id = CHAIN_META[chain].coingeckoId;
-      if (data[id] && typeof data[id].usd === "number") {
-        prices[chain] = {
-          price: data[id].usd,
-          change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined,
-          source: "CoinGecko",
-          refreshedAt
-        };
+  if(idList.length && coinGeckoPublicAvailable()){
+    try {
+      // CoinGecko dokumentiert bis zu 515 IDs fuer /simple/price. Der gemessene
+      // WalletTracking-Request liegt weit darunter; zusaetzliches Batching wuerde
+      // nur API-Calls vervielfachen und loest einen 403 nicht ursächlich.
+      const ids=encodeURIComponent(idList.join(","));
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`);
+      if (!res.ok) {
+        if(res.status===401||res.status===403||res.status===429)coinGeckoPublicBackoff(res.status,"Aktuelle Preise");
+        throw new Error("HTTP " + res.status);
       }
-    });
-    // Phase 5.40: stale-while-refresh. Der letzte gültige Preisstand bleibt sichtbar,
-    // bis für ein Asset tatsächlich ein neuer gültiger Kurs vorliegt.
-    nativePrices = {...nativePrices,...prices};
+      const data = await res.json();
 
-    const tPrices = {};
-    Object.keys(SAFE_ADDRESSES).forEach(chain => {
-      if(chain === "apertum") return; // Apertum: kein CoinGecko-Fallback
-      (SAFE_ADDRESSES[chain] || []).forEach(address => {
-        if(isTlnVowManagedToken(chain,address)) return;
-        const tokenKey = chain + "|" + address;
-        const cgId = predefinedTokenCoinGeckoIds[tokenKey];
-        if (cgId && data[cgId] && typeof data[cgId].usd === "number") {
-          const key = chain + "|" + address;
-          tPrices[key] = {
-            price: data[cgId].usd,
-            change24h: typeof data[cgId].usd_24h_change === "number" ? data[cgId].usd_24h_change : undefined,
+      const prices = {};
+      Object.keys(CHAIN_META).forEach(chain => {
+        if(chain === "apertum") return; // Apertum: ausschließlich On-Chain-Kurse
+        const id = CHAIN_META[chain].coingeckoId;
+        if (data[id] && typeof data[id].usd === "number") {
+          prices[chain] = {
+            price: data[id].usd,
+            change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined,
             source: "CoinGecko",
             refreshedAt
           };
-          alreadyPriced[key] = true;
         }
       });
-    });
-    tokenPrices = {...tokenPrices,...tPrices};
-  } catch (e) {
-    // Phase 5.40: bei einem Refresh-Fehler niemals den letzten gültigen Snapshot leeren.
-    console.warn("Aktuelle Preise: bestehender Snapshot bleibt aktiv",e);
+      // stale-while-refresh: nur Assets mit neuem gueltigem Kurs ueberschreiben.
+      nativePrices = {...nativePrices,...prices};
+
+      const tPrices = {};
+      Object.keys(SAFE_ADDRESSES).forEach(chain => {
+        if(chain === "apertum") return;
+        (SAFE_ADDRESSES[chain] || []).forEach(address => {
+          if(isTlnVowManagedToken(chain,address)) return;
+          const tokenKey = chain + "|" + address;
+          const cgId = predefinedTokenCoinGeckoIds[tokenKey];
+          if (cgId && data[cgId] && typeof data[cgId].usd === "number") {
+            tPrices[tokenKey] = {
+              price: data[cgId].usd,
+              change24h: typeof data[cgId].usd_24h_change === "number" ? data[cgId].usd_24h_change : undefined,
+              source: "CoinGecko",
+              refreshedAt
+            };
+            alreadyPriced[tokenKey] = true;
+          }
+        });
+      });
+      tokenPrices = {...tokenPrices,...tPrices};
+      coinGeckoState={ok:true,status:"ok",ids:idList.length,updatedNative:Object.keys(prices).length,updatedTokens:Object.keys(tPrices).length};
+    } catch (e) {
+      coinGeckoState={ok:false,status:coinGeckoPublicAvailable()?"error":"blocked",ids:idList.length,error:String(e?.message||e)};
+      // Bei einem Refresh-Fehler niemals den letzten gueltigen Snapshot leeren.
+      console.warn("Aktuelle CoinGecko-Preise: bestehender Snapshot bleibt aktiv",e);
+    }
+  }else if(idList.length){
+    coinGeckoState={ok:false,status:"blocked",ids:idList.length,reason:coinGeckoPublicBlockReason};
   }
 
-  await loadTokenPricesViaGeckoTerminal(alreadyPriced);
-  await loadApertumCurrentPrices();
+  const geckoTerminalState=await loadTokenPricesViaGeckoTerminal(alreadyPriced);
+  const apertumOk=await loadApertumCurrentPrices();
   if(document.getElementById("tab-predefined")?.classList.contains("active")) renderSafeTokenTable();
 
-  // Gebühren-Ansichten können bereits sichtbar sein, während die Kursabfrage noch
-  // im Hintergrund läuft. Nach Abschluss nur die betroffenen Ansichten neu rendern
-  // (kein Browser-Reload, damit keine neue Lade-Schleife/API-Abfragen entstehen).
   refreshFeePriceViews().catch(e => console.warn("Gebühren-Kursansicht aktualisieren:", e));
+  return {coinGecko:coinGeckoState,geckoTerminal:geckoTerminalState,apertumOk};
 }
 
 async function refreshFeePriceViews() {
@@ -4001,26 +4049,25 @@ async function refreshFeePriceViews() {
 }
 
 async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
-  // Alle Chains parallel abfragen statt nacheinander - das war der Haupt-Geschwindigkeitsverlust.
+  let requestedBatches=0,successfulBatches=0,failedBatches=0,updatedTokens=0;
   const chainJobs = Object.keys(GECKOTERMINAL_NETWORK).filter(chain=>chain!=="apertum").map(async chain => {
     const network = GECKOTERMINAL_NETWORK[chain];
     const list = (SAFE_ADDRESSES[chain] || [])
-      .filter((addr, idx, arr) => arr.indexOf(addr) === idx) // Duplikate raus
-      .filter(addr => !isTlnVowManagedToken(chain,addr)) // TLN/VOW ausschließlich über zentrale Projekt-PriceEngine
+      .filter((addr, idx, arr) => arr.indexOf(addr) === idx)
+      .filter(addr => !isTlnVowManagedToken(chain,addr))
       .filter(addr => !alreadyPriced[chain + "|" + addr]);
 
     if (list.length === 0) return;
-
-    // Innerhalb einer Chain bleiben Batches sequenziell (kommt praktisch nie vor,
-    // da selten >30 Token pro Chain), aber die Chains selbst laufen jetzt parallel.
     for (let i = 0; i < list.length; i += 30) {
       const batch = list.slice(i, i + 30);
+      requestedBatches++;
       try {
         const res = await fetch(`https://api.geckoterminal.com/api/v2/simple/networks/${network}/token_price/${batch.join(",")}`);
-        if (!res.ok) continue;
+        if (!res.ok){failedBatches++;continue;}
         const data = await res.json();
         const attrs = data && data.data && data.data.attributes;
-        if (!attrs || !attrs.token_prices) continue;
+        if (!attrs || !attrs.token_prices){failedBatches++;continue;}
+        successfulBatches++;
         Object.keys(attrs.token_prices).forEach(addr => {
           const price = parseFloat(attrs.token_prices[addr]);
           if (!isFinite(price)) return;
@@ -4033,15 +4080,16 @@ async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
             source: "GeckoTerminal (DEX)",
             refreshedAt:new Date().toISOString()
           };
+          updatedTokens++;
         });
       } catch (e) {
-        // Fehler bei einer Chain sollen die anderen nicht blockieren
+        failedBatches++;
       }
     }
   });
   await Promise.all(chainJobs);
+  return {requestedBatches,successfulBatches,failedBatches,updatedTokens};
 }
-
 
 
 function fmtUsd(n) {
