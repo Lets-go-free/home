@@ -1,3 +1,4 @@
+// Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende historische Preise werden als konkrete Token-Prüfaufgabe dargestellt; direkter Sprung in die passende Token-Verwaltung (vordefiniert/eigen/discovery) statt Preis-Sonderfall. Build 20260930-092041.
 // Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: TLN/VOW-Historienpreise nutzen auf BSC zuerst die deterministische, kategoriebasierte V2-Route statt der breiten WalletPriceEngine-Routensuche; Engine bleibt nur Fallback. Fehlende historische Preise werden in der Summary mit Asset/Chain sichtbar. Build 20260930-022103.
 // Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance/Apertum: persistenter historischer DEX-Pair-State-Cache. Bei neuen spaeteren Stichtagen werden verifizierte Apertum Sync-/LP-Supply-Zustaende inkrementell nur ueber den Blockbereich seit dem letzten gecachten Pair-State fortgeschrieben statt erneut ueber grosse Logbereiche rekonstruiert. Build 20260930-015858.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt mit Copy; Preisfelder USD/CHF dynamisch nach Groessenordnung (bis 8 Dezimalstellen), Positions-/Gesamtwerte weiter 2 Dezimalstellen. Build 20260930-005518.
@@ -2536,6 +2537,53 @@ async function runTaxSnapshot(){
   }finally{btn.disabled=false;btn.textContent="Exakten Stichtagsbestand ermitteln";}
 }
 
+function taxMissingPriceReviewTargets(rows){
+  const out=[],seen=new Set();
+  for(const r of (rows||[])){
+    const chain=String(r?.chain||"");
+    const asset=String(r?.asset||"");
+    const key=chain+"|"+normalizeAddress(asset,chain);
+    if(!chain||!asset||seen.has(key))continue;
+    seen.add(key);
+    out.push({chain,asset,walletAddress:r.wallet_address||"",symbol:taxResolvedAssetName(r)});
+  }
+  return out;
+}
+function taxReviewJsArg(v){return String(v??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/\r?\n/g," ");}
+function openTaxTokenReview(chain,asset,walletAddress="",symbol=""){
+  const normalized=asset==="native"?"native":normalizeAddress(asset,chain);
+  const custom=customSafeTokens.find(t=>t.chain===chain&&normalizeAddress(t.address,chain)===normalized);
+  if(custom){
+    showTab("custom");
+    requestAnimationFrame(()=>{
+      const host=document.getElementById("customTokenList");
+      const row=host?.querySelector(`[data-token-key="${chain}|${normalized}"]`);
+      const target=row||host;
+      if(target){target.scrollIntoView({behavior:"smooth",block:"center"});target.style.outline="2px solid var(--warning,#f59e0b)";target.style.outlineOffset="2px";setTimeout(()=>{target.style.outline="";target.style.outlineOffset="";},2200);}
+    });
+    return;
+  }
+  const isPredefined=asset==="native"||(SAFE_ADDRESSES[chain]||[]).includes(normalized);
+  if(isPredefined){
+    showTab("predefined");
+    requestAnimationFrame(()=>{
+      const cf=document.getElementById("predefChainFilter"),tf=document.getElementById("predefTokenFilter"),q=document.getElementById("predefTextFilter");
+      if(cf)cf.value=chain;
+      renderSafeTokenTable();
+      if(q)q.value=asset==="native"?String(symbol||"").replace(/\s*\(nativ\)\s*$/i,""):String(normalized||symbol||"");
+      if(tf)tf.value="";
+      renderSafeTokenTable();
+      document.getElementById("safeTokenTable")?.scrollIntoView({behavior:"smooth",block:"start"});
+    });
+    return;
+  }
+  const w=(wallets||[]).find(x=>{
+    const wa=walletAddressForChain(x,chain);return wa&&String(wa).toLowerCase()===String(walletAddress||"").toLowerCase();
+  });
+  openDiscoveryReview(String(w?.dbId||w?.id||""));
+}
+window.openTaxTokenReview=openTaxTokenReview;
+
 function renderTaxResults(date="",tz=""){
   taxRemoveUserMarkedSpamRows();
   const summary=document.getElementById("taxSummary"),out=document.getElementById("taxResults");
@@ -2548,6 +2596,8 @@ function renderTaxResults(date="",tz=""){
   const covered=taxCoverage.filter(r=>r.status==="berücksichtigt").map(r=>CHAIN_META[r.chain]?.label||r.chain);
   const partial=taxCoverage.filter(r=>r.status==="teilweise").map(r=>CHAIN_META[r.chain]?.label||r.chain);
   const failed=taxCoverage.filter(r=>!["berücksichtigt","teilweise"].includes(r.status)).map(r=>CHAIN_META[r.chain]?.label||r.chain);
+  const missingReviewTargets=taxMissingPriceReviewTargets(unpriced);
+  const missingReviewHtml=missingReviewTargets.length?`<div class="custom-token-card" style="margin-top:12px;border-color:rgba(245,158,11,.45)"><div style="display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap"><div><strong>Token prüfen – historischer Preis fehlt</strong><div class="meta" style="margin-top:4px">Bevor eine neue Preisquelle gebaut wird, prüfe zuerst, ob der Token wirklich berücksichtigt werden soll. Spam/Airdrops oder nicht mehr benötigte Legacy-Token gehören nicht in den Steuerbestand.</div></div></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${missingReviewTargets.map(t=>`<button class="secondary" onclick="openTaxTokenReview('${taxReviewJsArg(t.chain)}','${taxReviewJsArg(t.asset)}','${taxReviewJsArg(t.walletAddress)}','${taxReviewJsArg(t.symbol)}')">${escapeAttr(t.symbol)} · ${escapeAttr(CHAIN_META[t.chain]?.label||t.chain)} prüfen</button>`).join("")}</div></div>`:"";
   summary.innerHTML=`<div class="project-summary">
     <div class="custom-token-card project-summary-box"><span class="field-label">Verifizierte Positionen</span><strong>${ok.length}</strong></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Historischer Kurs vorhanden</span><strong>${priced.length}</strong><div class="meta">${unpriced.length} ohne Kurs${unpriced.length?` · ${escapeAttr([...new Set(unpriced.map(r=>`${taxResolvedAssetName(r)} (${CHAIN_META[r.chain]?.label||r.chain})`))].join(", "))}`:""}</div></div>
@@ -2556,7 +2606,7 @@ function renderTaxResults(date="",tz=""){
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains teilweise</span><strong>${partial.length}</strong><div class="meta">${escapeAttr(partial.join(", ")||"–")}</div></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains nicht berücksichtigt</span><strong>${failed.length}</strong><div class="meta">${escapeAttr(failed.join(", ")||"–")}</div></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Positionen nicht verifizierbar</span><strong>${bad.length}</strong></div>
-  </div>${renderTaxCoverage()}`;
+  </div>${missingReviewHtml}${renderTaxCoverage()}`;
   if(!taxRows.length){out.innerHTML='<div class="empty">Keine Positionen gefunden oder keine Chain konnte verifiziert werden.</div>';return;}
   const debugCols=!!(isAdmin&&adminDebugMode);
   out.innerHTML=`<div class="chain-table-wrap project-data-table tax-position-table"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th class="num">Bestand</th><th class="num">Preis ${currency}</th><th class="num">Wert ${currency}</th>${debugCols?'<th>Block / Ledger</th><th>Status / Quelle</th>':''}</tr></thead><tbody>
@@ -4279,7 +4329,7 @@ function renderCustomTokenList() {
       ? `<div style="margin-top:4px">${fmtPrice(p.price)}<span class="price-source">${p.source}</span></div>`
       : `<div style="margin-top:4px;color:var(--muted);font-size:0.78rem">Kein Kurs gefunden</div>`;
     return `
-    <div class="custom-token-row">
+    <div class="custom-token-row" data-token-key="${escapeAttr(t.chain+'|'+normalizeAddress(t.address,t.chain))}">
       <div>
         <div>${escapeAttr(t.label)} <span class="badge safe">sicher</span></div>
         <div class="meta">${t.chain.toUpperCase()} · ${t.address}</div>

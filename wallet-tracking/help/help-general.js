@@ -1,3 +1,4 @@
+// Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende historische Preise führen zur Token-Prüfung statt zu stillen Preisannahmen. Build 20260930-092041.
 // Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: historische TLN/VOW-Preise nutzen zuerst deterministische V2-Routen; fehlende Kurse werden mit Asset/Chain transparent ausgewiesen. Build 20260930-022103.
 // Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance: Apertum-DEX-Pair-State wird persistent gecacht und bei spaeteren Stichtagen exakt nur ueber neue Logs fortgeschrieben. Build 20260930-015858.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt; Einzelpreise USD/CHF dynamisch mit sinnvoller Genauigkeit, Werte/Summen weiterhin 2 Dezimalstellen. Build 20260930-005518.
@@ -117,4 +118,4 @@ else renderGeneralHelp();
 
 // Phase 5.75 · 21.09.2026 14:13:07 CEST: Zentraler Session-Request-Audit aktiv; kein automatisches loadAll() beim Login; TLN/VOW-Dashboard startet keine Discovery-Initialisierung; NFT-History erst im NFT-Tab. Build 20260921-170817.
 
-// Phase 5.76 · 21.09.2026 16:25:41 CEST: Request-Audit/Systemübersicht-Hotfix. cache_data_versions wird im Systemtab in-flight dedupliziert und kurz wiederverwendet; DAO-Team-Versionen werden vor dem UI-Status zusammengeführt, damit kein rekursiver Requestloop entsteht. Build 20260921-162541.
+// Phase 5.76 · 21.09.2026 16:25:41 CEST: Request-Audit/Systemübersicht-Hotfix. cache_data_versions wird im Systemtab in-flight dedupliziert und kurz wiederverwendet; DAO-Team-Versionen werden vor dem UI-Status zusammengeführt, damit kein rekursiver Requestloop entsteht. Build 20260921-162541.// Hinweis 31.12.: Fehlt für einen verifizierten Token ein historischer Kurs, zeigt die Bestandesaufnahme eine Token-Prüfaufgabe. Zuerst Relevanz/Spam/Legacy prüfen; erst danach eine zusätzliche Preisquelle pflegen.
