@@ -1,3 +1,4 @@
+// Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token sind Teil des globalen Preisresolvers: GeckoTerminal nutzt Contract-Adressen, CoinGecko dient contract-basiert als Fallback ueber den Edge-Proxy; verifizierte eigene LP-Tokens werden aus Reserven + TotalSupply bewertet. Build 20261001-005321.
 // Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende historische Preise werden als konkrete Token-Prüfaufgabe dargestellt; direkter Sprung in die passende Token-Verwaltung (vordefiniert/eigen/discovery) statt Preis-Sonderfall. Build 20260930-092041.
 // Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: TLN/VOW-Historienpreise nutzen auf BSC zuerst die deterministische, kategoriebasierte V2-Route statt der breiten WalletPriceEngine-Routensuche; Engine bleibt nur Fallback. Fehlende historische Preise werden in der Summary mit Asset/Chain sichtbar. Build 20260930-022103.
 // Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance/Apertum: persistenter historischer DEX-Pair-State-Cache. Bei neuen spaeteren Stichtagen werden verifizierte Apertum Sync-/LP-Supply-Zustaende inkrementell nur ueber den Blockbereich seit dem letzten gecachten Pair-State fortgeschrieben statt erneut ueber grosse Logbereiche rekonstruiert. Build 20260930-015858.
@@ -4737,7 +4738,7 @@ async function loadApertumCurrentPrices(){
   tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD",refreshedAt};
   tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};
   const prefix=chain+"|";
-  const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenLabels).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length))])];
+  const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...customSafeTokens.filter(t=>t.chain===chain).map(t=>normalizeAddress(t.address,chain)),...Object.keys(predefinedTokenLabels).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length))])];
   for(const rawAddr of addresses){
     // "native" ist ein interner Asset-Key und keine EVM-Adresse. Native APTM wird
     // bereits über nativePrices gesetzt und darf nie in ethers ABI-Address-Encoding gelangen.
@@ -4757,6 +4758,68 @@ async function loadApertumCurrentPrices(){
     }catch(e){console.warn("Apertum Live-Kurs",sym||addr,e);}
   }
   return true;
+}
+
+const COINGECKO_PLATFORM_BY_CHAIN={
+  eth:"ethereum",bsc:"binance-smart-chain",polygon:"polygon-pos",arbitrum:"arbitrum-one",base:"base",
+  avax:"avalanche",optimism:"optimistic-ethereum",solana:"solana",tron:"tron"
+};
+function customSafeAddressesForPricing(chain){
+  return [...new Set(customSafeTokens.filter(t=>t.chain===chain).map(t=>normalizeAddress(t.address,chain)).filter(Boolean))];
+}
+async function loadCustomSafePricesViaCoinGeckoContract(alreadyPriced){
+  let requestedBatches=0,successfulBatches=0,failedBatches=0,updatedTokens=0;
+  if(!coinGeckoPublicAvailable())return {requestedBatches,successfulBatches,failedBatches,updatedTokens,status:"blocked"};
+  for(const [chain,platform] of Object.entries(COINGECKO_PLATFORM_BY_CHAIN)){
+    if(chain==="apertum")continue;
+    const list=customSafeAddressesForPricing(chain)
+      .filter(addr=>!isTlnVowManagedToken(chain,addr))
+      .filter(addr=>!alreadyPriced[chain+"|"+addr]);
+    for(let i=0;i<list.length;i+=50){
+      const batch=list.slice(i,i+50);if(!batch.length)continue;requestedBatches++;
+      try{
+        const data=await coinGeckoProxy({action:"simple_token_price",platform,contractAddresses:batch});
+        successfulBatches++;
+        for(const [raw,value] of Object.entries(data||{})){
+          const addr=normalizeAddress(raw,chain),price=Number(value?.usd);
+          if(!(price>0))continue;
+          const key=chain+"|"+addr,change=Number(value?.usd_24h_change);
+          tokenPrices[key]={price,change24h:Number.isFinite(change)?change:undefined,source:"CoinGecko (Contract)",refreshedAt:new Date().toISOString()};
+          alreadyPriced[key]=true;updatedTokens++;
+        }
+      }catch(e){failedBatches++;console.warn("CoinGecko Contract-Fallback",chain,e);}
+    }
+  }
+  return {requestedBatches,successfulBatches,failedBatches,updatedTokens,status:"ok"};
+}
+function currentUnderlyingPrice(chain,meta){
+  const address=normalizeAddress(meta?.address||"",chain),symbol=String(meta?.symbol||"").toUpperCase();
+  if(["USDT","USDC","WUSDT","WUSDC","BUSD","DAI"].includes(symbol))return 1;
+  const wrappedNative={eth:["WETH"],bsc:["WBNB"],polygon:["WPOL","WMATIC"],arbitrum:["WETH"],base:["WETH"],avax:["WAVAX"],apertum:["WAPTM"]};
+  if((wrappedNative[chain]||[]).includes(symbol)&&Number(nativePrices[chain]?.price)>0)return Number(nativePrices[chain].price);
+  const p=priceForToken(chain,address);return Number(p?.price)>0?Number(p.price):null;
+}
+async function loadCustomSafeLpPrices(){
+  let checked=0,updated=0,missingUnderlying=0;
+  const byChain=[...new Set(customSafeTokens.map(t=>t.chain).filter(Boolean))];
+  for(const chain of byChain){
+    let registry=[];try{registry=await loadGenericLpRegistry(chain,{verifiedOnly:true});}catch{}
+    if(!registry.length)continue;
+    const map=new Map(registry.map(r=>[normalizeAddress(r.pair_address,chain),r]));
+    for(const addr of customSafeAddressesForPricing(chain)){
+      if(!map.has(addr))continue;checked++;
+      try{
+        const st=await taxWalletPriceEnginePairState(chain,addr,"latest");
+        if(!st||!(Number(st.totalSupply)>0))continue;
+        const p0=currentUnderlyingPrice(chain,st.token0),p1=currentUnderlyingPrice(chain,st.token1);
+        if(!(p0>0)||!(p1>0)){missingUnderlying++;continue;}
+        const price=(Number(st.reserve0)*p0+Number(st.reserve1)*p1)/Number(st.totalSupply);
+        if(!(price>0))continue;
+        tokenPrices[chain+"|"+addr]={price,source:`LP-Wert ${st.token0.symbol}/${st.token1.symbol} · Reserven + TotalSupply`,refreshedAt:new Date().toISOString()};updated++;
+      }catch(e){console.warn("Eigener LP-Preis",chain,addr,e);}
+    }
+  }
+  return {checked,updated,missingUnderlying};
 }
 
 async function loadNativePrices() {
@@ -4829,10 +4892,12 @@ async function loadNativePrices() {
 
   const geckoTerminalState=await loadTokenPricesViaGeckoTerminal(alreadyPriced);
   const apertumOk=await loadApertumCurrentPrices();
+  const customCoinGeckoState=await loadCustomSafePricesViaCoinGeckoContract(alreadyPriced);
+  const customLpState=await loadCustomSafeLpPrices();
   if(document.getElementById("tab-predefined")?.classList.contains("active")) renderSafeTokenTable();
 
   refreshFeePriceViews().catch(e => console.warn("Gebühren-Kursansicht aktualisieren:", e));
-  return {coinGecko:coinGeckoState,geckoTerminal:geckoTerminalState,apertumOk};
+  return {coinGecko:coinGeckoState,geckoTerminal:geckoTerminalState,customCoinGecko:customCoinGeckoState,customLp:customLpState,apertumOk};
 }
 
 async function refreshFeePriceViews() {
@@ -4856,8 +4921,7 @@ async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
   let requestedBatches=0,successfulBatches=0,failedBatches=0,updatedTokens=0;
   const chainJobs = Object.keys(GECKOTERMINAL_NETWORK).filter(chain=>chain!=="apertum").map(async chain => {
     const network = GECKOTERMINAL_NETWORK[chain];
-    const list = (SAFE_ADDRESSES[chain] || [])
-      .filter((addr, idx, arr) => arr.indexOf(addr) === idx)
+    const list = [...new Set([...(SAFE_ADDRESSES[chain] || []),...customSafeAddressesForPricing(chain)])]
       .filter(addr => !isTlnVowManagedToken(chain,addr))
       .filter(addr => !alreadyPriced[chain + "|" + addr]);
 
@@ -4884,6 +4948,7 @@ async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
             source: "GeckoTerminal (DEX)",
             refreshedAt:new Date().toISOString()
           };
+          alreadyPriced[key]=true;
           updatedTokens++;
         });
       } catch (e) {

@@ -1,4 +1,4 @@
-// Phase 6.75 · 29.09.2026 16:40:48 CEST: Authentifizierter CoinGecko-Demo-Proxy.
+// Phase 6.90 · 01.10.2026 00:53:21 CEST: CoinGecko-Demo-Proxy erweitert um contract-basierten /simple/token_price-Fallback fuer eigene sichere Token.
 // Der API-Key bleibt ausschließlich serverseitig im Supabase-Secret COINGECKO_DEMO_API_KEY.
 import { withSupabase } from 'npm:@supabase/server@^1'
 
@@ -6,6 +6,25 @@ const API_BASE = 'https://api.coingecko.com/api/v3'
 const SECRET_NAME = 'COINGECKO_DEMO_API_KEY'
 const MAX_IDS = 250
 const ID_RE = /^[a-z0-9._-]{1,100}$/i
+
+const PLATFORM_RE = /^[a-z0-9._-]{1,100}$/i
+const CONTRACT_RE = /^(?:0x[a-f0-9]{40}|[A-Za-z0-9]{20,100})$/i
+const MAX_CONTRACTS = 50
+
+function safePlatform(value: unknown): string {
+  const platform = String(value ?? '').trim()
+  if (!PLATFORM_RE.test(platform)) throw new Error('Ungueltige CoinGecko Asset-Platform.')
+  return platform
+}
+
+function safeContracts(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('contractAddresses muss ein Array sein.')
+  const addresses = [...new Set(value.map((v) => String(v ?? '').trim()).filter(Boolean))]
+  if (!addresses.length) throw new Error('Mindestens eine Contract-Adresse ist erforderlich.')
+  if (addresses.length > MAX_CONTRACTS) throw new Error(`Maximal ${MAX_CONTRACTS} Contract-Adressen pro Request.`)
+  if (addresses.some((address) => !CONTRACT_RE.test(address))) throw new Error('Ungueltige Contract-Adresse.')
+  return addresses
+}
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {
@@ -90,6 +109,14 @@ export default {
         const ids = safeIds(body.ids)
         url = new URL(`${API_BASE}/simple/price`)
         url.searchParams.set('ids', ids.join(','))
+        url.searchParams.set('vs_currencies', 'usd')
+        url.searchParams.set('include_24hr_change', 'true')
+        url.searchParams.set('include_last_updated_at', 'true')
+      } else if (action === 'simple_token_price') {
+        const platform = safePlatform(body.platform)
+        const contractAddresses = safeContracts(body.contractAddresses)
+        url = new URL(`${API_BASE}/simple/token_price/${encodeURIComponent(platform)}`)
+        url.searchParams.set('contract_addresses', contractAddresses.join(','))
         url.searchParams.set('vs_currencies', 'usd')
         url.searchParams.set('include_24hr_change', 'true')
         url.searchParams.set('include_last_updated_at', 'true')

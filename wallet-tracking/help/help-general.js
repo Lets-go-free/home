@@ -1,3 +1,4 @@
+// Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token erhalten aktuelle Preise contract-basiert via DEX/GeckoTerminal, CoinGecko-Fallback oder bei verifizierten LPs aus Reserven + TotalSupply. Build 20261001-005321.
 // Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende historische Preise führen zur Token-Prüfung statt zu stillen Preisannahmen. Build 20260930-092041.
 // Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: historische TLN/VOW-Preise nutzen zuerst deterministische V2-Routen; fehlende Kurse werden mit Asset/Chain transparent ausgewiesen. Build 20260930-022103.
 // Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance: Apertum-DEX-Pair-State wird persistent gecacht und bei spaeteren Stichtagen exakt nur ueber neue Logs fortgeschrieben. Build 20260930-015858.
