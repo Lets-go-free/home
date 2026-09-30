@@ -1,3 +1,4 @@
+// Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: TLN/VOW-Historienpreise nutzen auf BSC zuerst die deterministische, kategoriebasierte V2-Route statt der breiten WalletPriceEngine-Routensuche; Engine bleibt nur Fallback. Fehlende historische Preise werden in der Summary mit Asset/Chain sichtbar. Build 20260930-022103.
 // Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance/Apertum: persistenter historischer DEX-Pair-State-Cache. Bei neuen spaeteren Stichtagen werden verifizierte Apertum Sync-/LP-Supply-Zustaende inkrementell nur ueber den Blockbereich seit dem letzten gecachten Pair-State fortgeschrieben statt erneut ueber grosse Logbereiche rekonstruiert. Build 20260930-015858.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt mit Copy; Preisfelder USD/CHF dynamisch nach Groessenordnung (bis 8 Dezimalstellen), Positions-/Gesamtwerte weiter 2 Dezimalstellen. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter Supabase-Cache fuer exakte historische Wallet/Chain/Asset/Block-Balances und ERC-20-Kandidaten. Wiederholte Stichtage verwenden Cache statt Explorer/RPC; neue Cachewerte werden gebuendelt geschrieben. Build 20260930-003245.
@@ -1004,6 +1005,7 @@ const taxApertumLpStateCache=new Map();
 // NICHT uebernommen; der Zustand wird on-chain exakt bis zum neuen Block fortgeschrieben.
 const taxApertumPersistentPairStateMemo=new Map();
 const taxApertumPairPerf={cacheHits:0,intervalBuilds:0,fullBuilds:0,rpcRanges:0};
+const taxBscPricePerf={deterministicHits:0,engineFallbacks:0};
 // Phase 6.85: persistenter Stichtagsblock-Cache. Der exakte Block zu einem Datum ist
 // user-unabhaengig on-chain, wird aber aus RLS-/Poisoning-Gruenden userbezogen gespeichert.
 // So spart ein Hard-Reload die teure Archive-RPC-Binaersuche, ohne global schreibbare Fakten.
@@ -2050,6 +2052,21 @@ async function taxConfigureTlnVowPriceEngine(chain,block){
 async function taxTlnVowHistoricalPrice(chain,asset,block,dateStr=""){
   if(!asset?.address)return null;
   const a=normalizeAddress(asset.address,chain),k=chain+"|"+a;if(predefinedTokenProject[k]!=="tln_vow")return null;
+
+  // BSC-Historie: Die erlaubten TLN/VOW-Routen sind durch die Token-Kategorie bereits
+  // eindeutig definiert (LP direkt; V-Waehrung/DeFi-Token via VOW; VOW via USDT).
+  // Die generische WalletPriceEngine sucht dagegen mehrere moegliche V2-Pfade und liest
+  // fuer jeden Kandidaten Pair-Metadaten/Reserven. Bei einem neuen Stichtag erzeugte das
+  // hunderte PublicNode-RPC-Calls. Deshalb auf BSC zuerst die deterministische Route;
+  // die Engine bleibt nur Sicherheits-Fallback fuer noch nicht klassifizierte Sonderfaelle.
+  if(chain==="bsc"){
+    try{
+      const deterministic=await taxTlnVowHistoricalPriceLegacy(chain,asset,block,dateStr);
+      if(deterministic){taxBscPricePerf.deterministicHits++;return deterministic;}
+    }catch(e){console.warn("TLN/VOW deterministische BSC-Historienroute",asset?.symbol,e);}
+    taxBscPricePerf.engineFallbacks++;
+  }
+
   try{
     const refs=await taxConfigureTlnVowPriceEngine(chain,block);
     if(refs&&window.WalletPriceEngine){
@@ -2064,8 +2081,8 @@ async function taxTlnVowHistoricalPrice(chain,asset,block,dateStr=""){
       }
     }
   }catch(e){console.warn("WalletPriceEngine TLN/VOW Historie – Sicherheits-Fallback",chain,asset?.symbol,e);}
-  // Übergangs-Fallback: bleibt bis die zentrale Engine auf Hauptseite und Discovery mit denselben Testfällen verifiziert ist.
-  return await taxTlnVowHistoricalPriceLegacy(chain,asset,block,dateStr);
+  // Auf anderen Chains bleibt die bisherige deterministische Route als Fallback erhalten.
+  return chain==="bsc"?null:await taxTlnVowHistoricalPriceLegacy(chain,asset,block,dateStr);
 }
 
 async function taxApertumWrappedPrice(chain,asset,block,dateStr=""){
@@ -2244,7 +2261,8 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   await taxFlushPersistentHistoricalCaches(persistCtx);
   const neighborNote=(persistCtx.intervalQueries||persistCtx.reused)?` · Nachbar-Stichtag ${persistCtx.intervalQueries||0} Intervall-Scan(s), ${persistCtx.reused||0} Balance(n) unverändert übernommen`:"";
   const apertumPairNote=chain==="apertum"?` · Apertum Pair-State ${taxApertumPairPerf.cacheHits} Cachetreffer, ${taxApertumPairPerf.intervalBuilds} Intervall-Fortschreibung(en), ${taxApertumPairPerf.fullBuilds} Vollaufbau, ${taxApertumPairPerf.rpcRanges} RPC-Logbereich(e)`:"";
-  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu${neighborNote}${apertumPairNote}; LP-/Staking-Historie ${lpHistoryByProject.size?"gebündelt vorab geladen":"cacheweise geladen"}; Preis-/Pair-Grundlagen pro Stichtagsblock memoisiert`;
+  const bscPriceNote=chain==="bsc"?` · BSC TLN/VOW-Preisroute ${taxBscPricePerf.deterministicHits} deterministisch, ${taxBscPricePerf.engineFallbacks} Engine-Fallback(s)`:"";
+  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu${neighborNote}${apertumPairNote}${bscPriceNote}; LP-/Staking-Historie ${lpHistoryByProject.size?"gebündelt vorab geladen":"cacheweise geladen"}; Preis-/Pair-Grundlagen pro Stichtagsblock memoisiert`;
   taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · persistenter Supabase-Cache → kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
@@ -2451,6 +2469,7 @@ async function runTaxSnapshot(){
   const selectedWallets=walletSel==="__all"?wallets:wallets.filter(w=>String(w.id)===String(walletSel));
   taxRows=[];taxCoverage=[];taxPriceCache.clear();
   Object.assign(taxApertumPairPerf,{cacheHits:0,intervalBuilds:0,fullBuilds:0,rpcRanges:0});
+  Object.assign(taxBscPricePerf,{deterministicHits:0,engineFallbacks:0});
   // Phase 6.85: alle bekannten Stichtagsbloecke fuer den Lauf mit genau EINER Supabase-Abfrage vorladen.
   // Das spart nach Reload die Archive-RPC-Binaersuche je EVM-Chain.
   const evmChainsForRun=Object.keys(CHAIN_CONFIG).filter(c=>CHAIN_CONFIG[c]?.walletType==="evm"&&taxChainWallets(selectedWallets,c).length);
@@ -2531,7 +2550,7 @@ function renderTaxResults(date="",tz=""){
   const failed=taxCoverage.filter(r=>!["berücksichtigt","teilweise"].includes(r.status)).map(r=>CHAIN_META[r.chain]?.label||r.chain);
   summary.innerHTML=`<div class="project-summary">
     <div class="custom-token-card project-summary-box"><span class="field-label">Verifizierte Positionen</span><strong>${ok.length}</strong></div>
-    <div class="custom-token-card project-summary-box"><span class="field-label">Historischer Kurs vorhanden</span><strong>${priced.length}</strong><div class="meta">${unpriced.length} ohne Kurs</div></div>
+    <div class="custom-token-card project-summary-box"><span class="field-label">Historischer Kurs vorhanden</span><strong>${priced.length}</strong><div class="meta">${unpriced.length} ohne Kurs${unpriced.length?` · ${escapeAttr([...new Set(unpriced.map(r=>`${taxResolvedAssetName(r)} (${CHAIN_META[r.chain]?.label||r.chain})`))].join(", "))}`:""}</div></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">${currency}-Wert soweit verifiziert</span><strong>${total?(currency==="CHF"?fmtChf(total):fmtUsd(total)):"–"}</strong></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains berücksichtigt</span><strong>${covered.length}</strong><div class="meta">${escapeAttr(covered.join(", ")||"–")}</div></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains teilweise</span><strong>${partial.length}</strong><div class="meta">${escapeAttr(partial.join(", ")||"–")}</div></div>

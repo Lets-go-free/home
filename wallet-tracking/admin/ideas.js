@@ -1,3 +1,4 @@
+// Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: kategoriebasierte deterministische TLN/VOW-Historienrouten werden vor der breiten WalletPriceEngine-Suche verwendet; fehlende historische Preise werden mit Asset/Chain sichtbar. Build 20260930-022103.
 // Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance/Apertum: persistenter DEX-Pair-State-Cache; neue spaetere Stichtage fuehren Sync-/LP-Supply-Zustaende nur ueber das Intervall seit dem letzten exakt gecachten Pair-State fort. Build 20260930-015858.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt, Preis-Dezimalstellen dynamisch bis 8 Stellen; Werte/Summen bleiben 2-stellig. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter userbezogener Supabase-Cache fuer historische Token-Balances und ERC-20-Kandidaten; gleiche Stichtagsblocks werden spaeter cache-first wiederverwendet. Build 20260930-003245.
@@ -1298,4 +1299,5 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - Nach Erfolg: Supabase-Session abmelden, localStorage/sessionStorage und WalletTracking-IndexedDB entfernen.
    - Auth-Login bleibt bestehen; die Funktion löscht WalletTracking-Daten, nicht den Supabase-Auth-Account.
    Build 20260922-140348. */
+• Phase 6.88: 31.12.-Performance/BSC: TLN/VOW-Historienpreise verwenden auf BSC zuerst die deterministische Route aus Token-Kategorie/Referenzpools (VOW/USDT, Token/VOW, LP direkt). WalletPriceEngine bleibt nur Fallback fuer Sonderfaelle. Coverage zeigt deterministische Treffer/Fallbacks; Summary nennt fehlende historische Kurse mit Asset und Chain.
 • Phase 6.87: 31.12.-Performance/Apertum: neue Tabelle historical_dex_pair_state_cache speichert exakt verifizierte Reserve-/Sync-Zustaende und optional LP-TotalSupply pro Pair/Zielblock. Bei einem spaeteren Stichtag werden nur die Sync-/Transfer-Logs seit dem letzten gecachten Zielblock nachgezogen; kein alter Preis wird uebernommen. Migration 080 erforderlich. DAO1-Staking weiterhin: code-seitig verifiziert, reale Regression offen.
