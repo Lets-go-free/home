@@ -1,4 +1,4 @@
-// Phase 6.86 · 30.09.2026 01:38:13 CEST: 31.12.-Performance fuer neue benachbarte Stichtage: vorhandene historische Kandidaten-/Balance-Caches werden inkrementell weiterverwendet; nur ERC-20-Aktivitaet seit dem naechsten aelteren Cacheblock wird gelesen, unveraenderte Tokenbestaende werden ohne erneuten Explorer-/RPC-Balancecheck uebernommen. Build 20260930-013813.
+// Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance/Apertum: persistenter historischer DEX-Pair-State-Cache. Bei neuen spaeteren Stichtagen werden verifizierte Apertum Sync-/LP-Supply-Zustaende inkrementell nur ueber den Blockbereich seit dem letzten gecachten Pair-State fortgeschrieben statt erneut ueber grosse Logbereiche rekonstruiert. Build 20260930-015858.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt mit Copy; Preisfelder USD/CHF dynamisch nach Groessenordnung (bis 8 Dezimalstellen), Positions-/Gesamtwerte weiter 2 Dezimalstellen. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter Supabase-Cache fuer exakte historische Wallet/Chain/Asset/Block-Balances und ERC-20-Kandidaten. Wiederholte Stichtage verwenden Cache statt Explorer/RPC; neue Cachewerte werden gebuendelt geschrieben. Build 20260930-003245.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance: nur verifizierte Token + persistente LP-Historie statt Vollsuche über alle jemals transferierten ERC-20; LP-Historie je Wallet/Projekt einmal vorab geladen. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell; manueller Force-Refresh nur Admin. Build 20260929-181743.
@@ -998,6 +998,12 @@ const taxDirectV2PriceMemo=new Map();
 const taxV2LpPriceMemo=new Map();
 const taxPairStateMemo=new Map();
 const taxApertumLpStateCache=new Map();
+// Phase 6.87: persistenter Apertum-Pair-State-Cache. Der Cache speichert einen exakt
+// verifizierten Zustand zu einem Zielblock. Bei einem spaeteren Stichtag werden nur
+// die Sync-/Transfer-Logs seit diesem Zielblock nachgezogen. Alte Preise werden dabei
+// NICHT uebernommen; der Zustand wird on-chain exakt bis zum neuen Block fortgeschrieben.
+const taxApertumPersistentPairStateMemo=new Map();
+const taxApertumPairPerf={cacheHits:0,intervalBuilds:0,fullBuilds:0,rpcRanges:0};
 // Phase 6.85: persistenter Stichtagsblock-Cache. Der exakte Block zu einem Datum ist
 // user-unabhaengig on-chain, wird aber aus RLS-/Poisoning-Gruenden userbezogen gespeichert.
 // So spart ein Hard-Reload die teure Archive-RPC-Binaersuche, ohne global schreibbare Fakten.
@@ -1799,13 +1805,131 @@ async function taxV2Pair(chain,a,b,block){
   taxV2PairMemo.set(memoKey,work);
   try{return await work;}catch(e){taxV2PairMemo.delete(memoKey);throw e;}
 }
+function taxApertumPairCacheKey(pair,block,requireSupply=false){
+  return `${normalizeAddress(pair,"apertum")}|${Number(block)}|${requireSupply?1:0}`;
+}
+function taxApertumPairStateFromRow(row){
+  if(!row)return null;
+  const hasReserves=row.reserve0_raw!=null&&row.reserve1_raw!=null;
+  if(!hasReserves)return null;
+  return {
+    pair:normalizeAddress(row.pair_address,"apertum"),
+    targetBlock:Number(row.block_number),
+    syncBlock:row.sync_block==null?null:Number(row.sync_block),
+    r0:BigInt(String(row.reserve0_raw)),
+    r1:BigInt(String(row.reserve1_raw)),
+    supply:row.total_supply_raw==null?null:BigInt(String(row.total_supply_raw)),
+    persistent:true
+  };
+}
+async function taxLoadApertumPersistentPairState(pair,block,{requireSupply=false}={}){
+  if(!currentUser?.id)return null;
+  const address=normalizeAddress(pair,"apertum"),target=Number(block);
+  if(!address||!Number.isFinite(target))return null;
+  const memoKey=taxApertumPairCacheKey(address,target,requireSupply);
+  if(taxApertumPersistentPairStateMemo.has(memoKey))return taxApertumPersistentPairStateMemo.get(memoKey);
+  const work=(async()=>{
+    try{
+      let exact=sb.from("historical_dex_pair_state_cache")
+        .select("pair_address,block_number,sync_block,reserve0_raw,reserve1_raw,total_supply_raw")
+        .eq("user_id",currentUser.id).eq("chain_key","apertum").eq("pair_address",address).eq("block_number",target);
+      if(requireSupply)exact=exact.not("total_supply_raw","is",null);
+      const er=await exact.maybeSingle();
+      if(er.error&&er.error.code!=="PGRST116")throw er.error;
+      const exactState=taxApertumPairStateFromRow(er.data);
+      if(exactState){taxApertumPairPerf.cacheHits++;return exactState;}
+      let q=sb.from("historical_dex_pair_state_cache")
+        .select("pair_address,block_number,sync_block,reserve0_raw,reserve1_raw,total_supply_raw")
+        .eq("user_id",currentUser.id).eq("chain_key","apertum").eq("pair_address",address)
+        .lt("block_number",target).order("block_number",{ascending:false}).limit(1);
+      if(requireSupply)q=q.not("total_supply_raw","is",null);
+      const pr=await q;
+      if(pr.error)throw pr.error;
+      const priorState=taxApertumPairStateFromRow((pr.data||[])[0]||null);
+      if(priorState)taxApertumPairPerf.cacheHits++;
+      return priorState;
+    }catch(e){
+      if(e?.code!=="42P01"&&e?.code!=="PGRST205")console.warn("Apertum historischen Pair-State laden",address,e);
+      return null;
+    }
+  })();
+  taxApertumPersistentPairStateMemo.set(memoKey,work);
+  try{return await work;}catch(e){taxApertumPersistentPairStateMemo.delete(memoKey);throw e;}
+}
+async function taxSaveApertumPersistentPairState(pair,block,state,{includeSupply=false}={}){
+  if(!currentUser?.id||!state)return;
+  const address=normalizeAddress(pair,"apertum"),target=Number(block);
+  if(!address||!Number.isFinite(target)||state.r0==null||state.r1==null)return;
+  const payload={
+    user_id:currentUser.id,chain_key:"apertum",pair_address:address,block_number:target,
+    sync_block:state.syncBlock??state.block??null,
+    reserve0_raw:String(state.r0),reserve1_raw:String(state.r1),
+    checked_at:new Date().toISOString()
+  };
+  if(includeSupply&&state.supply!=null)payload.total_supply_raw=String(state.supply);
+  try{
+    const {error}=await sb.from("historical_dex_pair_state_cache").upsert(payload,{onConflict:"user_id,chain_key,pair_address,block_number"});
+    if(error)throw error;
+    taxApertumPersistentPairStateMemo.delete(taxApertumPairCacheKey(address,target,false));
+    taxApertumPersistentPairStateMemo.delete(taxApertumPairCacheKey(address,target,true));
+  }catch(e){
+    if(e?.code!=="42P01"&&e?.code!=="PGRST205")console.warn("Apertum historischen Pair-State speichern",address,e);
+  }
+}
+async function taxApertumLogsRange(pair,fromBlock,toBlock,topics){
+  if(Number(fromBlock)>Number(toBlock))return [];
+  const step=50000,out=[];
+  for(let from=Number(fromBlock);from<=Number(toBlock);from+=step){
+    const to=Math.min(Number(toBlock),from+step-1);
+    try{
+      taxApertumPairPerf.rpcRanges++;
+      const logs=await archiveRpc("apertum","eth_getLogs",[{address:pair,fromBlock:taxBlockHex(from),toBlock:taxBlockHex(to),topics}]);
+      if(logs?.length)out.push(...logs);
+    }catch(e){console.warn("Apertum Pair-Logbereich",pair,from,to,e);throw e;}
+  }
+  return out;
+}
+
 const taxApertumSyncCache=new Map();
 async function taxApertumLastSync(pair,block){
-  const key=`${normalizeAddress(pair,"apertum")}|${Number(block)}`;if(taxApertumSyncCache.has(key))return taxApertumSyncCache.get(key);
-  const syncTopic="0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1",step=50000;
-  for(let to=Number(block);to>=0;to-=step){const from=Math.max(0,to-step+1);let logs=[];try{logs=await archiveRpc("apertum","eth_getLogs",[{address:pair,fromBlock:taxBlockHex(from),toBlock:taxBlockHex(to),topics:[syncTopic]}]);}catch(e){console.warn("Apertum Sync-Logs",pair,from,to,e);continue;}if(logs?.length){const l=logs[logs.length-1],x=String(l.data||"").replace(/^0x/,"");if(x.length>=128){const out={r0:BigInt("0x"+x.slice(0,64)),r1:BigInt("0x"+x.slice(64,128)),block:Number(BigInt(l.blockNumber))};taxApertumSyncCache.set(key,out);return out;}}}
-  taxApertumSyncCache.set(key,null);return null;
+  const address=normalizeAddress(pair,"apertum"),target=Number(block);
+  const key=`${address}|${target}`;if(taxApertumSyncCache.has(key))return taxApertumSyncCache.get(key);
+  const work=(async()=>{
+    const syncTopic="0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1",step=50000;
+    const prior=await taxLoadApertumPersistentPairState(address,target,{requireSupply:false});
+    if(prior){
+      let state={r0:prior.r0,r1:prior.r1,block:prior.syncBlock??prior.targetBlock};
+      if(prior.targetBlock<target){
+        taxApertumPairPerf.intervalBuilds++;
+        const logs=await taxApertumLogsRange(address,prior.targetBlock+1,target,[syncTopic]);
+        for(const l of logs||[]){
+          const x=String(l.data||"").replace(/^0x/,"");
+          if(x.length>=128)state={r0:BigInt("0x"+x.slice(0,64)),r1:BigInt("0x"+x.slice(64,128)),block:Number(BigInt(l.blockNumber))};
+        }
+        await taxSaveApertumPersistentPairState(address,target,{r0:state.r0,r1:state.r1,syncBlock:state.block});
+      }
+      return state;
+    }
+    taxApertumPairPerf.fullBuilds++;
+    for(let to=target;to>=0;to-=step){
+      const from=Math.max(0,to-step+1);let logs=[];
+      try{logs=await archiveRpc("apertum","eth_getLogs",[{address:address,fromBlock:taxBlockHex(from),toBlock:taxBlockHex(to),topics:[syncTopic]}]);}
+      catch(e){console.warn("Apertum Sync-Logs",address,from,to,e);continue;}
+      if(logs?.length){
+        const l=logs[logs.length-1],x=String(l.data||"").replace(/^0x/,"");
+        if(x.length>=128){
+          const out={r0:BigInt("0x"+x.slice(0,64)),r1:BigInt("0x"+x.slice(64,128)),block:Number(BigInt(l.blockNumber))};
+          await taxSaveApertumPersistentPairState(address,target,{r0:out.r0,r1:out.r1,syncBlock:out.block});
+          return out;
+        }
+      }
+    }
+    return null;
+  })();
+  taxApertumSyncCache.set(key,work);
+  try{const out=await work;taxApertumSyncCache.set(key,out);return out;}catch(e){taxApertumSyncCache.delete(key);throw e;}
 }
+
 async function taxDirectV2Price(chain,base,quote,block,bd,qd){
   const memoKey=`${chain}|${normalizeAddress(base,chain)}|${normalizeAddress(quote,chain)}|${Number(block)}|${Number(bd)}|${Number(qd)}`;
   if(taxDirectV2PriceMemo.has(memoKey))return await taxDirectV2PriceMemo.get(memoKey);
@@ -1823,18 +1947,39 @@ async function taxDirectV2Price(chain,base,quote,block,bd,qd){
   try{return await work;}catch(e){taxDirectV2PriceMemo.delete(memoKey);throw e;}
 }
 async function taxApertumLpStateFromEvents(pair,block){
-  const memoKey=`${normalizeAddress(pair,"apertum")}|${Number(block)}`;
+  const address=normalizeAddress(pair,"apertum"),target=Number(block);
+  const memoKey=`${address}|${target}`;
   if(taxApertumLpStateCache.has(memoKey))return await taxApertumLpStateCache.get(memoKey);
   const work=(async()=>{
-  const syncTopic="0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const transferTopic="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-  const zeroTopic="0x"+"0".repeat(64),step=50000;let sync=null,supply=0n;
-  for(let from=0;from<=block;from+=step){const to=Math.min(block,from+step-1);let logs=[];try{logs=await archiveRpc("apertum","eth_getLogs",[{address:pair,fromBlock:taxBlockHex(from),toBlock:taxBlockHex(to),topics:[[syncTopic,transferTopic]]}]);}catch(e){console.warn("Apertum LP Logbereich",from,to,e);continue;}for(const l of logs||[]){const t0=String(l.topics?.[0]||"").toLowerCase();if(t0===syncTopic){const x=String(l.data||"").replace(/^0x/,"");if(x.length>=128)sync={r0:BigInt("0x"+x.slice(0,64)),r1:BigInt("0x"+x.slice(64,128)),block:Number(BigInt(l.blockNumber))};}else if(t0===transferTopic&&l.topics?.length>=3){const f=String(l.topics[1]).toLowerCase(),t=String(l.topics[2]).toLowerCase(),v=BigInt(l.data||"0x0");if(f===zeroTopic)supply+=v;if(t===zeroTopic)supply-=v;}}}
-  return sync&&supply>0n?{...sync,supply}:null;
+    const syncTopic="0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
+    const transferTopic="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+    const zeroTopic="0x"+"0".repeat(64);
+    const prior=await taxLoadApertumPersistentPairState(address,target,{requireSupply:true});
+    let sync=prior?{r0:prior.r0,r1:prior.r1,block:prior.syncBlock??prior.targetBlock}:null;
+    let supply=prior?.supply??0n;
+    const fromBlock=prior?prior.targetBlock+1:0;
+    if(prior)taxApertumPairPerf.intervalBuilds++; else taxApertumPairPerf.fullBuilds++;
+    const logs=await taxApertumLogsRange(address,fromBlock,target,[[syncTopic,transferTopic]]);
+    for(const l of logs||[]){
+      const t0=String(l.topics?.[0]||"").toLowerCase();
+      if(t0===syncTopic){
+        const x=String(l.data||"").replace(/^0x/,"");
+        if(x.length>=128)sync={r0:BigInt("0x"+x.slice(0,64)),r1:BigInt("0x"+x.slice(64,128)),block:Number(BigInt(l.blockNumber))};
+      }else if(t0===transferTopic&&l.topics?.length>=3){
+        const f=String(l.topics[1]).toLowerCase(),t=String(l.topics[2]).toLowerCase(),v=BigInt(l.data||"0x0");
+        if(f===zeroTopic)supply+=v;
+        if(t===zeroTopic)supply-=v;
+      }
+    }
+    if(!sync||supply<=0n)return null;
+    const out={...sync,supply};
+    await taxSaveApertumPersistentPairState(address,target,{r0:sync.r0,r1:sync.r1,syncBlock:sync.block,supply},{includeSupply:true});
+    return out;
   })();
   taxApertumLpStateCache.set(memoKey,work);
   try{return await work;}catch(e){taxApertumLpStateCache.delete(memoKey);throw e;}
 }
+
 async function taxV2LpHistoricalPrice(chain,asset,block,dateStr){
   const pair=normalizeAddress(asset.address,chain),memoKey=`${chain}|${pair}|${Number(block)}|${dateStr||""}`;
   if(taxV2LpPriceMemo.has(memoKey))return await taxV2LpPriceMemo.get(memoKey);
@@ -1938,7 +2083,7 @@ async function taxApertumWrappedPrice(chain,asset,block,dateStr=""){
 
 async function taxHistoricalPrice(chain,asset,dateStr,block=null,skipWrapped=false){
   const assetKey=asset==="native"?"native":normalizeAddress(asset?.address||asset?.symbol||"unknown",chain);
-  const memoKey=`${chain}|${assetKey}|${dateStr||""}|${block==null?"none":Number(block)}|${skipWrapped?1:0}`;
+  const memoKey=`${chain}|${assetKey}|${dateStr||""}|${block==null?"none":Number(block)}|${asset==="native"?0:(skipWrapped?1:0)}`;
   if(taxHistoricalPriceMemo.has(memoKey))return await taxHistoricalPriceMemo.get(memoKey);
   const work=(async()=>{
   if(chain==="apertum"&&asset==="native"&&block!=null){
@@ -2098,7 +2243,8 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   }
   await taxFlushPersistentHistoricalCaches(persistCtx);
   const neighborNote=(persistCtx.intervalQueries||persistCtx.reused)?` · Nachbar-Stichtag ${persistCtx.intervalQueries||0} Intervall-Scan(s), ${persistCtx.reused||0} Balance(n) unverändert übernommen`:"";
-  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu${neighborNote}; LP-/Staking-Historie ${lpHistoryByProject.size?"gebündelt vorab geladen":"cacheweise geladen"}; Preis-/Pair-Grundlagen pro Stichtagsblock memoisiert`;
+  const apertumPairNote=chain==="apertum"?` · Apertum Pair-State ${taxApertumPairPerf.cacheHits} Cachetreffer, ${taxApertumPairPerf.intervalBuilds} Intervall-Fortschreibung(en), ${taxApertumPairPerf.fullBuilds} Vollaufbau, ${taxApertumPairPerf.rpcRanges} RPC-Logbereich(e)`:"";
+  const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Token-Balancechecks ${tokenChecksBeforeFilter}→${tokenChecksAfterFilter} vorgefiltert · historischer Balance-Cache ${persistCtx.hits} Treffer / ${persistCtx.misses} neu${neighborNote}${apertumPairNote}; LP-/Staking-Historie ${lpHistoryByProject.size?"gebündelt vorab geladen":"cacheweise geladen"}; Preis-/Pair-Grundlagen pro Stichtagsblock memoisiert`;
   taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · persistenter Supabase-Cache → kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
@@ -2304,6 +2450,7 @@ async function runTaxSnapshot(){
   const targetEpoch=zonedEndOfDayEpoch(date,tz);
   const selectedWallets=walletSel==="__all"?wallets:wallets.filter(w=>String(w.id)===String(walletSel));
   taxRows=[];taxCoverage=[];taxPriceCache.clear();
+  Object.assign(taxApertumPairPerf,{cacheHits:0,intervalBuilds:0,fullBuilds:0,rpcRanges:0});
   // Phase 6.85: alle bekannten Stichtagsbloecke fuer den Lauf mit genau EINER Supabase-Abfrage vorladen.
   // Das spart nach Reload die Archive-RPC-Binaersuche je EVM-Chain.
   const evmChainsForRun=Object.keys(CHAIN_CONFIG).filter(c=>CHAIN_CONFIG[c]?.walletType==="evm"&&taxChainWallets(selectedWallets,c).length);
@@ -2606,7 +2753,7 @@ const ADMIN_SYSTEM_TREE = [
     ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Der zentrale Ladebalken bleibt bis zum Abschluss von Beständen, Projekt-/NFT-/Reward-Daten, Summaries und erfolgreichem Snapshot sichtbar. DAO1/APTMDAO baut für relevante Wallets die ERC-20 Asset-Flows inkrementell mit auf. Historische NFT-Ownership wird aus Wallet-Transferhistorien reproduziert; bei nur belegtem Abgang bleibt der Erwerbsbeginn bewusst unbekannt statt geschätzt. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
     ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
-  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"in_progress",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","year_end_positions / year_end_coverage","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung USD","Cache + persistenter Stichtagsblock-Cache","historische Markt-/DEX-/LP-Preise + historical_tax_chain_context_cache","Archive RPC/API nur bei Cache-Miss","Stichtagsberechnung"],["Schweiz / ESTV CHF","globaler Stammdatencache","tax_asset_prices + tax_fx_rates","keine externe API im User-Flow","Direkter ESTV-CHF-Wert je Symbol; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs. Pflege nur im Admin-Tab Steuerkurse."]]},
+  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"in_progress",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","year_end_positions / year_end_coverage","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung USD","Cache + persistenter Stichtags-/DEX-Pair-State-Cache","historische Markt-/DEX-/LP-Preise + historical_tax_chain_context_cache + historical_dex_pair_state_cache","Archive RPC/API nur bei Cache-Miss bzw. inkrementellem Blockintervall","Stichtagsberechnung"],["Schweiz / ESTV CHF","globaler Stammdatencache","tax_asset_prices + tax_fx_rates","keine externe API im User-Flow","Direkter ESTV-CHF-Wert je Symbol; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs. Pflege nur im Admin-Tab Steuerkurse."]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
   {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"Current-State DB-Registry",daily:"kein Blind-Refresh",open:"RAM zuerst · History danach",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.75: zentrale NFT-Registry lädt beim App-Start nur den für Current State nötigen Bestand/Ownership. Globale Ersterwerbs- und Kaufpreis-Historie wird erst beim Öffnen des NFT-Tabs nachgeladen. NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe zentrale Datenbasis. Manuelle/gezielte Chain-Refreshs bleiben inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet. Phase 6.29 startet Audit P6: nft_cache (aktueller Wallet-NFT-Bestand) und project_nft_ownership (Besitzhistorie) sind die persistenten Wahrheiten; DAO1-Session-Sichten werden nach ihrer Initialisierung gegen diese zentralen Read-Models geprüft und als „DAO1 NFT Read-Model Audit“ protokolliert."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
@@ -4821,7 +4968,7 @@ async function purgeHistoricalTaxCachesForWallet(w){
 }
 async function purgeAllHistoricalTaxCaches(){
   if(!currentUser?.id)return;
-  for(const table of ['historical_token_balance_cache','historical_token_candidate_cache','historical_tax_chain_context_cache']){
+  for(const table of ['historical_token_balance_cache','historical_token_candidate_cache','historical_tax_chain_context_cache','historical_dex_pair_state_cache']){
     const {error}=await sb.from(table).delete().eq('user_id',currentUser.id);
     if(error)throw error;
   }

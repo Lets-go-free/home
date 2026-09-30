@@ -1,4 +1,4 @@
-// Phase 6.86 · 30.09.2026 01:38:13 CEST: 31.12.-Performance: benachbarte neue Stichtage verwenden historische Cachebasis plus inkrementelle ERC-20-Aktivitaet; unveraenderte Balances werden exakt wiederverwendet. Build 20260930-013813.
+// Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance: Apertum-DEX-Pair-State wird persistent gecacht und bei spaeteren Stichtagen exakt nur ueber neue Logs fortgeschrieben. Build 20260930-015858.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt; Einzelpreise USD/CHF dynamisch mit sinnvoller Genauigkeit, Werte/Summen weiterhin 2 Dezimalstellen. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: wiederholte historische EVM-Balance-/Token-Kandidaten-Abfragen werden persistent userbezogen in Supabase wiederverwendet; Status zeigt Cache-Treffer/Neu. Build 20260930-003245.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Berechnung nutzt nur verifizierte Token und persistente LP-Historie; keine Vollabfrage historischer Spam-/Airdrop-Contracts. DAO1-LP-Tab aktualisiert fehlende/veraltete Daten beim Öffnen automatisch inkrementell. Build 20260929-181743.

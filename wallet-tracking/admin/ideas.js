@@ -1,4 +1,4 @@
-// Phase 6.86 · 30.09.2026 01:38:13 CEST: 31.12.-Performance fuer neue benachbarte Stichtage: inkrementelle ERC-20-Intervallpruefung und Wiederverwendung unveraenderter historischer Balances. Build 20260930-013813.
+// Phase 6.87 · 30.09.2026 01:58:58 CEST: 31.12.-Performance/Apertum: persistenter DEX-Pair-State-Cache; neue spaetere Stichtage fuehren Sync-/LP-Supply-Zustaende nur ueber das Intervall seit dem letzten exakt gecachten Pair-State fort. Build 20260930-015858.
 // Phase 6.84 · 30.09.2026 00:55:18 CEST: 31.12.-Darstellung: Wallet-Adressen kompakt, Preis-Dezimalstellen dynamisch bis 8 Stellen; Werte/Summen bleiben 2-stellig. Build 20260930-005518.
 // Phase 6.82 · 30.09.2026 00:32:45 CEST: 31.12.-Performance: persistenter userbezogener Supabase-Cache fuer historische Token-Balances und ERC-20-Kandidaten; gleiche Stichtagsblocks werden spaeter cache-first wiederverwendet. Build 20260930-003245.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: 31.12.-Performance-Audit: historische Spam-/Airdrop-Contracts werden nicht mehr einzeln abgefragt; LP-/Staking-Historie wird je Wallet/Projekt einmal geladen und wiederverwendet. DAO1-LP-Tab cache-first + täglicher Auto-Delta beim Öffnen, Force-Refresh Admin-only. Build 20260929-181743.
@@ -1298,3 +1298,4 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - Nach Erfolg: Supabase-Session abmelden, localStorage/sessionStorage und WalletTracking-IndexedDB entfernen.
    - Auth-Login bleibt bestehen; die Funktion löscht WalletTracking-Daten, nicht den Supabase-Auth-Account.
    Build 20260922-140348. */
+• Phase 6.87: 31.12.-Performance/Apertum: neue Tabelle historical_dex_pair_state_cache speichert exakt verifizierte Reserve-/Sync-Zustaende und optional LP-TotalSupply pro Pair/Zielblock. Bei einem spaeteren Stichtag werden nur die Sync-/Transfer-Logs seit dem letzten gecachten Zielblock nachgezogen; kein alter Preis wird uebernommen. Migration 080 erforderlich. DAO1-Staking weiterhin: code-seitig verifiziert, reale Regression offen.
