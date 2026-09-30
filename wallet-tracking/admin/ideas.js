@@ -1,3 +1,4 @@
+// Phase 6.91 · 01.10.2026 01:10:43 CEST · TLN/VOW Ethereum Livepreise via deterministische Uniswap-V2-Route. Build 20261001-011043.
 // Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token werden generisch ueber DEX/GeckoTerminal und CoinGecko-Contract-Fallback bewertet; verifizierte eigene LPs ueber Reserven + TotalSupply. Build 20261001-005321.
 // Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende Preise werden als Token-Prüfaufgabe mit direktem Sprung in die passende Token-Verwaltung behandelt. Build 20260930-092041.
 // Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: kategoriebasierte deterministische TLN/VOW-Historienrouten werden vor der breiten WalletPriceEngine-Suche verwendet; fehlende historische Preise werden mit Asset/Chain sichtbar. Build 20260930-022103.

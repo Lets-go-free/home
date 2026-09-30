@@ -1,3 +1,4 @@
+// Phase 6.91 · 01.10.2026 01:10:43 CEST: TLN/VOW Live-Preise auf Ethereum vervollstaendigt: Voucher-Waehrungen und DeFi-Token nutzen deterministisch Uniswap V2 (Token/VOW -> VOW/USDT bzw. direkter USDT-Fallback); VOW selbst via VOW/USDT. Projekt-PriceEngine bleibt primaer, zentraler Resolver nutzt die neue Ethereum-V2-Route als autoritativen Fallback. Build 20261001-011043.
 // Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token sind Teil des globalen Preisresolvers: GeckoTerminal nutzt Contract-Adressen, CoinGecko dient contract-basiert als Fallback ueber den Edge-Proxy; verifizierte eigene LP-Tokens werden aus Reserven + TotalSupply bewertet. Build 20261001-005321.
 // Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende historische Preise werden als konkrete Token-Prüfaufgabe dargestellt; direkter Sprung in die passende Token-Verwaltung (vordefiniert/eigen/discovery) statt Preis-Sonderfall. Build 20260930-092041.
 // Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: TLN/VOW-Historienpreise nutzen auf BSC zuerst die deterministische, kategoriebasierte V2-Route statt der breiten WalletPriceEngine-Routensuche; Engine bleibt nur Fallback. Fehlende historische Preise werden in der Summary mit Asset/Chain sichtbar. Build 20260930-022103.
@@ -4620,6 +4621,9 @@ async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   const generalSources=await loadNativePrices();
   let tlnState=null;
   if(window.TLNVOWProject){await window.TLNVOWProject.refreshPrices();tlnState=window.TLNVOWProject.getPriceState?.()||null;}
+  // Historische ETH-Routen waren bereits korrekt; fuer Livepreise ergaenzt der zentrale Resolver
+  // fehlende TLN/VOW-Ethereum-Kurse deterministisch ueber Uniswap V2.
+  const tlnEthState=await loadTlnVowEthereumCurrentPrices();
   const saved=await saveGlobalCurrentPriceSnapshot(slotKey);
   rerenderAllCurrentPriceViews();await refreshFeePriceViews().catch(e=>console.warn("Gebühren-Kursansicht aktualisieren:",e));
   const stamp=formatCurrentPriceTimestamp(currentPriceCacheState.capturedAt);
@@ -4628,7 +4632,7 @@ async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   setCentralPriceStatus(`${stamp} · globaler Preisstand${saved?" gespeichert":" (Speichern fehlgeschlagen)"}${partialNote}.`,saved&&cgOk?"success":"warning");
   setWtDataStatus("tracking",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Wallet-Tracking"});
   window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,sources:generalSources,tln:tlnState}}));
-  return {general:currentPriceCacheState,sources:generalSources,tln:tlnState};
+  return {general:currentPriceCacheState,sources:generalSources,tln:tlnState,tlnEthereum:tlnEthState};
 }
 async function refreshAllCurrentPrices({manual=false}={}){
   if(allCurrentPricesPromise)return allCurrentPricesPromise;
@@ -6558,6 +6562,57 @@ function isTlnVowManagedToken(chain,address){
   return String(predefinedTokenProject[key]||"").toLowerCase().replace(/[\s\/-]+/g,"_")==="tln_vow";
 }
 
+const liveTlnVowEthPriceMemo=new Map();
+async function liveV2DirectPrice(chain,base,quote,bd=18,qd=18){
+  const b=normalizeAddress(base,chain),q=normalizeAddress(quote,chain),key=`${chain}|${b}|${q}`;
+  if(liveTlnVowEthPriceMemo.has(key))return await liveTlnVowEthPriceMemo.get(key);
+  const work=(async()=>{
+    let factory=await taxDexFactory(chain);
+    // Canonical Uniswap V2 factory as safe Ethereum fallback when dex_configs is not yet populated.
+    if(!factory&&chain==="eth")factory=normalizeAddress("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",chain);
+    if(!factory)return null;
+    const raw=await archiveRpc(chain,"eth_call",[{to:factory,data:taxV2Iface.encodeFunctionData("getPair",[b,q])},"latest"]);
+    const [pairRaw]=taxV2Iface.decodeFunctionResult("getPair",raw);if(!pairRaw||/^0x0{40}$/i.test(pairRaw))return null;
+    const pair=normalizeAddress(pairRaw,chain);
+    const [t0raw,rr]=await Promise.all([
+      archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},"latest"]),
+      archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},"latest"])
+    ]);
+    const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr);
+    const is0=normalizeAddress(t0,chain)===b,rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);
+    return rb>0&&rq>0?{price:rq/rb,pair}:null;
+  })();
+  liveTlnVowEthPriceMemo.set(key,work);
+  try{return await work;}catch(e){liveTlnVowEthPriceMemo.delete(key);throw e;}
+}
+async function loadTlnVowEthereumCurrentPrices(){
+  const chain="eth",refreshedAt=new Date().toISOString();
+  try{
+    const vow=await taxProjectReference("tln_vow",chain),usdt=taxPredefinedBySymbol(chain,"USDT");
+    if(!vow||!usdt?.address)return {ok:false,reason:"reference-missing",updated:0};
+    const vd=predefinedTokenDecimals[chain+"|"+normalizeAddress(vow,chain)]??18,ud=usdt.decimals??6;
+    const vu=await liveV2DirectPrice(chain,vow,usdt.address,vd,ud);if(!vu)return {ok:false,reason:"vow-usdt-pair-missing",updated:0};
+    let updated=0;
+    const put=(addr,price,source)=>{if(!(Number(price)>0))return;tokenPrices[chain+"|"+normalizeAddress(addr,chain)]={price:Number(price),source,refreshedAt};updated++;};
+    put(vow,vu.price,`Uniswap V2 VOW/USDT · ${vu.pair}`);
+    const prefix=chain+"|",managed=[...new Set(Object.keys(predefinedTokenProject).filter(k=>k.startsWith(prefix)&&String(predefinedTokenProject[k]||"").toLowerCase().replace(/[\s\/-]+/g,"_")==="tln_vow").map(k=>k.slice(prefix.length)))];
+    for(const addr of managed){
+      const a=normalizeAddress(addr,chain);if(a===normalizeAddress(vow,chain))continue;
+      const key=chain+"|"+a,cat=String(predefinedTokenCategory[key]||"").toLowerCase(),dec=predefinedTokenDecimals[key]??18,sym=predefinedTokenSymbols[key]||predefinedTokenLabels[key]||"Token";
+      if(["lp_token","lp"].includes(cat))continue;
+      if(["voucher_currency","v_currency"].includes(cat)){
+        const leg=await liveV2DirectPrice(chain,a,vow,dec,vd);if(leg)put(a,leg.price*vu.price,`Uniswap V2 ${sym}/VOW → VOW/USDT · ${leg.pair} · ${vu.pair}`);
+        continue;
+      }
+      if(["defi_token","tln_vow_token"].includes(cat)){
+        const leg=await liveV2DirectPrice(chain,a,vow,dec,vd);if(leg){put(a,leg.price*vu.price,`Uniswap V2 ${sym}/VOW → VOW/USDT · ${leg.pair} · ${vu.pair}`);continue;}
+        const direct=await liveV2DirectPrice(chain,a,usdt.address,dec,ud);if(direct)put(a,direct.price,`Uniswap V2 ${sym}/USDT · ${direct.pair}`);
+      }
+    }
+    return {ok:true,updated};
+  }catch(e){console.warn("TLN/VOW Ethereum Live-Preise",e);return {ok:false,error:String(e?.message||e),updated:0};}
+}
+
 function priceForToken(chain, address) {
   if (!address) return null;
   const normalized = normalizeAddress(address, chain);
@@ -6566,7 +6621,10 @@ function priceForToken(chain, address) {
   // Projekt-PriceEngine (BSC: PancakeSwap, ETH: Uniswap). Für diese Contracts
   // darf niemals auf den allgemeinen CoinGecko-/GeckoTerminal-Cache gefallen werden.
   if (isTlnVowManagedToken(chain, normalized)) {
-    return window.TLNVOWProject?.getPrice(chain, normalized) || null;
+    const projectPrice=window.TLNVOWProject?.getPrice(chain, normalized);
+    if(projectPrice)return projectPrice;
+    // Ethereum-Livepreise werden zusaetzlich zentral ueber die deterministische Uniswap-V2-Route gepflegt.
+    return tokenPrices[chain+"|"+normalized] || null;
   }
 
   // Für nicht projektverwaltete Token bleibt die allgemeine Preislogik bestehen.
