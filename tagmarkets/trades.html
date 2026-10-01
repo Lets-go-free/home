@@ -661,7 +661,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 27.09.2026 00:52:45</div>
+        <div class="version-info">Version: 01.10.2026 17:03:13</div>
     </div>
 </div>
 
@@ -875,11 +875,13 @@ async function login() {
         return;
     }
 
+    // Rücksprung-Adresse: genau diese Seite (muss in Supabase unter Redirect URLs erlaubt sein)
+    const rueckAdresse = window.location.origin + window.location.pathname;
     const { error } = await db.auth.signInWithOtp({
         email,
         options: {
             shouldCreateUser: false,   // keine neuen Benutzer anlegen
-            emailRedirectTo: window.location.origin + window.location.pathname
+            emailRedirectTo: rueckAdresse
         }
     });
     if (error) {
@@ -887,7 +889,7 @@ async function login() {
         return;
     }
     msg.style.color = '#4a5568';
-    msg.textContent = hinweis;
+    msg.textContent = hinweis + ' Angefragte Rücksprung-Adresse: ' + rueckAdresse;
 }
 
 async function logout() {
