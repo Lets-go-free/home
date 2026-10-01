@@ -1,3 +1,4 @@
+// Phase 6.98 · 01.10.2026 18:19:31 CEST: konfigurierte V2-Pooltypen und alle aktuellen Pair-States werden chainweit vorab gebatcht; Preis-/LP-Felder bleiben unverändert. Build 20261001-181931.
 // Phase 6.97 · 01.10.2026 17:36:51 CEST: RPC-Diagnose zaehlt Preis-eth_calls zusätzlich nach ABI-Methode, damit verbliebene Pair-State-Kosten messbar sind. Build 20261001-173651.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: V2-getPair-Discovery wird chain-weit vorab gebatcht; parallele identische Pair-Lookups teilen einen In-Flight-Cache. RPC-Diagnose zaehlt HTTP-Batches/eth_calls. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: bekannte Token-Metadaten kommen aus predefined_tokens; aktuelle Pair-Reads werden als JSON-RPC-Batch gebündelt. Dashboard-Preisjob bleibt render-frei. Build 20261001-164746.
@@ -1668,6 +1669,68 @@ async function getUSD(chain,token){
 }
 
 /* =========================================================
+   CURRENT V2 POOL PREFETCH
+   Performance-only: dieselben on-chain Felder wie bisher werden gelesen,
+   aber chainweit gebündelt und in denselben PriceEngine-Cache gelegt.
+========================================================= */
+const POOL_FACTORY_IFACE = new ethers.Interface(["function factory() view returns (address)"]);
+
+async function prefetchConfiguredPoolTypes(chain){
+  const rows=configuredLPs(chain).filter(r=>r?.address && ethers.isAddress(r.address));
+  const missing=rows.filter(r=>!poolTypeCache.has(chain+":"+norm(r.address)));
+  if(!missing.length)return 0;
+  const chunkSize=80;
+  let loaded=0;
+  for(let offset=0;offset<missing.length;offset+=chunkSize){
+    const chunk=missing.slice(offset,offset+chunkSize);
+    try{
+      const raws=await batchRpcCalls(chain,chunk.map(r=>({to:r.address,data:POOL_FACTORY_IFACE.encodeFunctionData("factory",[])})),"latest");
+      raws.forEach((raw,i)=>{
+        const [factory]=POOL_FACTORY_IFACE.decodeFunctionResult("factory",raw);
+        let type=null;
+        if(isConfiguredV2Factory(chain,factory))type="v2";
+        if(CONFIG[chain]?.v3Factory && same(factory,CONFIG[chain].v3Factory))type="v3";
+        if(type){ poolTypeCache.set(chain+":"+norm(chunk[i].address),type); loaded++; }
+      });
+    }catch(e){
+      // Reine Performance-Vorladung: bei Provider-/Einzelpoolfehlern bleibt der
+      // bestehende detectPoolType()-Pfad unverändert als fachlicher Fallback aktiv.
+      console.warn(`${chain}: Pooltyp-Prefetch fehlgeschlagen; Lazy-Fallback aktiv`,e);
+    }
+  }
+  return loaded;
+}
+
+async function prefetchConfiguredV2PairStates(chain){
+  if(!window.WalletPriceEngine?.prefetchPairStates)return 0;
+  configureSharedPriceEngine();
+  const addresses=configuredLPs(chain)
+    .map(r=>r?.address)
+    .filter(a=>a && poolTypeCache.get(chain+":"+norm(a))==="v2");
+  try{
+    return await window.WalletPriceEngine.prefetchPairStates(chain,addresses,"latest",{chunkCalls:72});
+  }catch(e){
+    console.warn(`${chain}: V2-Pair-State-Prefetch fehlgeschlagen; bestehender Lazy-Reader bleibt aktiv`,e);
+    return 0;
+  }
+}
+
+async function prefetchDiscoveredV2PairStates(chain){
+  if(!window.WalletPriceEngine?.prefetchPairStates)return 0;
+  configureSharedPriceEngine();
+  const prefix=chain+":";
+  const addresses=[...pairCache.entries()]
+    .filter(([key,value])=>String(key).startsWith(prefix) && typeof value==="string" && ethers.isAddress(value) && value!==ethers.ZeroAddress)
+    .map(([,value])=>value);
+  try{
+    return await window.WalletPriceEngine.prefetchPairStates(chain,addresses,"latest",{chunkCalls:72});
+  }catch(e){
+    console.warn(`${chain}: entdeckter Pair-State-Prefetch fehlgeschlagen; bestehender Lazy-Reader bleibt aktiv`,e);
+    return 0;
+  }
+}
+
+/* =========================================================
    POOL TYPE
 ========================================================= */
 function isConfiguredV2Factory(chain,address){
@@ -2133,8 +2196,15 @@ async function refreshCurrentPrices({manual=false,render=true}={}){
     resetCurrentPriceCaches();
     const chains=projectChains.filter(c=>["bsc","eth"].includes(c));
     priceRpcStats.reset();
+    // 6.98: zuerst die konfigurierten Pooltypen und exakt dieselben sechs V2-Pair-Felder
+    // chainweit laden. resolveReferences()/buildCurrentProjectPrices() lesen danach nur Cache.
+    await Promise.all(chains.map(chain=>prefetchConfiguredPoolTypes(chain)));
+    await Promise.all(chains.map(chain=>prefetchConfiguredV2PairStates(chain)));
     for(const chain of chains) await resolveReferences(chain);
     await Promise.all(chains.map(chain=>prefetchV2PairDiscovery(chain)));
+    // Auch die zusätzlich entdeckten Preisrouten werden vor der Preislogik mit
+    // denselben Feldern/dekodierenden Funktionen wie bisher in wenige Batches gelegt.
+    await Promise.all(chains.map(chain=>prefetchDiscoveredV2PairStates(chain)));
     await Promise.all(chains.map(chain=>buildCurrentProjectPrices(chain)));
     if(render) await Promise.all(chains.map(chain=>renderDashboard(chain,{cacheMode:false})));
     const saved=await saveCurrentPriceSnapshot();

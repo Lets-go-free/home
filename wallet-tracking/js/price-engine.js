@@ -1,3 +1,4 @@
+// Phase 6.98 · 01.10.2026 18:19:31 CEST: Pair-State-Reads werden chainweit vorab gebatcht; exakt dieselben 6 V2-Felder und dieselbe Preisdekodierung bleiben erhalten. Build 20261001-181931.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; zentrale Preisengine nutzt den vorab gefüllten Pair-Cache des Projektadapters. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: aktuelle Pair-RPC-Reads können per JSON-RPC-Batch gebündelt werden; reduziert Browser-Requests ohne Preislogik zu ändern. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: Voucher-Dust-Schutz: V2-Preisrouten unter 100 USD messbarer Pfadliquiditaet werden nicht mehr als Kurs akzeptiert. Build 20261001-162046.
@@ -85,6 +86,72 @@ window.WalletPriceEngine = (() => {
     return out;
   }
 
+  async function decodePairState(chain,address,block,raw){
+    const [token0] = V2.decodeFunctionResult("token0",raw[0]);
+    const [token1] = V2.decodeFunctionResult("token1",raw[1]);
+    const [r0Raw,r1Raw,blockTimestampLast] = V2.decodeFunctionResult("getReserves",raw[2]);
+    const [totalSupplyRaw] = V2.decodeFunctionResult("totalSupply",raw[3]);
+    const [lpDecimalsRaw] = V2.decodeFunctionResult("decimals",raw[4]);
+    const [factory] = V2.decodeFunctionResult("factory",raw[5]);
+
+    if(!token0 || !token1 || norm(token0) === norm(token1)) throw new Error(`${chain}: ${address} liefert ungültige token0/token1-Adressen.`);
+
+    const [t0,t1] = await Promise.all([tokenMeta(chain,token0),tokenMeta(chain,token1)]);
+    const lpDecimals = Number(lpDecimalsRaw);
+    const reserve0 = Number(ethers.formatUnits(r0Raw,t0.decimals));
+    const reserve1 = Number(ethers.formatUnits(r1Raw,t1.decimals));
+    const totalSupply = Number(ethers.formatUnits(totalSupplyRaw,lpDecimals));
+
+    return {
+      chain,
+      address:norm(address),
+      block:block === "latest" ? "latest" : Number(block),
+      factory:norm(factory),
+      token0:t0,
+      token1:t1,
+      reserve0,
+      reserve1,
+      totalSupply,
+      lpDecimals,
+      blockTimestampLast:Number(blockTimestampLast)
+    };
+  }
+
+  function pairStateCalls(address){
+    return [
+      ["token0",[]], ["token1",[]], ["getReserves",[]],
+      ["totalSupply",[]], ["decimals",[]], ["factory",[]]
+    ].map(([fn,args])=>({to:address,data:V2.encodeFunctionData(fn,args)}));
+  }
+
+  async function prefetchPairStates(chain,addresses,block="latest",{chunkCalls=90}={}){
+    const unique=[...new Set((Array.isArray(addresses)?addresses:[]).map(norm).filter(Boolean))];
+    const missing=unique.filter(address=>!pairStateCache.has(`${chain}|${address}@${blockKey(block)}`));
+    if(!missing.length) return 0;
+
+    const calls=[];
+    for(const address of missing){
+      const rows=pairStateCalls(address);
+      rows.forEach((call,index)=>calls.push({address,index,...call}));
+    }
+    const rawByAddress=new Map(missing.map(address=>[address,new Array(6)]));
+    const size=Math.max(6,Math.trunc(Number(chunkCalls)||90));
+    for(let offset=0;offset<calls.length;offset+=size){
+      const chunk=calls.slice(offset,offset+size);
+      const raws=await callMany(chain,chunk.map(({to,data})=>({to,data})),block);
+      raws.forEach((raw,i)=>{
+        const item=chunk[i];
+        rawByAddress.get(item.address)[item.index]=raw;
+      });
+    }
+    for(const address of missing){
+      const key=`${chain}|${address}@${blockKey(block)}`;
+      const out=await decodePairState(chain,address,block,rawByAddress.get(address));
+      pairStateCache.set(key,out);
+    }
+    return missing.length;
+  }
+
   async function getPairState(chain,address,block="latest"){
     const key = `${chain}|${norm(address)}@${blockKey(block)}`;
     if(pairStateCache.has(key)) return pairStateCache.get(key);
@@ -115,39 +182,8 @@ window.WalletPriceEngine = (() => {
         }
       }
 
-      const calls = [
-        ["token0",[]], ["token1",[]], ["getReserves",[]],
-        ["totalSupply",[]], ["decimals",[]], ["factory",[]]
-      ];
-      const raw = await callMany(chain,calls.map(([fn,args])=>({to:address,data:V2.encodeFunctionData(fn,args)})),block);
-      const [token0] = V2.decodeFunctionResult("token0",raw[0]);
-      const [token1] = V2.decodeFunctionResult("token1",raw[1]);
-      const [r0Raw,r1Raw,blockTimestampLast] = V2.decodeFunctionResult("getReserves",raw[2]);
-      const [totalSupplyRaw] = V2.decodeFunctionResult("totalSupply",raw[3]);
-      const [lpDecimalsRaw] = V2.decodeFunctionResult("decimals",raw[4]);
-      const [factory] = V2.decodeFunctionResult("factory",raw[5]);
-
-      if(!token0 || !token1 || norm(token0) === norm(token1)) throw new Error(`${chain}: ${address} liefert ungültige token0/token1-Adressen.`);
-
-      const [t0,t1] = await Promise.all([tokenMeta(chain,token0),tokenMeta(chain,token1)]);
-      const lpDecimals = Number(lpDecimalsRaw);
-      const reserve0 = Number(ethers.formatUnits(r0Raw,t0.decimals));
-      const reserve1 = Number(ethers.formatUnits(r1Raw,t1.decimals));
-      const totalSupply = Number(ethers.formatUnits(totalSupplyRaw,lpDecimals));
-
-      return {
-        chain,
-        address:norm(address),
-        block:block === "latest" ? "latest" : Number(block),
-        factory:norm(factory),
-        token0:t0,
-        token1:t1,
-        reserve0,
-        reserve1,
-        totalSupply,
-        lpDecimals,
-        blockTimestampLast:Number(blockTimestampLast)
-      };
+      const raw = await callMany(chain,pairStateCalls(address),block);
+      return await decodePairState(chain,address,block,raw);
     })();
 
     pairStateCache.set(key,promise);
@@ -594,6 +630,7 @@ window.WalletPriceEngine = (() => {
   return {
     configure,
     getPairState,
+    prefetchPairStates,
     getV2Price,
     getTokenPrice,
     getLpValuation,

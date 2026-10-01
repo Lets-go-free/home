@@ -1,3 +1,4 @@
+// Phase 6.98 · 01.10.2026 18:19:31 CEST: Preisjob nutzt chainweiten Pair-State-Prefetch; fachliche Preisformeln unverändert. Build 20261001-181931.
 // Phase 6.97 · 01.10.2026 17:36:51 CEST: sichtbarer Preisjob-Status (läuft/fertig/Fehler) im Dashboard; RPC-Diagnose nach Call-Typen verfeinert. Build 20261001-173651.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; Dashboard-Aktionslogik aus 6.95 unverändert. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: Dashboard „Was muss ich tun?“ zeigt nur echte Aufgaben, volle Breite/zweispaltig und klappt bei 0 Aufgaben mit grünem Haken zu. TLN/VOW nur bei aktivem Projekt. Build 20261001-164746.
