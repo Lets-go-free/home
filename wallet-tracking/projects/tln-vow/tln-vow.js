@@ -1,3 +1,4 @@
+// Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum V2-Pair-Lookup prueft alle aktiven V2-Factorys plus die offizielle Uniswap-V2-Factory; keine Abhaengigkeit mehr von der ersten dex_configs-Zeile. Build 20261001-141613.
 // Phase 5.97 · 22.09.2026 23:14:40 CEST: ethers-v6 JsonRpcProvider erhält die Network-Instanz auch in options.staticNetwork; behebt den verbliebenen staticNetwork.matches-Fehler im globalen Preisjob. Build 20260922-231440.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: ethers-v6 staticNetwork erhält echte Network-Instanzen; behebt „staticNetwork.matches is not a function“ bei Preis-/Pool-Providerinitialisierung. Build 20260922-213526.
 // Phase 5.80 · 21.09.2026 18:15:39 CEST: gespeicherter Current-Price-Snapshot wird 30s in-flight/session wiederverwendet, damit App-Start und direktes Projektöffnen keinen identischen Supabase-Read erzeugen. Fachliche Preislogik unverändert. Build 20260921-181539.
@@ -292,11 +293,17 @@ async function loadProjectInfrastructure(){
 
   for(const chain of projectChains){
     const chainDex=(dexRows||[]).filter(d => norm(d.chain_key)===chain);
-    const v2=chainDex.find(d => norm(d.version)==="v2");
+    const v2Rows=chainDex.filter(d => norm(d.version)==="v2"&&d.factory_address);
     const v3=chainDex.find(d => norm(d.version)==="v3");
+    const v2Factories=[...new Set(v2Rows.map(d=>norm(d.factory_address)).filter(Boolean))];
+    if(chain==="eth"){
+      const uniswapV2=norm("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
+      if(!v2Factories.includes(uniswapV2))v2Factories.push(uniswapV2);
+    }
     CONFIG[chain]={
       rpc: configuredRpcUrl(chain),
-      v2Factory:v2?.factory_address || null,
+      v2Factory:v2Factories[0] || null,
+      v2Factories,
       v3Factory:v3?.factory_address || null
     };
     if(!CONFIG[chain].v2Factory) throw new Error(`${PROJECT_NAME}: Für ${chain} fehlt eine aktive V2-DEX-Factory.`);
@@ -368,6 +375,22 @@ async function resolveReferences(chain){
     }catch(e){
       console.warn("Referenz-Token konnte nicht gelesen werden:",row.address,e);
     }
+  }
+
+  // Fehlende Markt-Referenzen kommen aus den zentralen Token-Stammdaten, nicht nur aus
+  // bereits als Projekt-LP eingetragenen Pools. Das ist fuer neue vCurrencies wichtig,
+  // deren realer Markt z.B. direkt v$/USDC sein kann.
+  if(wanted.some(symbol=>!found[symbol])){
+    try{
+      const {data:referenceRows,error}=await sb.from("predefined_tokens")
+        .select("address,symbol,label,name,decimals")
+        .eq("chain",chain).eq("enabled",true);
+      if(error)throw error;
+      for(const row of referenceRows||[]){
+        const symbol=String(row.symbol||row.label||row.name||"").trim().toUpperCase();
+        if(wanted.includes(symbol)&&!found[symbol]&&row.address)found[symbol]=row.address;
+      }
+    }catch(e){console.warn("TLN/VOW Referenz-Token aus Stammdaten",chain,e);}
   }
 
   references[chain] = references[chain] || {};
@@ -557,9 +580,15 @@ async function findPair(chain,tokenA,tokenB){
   const key = chain + ":" + [norm(tokenA),norm(tokenB)].sort().join(":");
   if(pairCache.has(key)) return pairCache.get(key);
 
-  const factory = new ethers.Contract(CONFIG[chain].v2Factory,FACTORY_ABI,providers[chain]);
-  const pair = await factory.getPair(tokenA,tokenB);
-  const result = pair === ethers.ZeroAddress ? null : pair;
+  const factories=(CONFIG[chain].v2Factories?.length?CONFIG[chain].v2Factories:[CONFIG[chain].v2Factory]).filter(Boolean);
+  let result=null;
+  for(const factoryAddress of factories){
+    try{
+      const factory=new ethers.Contract(factoryAddress,FACTORY_ABI,providers[chain]);
+      const pair=await factory.getPair(tokenA,tokenB);
+      if(pair!==ethers.ZeroAddress){result=pair;break;}
+    }catch(e){console.warn(`${chain}: V2 Pair-Lookup über ${factoryAddress} fehlgeschlagen`,e);}
+  }
 
   pairCache.set(key,result);
   return result;
@@ -1465,6 +1494,11 @@ async function getUSD(chain,token){
 /* =========================================================
    POOL TYPE
 ========================================================= */
+function isConfiguredV2Factory(chain,address){
+  const factories=(CONFIG[chain]?.v2Factories?.length?CONFIG[chain].v2Factories:[CONFIG[chain]?.v2Factory]).filter(Boolean);
+  return factories.some(f=>same(f,address));
+}
+
 async function detectPoolType(chain,address){
   const key = chain + ":" + norm(address);
   if(poolTypeCache.has(key)) return poolTypeCache.get(key);
@@ -1486,7 +1520,7 @@ async function detectPoolType(chain,address){
   }
 
   let type = null;
-  if(same(factory,CONFIG[chain].v2Factory)) type = "v2";
+  if(isConfiguredV2Factory(chain,factory)) type = "v2";
   if(CONFIG[chain]?.v3Factory && same(factory,CONFIG[chain].v3Factory)) type = "v3";
   if(!type) throw new Error(`${chain}: ${address} gehört nicht zu einer konfigurierten V2/V3-Factory (factory=${factory}).`);
   poolTypeCache.set(key,type);
@@ -1502,7 +1536,7 @@ async function readV2Pool(chain,address){
   if(window.WalletPriceEngine){
     configureSharedPriceEngine();
     const state = await window.WalletPriceEngine.getPairState(chain,address,"latest");
-    if(!same(state.factory,CONFIG[chain].v2Factory)) throw new Error("Pool gehört nicht zur erwarteten V2-Factory.");
+    if(!isConfiguredV2Factory(chain,state.factory)) throw new Error("Pool gehört nicht zu einer konfigurierten V2-Factory.");
 
     const lpSymbolKey = chain + ":" + norm(address);
     let lpSymbol = lpSymbolCache.get(lpSymbolKey) || "LP";
@@ -1550,7 +1584,7 @@ async function readV2Pool(chain,address){
   try { lpSymbol = String(await pair.symbol()); } catch(e) {
     console.warn(`TLN/VOW ${chain} ${address}: LP symbol() nicht verfügbar`, e);
   }
-  if(!same(factory,CONFIG[chain].v2Factory)) throw new Error("Pool gehört nicht zur erwarteten V2-Factory.");
+  if(!isConfiguredV2Factory(chain,factory)) throw new Error("Pool gehört nicht zu einer konfigurierten V2-Factory.");
   const [t0,t1] = await Promise.all([getToken(chain,token0),getToken(chain,token1)]);
   return {type:"v2",address,token0:t0,token1:t1,r0:Number(ethers.formatUnits(reserves[0],t0.decimals)),r1:Number(ethers.formatUnits(reserves[1],t1.decimals)),lpSupply:Number(ethers.formatUnits(totalSupply,Number(lpDecimals))),lpDecimals:Number(lpDecimals),lpSymbol};
 }

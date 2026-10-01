@@ -1,3 +1,4 @@
+// Phase 6.93 · 01.10.2026 14:16:13 CEST: Voucher-Preisengine vereinheitlicht direkte USDT/USDC-V2-Pools mit Voucher→VOW→USDT und waehlt die liquideste reale Route. Build 20261001-141613.
 window.WalletPriceEngine = (() => {
   const V2 = new ethers.Interface([
     "function token0() view returns(address)",
@@ -273,33 +274,65 @@ window.WalletPriceEngine = (() => {
 
   async function vCurrencyUSDPrice(chain,token,block="latest"){
     const ref = getReferences(chain);
-    const vow = ref.vow, usdt = ref.usdt;
-    if(!vow || !usdt) return null;
-    try{
-      const vToVowPair = await findPair(chain,token.address,vow);
-      if(!vToVowPair) return null;
-      const vToVow = await getV2Price(chain,vToVowPair,token.address,block);
-      if(!vToVow) return null;
-      const vowToUsdtPair = await findPair(chain,vow,usdt);
-      if(!vowToUsdtPair) return null;
-      const vowToUsdt = await getV2Price(chain,vowToUsdtPair,vow,block);
-      if(!vowToUsdt) return null;
+    const vow = ref.vow, usdt = ref.usdt, usdc = ref.usdc;
+    const candidates = [];
 
-      const tokenUsd = vToVow.price*vowToUsdt.price;
-      const vPool = vToVow.pairState || await getPairState(chain,vToVowPair,block);
-      const vowPool = vowToUsdt.pairState || await getPairState(chain,vowToUsdtPair,block);
-      const vPoolTVL = same(vPool.token0.address,token.address)
-        ? vPool.reserve0*tokenUsd + vPool.reserve1*vowToUsdt.price
-        : vPool.reserve1*tokenUsd + vPool.reserve0*vowToUsdt.price;
-      const vowPoolTVL = same(vowPool.token0.address,vow)
-        ? vowPool.reserve0*vowToUsdt.price + vowPool.reserve1
-        : vowPool.reserve1*vowToUsdt.price + vowPool.reserve0;
-      const pathLiquidityUSD = Number.isFinite(vPoolTVL) && Number.isFinite(vowPoolTVL) ? Math.min(vPoolTVL,vowPoolTVL) : null;
-      return {price:tokenUsd,route:`${token.symbol} → VOW → USDT`,stable:"USDT",hops:2,pathLiquidityUSD,source:"v-currency-direct-vow-usdt",pools:[vToVowPair,vowToUsdtPair]};
-    }catch(e){
-      console.warn("WalletPriceEngine: v_currency-Preisroute fehlgeschlagen",chain,token.symbol,token.address,e);
-      return null;
+    const addDirectStable = async (stableAddress,stableName) => {
+      if(!stableAddress) return;
+      try{
+        const pairAddress = await findPair(chain,token.address,stableAddress);
+        if(!pairAddress) return;
+        const leg = await getV2Price(chain,pairAddress,token.address,block);
+        if(!leg || !(Number(leg.price)>0)) return;
+        const pool = leg.pairState || await getPairState(chain,pairAddress,block);
+        const tokenReserve = same(pool.token0.address,token.address) ? pool.reserve0 : pool.reserve1;
+        const stableReserve = same(pool.token0.address,stableAddress) ? pool.reserve0 : pool.reserve1;
+        const liquidity = tokenReserve*leg.price + stableReserve;
+        candidates.push({price:leg.price,route:`${token.symbol} → ${stableName}`,stable:stableName,hops:1,pathLiquidityUSD:Number.isFinite(liquidity)?liquidity:null,source:"v-currency-direct-stable",pool:pairAddress});
+      }catch(e){
+        console.warn("WalletPriceEngine: v_currency Stablecoin-Route fehlgeschlagen",chain,token.symbol,stableName,e);
+      }
+    };
+
+    await addDirectStable(usdc,"USDC");
+    await addDirectStable(usdt,"USDT");
+
+    if(vow && usdt){
+      try{
+        const vToVowPair = await findPair(chain,token.address,vow);
+        const vowToUsdtPair = await findPair(chain,vow,usdt);
+        if(vToVowPair && vowToUsdtPair){
+          const [vToVow,vowToUsdt] = await Promise.all([
+            getV2Price(chain,vToVowPair,token.address,block),
+            getV2Price(chain,vowToUsdtPair,vow,block)
+          ]);
+          if(vToVow && vowToUsdt){
+            const tokenUsd = vToVow.price*vowToUsdt.price;
+            const [vPool,vowPool] = await Promise.all([
+              vToVow.pairState || getPairState(chain,vToVowPair,block),
+              vowToUsdt.pairState || getPairState(chain,vowToUsdtPair,block)
+            ]);
+            const vPoolTVL = same(vPool.token0.address,token.address)
+              ? vPool.reserve0*tokenUsd + vPool.reserve1*vowToUsdt.price
+              : vPool.reserve1*tokenUsd + vPool.reserve0*vowToUsdt.price;
+            const vowPoolTVL = same(vowPool.token0.address,vow)
+              ? vowPool.reserve0*vowToUsdt.price + vowPool.reserve1
+              : vowPool.reserve1*vowToUsdt.price + vowPool.reserve0;
+            const pathLiquidityUSD = Number.isFinite(vPoolTVL) && Number.isFinite(vowPoolTVL) ? Math.min(vPoolTVL,vowPoolTVL) : null;
+            candidates.push({price:tokenUsd,route:`${token.symbol} → VOW → USDT`,stable:"USDT",hops:2,pathLiquidityUSD,source:"v-currency-direct-vow-usdt",pools:[vToVowPair,vowToUsdtPair]});
+          }
+        }
+      }catch(e){
+        console.warn("WalletPriceEngine: v_currency VOW-Route fehlgeschlagen",chain,token.symbol,token.address,e);
+      }
     }
+
+    candidates.sort((a,b)=>{
+      const la=Number.isFinite(a.pathLiquidityUSD)?a.pathLiquidityUSD:-1;
+      const lb=Number.isFinite(b.pathLiquidityUSD)?b.pathLiquidityUSD:-1;
+      return lb-la;
+    });
+    return candidates[0] || null;
   }
 
   async function projectTokenUSDPrice(chain,token,block="latest"){

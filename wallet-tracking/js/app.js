@@ -1,3 +1,4 @@
+// Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum-vCurrency Livepreise pruefen alle aktiven V2-Factorys plus Uniswap V2 statt nur der ersten DB-Zeile; direkte Stablecoin-Pools funktionieren unabhaengig von VOW/USDT. Nach Wallet-Loeschung bleibt die Ansicht auf „Meine Wallets“. Build 20261001-141613.
 // Phase 6.92 · 01.10.2026 11:08:51 CEST: Ethereum-vCurrency Livepreise auf echte Uniswap-V2-Pool-Discovery umgestellt (Stablecoin -> VOW -> WETH, liquiditaetsbasiert); fehlende ERC-20-Decmals werden on-chain gelesen. Admin-Kontextnavigation nach Refresh synchronisiert, damit Admin-Tabs nicht im Dashboard eingeblendet bleiben. Build 20261001-110851.
 // Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token sind Teil des globalen Preisresolvers: GeckoTerminal nutzt Contract-Adressen, CoinGecko dient contract-basiert als Fallback ueber den Edge-Proxy; verifizierte eigene LP-Tokens werden aus Reserven + TotalSupply bewertet. Build 20261001-005321.
 // Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende historische Preise werden als konkrete Token-Prüfaufgabe dargestellt; direkter Sprung in die passende Token-Verwaltung (vordefiniert/eigen/discovery) statt Preis-Sonderfall. Build 20260930-092041.
@@ -777,12 +778,18 @@ async function onLoggedIn(session) {
   // Das App-Gerüst und der Dashboard-Tab werden sofort sichtbar. Chain-/DB-Konfiguration
   // lädt danach; dadurch blockiert kein Supabase-Read die sichtbare Startseite.
   document.getElementById("appContent").style.display = "block";
+  let startupTab="dashboard";
+  try{
+    const requested=sessionStorage.getItem("wt-post-reload-tab");
+    if(requested&&document.getElementById("tab-"+requested)){startupTab=requested;userNavigationTouched=true;}
+    sessionStorage.removeItem("wt-post-reload-tab");
+  }catch(_){}
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-  document.getElementById("tab-dashboard")?.classList.add("active");
-  document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === "dashboard"));
-  // Startzustand vollständig wie bei einem manuellen Dashboard-Klick synchronisieren.
-  // showTab() ist während des Start-Datenjobs absichtlich gesperrt, daher Navigation hier direkt setzen.
-  updateContextNavigation("dashboard");
+  document.getElementById("tab-"+startupTab)?.classList.add("active");
+  document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === startupTab));
+  // Startzustand vollständig synchronisieren. Nach einer bewussten Wallet-Löschung
+  // bleibt die Ansicht auf „Meine Wallets“, obwohl der komplette Datenstand neu geladen wird.
+  updateContextNavigation(startupTab);
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
   document.getElementById("heroUserActions").style.display = "block";
 
@@ -1746,7 +1753,7 @@ function taxNativeCoinGeckoId(chain){
   return null;
 }
 
-const taxDexFactoryCache=new Map(),taxProjectReferenceCache=new Map();
+const taxDexFactoryCache=new Map(),taxDexFactoriesCache=new Map(),taxProjectReferenceCache=new Map();
 const taxV2Iface=new ethers.Interface(["function getPair(address,address) view returns (address)","function token0() view returns (address)","function getReserves() view returns (uint112 reserve0,uint112 reserve1,uint32 blockTimestampLast)"]);
 function taxPredefinedBySymbol(chain,symbol){
   const wanted=String(symbol||"").trim().toUpperCase();
@@ -1771,11 +1778,32 @@ function predefinedTokenTicker(chain,address){
   const key=chain+"|"+normalizeAddress(address,chain);
   return String(predefinedTokenSymbols[key]||predefinedTokenLabels[key]||predefinedTokenNames[key]||"").trim();
 }
+async function taxDexFactories(chain){
+  if(taxDexFactoriesCache.has(chain))return taxDexFactoriesCache.get(chain);
+  const work=(async()=>{
+    const {data,error}=await sb.from("dex_configs").select("factory_address,version").eq("chain_key",chain).eq("enabled",true);
+    const out=[];
+    if(!error){
+      for(const row of data||[]){
+        if(String(row.version||"").toLowerCase()!=="v2"||!row.factory_address)continue;
+        const a=normalizeAddress(row.factory_address,chain);if(a&&!out.includes(a))out.push(a);
+      }
+    }
+    // Uniswap V2 ist fuer die offiziellen TLN/VOW-Ethereum-Pools die kanonische Factory.
+    // Sie bleibt deshalb immer Kandidat, auch wenn dex_configs mehrere oder falsch sortierte V2-Zeilen enthaelt.
+    if(chain==="eth"){
+      const uni=normalizeAddress("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",chain);
+      if(!out.includes(uni))out.push(uni);
+    }
+    return out;
+  })();
+  taxDexFactoriesCache.set(chain,work);
+  try{const out=await work;taxDexFactoriesCache.set(chain,out);return out;}catch(e){taxDexFactoriesCache.delete(chain);throw e;}
+}
 async function taxDexFactory(chain){
   if(taxDexFactoryCache.has(chain))return taxDexFactoryCache.get(chain);
-  const {data,error}=await sb.from("dex_configs").select("factory_address,version").eq("chain_key",chain).eq("enabled",true);
-  const r=!error?(data||[]).find(x=>String(x.version||"").toLowerCase()==="v2"):null;
-  let out=r?.factory_address?normalizeAddress(r.factory_address,chain):null;
+  const factories=await taxDexFactories(chain);
+  let out=factories[0]||null;
   // Apertum hatte historisch noch keinen zwingenden dex_configs-Eintrag. Damit die bereits
   // validierte On-Chain-Preislogik trotzdem zuverlässig läuft, wird die V2-Factory bei
   // fehlender DB-Konfiguration direkt aus dem bekannten DAO1 wAPTM/wUSDT-Referenzpool
@@ -5273,6 +5301,7 @@ async function removeWallet(id) {
   // aufgebaut. So kann keine alte Summe der gelöschten Wallet im RAM stehen bleiben.
   if (w.dbId) {
     alert(`Wallet "${w.label}" wurde vollständig gelöscht. WalletTracking wird neu geladen, damit alle Summen und historischen Ansichten aus den verbleibenden Daten neu aufgebaut werden.`);
+    try{sessionStorage.setItem("wt-post-reload-tab","wallets");}catch(_){}
     location.reload();
     return;
   }
@@ -6591,20 +6620,26 @@ async function liveV2DirectPrice(chain,base,quote,bd,qd){
   const b=normalizeAddress(base,chain),q=normalizeAddress(quote,chain),key=`${chain}|${b}|${q}`;
   if(liveTlnVowEthPriceMemo.has(key))return await liveTlnVowEthPriceMemo.get(key);
   const work=(async()=>{
-    let factory=await taxDexFactory(chain);
-    if(!factory&&chain==="eth")factory=normalizeAddress("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",chain);
-    if(!factory)return null;
+    const factories=await taxDexFactories(chain);
+    if(!factories.length)return null;
     const [baseDecimals,quoteDecimals]=await Promise.all([liveTokenDecimals(chain,b,bd),liveTokenDecimals(chain,q,qd)]);
-    const raw=await archiveRpc(chain,"eth_call",[{to:factory,data:taxV2Iface.encodeFunctionData("getPair",[b,q])},"latest"]);
-    const [pairRaw]=taxV2Iface.decodeFunctionResult("getPair",raw);if(!pairRaw||/^0x0{40}$/i.test(pairRaw))return null;
-    const pair=normalizeAddress(pairRaw,chain);
-    const [t0raw,rr]=await Promise.all([
-      archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},"latest"]),
-      archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},"latest"])
-    ]);
-    const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr);
-    const is0=normalizeAddress(t0,chain)===b,rb=Number(is0?r0:r1)/10**baseDecimals,rq=Number(is0?r1:r0)/10**quoteDecimals;
-    return rb>0&&rq>0?{price:rq/rb,pair,baseReserve:rb,quoteReserve:rq,baseDecimals,quoteDecimals}:null;
+    const candidates=[];
+    for(const factory of factories){
+      try{
+        const raw=await archiveRpc(chain,"eth_call",[{to:factory,data:taxV2Iface.encodeFunctionData("getPair",[b,q])},"latest"]);
+        const [pairRaw]=taxV2Iface.decodeFunctionResult("getPair",raw);if(!pairRaw||/^0x0{40}$/i.test(pairRaw))continue;
+        const pair=normalizeAddress(pairRaw,chain);
+        const [t0raw,rr]=await Promise.all([
+          archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},"latest"]),
+          archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},"latest"])
+        ]);
+        const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr);
+        const is0=normalizeAddress(t0,chain)===b,rb=Number(is0?r0:r1)/10**baseDecimals,rq=Number(is0?r1:r0)/10**quoteDecimals;
+        if(rb>0&&rq>0)candidates.push({price:rq/rb,pair,factory,baseReserve:rb,quoteReserve:rq,baseDecimals,quoteDecimals});
+      }catch(e){console.warn("V2 Pair-Lookup",chain,factory,b,q,e);}
+    }
+    candidates.sort((x,y)=>Number(y.quoteReserve||0)-Number(x.quoteReserve||0));
+    return candidates[0]||null;
   })();
   liveTlnVowEthPriceMemo.set(key,work);
   try{return await work;}catch(e){liveTlnVowEthPriceMemo.delete(key);throw e;}
@@ -6647,10 +6682,14 @@ async function loadTlnVowEthereumCurrentPrices(){
     const weth=(taxPredefinedBySymbol(chain,"WETH")?.address)||"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
     if(!vow||!usdt?.address)return {ok:false,reason:"reference-missing",updated:0};
     const vd=await liveTokenDecimals(chain,vow),ud=await liveTokenDecimals(chain,usdt.address,usdt.decimals);
-    const vu=await liveV2DirectPrice(chain,vow,usdt.address,vd,ud);if(!vu)return {ok:false,reason:"vow-usdt-pair-missing",updated:0};
+    const vu=await liveV2DirectPrice(chain,vow,usdt.address,vd,ud);
+    const ethUsd=Number(nativePrices.eth?.price||0);
+    const vw=(!vu&&ethUsd>0)?await liveV2DirectPrice(chain,vow,weth,vd,18):null;
+    const vowUsd=vu?.price || (vw?.price&&ethUsd>0?vw.price*ethUsd:0);
     let updated=0;
     const put=(addr,price,source)=>{if(!(Number(price)>0))return;tokenPrices[chain+"|"+normalizeAddress(addr,chain)]={price:Number(price),source,refreshedAt};updated++;};
-    put(vow,vu.price,`Uniswap V2 VOW/USDT · ${vu.pair}`);
+    if(vu)put(vow,vu.price,`Uniswap V2 VOW/USDT · ${vu.pair}`);
+    else if(vw&&vowUsd>0)put(vow,vowUsd,`Uniswap V2 VOW/WETH · ${vw.pair} → ETH/USD`);
     const prefix=chain+"|",managed=[...new Set(Object.keys(predefinedTokenProject).filter(k=>k.startsWith(prefix)&&String(predefinedTokenProject[k]||"").toLowerCase().replace(/[\s\/-]+/g,"_")==="tln_vow").map(k=>k.slice(prefix.length)))];
     for(const addr of managed){
       const a=normalizeAddress(addr,chain);if(a===normalizeAddress(vow,chain))continue;
@@ -6658,12 +6697,12 @@ async function loadTlnVowEthereumCurrentPrices(){
       if(["lp_token","lp"].includes(cat))continue;
       const dec=await liveTokenDecimals(chain,a,predefinedTokenDecimals[key]);
       if(["voucher_currency","v_currency"].includes(cat)){
-        const route=await discoverEthereumVoucherPrice(a,{vow,usdt,usdc,weth,vowUsd:vu.price});
+        const route=await discoverEthereumVoucherPrice(a,{vow,usdt,usdc,weth,vowUsd});
         if(route)put(a,route.usdPrice,`Uniswap V2 ${sym}/${route.quoteLabel} · ${route.pair}${route.quoteLabel==="VOW"?" → VOW/USDT":""}`);
         continue;
       }
       if(["defi_token","tln_vow_token"].includes(cat)){
-        const directStable=await discoverEthereumVoucherPrice(a,{vow,usdt,usdc,weth,vowUsd:vu.price});
+        const directStable=await discoverEthereumVoucherPrice(a,{vow,usdt,usdc,weth,vowUsd});
         if(directStable){put(a,directStable.usdPrice,`Uniswap V2 ${sym}/${directStable.quoteLabel} · ${directStable.pair}${directStable.quoteLabel==="VOW"?" → VOW/USDT":""}`);continue;}
       }
     }
