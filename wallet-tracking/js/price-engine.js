@@ -1,3 +1,4 @@
+// Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; zentrale Preisengine nutzt den vorab gefüllten Pair-Cache des Projektadapters. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: aktuelle Pair-RPC-Reads können per JSON-RPC-Batch gebündelt werden; reduziert Browser-Requests ohne Preislogik zu ändern. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: Voucher-Dust-Schutz: V2-Preisrouten unter 100 USD messbarer Pfadliquiditaet werden nicht mehr als Kurs akzeptiert. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Voucher-Preisengine vereinheitlicht direkte USDT/USDC-V2-Pools mit Voucher→VOW→USDT und waehlt die liquideste reale Route. Build 20261001-141613.

@@ -1,3 +1,4 @@
+// Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; Dashboard-Aktionslogik aus 6.95 unverändert. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: Dashboard „Was muss ich tun?“ zeigt nur echte Aufgaben, volle Breite/zweispaltig und klappt bei 0 Aufgaben mit grünem Haken zu. TLN/VOW nur bei aktivem Projekt. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisrefresh nutzt TLN/VOW als einzige On-Chain-Preisquelle und entfernt den zweiten Ethereum-Voucher-RPC-Durchlauf; globale Preiscache-Version v3. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum-vCurrency Livepreise pruefen alle aktiven V2-Factorys plus Uniswap V2 statt nur der ersten DB-Zeile; direkte Stablecoin-Pools funktionieren unabhaengig von VOW/USDT. Nach Wallet-Loeschung bleibt die Ansicht auf „Meine Wallets“. Build 20261001-141613.

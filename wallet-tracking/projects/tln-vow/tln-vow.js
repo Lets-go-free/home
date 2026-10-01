@@ -1,3 +1,4 @@
+// Phase 6.96 · 01.10.2026 17:15:03 CEST: V2-getPair-Discovery wird chain-weit vorab gebatcht; parallele identische Pair-Lookups teilen einen In-Flight-Cache. RPC-Diagnose zaehlt HTTP-Batches/eth_calls. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: bekannte Token-Metadaten kommen aus predefined_tokens; aktuelle Pair-Reads werden als JSON-RPC-Batch gebündelt. Dashboard-Preisjob bleibt render-frei. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisjob berechnet TLN/VOW nur noch einmal ohne DOM-Render; Projektpreise werden danach aus demselben Cache exportiert. Preis-Snapshot v2 invalidiert alte Dust-Kurse. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum V2-Pair-Lookup prueft alle aktiven V2-Factorys plus die offizielle Uniswap-V2-Factory; keine Abhaengigkeit mehr von der ersten dex_configs-Zeile. Build 20261001-141613.
@@ -40,6 +41,16 @@ const V2_ABI = [
 const FACTORY_ABI = [
   "function getPair(address tokenA,address tokenB) view returns (address)"
 ];
+const FACTORY_IFACE = new ethers.Interface(FACTORY_ABI);
+
+const priceRpcStats = {
+  httpBatchRequests:0,
+  ethCalls:0,
+  getPairCalls:0,
+  pairDiscoveryBatches:0,
+  reset(){ this.httpBatchRequests=0; this.ethCalls=0; this.getPairCalls=0; this.pairDiscoveryBatches=0; },
+  snapshot(){ return {httpBatchRequests:this.httpBatchRequests,ethCalls:this.ethCalls,getPairCalls:this.getPairCalls,pairDiscoveryBatches:this.pairDiscoveryBatches}; }
+};
 
 const V3_ABI = [
   "function token0() view returns (address)",
@@ -159,6 +170,8 @@ async function batchRpcCalls(chain,calls,block="latest"){
   if(!rpc || !Array.isArray(calls) || !calls.length)throw new Error(`${chain}: RPC-Batch nicht verfügbar.`);
   const tag=rpcBlockTag(block);
   const payload=calls.map((x,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_call",params:[{to:x.to,data:x.data},tag]}));
+  priceRpcStats.httpBatchRequests++;
+  priceRpcStats.ethCalls += payload.length;
   const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
   if(!response.ok)throw new Error(`${chain}: RPC-Batch HTTP ${response.status}`);
   const json=await response.json();
@@ -612,24 +625,124 @@ async function getToken(chain,address){
 /* =========================================================
    V2 PAIR LOOKUP
 ========================================================= */
+function pairCacheKey(chain,tokenA,tokenB){
+  return chain + ":" + [norm(tokenA),norm(tokenB)].sort().join(":");
+}
+
+async function lookupPairAcrossFactories(chain,tokenA,tokenB){
+  const factories=(CONFIG[chain].v2Factories?.length?CONFIG[chain].v2Factories:[CONFIG[chain].v2Factory]).filter(Boolean);
+  if(!factories.length) return null;
+  const calls=factories.map(factoryAddress=>({
+    to:factoryAddress,
+    data:FACTORY_IFACE.encodeFunctionData("getPair",[tokenA,tokenB])
+  }));
+  try{
+    priceRpcStats.getPairCalls += calls.length;
+    const raws=await batchRpcCalls(chain,calls,"latest");
+    for(let i=0;i<raws.length;i++){
+      const [pair]=FACTORY_IFACE.decodeFunctionResult("getPair",raws[i]);
+      if(pair && pair!==ethers.ZeroAddress) return String(pair);
+    }
+    return null;
+  }catch(e){
+    console.warn(`${chain}: gebündelter V2 Pair-Lookup fehlgeschlagen; Einzel-Fallback`,e);
+    for(const factoryAddress of factories){
+      try{
+        const factory=new ethers.Contract(factoryAddress,FACTORY_ABI,providers[chain]);
+        priceRpcStats.getPairCalls++;
+        const pair=await factory.getPair(tokenA,tokenB);
+        if(pair!==ethers.ZeroAddress)return pair;
+      }catch(inner){console.warn(`${chain}: V2 Pair-Lookup über ${factoryAddress} fehlgeschlagen`,inner);}
+    }
+    return null;
+  }
+}
+
 async function findPair(chain,tokenA,tokenB){
   if(!tokenA || !tokenB) return null;
 
-  const key = chain + ":" + [norm(tokenA),norm(tokenB)].sort().join(":");
-  if(pairCache.has(key)) return pairCache.get(key);
+  const key = pairCacheKey(chain,tokenA,tokenB);
+  if(pairCache.has(key)) return await pairCache.get(key);
 
+  const pending=lookupPairAcrossFactories(chain,tokenA,tokenB);
+  pairCache.set(key,pending);
+  try{
+    const result=await pending;
+    pairCache.set(key,result);
+    return result;
+  }catch(e){
+    pairCache.delete(key);
+    throw e;
+  }
+}
+
+function addPairCandidate(map,chain,a,b){
+  if(!a || !b || same(a,b))return;
+  const key=pairCacheKey(chain,a,b);
+  if(pairCache.has(key) || map.has(key))return;
+  map.set(key,{key,a,b});
+}
+
+async function prefetchV2PairDiscovery(chain){
   const factories=(CONFIG[chain].v2Factories?.length?CONFIG[chain].v2Factories:[CONFIG[chain].v2Factory]).filter(Boolean);
-  let result=null;
-  for(const factoryAddress of factories){
-    try{
-      const factory=new ethers.Contract(factoryAddress,FACTORY_ABI,providers[chain]);
-      const pair=await factory.getPair(tokenA,tokenB);
-      if(pair!==ethers.ZeroAddress){result=pair;break;}
-    }catch(e){console.warn(`${chain}: V2 Pair-Lookup über ${factoryAddress} fehlgeschlagen`,e);}
+  if(!factories.length)return;
+  const ref=references[chain]||{};
+  const candidates=new Map();
+
+  // Gemeinsame Referenzroute nur einmal entdecken.
+  addPairCandidate(candidates,chain,ref.vow,ref.usdt);
+
+  for(const row of configuredTokens(chain)){
+    const address=row.address;
+    const type=rowType(row);
+    if(type==="voucher_currency"){
+      addPairCandidate(candidates,chain,address,ref.usdc);
+      addPairCandidate(candidates,chain,address,ref.usdt);
+      addPairCandidate(candidates,chain,address,ref.vow);
+    }else if(type==="defi_token"){
+      addPairCandidate(candidates,chain,address,ref.vow);
+      addPairCandidate(candidates,chain,address,ref.usdt);
+    }
   }
 
-  pairCache.set(key,result);
-  return result;
+  if(!candidates.size)return;
+  const entries=[...candidates.values()];
+  const calls=[];
+  for(const entry of entries){
+    for(let factoryIndex=0;factoryIndex<factories.length;factoryIndex++){
+      calls.push({
+        entry,
+        factoryIndex,
+        to:factories[factoryIndex],
+        data:FACTORY_IFACE.encodeFunctionData("getPair",[entry.a,entry.b])
+      });
+    }
+  }
+
+  // Kleine Chunks vermeiden Provider-Limits; typisch ist je Chain nur ein Batch nötig.
+  const rawByCall=new Array(calls.length);
+  const chunkSize=80;
+  try{
+    for(let offset=0;offset<calls.length;offset+=chunkSize){
+      const chunk=calls.slice(offset,offset+chunkSize);
+      priceRpcStats.pairDiscoveryBatches++;
+      priceRpcStats.getPairCalls += chunk.length;
+      const raws=await batchRpcCalls(chain,chunk.map(x=>({to:x.to,data:x.data})),"latest");
+      raws.forEach((raw,i)=>{ rawByCall[offset+i]=raw; });
+    }
+    const results=new Map(entries.map(x=>[x.key,null]));
+    calls.forEach((call,i)=>{
+      if(results.get(call.entry.key))return;
+      try{
+        const [pair]=FACTORY_IFACE.decodeFunctionResult("getPair",rawByCall[i]);
+        if(pair && pair!==ethers.ZeroAddress)results.set(call.entry.key,String(pair));
+      }catch(e){ console.warn(`${chain}: getPair-Batch-Antwort konnte nicht dekodiert werden`,call.entry.key,e); }
+    });
+    for(const entry of entries)pairCache.set(entry.key,results.get(entry.key)||null);
+  }catch(e){
+    // Kein Fehler für die Preislogik: findPair() übernimmt danach mit In-Flight-Deduplizierung.
+    console.warn(`${chain}: Pair-Discovery-Batch fehlgeschlagen; Lazy-Fallback aktiv`,e);
+  }
 }
 
 /* =========================================================
@@ -1994,7 +2107,9 @@ async function refreshCurrentPrices({manual=false,render=true}={}){
     setPriceStatus(manual?"Aktuelle Preise werden manuell neu ermittelt…":"Aktuelle Projektpreise werden on-chain ermittelt…","loading");
     resetCurrentPriceCaches();
     const chains=projectChains.filter(c=>["bsc","eth"].includes(c));
+    priceRpcStats.reset();
     for(const chain of chains) await resolveReferences(chain);
+    await Promise.all(chains.map(chain=>prefetchV2PairDiscovery(chain)));
     await Promise.all(chains.map(chain=>buildCurrentProjectPrices(chain)));
     if(render) await Promise.all(chains.map(chain=>renderDashboard(chain,{cacheMode:false})));
     const saved=await saveCurrentPriceSnapshot();
@@ -2005,7 +2120,7 @@ async function refreshCurrentPrices({manual=false,render=true}={}){
       : `Preisstand: ${stamp} · aktuell on-chain · Supabase-Preiscache konnte nicht gespeichert werden.`,
       saved?"success":"warning");
     notifyCurrentPricesUpdated(manual);
-    console.info("TLN/VOW Preisrefresh abgeschlossen",{render,prices:exportedPrices.size,pairs:pairCache.size,engine:window.WalletPriceEngine?.stats?.()||null});
+    console.info("TLN/VOW Preisrefresh abgeschlossen",{render,prices:exportedPrices.size,pairs:pairCache.size,rpc:priceRpcStats.snapshot(),engine:window.WalletPriceEngine?.stats?.()||null});
     return true;
   })().finally(()=>{setPriceRefreshBusy(false);priceRefreshPromise=null;});
   return priceRefreshPromise;
