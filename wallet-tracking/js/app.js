@@ -1,3 +1,4 @@
+// Phase 6.95 · 01.10.2026 16:47:46 CEST: Dashboard „Was muss ich tun?“ zeigt nur echte Aufgaben, volle Breite/zweispaltig und klappt bei 0 Aufgaben mit grünem Haken zu. TLN/VOW nur bei aktivem Projekt. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisrefresh nutzt TLN/VOW als einzige On-Chain-Preisquelle und entfernt den zweiten Ethereum-Voucher-RPC-Durchlauf; globale Preiscache-Version v3. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum-vCurrency Livepreise pruefen alle aktiven V2-Factorys plus Uniswap V2 statt nur der ersten DB-Zeile; direkte Stablecoin-Pools funktionieren unabhaengig von VOW/USDT. Nach Wallet-Loeschung bleibt die Ansicht auf „Meine Wallets“. Build 20261001-141613.
 // Phase 6.92 · 01.10.2026 11:08:51 CEST: Ethereum-vCurrency Livepreise auf echte Uniswap-V2-Pool-Discovery umgestellt (Stablecoin -> VOW -> WETH, liquiditaetsbasiert); fehlende ERC-20-Decmals werden on-chain gelesen. Admin-Kontextnavigation nach Refresh synchronisiert, damit Admin-Tabs nicht im Dashboard eingeblendet bleiben. Build 20261001-110851.
@@ -7042,6 +7043,30 @@ function chainIconHtml(chain,sizeClass="sm") {
   return `<span class="dashboard-chain-native-symbol" title="${title}">${escapeAttr(sym.slice(0,5))}</span>`;
 }
 
+function dashboardActionItems(targetWallets,involvedProjects,staleWallets){
+  const items=[];
+  const d=discoveryReviewSummary(targetWallets);
+  if(d.unresolved||d.unscanned){
+    const parts=[];
+    if(d.unresolved)parts.push(`${d.unresolved} unbekannte Token`);
+    if(d.suspects)parts.push(`${d.suspects} Spam-Verdacht`);
+    if(d.needsReview)parts.push(`${d.needsReview} ohne Warnung`);
+    if(d.unscanned)parts.push(`${d.unscanned} Wallet(s) noch nicht geprüft`);
+    items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Token prüfen</strong><small style="display:block;margin-top:2px">${parts.join(" · ")}</small><button class="secondary" style="margin-top:8px" onclick="openDiscoveryReview('${escapeAttr(d.firstWalletId||"")}')">Jetzt prüfen</button></div></div>`);
+  }
+  if(staleWallets){
+    items.push(`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`);
+  }
+  if(involvedProjects.has("tln_vow")){
+    const tlnStats=dashboardProjectCacheStats.tln_vow||{};
+    const rows=Array.isArray(tlnStats.expiredPartnerStakings)?tlnStats.expiredPartnerStakings:[];
+    if(rows.length){
+      items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>TLN / VOW</strong><details style="margin-top:5px"><summary style="cursor:pointer;font-weight:700">${rows.length} abgelaufene Partner-Staking${rows.length===1?'':'s'} noch zu unstaken</summary><div class="meta" style="margin-top:6px">${rows.map(r=>`${escapeAttr(r.name||r.tlnId||'Partner')} · ${escapeAttr(r.asset||'Staking')} · abgelaufen ${escapeAttr(r.expiry||'')}`).join('<br>')}</div></details></div></div>`);
+    }
+  }
+  return items;
+}
+
 function renderDashboard(){
   const root=document.getElementById("dashboardContent");if(!root)return;
   renderGlobalWalletPersonFilter();
@@ -7074,6 +7099,9 @@ function renderDashboard(){
   const globalRewardState=dashboardCombinedRewardState([...involvedProjects]);
   const rewardKpi=(title,group)=>{const order=dashboardRewardAssetOrder(group);return `<article class="dashboard-kpi dashboard-kpi-gold dashboard-reward-kpi"><span>${title}</span><div class="dashboard-kpi-reward-lines"><div><small>Gesamt</small>${dashboardRewardPeriodHtml(group.total,order,globalRewardState)}</div><div><small>Vorjahr</small>${dashboardRewardPeriodHtml(group.previousYear,order,globalRewardState)}</div><div><small>Jahr</small>${dashboardRewardPeriodHtml(group.year,order,globalRewardState)}</div><div><small>Monat</small>${dashboardRewardPeriodHtml(group.month,order,globalRewardState)}</div></div></article>`;};
   const staleWallets=targetWallets.filter(w=>Object.keys(CHAIN_CONFIG).some(c=>walletAddressForChain(w,c)&&!refreshedToday(w,c,"balances"))).length;
+  const actionItems=dashboardActionItems(targetWallets,involvedProjects,staleWallets);
+  const actionCount=actionItems.length;
+  const actionPanel=`<details class="dashboard-card dashboard-action-card" ${actionCount?"open":""}><summary class="dashboard-action-summary"><span><strong>Was muss ich tun?</strong>${actionCount?`<small>${actionCount} offene Aufgabe${actionCount===1?"":"n"}</small>`:`<span class="dashboard-action-all-ok" title="Keine offenen Aufgaben">✓</span><small>Keine offenen Aufgaben</small>`}</span><span class="dashboard-action-chevron" aria-hidden="true">⌄</span></summary>${actionCount?`<div class="dashboard-action-list dashboard-action-grid">${actionItems.join("")}</div>`:`<div class="dashboard-action-empty">Aktuell ist keine Aktion nötig.</div>`}</details>`;
   root.innerHTML=`
     <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>
     <section class="dashboard-kpi-grid dashboard-kpi-grid-main">
@@ -7086,7 +7114,8 @@ function renderDashboard(){
       ${rewardKpi("Referral Rewards",globalReferralRewards)}
     </section>
     ${portfolio.unknownValues?`<div class="dashboard-data-warning"><strong>${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs:</strong> ${portfolio.unknownAssets.map(x=>`${escapeAttr(x.symbol)} (${escapeAttr(CHAIN_META[x.chain]?.label||x.chain.toUpperCase())})`).join(", ")} – nicht in den Geldsummen enthalten.</div>`:""}
-    <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div>${isAdmin?`<button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>`:""}</div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur Aufgaben, bei denen wirklich eine Aktion nötig ist</p></div></div><div class="dashboard-action-list">${(()=>{const d=discoveryReviewSummary(targetWallets);if(!d.unresolved&&!d.unscanned)return `<div><span class="dashboard-action-icon ok">✓</span><p><strong>Token geprüft</strong><small>Alle gefundenen Token sind als sicher oder Spam klassifiziert.</small></p></div>`;const parts=[];if(d.unresolved)parts.push(`${d.unresolved} unbekannte Token`);if(d.suspects)parts.push(`${d.suspects} Spam-Verdacht`);if(d.needsReview)parts.push(`${d.needsReview} ohne Warnung`);if(d.unscanned)parts.push(`${d.unscanned} Wallet(s) noch nicht geprüft`);return `<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Token prüfen</strong><small style="display:block;margin-top:2px">${parts.join(" · ")}</small><button class="secondary" style="margin-top:8px" onclick="openDiscoveryReview('${escapeAttr(d.firstWalletId||"")}')">Jetzt prüfen</button></div></div>`})()}${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}${(()=>{const tlnStats=dashboardProjectCacheStats.tln_vow||{};const rows=Array.isArray(tlnStats.expiredPartnerStakings)?tlnStats.expiredPartnerStakings:[];if(!tlnStats.updatedAt)return `<div><span class="dashboard-action-icon">↻</span><p><strong>TLN / VOW</strong><small>Partner-Stakings werden aus dem persistenten Lifecycle-Cache geladen …</small></p></div>`;if(!rows.length)return `<div><span class="dashboard-action-icon ok">✓</span><p><strong>TLN / VOW</strong><small>Keine verifizierten abgelaufenen, noch gestakten Partner-Positionen im aktuellen Team-Cache.</small></p></div>`;return `<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>TLN / VOW</strong><details style="margin-top:5px"><summary style="cursor:pointer;font-weight:700">${rows.length} abgelaufene Partner-Staking${rows.length===1?'':'s'} noch zu unstaken</summary><div class="meta" style="margin-top:6px">${rows.map(r=>`${escapeAttr(r.name||r.tlnId||'Partner')} · ${escapeAttr(r.asset||'Staking')} · abgelaufen ${escapeAttr(r.expiry||'')}`).join('<br>')}</div></details></div></div>`})()}</div></article></section>
+    ${actionPanel}
+    <section class="dashboard-main-grid dashboard-main-grid-single"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div>${isAdmin?`<button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>`:""}</div>${priceTable}</article></section>
     ${(()=>{const acts=Object.values(dashboardProjectCacheStats).flatMap(x=>Array.isArray(x?.recentPartnerActivities)?x.recentPartnerActivities:[]).filter(x=>x?.date).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);if(!acts.length)return `<section class="dashboard-card dashboard-activities"><div class="dashboard-card-head"><div><h3>Letzte Partneraktivitäten</h3><p>Noch keine bestätigten Aktivitäten im geladenen Projektcache.</p></div></div></section>`;return `<section class="dashboard-card dashboard-activities"><div class="dashboard-card-head"><div><h3>Letzte Partneraktivitäten</h3><p>Die letzten 10 bestätigten Bot-Käufe bzw. Partner-Stakings · projektübergreifend</p></div></div><div class="dashboard-activity-list">${acts.map(a=>`<div><time>${escapeAttr(new Date(a.date).toLocaleDateString("de-CH"))}</time><strong>${escapeAttr(a.project||"")}</strong><span>${escapeAttr(a.partner||"Partner")}</span><span>${escapeAttr(a.what||"Aktivität")}</span></div>`).join("")}</div></section>`;})()}
     <div class="dashboard-section-title"><h3>Projekte</h3><span>Nur vorhandene Projekte</span></div>
     <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}</section>

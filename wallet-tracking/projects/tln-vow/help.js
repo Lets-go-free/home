@@ -1,3 +1,4 @@
+// Phase 6.95 · 01.10.2026 16:47:46 CEST: Preisrefresh bündelt aktuelle Pair-Reads und nutzt zentrale Token-Stammdaten; Dashboard zeigt nur echte offene Aktionen. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: Kurshilfe ergaenzt Dust-Liquiditaetsschutz und einmalige zentrale On-Chain-Preisermittlung. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Kurshilfe dokumentiert direkte Stablecoin-Pools plus VOW-Route und Multi-Factory-Uniswap-V2-Discovery auf Ethereum. Build 20261001-141613.
 // Phase 6.74 · 29.09.2026 15:25:57 CEST: PCLP/LPT-Staking-Principal zählt bis zum tatsächlichen Unstake als Vermögen – auch nach Vertragsende; 31.12. mit historischem LP-Stichtagspreis. Build 20260929-152557.

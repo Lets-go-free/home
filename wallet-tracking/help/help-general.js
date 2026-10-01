@@ -1,3 +1,4 @@
+// Phase 6.95 · 01.10.2026 16:47:46 CEST: Preisrefresh bündelt aktuelle Pair-Reads und nutzt zentrale Token-Stammdaten; Dashboard zeigt nur echte offene Aktionen. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: Preisrefresh vermeidet doppelten TLN/VOW-Ethereum-RPC-Lauf; v-Waehrungs-Dust-Pools unter 100 USD Pfadliquiditaet werden nicht bewertet. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum-vCurrency-Preise ueber mehrere V2-Factorys/Uniswap und direkte Stablecoin-/VOW-Routen vereinheitlicht; nach Wallet-Loeschung bleibt „Meine Wallets“ aktiv. Build 20261001-141613.
 // Phase 6.92 · 01.10.2026 11:08:51 CEST: Ethereum-vCurrencies erkennen reale Uniswap-V2-Pools dynamisch (USDC/USDT/VOW/WETH), lesen fehlende Token-Decmals on-chain und bevorzugen liquide reale Routen. Admin-Kontextnavigation bleibt nach Refresh auf der aktiven Hauptsektion. Build 20261001-110851.

@@ -1,3 +1,4 @@
+// Phase 6.95 · 01.10.2026 16:47:46 CEST: aktuelle Pair-RPC-Reads können per JSON-RPC-Batch gebündelt werden; reduziert Browser-Requests ohne Preislogik zu ändern. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: Voucher-Dust-Schutz: V2-Preisrouten unter 100 USD messbarer Pfadliquiditaet werden nicht mehr als Kurs akzeptiert. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Voucher-Preisengine vereinheitlicht direkte USDT/USDC-V2-Pools mit Voucher→VOW→USDT und waehlt die liquideste reale Route. Build 20261001-141613.
 window.WalletPriceEngine = (() => {
@@ -33,6 +34,19 @@ window.WalletPriceEngine = (() => {
     const provider = typeof c.provider === "function" ? c.provider(chain) : null;
     if(!provider) throw new Error(`${chain}: WalletPriceEngine RPC-Provider fehlt.`);
     return await provider.call({to,data}, block === "latest" ? undefined : Number(block));
+  }
+
+  async function callMany(chain,calls,block="latest"){
+    const c=ctx();
+    if(typeof c.batchCall === "function"){
+      try{
+        const out=await c.batchCall(chain,calls,block);
+        if(Array.isArray(out) && out.length===calls.length) return out;
+      }catch(e){
+        console.warn("WalletPriceEngine: RPC-Batch fehlgeschlagen; Einzel-Calls als Fallback",chain,e);
+      }
+    }
+    return await Promise.all(calls.map(x=>call(chain,x.to,x.data,block)));
   }
 
   async function tokenMeta(chain,address){
@@ -104,7 +118,7 @@ window.WalletPriceEngine = (() => {
         ["token0",[]], ["token1",[]], ["getReserves",[]],
         ["totalSupply",[]], ["decimals",[]], ["factory",[]]
       ];
-      const raw = await Promise.all(calls.map(([fn,args]) => call(chain,address,V2.encodeFunctionData(fn,args),block)));
+      const raw = await callMany(chain,calls.map(([fn,args])=>({to:address,data:V2.encodeFunctionData(fn,args)})),block);
       const [token0] = V2.decodeFunctionResult("token0",raw[0]);
       const [token1] = V2.decodeFunctionResult("token1",raw[1]);
       const [r0Raw,r1Raw,blockTimestampLast] = V2.decodeFunctionResult("getReserves",raw[2]);

@@ -1,3 +1,4 @@
+// Phase 6.95 · 01.10.2026 16:47:46 CEST: bekannte Token-Metadaten kommen aus predefined_tokens; aktuelle Pair-Reads werden als JSON-RPC-Batch gebündelt. Dashboard-Preisjob bleibt render-frei. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisjob berechnet TLN/VOW nur noch einmal ohne DOM-Render; Projektpreise werden danach aus demselben Cache exportiert. Preis-Snapshot v2 invalidiert alte Dust-Kurse. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum V2-Pair-Lookup prueft alle aktiven V2-Factorys plus die offizielle Uniswap-V2-Factory; keine Abhaengigkeit mehr von der ersten dex_configs-Zeile. Build 20261001-141613.
 // Phase 5.97 · 22.09.2026 23:14:40 CEST: ethers-v6 JsonRpcProvider erhält die Network-Instanz auch in options.staticNetwork; behebt den verbliebenen staticNetwork.matches-Fehler im globalen Preisjob. Build 20260922-231440.
@@ -54,6 +55,7 @@ const V3_ABI = [
 ========================================================= */
 let database = { bsc: [], eth: [] };
 let references = {};
+const predefinedMeta = new Map();
 
 const tokenCache = new Map();
 const pairCache  = new Map();
@@ -146,10 +148,34 @@ function setPriceRefreshBusy(busy){
   }
 }
 
+function rpcBlockTag(block="latest"){
+  if(block==null || block==="latest")return "latest";
+  const n=Number(block);
+  return Number.isFinite(n)?"0x"+Math.max(0,Math.trunc(n)).toString(16):String(block);
+}
+
+async function batchRpcCalls(chain,calls,block="latest"){
+  const rpc=CONFIG[chain]?.rpc;
+  if(!rpc || !Array.isArray(calls) || !calls.length)throw new Error(`${chain}: RPC-Batch nicht verfügbar.`);
+  const tag=rpcBlockTag(block);
+  const payload=calls.map((x,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_call",params:[{to:x.to,data:x.data},tag]}));
+  const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+  if(!response.ok)throw new Error(`${chain}: RPC-Batch HTTP ${response.status}`);
+  const json=await response.json();
+  if(!Array.isArray(json))throw new Error(`${chain}: RPC-Batch-Antwort ist kein Array.`);
+  const byId=new Map(json.map(x=>[Number(x.id),x]));
+  return payload.map(req=>{
+    const item=byId.get(req.id);
+    if(!item || item.error || typeof item.result!=="string")throw new Error(`${chain}: RPC-Batch-Call ${req.id} fehlgeschlagen${item?.error?.message?`: ${item.error.message}`:""}`);
+    return item.result;
+  });
+}
+
 function configureSharedPriceEngine(){
   if(!window.WalletPriceEngine) return;
   window.WalletPriceEngine.configure(() => ({
     provider: chain => providers[chain] || null,
+    batchCall: async (chain,calls,block) => await batchRpcCalls(chain,calls,block),
     tokenMeta: async (chain,address) => await getToken(chain,address),
     references: chain => references[chain] || {},
     tokenCategory: (chain,address) => rowType(findDbRow(chain,address)),
@@ -378,20 +404,14 @@ async function resolveReferences(chain){
     }
   }
 
-  // Fehlende Markt-Referenzen kommen aus den zentralen Token-Stammdaten, nicht nur aus
-  // bereits als Projekt-LP eingetragenen Pools. Das ist fuer neue vCurrencies wichtig,
-  // deren realer Markt z.B. direkt v$/USDC sein kann.
+  // Fehlende Markt-Referenzen kommen aus dem bereits geladenen zentralen
+  // predefined_tokens-Stammdatensatz. Kein zusätzlicher Supabase-Read pro Chain.
   if(wanted.some(symbol=>!found[symbol])){
-    try{
-      const {data:referenceRows,error}=await sb.from("predefined_tokens")
-        .select("address,symbol,label,name,decimals")
-        .eq("chain",chain).eq("enabled",true);
-      if(error)throw error;
-      for(const row of referenceRows||[]){
-        const symbol=String(row.symbol||row.label||row.name||"").trim().toUpperCase();
-        if(wanted.includes(symbol)&&!found[symbol]&&row.address)found[symbol]=row.address;
-      }
-    }catch(e){console.warn("TLN/VOW Referenz-Token aus Stammdaten",chain,e);}
+    for(const [key,row] of predefinedMeta){
+      if(!key.startsWith(chain+"|"))continue;
+      const symbol=String(row.symbol||row.label||row.name||"").trim().toUpperCase();
+      if(wanted.includes(symbol)&&!found[symbol]&&row.address)found[symbol]=row.address;
+    }
   }
 
   references[chain] = references[chain] || {};
@@ -409,12 +429,19 @@ async function resolveReferences(chain){
    SUPABASE
 ========================================================= */
 async function loadSupabase(){
+  // Ein zentraler Stammdaten-Read versorgt sowohl Projektklassifikation als auch
+  // Token-Metadaten/Stablecoin-Referenzen. Dadurch entfallen pro Token bis zu
+  // drei ERC-20-Metadaten-Calls (name/symbol/decimals) beim Preisrefresh.
   const {data:rows,error}=await sb.from("predefined_tokens")
     .select("*")
-    .eq("defi_project_key",PROJECT_KEY)
     .eq("enabled",true);
   if(error) throw error;
 
+  predefinedMeta.clear();
+  for(const row of rows||[]){
+    const chain=norm(row.chain),address=norm(row.address);
+    if(chain&&address&&address!=="native")predefinedMeta.set(`${chain}|${address}`,row);
+  }
   database={};
   for(const chain of projectChains){
     database[chain]=(rows||[]).filter(r => norm(r.chain)===chain && isAllowedRow(r));
@@ -542,6 +569,16 @@ function notifyCurrentPricesUpdated(manual=false){
 async function getToken(chain,address){
   const key = chain + ":" + norm(address);
   if(tokenCache.has(key)) return tokenCache.get(key);
+
+  const master=predefinedMeta.get(chain+"|"+norm(address));
+  const masterSymbol=String(master?.symbol||master?.label||"").trim();
+  const masterName=String(master?.name||master?.label||masterSymbol||"").trim();
+  const masterDecimals=master?.decimals===null||master?.decimals===undefined||master?.decimals===""?null:Number(master.decimals);
+  if(masterSymbol && Number.isFinite(masterDecimals)){
+    const result={address,name:masterName||masterSymbol,symbol:masterSymbol,decimals:masterDecimals};
+    tokenCache.set(key,result);
+    return result;
+  }
 
   const contract = new ethers.Contract(address,ERC20_ABI,providers[chain]);
 
