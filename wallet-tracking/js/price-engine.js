@@ -1,3 +1,4 @@
+// Phase 6.94 · 01.10.2026 16:20:46 CEST: Voucher-Dust-Schutz: V2-Preisrouten unter 100 USD messbarer Pfadliquiditaet werden nicht mehr als Kurs akzeptiert. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Voucher-Preisengine vereinheitlicht direkte USDT/USDC-V2-Pools mit Voucher→VOW→USDT und waehlt die liquideste reale Route. Build 20261001-141613.
 window.WalletPriceEngine = (() => {
   const V2 = new ethers.Interface([
@@ -19,6 +20,7 @@ window.WalletPriceEngine = (() => {
   const tokenMetaCache = new Map();
   const tokenPriceCache = new Map();
   const priceGraphCache = new Map();
+  const MIN_VCURRENCY_PATH_LIQUIDITY_USD = 100;
 
   const norm = x => String(x || "").trim().toLowerCase();
   const same = (a,b) => !!a && !!b && norm(a) === norm(b);
@@ -327,12 +329,17 @@ window.WalletPriceEngine = (() => {
       }
     }
 
-    candidates.sort((a,b)=>{
-      const la=Number.isFinite(a.pathLiquidityUSD)?a.pathLiquidityUSD:-1;
-      const lb=Number.isFinite(b.pathLiquidityUSD)?b.pathLiquidityUSD:-1;
-      return lb-la;
-    });
-    return candidates[0] || null;
+    const liquidCandidates=candidates.filter(candidate =>
+      Number.isFinite(candidate.pathLiquidityUSD) && candidate.pathLiquidityUSD >= MIN_VCURRENCY_PATH_LIQUIDITY_USD
+    );
+    if(candidates.length && !liquidCandidates.length){
+      console.info("WalletPriceEngine: v_currency Preisroute verworfen – zu geringe V2-Pfadliquidität",{
+        chain,token:token.symbol,address:token.address,minimumUsd:MIN_VCURRENCY_PATH_LIQUIDITY_USD,
+        candidates:candidates.map(x=>({route:x.route,pathLiquidityUSD:x.pathLiquidityUSD,pool:x.pool||x.pools||null}))
+      });
+    }
+    liquidCandidates.sort((a,b)=>b.pathLiquidityUSD-a.pathLiquidityUSD);
+    return liquidCandidates[0] || null;
   }
 
   async function projectTokenUSDPrice(chain,token,block="latest"){

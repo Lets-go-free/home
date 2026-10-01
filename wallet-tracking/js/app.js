@@ -1,3 +1,4 @@
+// Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisrefresh nutzt TLN/VOW als einzige On-Chain-Preisquelle und entfernt den zweiten Ethereum-Voucher-RPC-Durchlauf; globale Preiscache-Version v3. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum-vCurrency Livepreise pruefen alle aktiven V2-Factorys plus Uniswap V2 statt nur der ersten DB-Zeile; direkte Stablecoin-Pools funktionieren unabhaengig von VOW/USDT. Nach Wallet-Loeschung bleibt die Ansicht auf „Meine Wallets“. Build 20261001-141613.
 // Phase 6.92 · 01.10.2026 11:08:51 CEST: Ethereum-vCurrency Livepreise auf echte Uniswap-V2-Pool-Discovery umgestellt (Stablecoin -> VOW -> WETH, liquiditaetsbasiert); fehlende ERC-20-Decmals werden on-chain gelesen. Admin-Kontextnavigation nach Refresh synchronisiert, damit Admin-Tabs nicht im Dashboard eingeblendet bleiben. Build 20261001-110851.
 // Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token sind Teil des globalen Preisresolvers: GeckoTerminal nutzt Contract-Adressen, CoinGecko dient contract-basiert als Fallback ueber den Edge-Proxy; verifizierte eigene LP-Tokens werden aus Reserven + TotalSupply bewertet. Build 20261001-005321.
@@ -4561,7 +4562,7 @@ let tokenPrices = {}; // "chain|adresse" -> {price, change24h, source}
 // Keine Historisierung: pro Refresh wird genau der aktuelle Stand überschrieben.
 // TLN/VOW hält seinen globalen Projekt-Snapshot parallel, damit Route/Poolzustand erhalten bleiben.
 const CURRENT_PRICE_GLOBAL_CACHE_TABLE = "wallet_global_current_price_snapshot";
-const CURRENT_PRICE_GLOBAL_CACHE_VERSION = "wallettracking-current-prices-v2";
+const CURRENT_PRICE_GLOBAL_CACHE_VERSION = "wallettracking-current-prices-v3";
 const CURRENT_PRICE_TIMEZONE = "Europe/Zurich";
 const CURRENT_PRICE_SLOT_MINUTES = 15;
 let currentPriceCacheState = { capturedAt:null, source:"none" };
@@ -4647,14 +4648,31 @@ async function loadCachedCurrentPricesAtStart(){
   setCentralPriceStatus("Noch kein global gespeicherter Preisstand vorhanden.","warning");renderDashboard();return null;
 }
 function rerenderAllCurrentPriceViews(){renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();if(document.getElementById("tab-predefined")?.classList.contains("active"))renderSafeTokenTable();}
+function syncTlnVowProjectPricesToGlobalCache(){
+  if(!window.TLNVOWProject?.getPrice)return 0;
+  let updated=0;
+  for(const key of Object.keys(predefinedTokenProject||{})){
+    if(String(predefinedTokenProject[key]||"").toLowerCase().replace(/[\s\/-]+/g,"_")!=="tln_vow")continue;
+    const sep=key.indexOf("|");if(sep<1)continue;
+    const chain=key.slice(0,sep),address=key.slice(sep+1);
+    const price=window.TLNVOWProject.getPrice(chain,address);
+    if(!price || !(Number(price.price)>0))continue;
+    tokenPrices[chain+"|"+normalizeAddress(address,chain)]={...price,refreshedAt:new Date().toISOString()};
+    updated++;
+  }
+  return updated;
+}
 async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   setCentralPriceBusy(true);setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Globaler 15-Minuten-Preisstand wird aktualisiert…","note");
   const generalSources=await loadNativePrices();
   let tlnState=null;
-  if(window.TLNVOWProject){await window.TLNVOWProject.refreshPrices();tlnState=window.TLNVOWProject.getPriceState?.()||null;}
-  // Historische ETH-Routen waren bereits korrekt; fuer Livepreise ergaenzt der zentrale Resolver
-  // fehlende TLN/VOW-Ethereum-Kurse deterministisch ueber Uniswap V2.
-  const tlnEthState=await loadTlnVowEthereumCurrentPrices();
+  if(window.TLNVOWProject){
+    // TLN/VOW ist die einzige autoritative On-Chain-Preisberechnung. Der globale Job
+    // rendert hier keine Projekttabellen und startet insbesondere keinen zweiten ETH-Scan.
+    await window.TLNVOWProject.refreshPrices({render:false});
+    tlnState=window.TLNVOWProject.getPriceState?.()||null;
+    syncTlnVowProjectPricesToGlobalCache();
+  }
   const saved=await saveGlobalCurrentPriceSnapshot(slotKey);
   rerenderAllCurrentPriceViews();await refreshFeePriceViews().catch(e=>console.warn("Gebühren-Kursansicht aktualisieren:",e));
   const stamp=formatCurrentPriceTimestamp(currentPriceCacheState.capturedAt);
@@ -4663,7 +4681,7 @@ async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   setCentralPriceStatus(`${stamp} · globaler Preisstand${saved?" gespeichert":" (Speichern fehlgeschlagen)"}${partialNote}.`,saved&&cgOk?"success":"warning");
   setWtDataStatus("tracking",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Wallet-Tracking"});
   window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,sources:generalSources,tln:tlnState}}));
-  return {general:currentPriceCacheState,sources:generalSources,tln:tlnState,tlnEthereum:tlnEthState};
+  return {general:currentPriceCacheState,sources:generalSources,tln:tlnState};
 }
 async function refreshAllCurrentPrices({manual=false}={}){
   if(allCurrentPricesPromise)return allCurrentPricesPromise;
@@ -6720,7 +6738,7 @@ function priceForToken(chain, address) {
   if (isTlnVowManagedToken(chain, normalized)) {
     const projectPrice=window.TLNVOWProject?.getPrice(chain, normalized);
     if(projectPrice)return projectPrice;
-    // Ethereum-Livepreise werden zusaetzlich zentral ueber die deterministische Uniswap-V2-Route gepflegt.
+    // Der globale Snapshot übernimmt exakt denselben Projektpreis; kein zweiter Ethereum-RPC-Resolver.
     return tokenPrices[chain+"|"+normalized] || null;
   }
 

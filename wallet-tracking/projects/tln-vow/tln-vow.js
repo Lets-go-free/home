@@ -1,3 +1,4 @@
+// Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisjob berechnet TLN/VOW nur noch einmal ohne DOM-Render; Projektpreise werden danach aus demselben Cache exportiert. Preis-Snapshot v2 invalidiert alte Dust-Kurse. Build 20261001-162046.
 // Phase 6.93 · 01.10.2026 14:16:13 CEST: Ethereum V2-Pair-Lookup prueft alle aktiven V2-Factorys plus die offizielle Uniswap-V2-Factory; keine Abhaengigkeit mehr von der ersten dex_configs-Zeile. Build 20261001-141613.
 // Phase 5.97 · 22.09.2026 23:14:40 CEST: ethers-v6 JsonRpcProvider erhält die Network-Instanz auch in options.staticNetwork; behebt den verbliebenen staticNetwork.matches-Fehler im globalen Preisjob. Build 20260922-231440.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: ethers-v6 staticNetwork erhält echte Network-Instanzen; behebt „staticNetwork.matches is not a function“ bei Preis-/Pool-Providerinitialisierung. Build 20260922-213526.
@@ -75,7 +76,7 @@ const poolTypeCache = new Map();
 const lpSymbolCache = new Map();
 
 const CURRENT_PRICE_SNAPSHOT_TABLE = "defi_current_price_snapshots";
-const CURRENT_PRICE_SNAPSHOT_VERSION = "tln-vow-current-price-v1";
+const CURRENT_PRICE_SNAPSHOT_VERSION = "tln-vow-current-price-v2";
 const PRICE_TIMEZONE = "Europe/Zurich";
 let currentPriceCapturedAt = null;
 let currentPriceSource = "live";
@@ -1911,17 +1912,54 @@ async function renderDashboard(chain,{cacheMode=false}={}){
   }
 }
 
-async function refreshCurrentPrices({manual=false}={}){
+async function buildCurrentProjectPrices(chain){
+  const tokens=configuredTokens(chain);
+  await Promise.all(tokens.map(async row=>{
+    try{
+      const token=await getToken(chain,row.address);
+      const price=await getUSD(chain,token);
+      if(price) exportProjectPrice(chain,token.address,price,"token");
+    }catch(e){ console.warn("TLN/VOW Preisaufbau Token",chain,row.address,e); }
+  }));
+
+  // LP-Preise ohne Tabellen-Render berechnen. So liest der globale 15-Minuten-Job
+  // die Chain-Facts genau einmal; ein späteres Öffnen des Projekttabs nutzt dieselben Caches.
+  await Promise.all(configuredLPs(chain).map(async dbPool=>{
+    try{
+      const type=await detectPoolType(chain,dbPool.address);
+      if(type==="v3"){
+        const pool=await readV3Pool(chain,dbPool.address);
+        const [p0,p1]=await Promise.all([getUSD(chain,pool.token0),getUSD(chain,pool.token1)]);
+        if(p0) exportProjectPrice(chain,pool.token0.address,p0,"token");
+        if(p1) exportProjectPrice(chain,pool.token1.address,p1,"token");
+        return;
+      }
+      const pool=await readV2Pool(chain,dbPool.address);
+      const [p0,p1]=await Promise.all([getUSD(chain,pool.token0),getUSD(chain,pool.token1)]);
+      if(p0) exportProjectPrice(chain,pool.token0.address,p0,"token");
+      if(p1) exportProjectPrice(chain,pool.token1.address,p1,"token");
+      if(p0 && p1 && pool.lpSupply>0){
+        const tvl=pool.r0*p0.price + pool.r1*p1.price;
+        const lpPrice=tvl/pool.lpSupply;
+        if(Number.isFinite(lpPrice)) exportedPrices.set(chain+"|"+norm(dbPool.address),{
+          price:lpPrice,change24h:undefined,source:"Projekt TLN/VOW · LP",route:"TVL / LP-Supply",kind:"lp"
+        });
+      }
+    }catch(e){ console.warn("TLN/VOW Preisaufbau Pool",chain,dbPool.address,e); }
+  }));
+}
+
+async function refreshCurrentPrices({manual=false,render=true}={}){
   if(priceRefreshPromise) return priceRefreshPromise;
   priceRefreshPromise=(async()=>{
     await ensureInfrastructure();
     setPriceRefreshBusy(true);
     setPriceStatus(manual?"Aktuelle Preise werden manuell neu ermittelt…":"Aktuelle Projektpreise werden on-chain ermittelt…","loading");
     resetCurrentPriceCaches();
-    for(const chain of projectChains.filter(c=>["bsc","eth"].includes(c))){
-      await resolveReferences(chain);
-    }
-    await Promise.all(projectChains.filter(c=>["bsc","eth"].includes(c)).map(chain=>renderDashboard(chain,{cacheMode:false})));
+    const chains=projectChains.filter(c=>["bsc","eth"].includes(c));
+    for(const chain of chains) await resolveReferences(chain);
+    await Promise.all(chains.map(chain=>buildCurrentProjectPrices(chain)));
+    if(render) await Promise.all(chains.map(chain=>renderDashboard(chain,{cacheMode:false})));
     const saved=await saveCurrentPriceSnapshot();
     currentPriceSource="live";
     const stamp=formatPriceTimestamp(currentPriceCapturedAt || new Date());
@@ -1930,6 +1968,7 @@ async function refreshCurrentPrices({manual=false}={}){
       : `Preisstand: ${stamp} · aktuell on-chain · Supabase-Preiscache konnte nicht gespeichert werden.`,
       saved?"success":"warning");
     notifyCurrentPricesUpdated(manual);
+    console.info("TLN/VOW Preisrefresh abgeschlossen",{render,prices:exportedPrices.size,pairs:pairCache.size,engine:window.WalletPriceEngine?.stats?.()||null});
     return true;
   })().finally(()=>{setPriceRefreshBusy(false);priceRefreshPromise=null;});
   return priceRefreshPromise;
@@ -1980,9 +2019,9 @@ async function loadCachedPrices(){
   return false;
 }
 
-async function manualRefreshPrices(){
+async function manualRefreshPrices(options={}){
   await ensureInfrastructure();
-  return await refreshCurrentPrices({manual:true});
+  return await refreshCurrentPrices({manual:true,render:options.render!==false});
 }
 
 function getExportedPrice(chain,address){
