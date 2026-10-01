@@ -661,7 +661,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 01.10.2026 17:03:13</div>
+        <div class="version-info">Version: 01.10.2026 17:45:20</div>
     </div>
 </div>
 
@@ -847,13 +847,14 @@ function toggleLoginForm() {
     f.style.display = f.style.display === 'none' ? 'flex' : 'none';
 }
 
-// Nur die Admin-E-Mail bekommt einen Login-Link.
-// Die Adresse steht nicht im Klartext hier, nur ihr Prüfwert (SHA-256).
-const ADMIN_EMAIL_HASH = '382023bbcb7e8be8af550c7d18d69382e7872724ef88d2ed11924820fd2687da';
-
-async function sha256(text) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+// Admins kommen aus der Tabelle public.admins (gleich wie beim Wallet-Tracking).
+// Die Seite liest die Tabelle nicht direkt, sondern fragt Supabase über zwei Funktionen:
+// - tm_ist_admin_email(p_email): darf diese Adresse einen Login-Link bekommen?
+// - tm_ist_admin(): ist der angemeldete Benutzer Admin?
+async function istAdminEmail(email) {
+    const { data, error } = await db.rpc('tm_ist_admin_email', { p_email: email });
+    if (error) { console.error('Admin-Prüfung:', error.message); return false; }
+    return data === true;
 }
 
 async function login() {
@@ -869,7 +870,7 @@ async function login() {
     const hinweis = 'Falls die E-Mail berechtigt ist, kommt in Kürze ein Login-Link. Bitte Postfach prüfen.';
 
     // Andere Adressen: kein Mail senden
-    if (await sha256(email) !== ADMIN_EMAIL_HASH) {
+    if (!(await istAdminEmail(email))) {
         msg.style.color = '#4a5568';
         msg.textContent = hinweis;
         return;
@@ -896,10 +897,12 @@ async function logout() {
     await db.auth.signOut();
 }
 
-// Angemeldet UND Admin-E-Mail? (Login von wallet-tracking auf derselben Domain teilt sich die Sitzung)
+// Angemeldet UND in der Tabelle admins? (Login von wallet-tracking auf derselben Domain teilt sich die Sitzung)
 async function pruefeAdmin(session) {
-    const email = session && session.user && session.user.email;
-    return !!email && (await sha256(email.trim().toLowerCase())) === ADMIN_EMAIL_HASH;
+    if (!session || !session.user || !session.user.email) return false;
+    const { data, error } = await db.rpc('tm_ist_admin');
+    if (error) { console.error('Admin-Prüfung:', error.message); return false; }
+    return data === true;
 }
 
 async function setAuth(session) {
