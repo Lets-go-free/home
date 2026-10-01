@@ -1,4 +1,4 @@
-// Phase 6.91 · 01.10.2026 01:10:43 CEST: TLN/VOW Live-Preise auf Ethereum vervollstaendigt: Voucher-Waehrungen und DeFi-Token nutzen deterministisch Uniswap V2 (Token/VOW -> VOW/USDT bzw. direkter USDT-Fallback); VOW selbst via VOW/USDT. Projekt-PriceEngine bleibt primaer, zentraler Resolver nutzt die neue Ethereum-V2-Route als autoritativen Fallback. Build 20261001-011043.
+// Phase 6.92 · 01.10.2026 11:08:51 CEST: Ethereum-vCurrency Livepreise auf echte Uniswap-V2-Pool-Discovery umgestellt (Stablecoin -> VOW -> WETH, liquiditaetsbasiert); fehlende ERC-20-Decmals werden on-chain gelesen. Admin-Kontextnavigation nach Refresh synchronisiert, damit Admin-Tabs nicht im Dashboard eingeblendet bleiben. Build 20261001-110851.
 // Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token sind Teil des globalen Preisresolvers: GeckoTerminal nutzt Contract-Adressen, CoinGecko dient contract-basiert als Fallback ueber den Edge-Proxy; verifizierte eigene LP-Tokens werden aus Reserven + TotalSupply bewertet. Build 20261001-005321.
 // Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende historische Preise werden als konkrete Token-Prüfaufgabe dargestellt; direkter Sprung in die passende Token-Verwaltung (vordefiniert/eigen/discovery) statt Preis-Sonderfall. Build 20260930-092041.
 // Phase 6.88 · 30.09.2026 02:21:03 CEST: 31.12.-Performance/BSC: TLN/VOW-Historienpreise nutzen auf BSC zuerst die deterministische, kategoriebasierte V2-Route statt der breiten WalletPriceEngine-Routensuche; Engine bleibt nur Fallback. Fehlende historische Preise werden in der Summary mit Asset/Chain sichtbar. Build 20260930-022103.
@@ -821,8 +821,11 @@ async function onLoggedIn(session) {
   restoreDashboardProjectCacheStats();
   try{adminDebugMode=isAdmin&&sessionStorage.getItem(ADMIN_DEBUG_SESSION_KEY)==="1";}catch(_){adminDebugMode=false;}
   applyAdminDebugMode();
-  document.getElementById("adminNavGroup").style.display = isAdmin ? "block" : "none";
+  // Admin-Berechtigung steuert nur den Einstieg in den Admin-Bereich. Welche
+  // Kontext-Tab-Leiste sichtbar ist, entscheidet ausschließlich updateContextNavigation().
   const adminMainNavBtn=document.getElementById("adminMainNavBtn"); if(adminMainNavBtn) adminMainNavBtn.style.display=isAdmin?"flex":"none";
+  const activeTab=document.querySelector("[data-tab].active")?.dataset?.tab || "dashboard";
+  updateContextNavigation(activeTab);
   document.getElementById("userChatTabBtn").style.display = isAdmin ? "none" : "inline-block";
   document.getElementById("adminChatTabBtn").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("feesTabBtn").style.display = "inline-block";
@@ -6563,14 +6566,35 @@ function isTlnVowManagedToken(chain,address){
 }
 
 const liveTlnVowEthPriceMemo=new Map();
-async function liveV2DirectPrice(chain,base,quote,bd=18,qd=18){
+const liveErc20DecimalsMemo=new Map();
+const liveEthVoucherRouteMemo=new Map();
+const LIVE_ERC20_IFACE=new ethers.Interface(["function decimals() view returns (uint8)"]);
+
+async function liveTokenDecimals(chain,address,fallback){
+  const a=normalizeAddress(address,chain),key=`${chain}|${a}`;
+  const known=Number(fallback ?? predefinedTokenDecimals[key]);
+  if(Number.isFinite(known)&&known>=0&&known<=255)return known;
+  if(liveErc20DecimalsMemo.has(key))return await liveErc20DecimalsMemo.get(key);
+  const work=(async()=>{
+    try{
+      const raw=await archiveRpc(chain,"eth_call",[{to:a,data:LIVE_ERC20_IFACE.encodeFunctionData("decimals",[])},"latest"]);
+      const [d]=LIVE_ERC20_IFACE.decodeFunctionResult("decimals",raw),n=Number(d);
+      if(Number.isFinite(n)&&n>=0&&n<=255){predefinedTokenDecimals[key]=n;return n;}
+    }catch(e){console.warn("ERC-20 decimals",chain,a,e);}
+    return Number.isFinite(known)?known:18;
+  })();
+  liveErc20DecimalsMemo.set(key,work);
+  try{return await work;}catch(e){liveErc20DecimalsMemo.delete(key);throw e;}
+}
+
+async function liveV2DirectPrice(chain,base,quote,bd,qd){
   const b=normalizeAddress(base,chain),q=normalizeAddress(quote,chain),key=`${chain}|${b}|${q}`;
   if(liveTlnVowEthPriceMemo.has(key))return await liveTlnVowEthPriceMemo.get(key);
   const work=(async()=>{
     let factory=await taxDexFactory(chain);
-    // Canonical Uniswap V2 factory as safe Ethereum fallback when dex_configs is not yet populated.
     if(!factory&&chain==="eth")factory=normalizeAddress("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",chain);
     if(!factory)return null;
+    const [baseDecimals,quoteDecimals]=await Promise.all([liveTokenDecimals(chain,b,bd),liveTokenDecimals(chain,q,qd)]);
     const raw=await archiveRpc(chain,"eth_call",[{to:factory,data:taxV2Iface.encodeFunctionData("getPair",[b,q])},"latest"]);
     const [pairRaw]=taxV2Iface.decodeFunctionResult("getPair",raw);if(!pairRaw||/^0x0{40}$/i.test(pairRaw))return null;
     const pair=normalizeAddress(pairRaw,chain);
@@ -6579,18 +6603,50 @@ async function liveV2DirectPrice(chain,base,quote,bd=18,qd=18){
       archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},"latest"])
     ]);
     const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr);
-    const is0=normalizeAddress(t0,chain)===b,rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);
-    return rb>0&&rq>0?{price:rq/rb,pair}:null;
+    const is0=normalizeAddress(t0,chain)===b,rb=Number(is0?r0:r1)/10**baseDecimals,rq=Number(is0?r1:r0)/10**quoteDecimals;
+    return rb>0&&rq>0?{price:rq/rb,pair,baseReserve:rb,quoteReserve:rq,baseDecimals,quoteDecimals}:null;
   })();
   liveTlnVowEthPriceMemo.set(key,work);
   try{return await work;}catch(e){liveTlnVowEthPriceMemo.delete(key);throw e;}
 }
+
+async function discoverEthereumVoucherPrice(tokenAddress,{vow,usdt,usdc,weth,vowUsd}={}){
+  const chain="eth",a=normalizeAddress(tokenAddress,chain),memoKey=`${a}|${normalizeAddress(vow||"",chain)}|${normalizeAddress(usdt?.address||"",chain)}|${normalizeAddress(usdc?.address||"",chain)}`;
+  if(liveEthVoucherRouteMemo.has(memoKey))return await liveEthVoucherRouteMemo.get(memoKey);
+  const work=(async()=>{
+    const baseDecimals=await liveTokenDecimals(chain,a);
+    const candidates=[];
+    const add=async(quoteAddress,quoteLabel,quoteUsd,quoteDecimals)=>{
+      if(!quoteAddress||!(quoteUsd>0))return;
+      try{
+        const leg=await liveV2DirectPrice(chain,a,quoteAddress,baseDecimals,quoteDecimals);
+        if(!leg)return;
+        const usdPrice=leg.price*quoteUsd;
+        // Quote-side USD reserve is a useful deterministic liquidity score. Prefer the deepest real pool.
+        const liquidityUsd=Number(leg.quoteReserve||0)*quoteUsd;
+        if(usdPrice>0)candidates.push({...leg,usdPrice,quoteLabel,liquidityUsd});
+      }catch(e){console.warn("Ethereum Voucher Pool",a,quoteLabel,e);}
+    };
+    await add(usdc?.address,"USDC",1,usdc?.decimals);
+    await add(usdt?.address,"USDT",1,usdt?.decimals);
+    await add(vow,"VOW",Number(vowUsd||0),await liveTokenDecimals(chain,vow));
+    const ethUsd=Number(nativePrices.eth?.price||0);
+    await add(weth,"WETH",ethUsd,18);
+    candidates.sort((x,y)=>Number(y.liquidityUsd||0)-Number(x.liquidityUsd||0));
+    return candidates[0]||null;
+  })();
+  liveEthVoucherRouteMemo.set(memoKey,work);
+  try{return await work;}catch(e){liveEthVoucherRouteMemo.delete(memoKey);throw e;}
+}
+
 async function loadTlnVowEthereumCurrentPrices(){
   const chain="eth",refreshedAt=new Date().toISOString();
   try{
     const vow=await taxProjectReference("tln_vow",chain),usdt=taxPredefinedBySymbol(chain,"USDT");
+    const usdc=taxPredefinedBySymbol(chain,"USDC")||{address:"0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",decimals:6};
+    const weth=(taxPredefinedBySymbol(chain,"WETH")?.address)||"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
     if(!vow||!usdt?.address)return {ok:false,reason:"reference-missing",updated:0};
-    const vd=predefinedTokenDecimals[chain+"|"+normalizeAddress(vow,chain)]??18,ud=usdt.decimals??6;
+    const vd=await liveTokenDecimals(chain,vow),ud=await liveTokenDecimals(chain,usdt.address,usdt.decimals);
     const vu=await liveV2DirectPrice(chain,vow,usdt.address,vd,ud);if(!vu)return {ok:false,reason:"vow-usdt-pair-missing",updated:0};
     let updated=0;
     const put=(addr,price,source)=>{if(!(Number(price)>0))return;tokenPrices[chain+"|"+normalizeAddress(addr,chain)]={price:Number(price),source,refreshedAt};updated++;};
@@ -6598,15 +6654,17 @@ async function loadTlnVowEthereumCurrentPrices(){
     const prefix=chain+"|",managed=[...new Set(Object.keys(predefinedTokenProject).filter(k=>k.startsWith(prefix)&&String(predefinedTokenProject[k]||"").toLowerCase().replace(/[\s\/-]+/g,"_")==="tln_vow").map(k=>k.slice(prefix.length)))];
     for(const addr of managed){
       const a=normalizeAddress(addr,chain);if(a===normalizeAddress(vow,chain))continue;
-      const key=chain+"|"+a,cat=String(predefinedTokenCategory[key]||"").toLowerCase(),dec=predefinedTokenDecimals[key]??18,sym=predefinedTokenSymbols[key]||predefinedTokenLabels[key]||"Token";
+      const key=chain+"|"+a,cat=String(predefinedTokenCategory[key]||"").toLowerCase(),sym=predefinedTokenSymbols[key]||predefinedTokenLabels[key]||"Token";
       if(["lp_token","lp"].includes(cat))continue;
+      const dec=await liveTokenDecimals(chain,a,predefinedTokenDecimals[key]);
       if(["voucher_currency","v_currency"].includes(cat)){
-        const leg=await liveV2DirectPrice(chain,a,vow,dec,vd);if(leg)put(a,leg.price*vu.price,`Uniswap V2 ${sym}/VOW → VOW/USDT · ${leg.pair} · ${vu.pair}`);
+        const route=await discoverEthereumVoucherPrice(a,{vow,usdt,usdc,weth,vowUsd:vu.price});
+        if(route)put(a,route.usdPrice,`Uniswap V2 ${sym}/${route.quoteLabel} · ${route.pair}${route.quoteLabel==="VOW"?" → VOW/USDT":""}`);
         continue;
       }
       if(["defi_token","tln_vow_token"].includes(cat)){
-        const leg=await liveV2DirectPrice(chain,a,vow,dec,vd);if(leg){put(a,leg.price*vu.price,`Uniswap V2 ${sym}/VOW → VOW/USDT · ${leg.pair} · ${vu.pair}`);continue;}
-        const direct=await liveV2DirectPrice(chain,a,usdt.address,dec,ud);if(direct)put(a,direct.price,`Uniswap V2 ${sym}/USDT · ${direct.pair}`);
+        const directStable=await discoverEthereumVoucherPrice(a,{vow,usdt,usdc,weth,vowUsd:vu.price});
+        if(directStable){put(a,directStable.usdPrice,`Uniswap V2 ${sym}/${directStable.quoteLabel} · ${directStable.pair}${directStable.quoteLabel==="VOW"?" → VOW/USDT":""}`);continue;}
       }
     }
     return {ok:true,updated};

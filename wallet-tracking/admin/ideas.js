@@ -1,3 +1,4 @@
+// Phase 6.92 · 01.10.2026 11:08:51 CEST: Ethereum-vCurrencies erkennen reale Uniswap-V2-Pools dynamisch (USDC/USDT/VOW/WETH), lesen fehlende Token-Decmals on-chain und bevorzugen liquide reale Routen. Admin-Kontextnavigation bleibt nach Refresh auf der aktiven Hauptsektion. Build 20261001-110851.
 // Phase 6.91 · 01.10.2026 01:10:43 CEST · TLN/VOW Ethereum Livepreise via deterministische Uniswap-V2-Route. Build 20261001-011043.
 // Phase 6.90 · 01.10.2026 00:53:21 CEST: Eigene sichere Token werden generisch ueber DEX/GeckoTerminal und CoinGecko-Contract-Fallback bewertet; verifizierte eigene LPs ueber Reserven + TotalSupply. Build 20261001-005321.
 // Phase 6.89 · 30.09.2026 09:20:41 CEST: 31.12.-Workflow: fehlende Preise werden als Token-Prüfaufgabe mit direktem Sprung in die passende Token-Verwaltung behandelt. Build 20260930-092041.
