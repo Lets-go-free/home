@@ -1,3 +1,4 @@
+/* Phase 6.97 · 01.10.2026 17:36:51 CEST: sichtbarer Preisjob-Status im Dashboard (läuft/fertig/Fehler). Build 20261001-173651. */
 /* Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; Dashboard-Layout aus 6.95 unverändert. Build 20261001-171503. */
 /* Phase 6.95 · 01.10.2026 16:47:46 CEST: Dashboard-Aktionsblock volle Breite, zweispaltige Aufgaben, kompakt eingeklappt wenn erledigt. Build 20261001-164746. */
 /* Phase 6.64 · 28.09.2026 14:12:28 CEST · Dark Mode: project-data-table Grund-/Zebra-/Hover-Zeilen vollständig dunkel; verhindert helle Odd-Rows in „Vordefinierte Token“. Build 20260928-141228. */
@@ -1218,6 +1219,17 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 .dashboard-data-warning{margin-top:10px;padding:9px 12px;border-radius:10px;background:#fff4dd;color:#704d0d;font-size:.76rem;border:1px solid #eed29a}
 .dashboard-main-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,.75fr);gap:12px;margin-top:12px}
 .dashboard-card,.dashboard-project-card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-soft);padding:16px;min-width:0}
+
+.dashboard-price-job-status{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:.78rem;font-weight:700;line-height:1.35}
+.dashboard-price-job-status[hidden]{display:none!important}
+.dashboard-price-job-status.running{background:var(--accent-soft);color:var(--accent);border-color:rgba(47,111,237,.24)}
+.dashboard-price-job-status.success{background:rgba(25,170,105,.10);color:#0b8c57;border-color:rgba(25,170,105,.25)}
+.dashboard-price-job-status.error{background:rgba(214,69,69,.10);color:var(--danger);border-color:rgba(214,69,69,.25)}
+.dashboard-price-job-spinner{width:15px;height:15px;flex:0 0 15px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:dashboard-price-spin .7s linear infinite}
+.dashboard-price-job-icon{display:inline-grid;place-items:center;width:18px;height:18px;flex:0 0 18px;border-radius:50%;font-size:.78rem;font-weight:900}
+@keyframes dashboard-price-spin{to{transform:rotate(360deg)}}
+:root[data-theme="dark"] .dashboard-price-job-status.success{background:#173d36;color:#76e2bd;border-color:#285c50}
+:root[data-theme="dark"] .dashboard-price-job-status.error{background:#45272b;border-color:#6e3941}
 .dashboard-card-head,.dashboard-project-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
 .dashboard-card-head h3,.dashboard-project-head h3,.dashboard-section-title h3{margin:0;color:var(--text);font-size:.95rem;text-transform:none;letter-spacing:0}
 .dashboard-card-head p{margin:3px 0 0;color:var(--muted);font-size:.72rem}

@@ -1,3 +1,4 @@
+// Phase 6.97 · 01.10.2026 17:36:51 CEST: sichtbarer Preisjob-Status (läuft/fertig/Fehler) im Dashboard; RPC-Diagnose nach Call-Typen verfeinert. Build 20261001-173651.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; Dashboard-Aktionslogik aus 6.95 unverändert. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: Dashboard „Was muss ich tun?“ zeigt nur echte Aufgaben, volle Breite/zweispaltig und klappt bei 0 Aufgaben mit grünem Haken zu. TLN/VOW nur bei aktivem Projekt. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisrefresh nutzt TLN/VOW als einzige On-Chain-Preisquelle und entfernt den zweiten Ethereum-Voucher-RPC-Durchlauf; globale Preiscache-Version v3. Build 20261001-162046.
@@ -4608,7 +4609,38 @@ function formatCurrentPriceTimestamp(value){
   const d=value instanceof Date?value:new Date(value);
   return Number.isNaN(d.getTime())?"–":new Intl.DateTimeFormat("de-CH",{timeZone:CURRENT_PRICE_TIMEZONE,day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(d);
 }
-function setCentralPriceBusy(busy){const b=document.getElementById("currentPriceRefreshBtn");if(b){b.disabled=!!busy;b.textContent=busy?"Preise werden aktualisiert…":"Preise aktualisieren";}}
+const centralPriceJobUi={phase:"idle",text:"",hideTimer:null};
+function syncCentralPriceJobUi(){
+  const el=document.getElementById("dashboardPriceJobStatus");
+  if(el){
+    const active=centralPriceJobUi.phase!=="idle";
+    el.hidden=!active;
+    el.className=`dashboard-price-job-status ${centralPriceJobUi.phase}`;
+    if(active){
+      const icon=centralPriceJobUi.phase==="running"?'<span class="dashboard-price-job-spinner" aria-hidden="true"></span>':centralPriceJobUi.phase==="success"?'<span class="dashboard-price-job-icon" aria-hidden="true">✓</span>':'<span class="dashboard-price-job-icon" aria-hidden="true">!</span>';
+      el.innerHTML=`${icon}<span>${escapeAttr(centralPriceJobUi.text)}</span>`;
+    }
+  }
+  const b=document.getElementById("currentPriceRefreshBtn");
+  if(b){const busy=centralPriceJobUi.phase==="running";b.disabled=busy;b.textContent=busy?"Preise werden aktualisiert…":"Preise aktualisieren";}
+}
+function setCentralPriceBusy(busy){
+  if(busy && centralPriceJobUi.phase!=="running")centralPriceJobUi.phase="running";
+  syncCentralPriceJobUi();
+}
+function beginCentralPriceJob(){
+  if(centralPriceJobUi.hideTimer){clearTimeout(centralPriceJobUi.hideTimer);centralPriceJobUi.hideTimer=null;}
+  centralPriceJobUi.phase="running";centralPriceJobUi.text="Preise werden aktualisiert …";syncCentralPriceJobUi();
+}
+function finishCentralPriceJob(value=new Date()){
+  const stamp=new Intl.DateTimeFormat("de-CH",{timeZone:CURRENT_PRICE_TIMEZONE,hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(value instanceof Date?value:new Date(value));
+  centralPriceJobUi.phase="success";centralPriceJobUi.text=`Preise aktualisiert · ${stamp}`;syncCentralPriceJobUi();
+  centralPriceJobUi.hideTimer=setTimeout(()=>{centralPriceJobUi.phase="idle";centralPriceJobUi.text="";centralPriceJobUi.hideTimer=null;syncCentralPriceJobUi();},6000);
+}
+function failCentralPriceJob(message){
+  if(centralPriceJobUi.hideTimer){clearTimeout(centralPriceJobUi.hideTimer);centralPriceJobUi.hideTimer=null;}
+  centralPriceJobUi.phase="error";centralPriceJobUi.text=`Preisaktualisierung nicht vollständig${message?`: ${message}`:" – erneut versuchen"}`;syncCentralPriceJobUi();
+}
 function setCentralPriceStatus(text,kind="note"){const el=document.getElementById("currentPriceStatus");if(!el)return;const cls=kind==="success"?"success":kind==="warning"?"warning":kind==="error"?"error":"note";el.className=cls+" wt-data-status-line";const clean=String(text||"").replace(/^Preisstand:\s*/,"");el.innerHTML=`<strong>Preisstand:</strong> ${escapeAttr(clean)}`;}
 async function loadGlobalCurrentPriceSnapshot(){
   try{
@@ -4665,7 +4697,7 @@ function syncTlnVowProjectPricesToGlobalCache(){
   return updated;
 }
 async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
-  setCentralPriceBusy(true);setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Globaler 15-Minuten-Preisstand wird aktualisiert…","note");
+  beginCentralPriceJob();setCentralPriceBusy(true);setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Globaler 15-Minuten-Preisstand wird aktualisiert…","note");
   const generalSources=await loadNativePrices();
   let tlnState=null;
   if(window.TLNVOWProject){
@@ -4683,6 +4715,7 @@ async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   setCentralPriceStatus(`${stamp} · globaler Preisstand${saved?" gespeichert":" (Speichern fehlgeschlagen)"}${partialNote}.`,saved&&cgOk?"success":"warning");
   setWtDataStatus("tracking",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Wallet-Tracking"});
   window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,sources:generalSources,tln:tlnState}}));
+  finishCentralPriceJob(currentPriceCacheState.capturedAt||new Date());
   return {general:currentPriceCacheState,sources:generalSources,tln:tlnState};
 }
 async function refreshAllCurrentPrices({manual=false}={}){
@@ -4705,7 +4738,7 @@ async function refreshAllCurrentPrices({manual=false}={}){
       }
     }
     return await runGlobalPriceRefresh({manual,slotKey});
-  })().catch(e=>{setCentralPriceStatus(`Preisaktualisierung fehlgeschlagen: ${e.message||e}`,"error");throw e;}).finally(()=>{setCentralPriceBusy(false);allCurrentPricesPromise=null;});
+  })().catch(e=>{const msg=String(e?.message||e||"");setCentralPriceStatus(`Preisaktualisierung fehlgeschlagen: ${msg}`,"error");failCentralPriceJob(msg);throw e;}).finally(()=>{setCentralPriceBusy(false);allCurrentPricesPromise=null;});
   return allCurrentPricesPromise;
 }
 function scheduleGlobalPriceRefresh(){
@@ -7116,12 +7149,13 @@ function renderDashboard(){
     </section>
     ${portfolio.unknownValues?`<div class="dashboard-data-warning"><strong>${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs:</strong> ${portfolio.unknownAssets.map(x=>`${escapeAttr(x.symbol)} (${escapeAttr(CHAIN_META[x.chain]?.label||x.chain.toUpperCase())})`).join(", ")} – nicht in den Geldsummen enthalten.</div>`:""}
     ${actionPanel}
-    <section class="dashboard-main-grid dashboard-main-grid-single"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div>${isAdmin?`<button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>`:""}</div>${priceTable}</article></section>
+    <section class="dashboard-main-grid dashboard-main-grid-single"><article class="dashboard-card"><div id="dashboardPriceJobStatus" class="dashboard-price-job-status" hidden></div><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div>${isAdmin?`<button id="currentPriceRefreshBtn" class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>`:""}</div>${priceTable}</article></section>
     ${(()=>{const acts=Object.values(dashboardProjectCacheStats).flatMap(x=>Array.isArray(x?.recentPartnerActivities)?x.recentPartnerActivities:[]).filter(x=>x?.date).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);if(!acts.length)return `<section class="dashboard-card dashboard-activities"><div class="dashboard-card-head"><div><h3>Letzte Partneraktivitäten</h3><p>Noch keine bestätigten Aktivitäten im geladenen Projektcache.</p></div></div></section>`;return `<section class="dashboard-card dashboard-activities"><div class="dashboard-card-head"><div><h3>Letzte Partneraktivitäten</h3><p>Die letzten 10 bestätigten Bot-Käufe bzw. Partner-Stakings · projektübergreifend</p></div></div><div class="dashboard-activity-list">${acts.map(a=>`<div><time>${escapeAttr(new Date(a.date).toLocaleDateString("de-CH"))}</time><strong>${escapeAttr(a.project||"")}</strong><span>${escapeAttr(a.partner||"Partner")}</span><span>${escapeAttr(a.what||"Aktivität")}</span></div>`).join("")}</div></section>`;})()}
     <div class="dashboard-section-title"><h3>Projekte</h3><span>Nur vorhandene Projekte</span></div>
     <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}</section>
     ${isAdmin?`<div class="dashboard-section-title dashboard-admin-title"><h3>Administration</h3><span>Nur Admin</span></div><section class="dashboard-admin-grid"><article class="dashboard-project-card dashboard-admin-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Administration</span><h3>Prüfliste & Verwaltung</h3></div><strong>Admin</strong></div><div class="dashboard-admin-links"><button class="secondary" onclick="showTab('admin');showAdminTab('customtokens')">Neue sichere Token prüfen</button><button class="secondary" onclick="showTab('tlnvow')">TLN-Staking-Varianten prüfen</button></div><div class="dashboard-cache-note">Administrationsfunktionen sind bewusst vom Projektbereich getrennt.</div></article></section>`:""}`;
   setWtDataStatus("dashboard",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:currentPriceCacheState.capturedAt,source:"cache",label:"Dashboard"});
+  syncCentralPriceJobUi();
 }
 window.renderDashboard=renderDashboard;
 

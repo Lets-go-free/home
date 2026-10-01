@@ -1,3 +1,4 @@
+// Phase 6.97 · 01.10.2026 17:36:51 CEST: RPC-Diagnose zaehlt Preis-eth_calls zusätzlich nach ABI-Methode, damit verbliebene Pair-State-Kosten messbar sind. Build 20261001-173651.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: V2-getPair-Discovery wird chain-weit vorab gebatcht; parallele identische Pair-Lookups teilen einen In-Flight-Cache. RPC-Diagnose zaehlt HTTP-Batches/eth_calls. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: bekannte Token-Metadaten kommen aus predefined_tokens; aktuelle Pair-Reads werden als JSON-RPC-Batch gebündelt. Dashboard-Preisjob bleibt render-frei. Build 20261001-164746.
 // Phase 6.94 · 01.10.2026 16:20:46 CEST: globaler Preisjob berechnet TLN/VOW nur noch einmal ohne DOM-Render; Projektpreise werden danach aus demselben Cache exportiert. Preis-Snapshot v2 invalidiert alte Dust-Kurse. Build 20261001-162046.
@@ -43,13 +44,36 @@ const FACTORY_ABI = [
 ];
 const FACTORY_IFACE = new ethers.Interface(FACTORY_ABI);
 
+const PRICE_RPC_METHOD_BY_SELECTOR = new Map([
+  [ethers.id("getPair(address,address)").slice(0,10),"getPair"],
+  [ethers.id("token0()").slice(0,10),"token0"],
+  [ethers.id("token1()").slice(0,10),"token1"],
+  [ethers.id("getReserves()").slice(0,10),"getReserves"],
+  [ethers.id("totalSupply()").slice(0,10),"totalSupply"],
+  [ethers.id("decimals()").slice(0,10),"decimals"],
+  [ethers.id("factory()").slice(0,10),"factory"],
+  [ethers.id("symbol()").slice(0,10),"symbol"],
+  [ethers.id("name()").slice(0,10),"name"],
+  [ethers.id("balanceOf(address)").slice(0,10),"balanceOf"],
+  [ethers.id("slot0()").slice(0,10),"slot0"],
+  [ethers.id("liquidity()").slice(0,10),"liquidity"],
+  [ethers.id("fee()").slice(0,10),"fee"]
+]);
 const priceRpcStats = {
   httpBatchRequests:0,
   ethCalls:0,
   getPairCalls:0,
   pairDiscoveryBatches:0,
-  reset(){ this.httpBatchRequests=0; this.ethCalls=0; this.getPairCalls=0; this.pairDiscoveryBatches=0; },
-  snapshot(){ return {httpBatchRequests:this.httpBatchRequests,ethCalls:this.ethCalls,getPairCalls:this.getPairCalls,pairDiscoveryBatches:this.pairDiscoveryBatches}; }
+  methods:{},
+  countCalls(calls){
+    for(const call of Array.isArray(calls)?calls:[]){
+      const selector=String(call?.data||"").slice(0,10).toLowerCase();
+      const name=PRICE_RPC_METHOD_BY_SELECTOR.get(selector)||selector||"unknown";
+      this.methods[name]=(this.methods[name]||0)+1;
+    }
+  },
+  reset(){ this.httpBatchRequests=0; this.ethCalls=0; this.getPairCalls=0; this.pairDiscoveryBatches=0; this.methods={}; },
+  snapshot(){ return {httpBatchRequests:this.httpBatchRequests,ethCalls:this.ethCalls,getPairCalls:this.getPairCalls,pairDiscoveryBatches:this.pairDiscoveryBatches,methods:{...this.methods}}; }
 };
 
 const V3_ABI = [
@@ -172,6 +196,7 @@ async function batchRpcCalls(chain,calls,block="latest"){
   const payload=calls.map((x,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_call",params:[{to:x.to,data:x.data},tag]}));
   priceRpcStats.httpBatchRequests++;
   priceRpcStats.ethCalls += payload.length;
+  priceRpcStats.countCalls(calls);
   const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
   if(!response.ok)throw new Error(`${chain}: RPC-Batch HTTP ${response.status}`);
   const json=await response.json();
