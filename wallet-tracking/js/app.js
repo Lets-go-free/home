@@ -1,4 +1,4 @@
-// Phase 7.09 · 02.10.2026 19:25:00 CEST: Apple-OAuth-Pilot analog Google: signInWithOAuth/linkIdentity, UUID-Sicherheitsprüfung, Verknüpfungsstatus und kontrolliertes Trennen. Build 20261002-192500.
+// Phase 7.10 · 02.10.2026 21:17:41 CEST: Apple-OAuth wieder entfernt; E-Mail/Passwort + Google bleiben produktive Auth-Wege, Magic Link bleibt Recovery/Übergang. Build 20261002-211741.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Login + Passwort-Setzen als echte Password-Manager-Formulare; Browser/iCloud-Keychain kann erfolgreiche Logins und neue Passwörter erkennen. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-State-Callback robust gegen Magic-Link/Redirect-Race; Passwortmanager-freundliches Loginlayout; Versionsfooter korrigiert. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: E-Mail/Passwort-Login + Registrierung/Recovery ergänzt; bestehende Magic-Link-User können im eingeloggten Konto ein Passwort setzen. Adminprüfung nutzt UUID-basierte RPC mit Legacy-Fallback nur solange Migration 081 fehlt. Build 20261002-121802.
@@ -427,11 +427,8 @@ async function sendMagicLink() {
 
 const WT_GOOGLE_LINK_EXPECTED_UID_KEY="wt_google_link_expected_uid_v1";
 const WT_GOOGLE_LINK_OK_KEY="wt_google_link_ok_v1";
-const WT_APPLE_LINK_EXPECTED_UID_KEY="wt_apple_link_expected_uid_v1";
-const WT_APPLE_LINK_OK_KEY="wt_apple_link_ok_v1";
 const WT_PROVIDER_META={
-  google:{label:"Google",expectedKey:WT_GOOGLE_LINK_EXPECTED_UID_KEY,okKey:WT_GOOGLE_LINK_OK_KEY,statusId:"accountGoogleStatus"},
-  apple:{label:"Apple",expectedKey:WT_APPLE_LINK_EXPECTED_UID_KEY,okKey:WT_APPLE_LINK_OK_KEY,statusId:"accountAppleStatus"}
+  google:{label:"Google",expectedKey:WT_GOOGLE_LINK_EXPECTED_UID_KEY,okKey:WT_GOOGLE_LINK_OK_KEY,statusId:"accountGoogleStatus"}
 };
 function wtProviderMeta(provider){return WT_PROVIDER_META[String(provider||"").toLowerCase()]||null;}
 async function signInWithOAuthProvider(provider){
@@ -473,7 +470,7 @@ async function unlinkOAuthIdentity(provider){
     if(status)status.textContent=meta.label+" kann nicht getrennt werden, weil kein zweiter Loginweg vorhanden ist.";
     return;
   }
-  const altLabels=[...new Set(alternatives.map(x=>x?.provider).filter(Boolean))].map(p=>p==="email"?"E-Mail":p==="google"?"Google":p==="apple"?"Apple":p).join(", ");
+  const altLabels=[...new Set(alternatives.map(x=>x?.provider).filter(Boolean))].map(p=>p==="email"?"E-Mail":p==="google"?"Google":p).join(", ");
   const ok=confirm(`${meta.label} wirklich von diesem WalletTracking-Konto trennen?\n\nVerbleibender Loginweg: ${altLabels||"anderer Provider"}.\n\nStelle sicher, dass du diesen Loginweg verwenden kannst.`);
   if(!ok){if(status)status.textContent=meta.label+" bleibt verknüpft.";return;}
   if(status)status.textContent=meta.label+" wird getrennt …";
@@ -486,9 +483,6 @@ async function unlinkOAuthIdentity(provider){
 function signInWithGoogle(){return signInWithOAuthProvider("google");}
 function linkGoogleIdentity(){return linkOAuthIdentity("google");}
 function unlinkGoogleIdentity(){return unlinkOAuthIdentity("google");}
-function signInWithApple(){return signInWithOAuthProvider("apple");}
-function linkAppleIdentity(){return linkOAuthIdentity("apple");}
-function unlinkAppleIdentity(){return unlinkOAuthIdentity("apple");}
 async function refreshCurrentAuthUser(){
   const {data,error}=await sb.auth.getUser();
   if(!error&&data?.user)currentUser=data.user;
@@ -534,7 +528,7 @@ async function setCurrentUserPassword(){
 function renderAuthSecurityState(){
   const el=document.getElementById("authSecurityState");if(!el||!currentUser)return;
   const providers=[...new Set((currentUser.identities||[]).map(x=>x?.provider).filter(Boolean))];
-  const labels=providers.map(p=>p==="email"?"E-Mail":p==="google"?"Google":p==="apple"?"Apple":p).join(", ");
+  const labels=providers.map(p=>p==="email"?"E-Mail":p==="google"?"Google":p).join(", ");
   const username=document.getElementById("accountPasswordUsername");
   if(username)username.value=String(currentUser.email||"");
   el.innerHTML=`<strong>${escapeAttr(currentUser.email||"")}</strong>${labels?` · Login-Identitäten: ${escapeAttr(labels)}`:""}<br>Deine feste User-ID bleibt <code>${escapeAttr(currentUser.id)}</code>.`;
@@ -546,15 +540,6 @@ function renderAuthSecurityState(){
     let justLinked=false;try{justLinked=sessionStorage.getItem(WT_GOOGLE_LINK_OK_KEY)===String(currentUser.id);}catch(_){}
     gst.textContent=googleLinked?(justLinked?"Google erfolgreich verknüpft. Die User-ID ist unverändert geblieben.":"Google ist mit diesem Konto verknüpft."):"Google ist noch nicht verknüpft.";
     if(justLinked)try{sessionStorage.removeItem(WT_GOOGLE_LINK_OK_KEY);}catch(_){}
-  }
-  const abtn=document.getElementById("accountAppleLinkBtn"),aubtn=document.getElementById("accountAppleUnlinkBtn"),ast=document.getElementById("accountAppleStatus");
-  const appleLinked=providers.includes("apple");
-  if(abtn){abtn.hidden=appleLinked;abtn.disabled=appleLinked;abtn.textContent="Apple verknüpfen";}
-  if(aubtn){aubtn.hidden=!appleLinked;aubtn.disabled=!appleLinked;}
-  if(ast){
-    let justLinked=false;try{justLinked=sessionStorage.getItem(WT_APPLE_LINK_OK_KEY)===String(currentUser.id);}catch(_){}
-    ast.textContent=appleLinked?(justLinked?"Apple erfolgreich verknüpft. Die User-ID ist unverändert geblieben.":"Apple ist mit diesem Konto verknüpft."):"Apple ist noch nicht verknüpft.";
-    if(justLinked)try{sessionStorage.removeItem(WT_APPLE_LINK_OK_KEY);}catch(_){}
   }
 }
 function bindAuthCredentialEnter(){
@@ -568,9 +553,6 @@ window.sendMagicLink=sendMagicLink;
 window.signInWithGoogle=signInWithGoogle;
 window.linkGoogleIdentity=linkGoogleIdentity;
 window.unlinkGoogleIdentity=unlinkGoogleIdentity;
-window.signInWithApple=signInWithApple;
-window.linkAppleIdentity=linkAppleIdentity;
-window.unlinkAppleIdentity=unlinkAppleIdentity;
 window.setCurrentUserPassword=setCurrentUserPassword;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bindAuthCredentialEnter,{once:true});else bindAuthCredentialEnter();
 
@@ -3512,7 +3494,7 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P9", workStatus:"erledigt", severity:"medium", area:"Cache-Ownership / Invalidierung", finding:"Phase 6.36/6.37: Ownership- und Invalidierungs-Audit abgeschlossen. Browser-/IndexedDB-Graphen werden über DATA_VERSIONS, Payload-/Storage-Schema und Root-Scope gegated; private Refresh-States prüfen data_version vor Tageslimit; Partial-Lifecycle darf einen verifizierten TLN-Team-Lifecycle nicht degradieren. Konkrete Restlücke: block-versionierte TLN/VOW-Staking-/Technical-Caches konnten von einem älteren offenen Browser-Tab mit kleinerem last_scanned_block zurückgeschrieben werden.", action:"Phase 6.37 schließt die belegte Lücke: vor Writes block-versionierter Staking-/Technical-Caches wird der persistente Blockstand geprüft; ein kleinerer lokaler Block darf einen neueren DB-Stand nicht ersetzen. lastBlock=0 bleibt bewusst unversioniert. Scanner-/DATA_VERSION-Wechsel erzwingen weiterhin fachlichen Neuaufbau. P9 = erledigt; kein pauschaler Cache-Refactor nötig."},
   {priority:"P10", workStatus:"in Arbeit", severity:"high", area:"Security / Supabase / RLS / Data API", finding:"DB-/Codeaudit: alle WalletTracking-public-Tabellen haben RLS; private Userdaten sind über auth.uid() getrennt, no_plain_wallet-Policies sind RESTRICTIVE. Kein bestätigter anon- oder Cross-User-Zugriff auf private Walletdaten. Shared DAO/APTMDAO-/TLN-/Preis-Caches werden bewusst vom authentifizierten Browser beschrieben; manipulierter Client könnte globale Ableitungen verfälschen.", action:"Shared-Cache-Write-Architektur derzeit bewusst nicht umbauen: Regressionsrisiko ist höher als das aktuell nachgewiesene Integritätsrisiko; als akzeptiertes Restrisiko dokumentiert. RPC-Hardening 6.39: direkte EXECUTE-Rechte für anon/authenticated auf vier reine Triggerfunktionen und wallettracking_cleanup_price_refresh_slots entzogen; produktiv bereits ausgeführt und in SQL 074 nachgeführt. Offen vor P10-Abschluss: gezielter Cross-User-Negativtest (Testkonten werden noch vorbereitet) und Restprüfung der RPC-/Admin-Grenzen. 6.39-Regression: DAO/APTMDAO-Tree und Chat-RPC PASS. TLN-Team-Realtest zeigte bei neu importiertem bekanntem TLN-Wallet auch nach Hard-Refresh keinen Baum. 6.41 ergänzte einen Slice-MISS-Trigger, 6.42 korrigierte dessen Script-Cache-Buster, 6.43 beseitigte die Init-Race-Condition. Realtest 6.43 erreichte Step 7 tatsächlich, löste bei fehlendem verifiziertem Globalgraph jedoch den historischen Full-Cold-Fallback ab Block 0 aus und lag bereits bei >3500 Requests ohne Abschluss. Korrektur 6.44: normaler Team-Tab darf bei Slice-MISS keinen Full-History-Scan mehr starten; eigene Roots werden vor dem DB-Slice auf verifizierte TLN-IDs reduziert. Realtest 6.44 zeigte dennoch >1400 einzelne eth_getTransactionByHash-Requests. Ursache: nach einem erfolgreichen Cache-Restore wurden offene Partner-Lifecycles automatisch über teamVerifyMissingLifecycles nachverifiziert. Korrektur 6.45: automatische Lifecycle-Rekonstruktion entfernt. Realtest 6.45 zeigte trotzdem >1000 eth_getTransactionByHash-Aufrufe. Ursache: fehlender Zusatzregistry-Graph-Cache startete im Restore noch teamRestoreAdditionalRegistryGraph() mit kompletter History. Korrektur 6.46: normaler Restore ist auch fuer Zusatzregistries strikt cache-only; weder History-Aufbau noch Evidence-Tx-Parent-Hydrierung laufen automatisch, beides nur noch explizit Step 7. Realtest 6.46: Baum erscheint wieder; zweites Öffnen desselben Team-Tabs erzeugt 0 neue Network-Requests. Phase 6.47 entkoppelt zusätzlich die Dashboard-Partnerzahl vom vorherigen Öffnen des Team-Tabs und ergänzt einen sanitisierten globalen Reward-Summary-Cache für Fresh-User, ohne automatische Chain-Discovery. Realtest 6.47: Partnerzahl 17 erscheint beim neuen User direkt im Dashboard; 0 aktive Partner ist fachlich korrekt; Rewards blieben wegen 0/4 vorhandenen globalen Summaries leer. Phase 6.48 ergänzt deshalb einen serverseitigen, auth-gebundenen Backfill über wallet-private: nur für beim aktuellen User als eigene Wallet gespeicherte Adressen wird der neueste verifizierte private Snapshot derselben On-Chain-Adresse intern gelesen und ausschließlich als sanitiserte Reward-Periodensumme zurückgegeben/globalisiert; kein Chain-Scan. Realtest 6.48: Backfill funktioniert, aber alte Referral-Snapshots konnten Raw-18-Decimals als große JS-Number/Scientific-Notation liefern und wurden dadurch nochmals falsch als Human-Amount gespeichert. Phase 6.49 behebt dies zentral: verifizierte Token-Decimale + Raw-Felder haben Vorrang, Legacy-Number-Rawwerte werden tokengebunden skaliert, Summary-Payloads tragen explizit amountUnit=human/schemaVersion=2 und Cache-v1 wird vollständig verworfen. Cross-User-Negativtest bleibt vorbereitet/offen."},
   {priority:"P11", workStatus:"offen", severity:"high", area:"Wallet-/Datenlöschung End-to-End", finding:"Nach P10 folgt der reale End-to-End-Regressionsaudit für Einzelwallet- und vollständige Userdaten-Löschung einschließlich Snapshots, 31.12., NFTs, Claims/Rewards, Caches und Alias-Provenienz.", action:"Erst nach Abschluss P10 starten; bestehende produktive Delete-RPCs nicht vorzeitig umbauen."},
-  {priority:"P12", workStatus:"in Arbeit", severity:"medium", area:"Admin-/Berechtigungsmodell", finding:"Phase 7.05 härtet den Basis-Login aus 7.04: Magic-Link/Redirect-Sessions initialisieren die App idempotent ohne leeren Zwischenzustand; Passwortmanager erhalten semantische Loginfelder. Adminrechte bleiben UUID-basiert. Magic Link bleibt nur Übergang/Recovery; Google/Apple-Linking ist der nächste Schritt.", action:"Migration 081 produktiv ausführen; bestehenden Admin per Passwort testen und UUID-Gleichheit prüfen. Danach Google und Apple kontrolliert an bestehende User-ID linken, ohne neue Accounts zu erzeugen."},
+  {priority:"P12", workStatus:"in Arbeit", severity:"medium", area:"Admin-/Berechtigungsmodell", finding:"Phase 7.05 härtet den Basis-Login aus 7.04: Magic-Link/Redirect-Sessions initialisieren die App idempotent ohne leeren Zwischenzustand; Passwortmanager erhalten semantische Loginfelder. Adminrechte bleiben UUID-basiert. Magic Link bleibt nur Übergang/Recovery; Google-Linking ist umgesetzt und UUID-gesichert. Apple-Login wird nicht angeboten.", action:"Migration 081 produktiv ausführen; bestehenden Admin per Passwort/Google testen und UUID-Gleichheit prüfen. Magic Link nur als Recovery/Übergang beibehalten."},
   {priority:"P13", workStatus:"offen", severity:"medium", area:"Data-API / Schema-Trennung", finding:"Viele Browser-Tabellen liegen historisch in public; neue interne Job-/Admin-/Backend-Tabellen sollen nicht automatisch exponiert werden.", action:"Neue Tabellen vor Anlage als Browser/API oder intern klassifizieren; exponierte Tabellen mit expliziten GRANTs/RLS, interne Tabellen möglichst in nicht exponiertem Schema."},
   {priority:"P14", workStatus:"offen", severity:"medium", area:"Secrets / Provider-Grenzen", finding:"Frontend-Providerkeys und verbleibende direkte Providerzugriffe sind bekannte Hardening-Themen, aber kein Befund dieses P10-RLS-Audits.", action:"Später getrennt prüfen; keine Credentials in public.chains verschieben."},
   {priority:"P15", workStatus:"offen", severity:"medium", area:"Abschluss-Regressionsaudit", finding:"Nach P10–P14 fehlt ein kompakter Gesamt-Regressionstest der Sicherheits-, Lifecycle- und Fresh-Build-Grenzen.", action:"Zum Abschluss definierte Realtests erneut ausführen und Auditstatus dokumentieren."},

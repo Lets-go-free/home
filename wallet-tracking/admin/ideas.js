@@ -1,4 +1,4 @@
-// Phase 7.09 · 02.10.2026 19:25:00 CEST: Apple-OAuth-Pilot analog Google mit UUID-Prüfung, Verknüpfungsstatus und kontrolliertem unlinkIdentity. Build 20261002-192500.
+// Phase 7.10 · 02.10.2026 21:17:41 CEST: Apple-OAuth wieder entfernt; Auth-Zielbild ist E-Mail/Passwort + Google, Magic Link nur Recovery/Übergang. Build 20261002-211741.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Auth-Formulare fuer iCloud/Browser-Passwortmanager vervollstaendigt; Login- und Passwort-Setzen-Submit bleiben native Form-Events. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-Redirect-Race behoben; Login für iCloud/Browser-Passwortmanager robust; alter Versionsfooter entfernt. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: Auth-Basis E-Mail/Passwort + UUID-Adminmigration 081; Google/Apple folgen kontrolliert. Build 20261002-121802.
@@ -148,11 +148,11 @@ const ADMIN_IDEAS_MODULE_TIMESTAMP = "23.09.2026 01:44:44 CEST";
 
 const ADMIN_IDEAS = [
   {
-    status: "open",
+    status: "done",
     category: "Security & Privacy",
     priority: "high",
-    title: "Admin-Login · Google OAuth mit bestehender User-ID verknüpfen",
-    desc: `Phase 7.09 ergänzt den Google-Pilot auf der stabilen Auth-Basis: eingeloggte Bestandsuser starten Google über Supabase linkIdentity; vor dem Redirect wird die vorhandene auth.users.id sessionlokal gemerkt und nach Rückkehr strikt auf Gleichheit geprüft. Erst nach erfolgreicher Verknüpfung soll der Bestandsuser den normalen Google-Login testen. E-Mail + Passwort bleibt parallel bestehen; Magic Link bleibt Übergang/Recovery. Google-Provider und Manual Linking müssen im Supabase-Projekt konfiguriert sein. Phase 7.09 zeigt den Verknüpfungsstatus und erlaubt „Google trennen“ nur, wenn Supabase mindestens eine weitere Identität am selben User meldet; die WalletTracking-User-ID und Daten bleiben beim Trennen unverändert. Phase 7.09 ergänzt Apple analog: bestehende User linken Apple nur aus einer gültigen Session; vor dem Redirect wird die aktuelle UUID gespeichert und nach Rückkehr strikt geprüft. Apple-Verknüpfungsstatus und kontrolliertes Trennen entsprechen Google. „E-Mail verbergen“ darf dadurch keine neue WalletTracking-Identität erzeugen. Google- und Apple-Provider benötigen Manual Linking im Supabase-Projekt. Kein Admin-Flag im Frontend/localStorage.`
+    title: "Login · E-Mail/Passwort + Google OAuth",
+    desc: `Phase 7.10 schließt den Auth-Umbau auf E-Mail + Passwort sowie Google OAuth ab. Eingeloggte Bestandsuser starten Google über Supabase linkIdentity; vor dem Redirect wird die vorhandene auth.users.id sessionlokal gemerkt und nach Rückkehr strikt auf Gleichheit geprüft. E-Mail + Passwort bleibt parallel bestehen; Magic Link bleibt nur Übergang/Recovery. Google-Provider und Manual Linking müssen im Supabase-Projekt konfiguriert sein. Der Verknüpfungsstatus wird angezeigt; „Google trennen“ ist nur möglich, wenn Supabase mindestens eine weitere Identität am selben User meldet. Die WalletTracking-User-ID und Daten bleiben beim Verknüpfen/Trennen unverändert. Realtests: bestehende Google-Verknüpfung, neuer Google-User, Login und Logout funktionieren. Apple-Login wird bewusst nicht angeboten. Kein Admin-Flag im Frontend/localStorage.`
   },
   {
     status: "open",
