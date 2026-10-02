@@ -1,3 +1,4 @@
+// Phase 7.00 · 02.10.2026 04:01:52 CEST: Globaler Preisrefresh misst jede Phase separat im zentralen Request-Audit; doppelter Fee-View-Refresh entfernt. Preislogik unverändert. Build 20261002-040152.
 // Phase 6.99 · 01.10.2026 20:12:06 CEST: Preisrefresh 6.99 nutzt getrennte Preis-/LP-Pair-Daten ohne Änderung der fachlichen Preisermittlung. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: Preisjob nutzt chainweiten Pair-State-Prefetch; fachliche Preisformeln unverändert. Build 20261001-181931.
 // Phase 6.97 · 01.10.2026 17:36:51 CEST: sichtbarer Preisjob-Status (läuft/fertig/Fehler) im Dashboard; RPC-Diagnose nach Call-Typen verfeinert. Build 20261001-173651.
@@ -4698,19 +4699,43 @@ function syncTlnVowProjectPricesToGlobalCache(){
   }
   return updated;
 }
+function priceRefreshAuditSummary(startIndex){
+  const rows=WT_REQUEST_AUDIT.entries.slice(Math.max(0,Number(startIndex)||0));
+  const byKind={},byResource={},byCaller={};
+  for(const row of rows){
+    const kind=String(row.kind||"unknown"),resource=String(row.resource||"unknown"),caller=String(row.caller||"unknown");
+    byKind[kind]=(byKind[kind]||0)+1;
+    byResource[resource]=(byResource[resource]||0)+1;
+    byCaller[caller]=(byCaller[caller]||0)+1;
+  }
+  const top=o=>Object.fromEntries(Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,12));
+  return {requests:rows.length,byKind,topResources:top(byResource),topCallers:top(byCaller),durationMs:Math.round(rows.reduce((n,r)=>n+Number(r.durationMs||0),0)*10)/10};
+}
+async function measurePriceRefreshPhase(diag,name,fn){
+  const startIndex=WT_REQUEST_AUDIT.entries.length,t0=performance.now();
+  markRequestAudit(`price-refresh:${name}:start`);
+  try{return await fn();}
+  finally{
+    diag.phases[name]={elapsedMs:Math.round((performance.now()-t0)*10)/10,...priceRefreshAuditSummary(startIndex)};
+    markRequestAudit(`price-refresh:${name}:end`);
+  }
+}
 async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   beginCentralPriceJob();setCentralPriceBusy(true);setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Globaler 15-Minuten-Preisstand wird aktualisiert…","note");
-  const generalSources=await loadNativePrices();
+  const auditStart=WT_REQUEST_AUDIT.entries.length,auditT0=performance.now(),diag={manual,slotKey,phases:{}};
+  markRequestAudit("price-refresh:start");
+  const generalSources=await measurePriceRefreshPhase(diag,"generalPrices",()=>loadNativePrices());
   let tlnState=null;
   if(window.TLNVOWProject){
     // TLN/VOW ist die einzige autoritative On-Chain-Preisberechnung. Der globale Job
     // rendert hier keine Projekttabellen und startet insbesondere keinen zweiten ETH-Scan.
-    await window.TLNVOWProject.refreshPrices({render:false});
+    await measurePriceRefreshPhase(diag,"tlnVowPriceEngine",()=>window.TLNVOWProject.refreshPrices({render:false}));
     tlnState=window.TLNVOWProject.getPriceState?.()||null;
     syncTlnVowProjectPricesToGlobalCache();
   }
-  const saved=await saveGlobalCurrentPriceSnapshot(slotKey);
-  rerenderAllCurrentPriceViews();await refreshFeePriceViews().catch(e=>console.warn("Gebühren-Kursansicht aktualisieren:",e));
+  const saved=await measurePriceRefreshPhase(diag,"saveGlobalSnapshot",()=>saveGlobalCurrentPriceSnapshot(slotKey));
+  await measurePriceRefreshPhase(diag,"rerenderViews",async()=>{rerenderAllCurrentPriceViews();});
+  await measurePriceRefreshPhase(diag,"feeViews",()=>refreshFeePriceViews().catch(e=>{console.warn("Gebühren-Kursansicht aktualisieren:",e);return null;}));
   const stamp=formatCurrentPriceTimestamp(currentPriceCacheState.capturedAt);
   const cgOk=generalSources?.coinGecko?.ok===true;
   const partialNote=!cgOk&&generalSources?.coinGecko?.ids?" · teilweise aktualisiert; CoinGecko nicht erreichbar, letzte gueltige CoinGecko-Kurse beibehalten":"";
@@ -4718,7 +4743,14 @@ async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   setWtDataStatus("tracking",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Wallet-Tracking"});
   window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,sources:generalSources,tln:tlnState}}));
   finishCentralPriceJob(currentPriceCacheState.capturedAt||new Date());
-  return {general:currentPriceCacheState,sources:generalSources,tln:tlnState};
+  diag.elapsedMs=Math.round((performance.now()-auditT0)*10)/10;
+  diag.total=priceRefreshAuditSummary(auditStart);
+  diag.phaseRequestSum=Object.values(diag.phases).reduce((n,p)=>n+Number(p.requests||0),0);
+  diag.unassignedCompletedRequests=Math.max(0,diag.total.requests-diag.phaseRequestSum);
+  markRequestAudit("price-refresh:end");
+  console.info("Globaler Preisrefresh · Phasendiagnose",diag);
+  try{console.table(Object.fromEntries(Object.entries(diag.phases).map(([k,v])=>[k,{ms:v.elapsedMs,requests:v.requests,durationMs:v.durationMs,topResource:Object.keys(v.topResources||{})[0]||"–"}])));}catch(_){ }
+  return {general:currentPriceCacheState,sources:generalSources,tln:tlnState,diagnostics:diag};
 }
 async function refreshAllCurrentPrices({manual=false}={}){
   if(allCurrentPricesPromise)return allCurrentPricesPromise;
@@ -4986,7 +5018,7 @@ async function loadNativePrices() {
   const customLpState=await loadCustomSafeLpPrices();
   if(document.getElementById("tab-predefined")?.classList.contains("active")) renderSafeTokenTable();
 
-  refreshFeePriceViews().catch(e => console.warn("Gebühren-Kursansicht aktualisieren:", e));
+  // Gebührenansicht wird vom zentralen Preisjob genau einmal nach dem Snapshot/Rerender aktualisiert.
   return {coinGecko:coinGeckoState,geckoTerminal:geckoTerminalState,customCoinGecko:customCoinGeckoState,customLp:customLpState,apertumOk};
 }
 
