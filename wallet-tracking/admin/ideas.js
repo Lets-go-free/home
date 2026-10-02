@@ -1,3 +1,4 @@
+// Phase 7.07 · 02.10.2026 16:38:26 CEST: Google-OAuth-Pilot ergänzt: kontrolliertes linkIdentity am eingeloggten Bestandskonto mit UUID-Paritätscheck; öffentlicher Google-Login folgt demselben Provider. Build 20261002-163826.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Auth-Formulare fuer iCloud/Browser-Passwortmanager vervollstaendigt; Login- und Passwort-Setzen-Submit bleiben native Form-Events. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-Redirect-Race behoben; Login für iCloud/Browser-Passwortmanager robust; alter Versionsfooter entfernt. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: Auth-Basis E-Mail/Passwort + UUID-Adminmigration 081; Google/Apple folgen kontrolliert. Build 20261002-121802.
@@ -151,7 +152,7 @@ const ADMIN_IDEAS = [
     category: "Security & Privacy",
     priority: "high",
     title: "Admin-Login · Google OAuth mit bestehender User-ID verknüpfen",
-    desc: `Phase 7.06 vervollständigt die Auth-Basis: Magic-Link/Redirect-Sessions öffnen die App zuverlässig; Login und „Passwort setzen/ändern“ sind echte semantische Formulare mit username/current-password/new-password, damit iCloud-/Browser-Passwortmanager erfolgreiche Logins und neue Passwörter erkennen können. Fachlich unverändert: E-Mail + Passwort für normale Logins/Registrierung, Magic Link nur noch als Übergangs-/Recovery-Weg; bestehende eingeloggte User können ein Passwort setzen, ohne ihre auth.users.id zu ändern. Migration 081 ordnet bestehende Admin-E-Mails einmalig ihrer vorhandenen User-UUID zu und stellt bekannte Admin-RLS-Checks auf auth.uid()-basierte Prüfung um. Nächster Schritt: Google und Apple optional kontrolliert mit genau diesem bestehenden User verknüpfen; vor/nach Linking muss auth.users.id identisch bleiben. Kein Admin-Flag im Frontend/localStorage.`
+    desc: `Phase 7.07 ergänzt den Google-Pilot auf der stabilen Auth-Basis: eingeloggte Bestandsuser starten Google über Supabase linkIdentity; vor dem Redirect wird die vorhandene auth.users.id sessionlokal gemerkt und nach Rückkehr strikt auf Gleichheit geprüft. Erst nach erfolgreicher Verknüpfung soll der Bestandsuser den normalen Google-Login testen. E-Mail + Passwort bleibt parallel bestehen; Magic Link bleibt Übergang/Recovery. Google-Provider und Manual Linking müssen im Supabase-Projekt konfiguriert sein. Apple folgt separat nach bestandenem Google-Realtest. Kein Admin-Flag im Frontend/localStorage.`
   },
   {
     status: "open",

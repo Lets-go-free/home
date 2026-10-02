@@ -1,3 +1,4 @@
+// Phase 7.07 · 02.10.2026 16:38:26 CEST: Google OAuth Pilot mit kontrolliertem Identity-Linking an bestehende auth.users.id; Google-Sign-in erst nach Verknüpfung testen. Build 20261002-163826.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Login + Passwort-Setzen als echte Password-Manager-Formulare; Browser/iCloud-Keychain kann erfolgreiche Logins und neue Passwörter erkennen. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-State-Callback robust gegen Magic-Link/Redirect-Race; Passwortmanager-freundliches Loginlayout; Versionsfooter korrigiert. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: E-Mail/Passwort-Login + Registrierung/Recovery ergänzt; bestehende Magic-Link-User können im eingeloggten Konto ein Passwort setzen. Adminprüfung nutzt UUID-basierte RPC mit Legacy-Fallback nur solange Migration 081 fehlt. Build 20261002-121802.
@@ -423,6 +424,42 @@ async function sendMagicLink() {
   });
   authStatus(error?("Fehler: "+error.message):"Link verschickt. Nach der Anmeldung kannst du unter Daten & Konto ein Passwort setzen.",!!error);
 }
+
+const WT_GOOGLE_LINK_EXPECTED_UID_KEY="wt_google_link_expected_uid_v1";
+const WT_GOOGLE_LINK_OK_KEY="wt_google_link_ok_v1";
+async function signInWithGoogle(){
+  authStatus("Google-Anmeldung wird geöffnet …");
+  const {error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:REDIRECT_URL}});
+  if(error)authStatus("Google-Anmeldung konnte nicht gestartet werden: "+error.message,true);
+}
+async function linkGoogleIdentity(){
+  const status=document.getElementById("accountGoogleStatus");
+  if(!currentUser?.id){if(status)status.textContent="Bitte zuerst mit deinem bestehenden Konto anmelden.";return;}
+  const providers=[...new Set((currentUser.identities||[]).map(x=>x?.provider).filter(Boolean))];
+  if(providers.includes("google")){if(status)status.textContent="Google ist bereits mit diesem Konto verknüpft.";return;}
+  try{sessionStorage.setItem(WT_GOOGLE_LINK_EXPECTED_UID_KEY,String(currentUser.id));}catch(_){}
+  if(status)status.textContent="Google-Verknüpfung wird geöffnet …";
+  const {error}=await sb.auth.linkIdentity({provider:"google",options:{redirectTo:REDIRECT_URL}});
+  if(error){
+    try{sessionStorage.removeItem(WT_GOOGLE_LINK_EXPECTED_UID_KEY);}catch(_){}
+    if(status)status.textContent="Google konnte nicht verknüpft werden: "+error.message;
+  }
+}
+function wtVerifyPendingGoogleLink(session){
+  let expected="";
+  try{expected=String(sessionStorage.getItem(WT_GOOGLE_LINK_EXPECTED_UID_KEY)||"");}catch(_){}
+  if(!expected)return true;
+  const actual=String(session?.user?.id||"");
+  try{sessionStorage.removeItem(WT_GOOGLE_LINK_EXPECTED_UID_KEY);}catch(_){}
+  if(actual!==expected){
+    console.error("Google Identity-Linking UUID-Abweichung",{expected,actual});
+    const st=document.getElementById("accountGoogleStatus");
+    if(st)st.textContent="Sicherheitsstopp: Google kam mit einer anderen User-ID zurück. Bitte nicht weiterarbeiten und erneut mit dem ursprünglichen Konto anmelden.";
+    return false;
+  }
+  try{sessionStorage.setItem(WT_GOOGLE_LINK_OK_KEY,actual);}catch(_){}
+  return true;
+}
 async function setCurrentUserPassword(){
   const status=document.getElementById("accountPasswordStatus");
   const p1=String(document.getElementById("accountNewPassword")?.value||"");
@@ -450,6 +487,14 @@ function renderAuthSecurityState(){
   const username=document.getElementById("accountPasswordUsername");
   if(username)username.value=String(currentUser.email||"");
   el.innerHTML=`<strong>${escapeAttr(currentUser.email||"")}</strong>${labels?` · Login-Identitäten: ${escapeAttr(labels)}`:""}<br>Deine feste User-ID bleibt <code>${escapeAttr(currentUser.id)}</code>.`;
+  const gbtn=document.getElementById("accountGoogleLinkBtn"),gst=document.getElementById("accountGoogleStatus");
+  const linked=providers.includes("google");
+  if(gbtn){gbtn.disabled=linked;gbtn.textContent=linked?"Google verknüpft ✓":"Google verknüpfen";}
+  if(gst){
+    let justLinked=false;try{justLinked=sessionStorage.getItem(WT_GOOGLE_LINK_OK_KEY)===String(currentUser.id);}catch(_){}
+    gst.textContent=linked?(justLinked?"Google erfolgreich verknüpft. Die User-ID ist unverändert geblieben.":"Google ist mit diesem Konto verknüpft."):"Google ist noch nicht verknüpft.";
+    if(justLinked)try{sessionStorage.removeItem(WT_GOOGLE_LINK_OK_KEY);}catch(_){}
+  }
 }
 function bindAuthCredentialEnter(){
   // Phase 7.06: Enter wird absichtlich dem nativen <form>-Submit überlassen.
@@ -459,6 +504,8 @@ window.signInWithPassword=signInWithPassword;
 window.signUpWithPassword=signUpWithPassword;
 window.sendPasswordReset=sendPasswordReset;
 window.sendMagicLink=sendMagicLink;
+window.signInWithGoogle=signInWithGoogle;
+window.linkGoogleIdentity=linkGoogleIdentity;
 window.setCurrentUserPassword=setCurrentUserPassword;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bindAuthCredentialEnter,{once:true});else bindAuthCredentialEnter();
 
@@ -756,6 +803,11 @@ let wtAuthReadyUserId="";
 
 async function wtEnsureAuthenticatedApp(session, reason="auth-state") {
   if(!session?.user?.id) return;
+  if(!wtVerifyPendingGoogleLink(session)){
+    try{await sb.auth.signOut();}catch(_){}
+    wtRenderSessionExpiredState("Google-Verknüpfung abgebrochen: User-ID stimmt nicht mit dem bestehenden Konto überein.");
+    return;
+  }
   wtRestoreAuthenticatedUi(session);
   const app=document.getElementById("appContent");
   if(app) app.style.display="block";
