@@ -1,3 +1,4 @@
+// Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-Redirect-Race behoben; Login für iCloud/Browser-Passwortmanager robust; alter Versionsfooter entfernt. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: Auth-Basis E-Mail/Passwort + UUID-Adminmigration 081; Google/Apple folgen kontrolliert. Build 20261002-121802.
 // Phase 7.03 · 02.10.2026 04:52:42 CEST: TLN/VOW Voucher-Fachregel chain-spezifisch korrigiert: BSC strikt Voucher→VOW→USDT, Ethereum mit eigener realer Poollogik; globaler Preissnapshot v4 invalidiert. Build 20261002-045242.
 // Phase 7.02 · 02.10.2026 04:37:13 CEST: Realtest 7.01 lokalisiert 50/53 Generalpreis-Requests im Apertum-DEX und 65/95 TLN/VOW-Requests in der Referenzauflösung; 7.02 optimiert genau diese Datenbeschaffung mit unveränderten Preisformeln und Legacy-Fallback. Build 20261002-043713.
@@ -149,7 +150,7 @@ const ADMIN_IDEAS = [
     category: "Security & Privacy",
     priority: "high",
     title: "Admin-Login · Google OAuth mit bestehender User-ID verknüpfen",
-    desc: `Phase 7.04 legt die Auth-Basis: E-Mail + Passwort für normale Logins/Registrierung, Magic Link nur noch als Übergangs-/Recovery-Weg; bestehende eingeloggte User können ein Passwort setzen, ohne ihre auth.users.id zu ändern. Migration 081 ordnet bestehende Admin-E-Mails einmalig ihrer vorhandenen User-UUID zu und stellt bekannte Admin-RLS-Checks auf auth.uid()-basierte Prüfung um. Nächster Schritt: Google und Apple optional kontrolliert mit genau diesem bestehenden User verknüpfen; vor/nach Linking muss auth.users.id identisch bleiben. Kein Admin-Flag im Frontend/localStorage.`
+    desc: `Phase 7.05 stabilisiert die Auth-Basis aus 7.04: Magic-Link/Redirect-Sessions öffnen die App zuverlässig; Loginfelder sind passwortmanagerfreundlich. Fachlich unverändert: E-Mail + Passwort für normale Logins/Registrierung, Magic Link nur noch als Übergangs-/Recovery-Weg; bestehende eingeloggte User können ein Passwort setzen, ohne ihre auth.users.id zu ändern. Migration 081 ordnet bestehende Admin-E-Mails einmalig ihrer vorhandenen User-UUID zu und stellt bekannte Admin-RLS-Checks auf auth.uid()-basierte Prüfung um. Nächster Schritt: Google und Apple optional kontrolliert mit genau diesem bestehenden User verknüpfen; vor/nach Linking muss auth.users.id identisch bleiben. Kein Admin-Flag im Frontend/localStorage.`
   },
   {
     status: "open",

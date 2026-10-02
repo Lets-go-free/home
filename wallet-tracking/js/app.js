@@ -1,3 +1,4 @@
+// Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-State-Callback robust gegen Magic-Link/Redirect-Race; Passwortmanager-freundliches Loginlayout; Versionsfooter korrigiert. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: E-Mail/Passwort-Login + Registrierung/Recovery ergänzt; bestehende Magic-Link-User können im eingeloggten Konto ein Passwort setzen. Adminprüfung nutzt UUID-basierte RPC mit Legacy-Fallback nur solange Migration 081 fehlt. Build 20261002-121802.
 // Phase 7.03 · 02.10.2026 04:52:42 CEST: Globalen Preis-Snapshot auf v4 invalidiert, damit die wiederhergestellte BSC-Voucher-Fachregel sofort gilt; sonst keine Preislogik in app.js geaendert. Build 20261002-045242.
 // Phase 7.02 · 02.10.2026 04:37:13 CEST: Apertum-Livepreise batchen getPair + Pair-State ohne Änderung von Routen/Liquiditätsvergleich; TLN/VOW-Referenzen nutzen vorhandene Stammdaten/PriceEngine-Caches vor On-Chain-Fallback. Build 20261002-043713.
@@ -750,9 +751,39 @@ async function copyDonationAddress() {
 let wtAuthSessionLost=false;
 let wtAuthSessionLossReason="";
 let wtAuthSessionCheckPromise=null;
+let wtAuthInitPromise=null;
+let wtAuthReadyUserId="";
+
+async function wtEnsureAuthenticatedApp(session, reason="auth-state") {
+  if(!session?.user?.id) return;
+  wtRestoreAuthenticatedUi(session);
+  const app=document.getElementById("appContent");
+  if(app) app.style.display="block";
+  const uid=String(session.user.id);
+  if(wtAuthReadyUserId===uid) return;
+  if(wtAuthInitPromise) return await wtAuthInitPromise;
+  beginDataJobUi("Daten werden geladen …");
+  wtAuthInitPromise=(async()=>{
+    try{
+      await onLoggedIn(session);
+      wtAuthReadyUserId=uid;
+    }finally{
+      endDataJobUi();
+      wtAuthInitPromise=null;
+    }
+  })();
+  try{
+    await wtAuthInitPromise;
+  }catch(e){
+    console.error("WalletTracking Auth-Initialisierung fehlgeschlagen",{reason,error:e});
+    wtAuthReadyUserId="";
+    throw e;
+  }
+}
 
 function wtRenderSessionExpiredState(reason="Sitzung abgelaufen"){
   wtAuthSessionLost=true;
+  wtAuthReadyUserId="";
   wtAuthSessionLossReason=String(reason||"Sitzung abgelaufen");
   currentUser=null;
   isAdmin=false;
@@ -831,9 +862,12 @@ async function initAuth() {
     if(newSession?.user){
       wtRestoreAuthenticatedUi(newSession);
       if(event==="PASSWORD_RECOVERY"){setTimeout(()=>{try{showTab("account-data");}catch(_){ }const st=document.getElementById("accountPasswordStatus");if(st)st.textContent="Reset-Link bestätigt. Bitte jetzt ein neues Passwort setzen.";},0);}
-      if (!document.getElementById("appContent")?.style.display) {
-        beginDataJobUi("Daten werden geladen …");
-        onLoggedIn(newSession).finally(()=>endDataJobUi());
+      // Magic-Link/OAuth/Redirect kann die Session erst nach dem initialen getSession() liefern.
+      // Deshalb nie anhand eines CSS-Strings entscheiden, sondern die App-Initialisierung
+      // idempotent über User-ID + laufendes Promise absichern. TOKEN_REFRESHED darf eine
+      // bereits initialisierte App nicht erneut komplett laden.
+      if(!(event==="TOKEN_REFRESHED" && wtAuthReadyUserId===String(newSession.user.id))){
+        setTimeout(()=>{wtEnsureAuthenticatedApp(newSession,event).catch(()=>{});},0);
       }
       return;
     }
@@ -842,9 +876,7 @@ async function initAuth() {
     }
   });
   if (session) {
-    wtRestoreAuthenticatedUi(session);
-    beginDataJobUi("Daten werden geladen …");
-    try { await onLoggedIn(session); } finally { endDataJobUi(); }
+    await wtEnsureAuthenticatedApp(session,"initial-getSession");
   } else {
     currentUser=null;
   }
@@ -3363,7 +3395,7 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P9", workStatus:"erledigt", severity:"medium", area:"Cache-Ownership / Invalidierung", finding:"Phase 6.36/6.37: Ownership- und Invalidierungs-Audit abgeschlossen. Browser-/IndexedDB-Graphen werden über DATA_VERSIONS, Payload-/Storage-Schema und Root-Scope gegated; private Refresh-States prüfen data_version vor Tageslimit; Partial-Lifecycle darf einen verifizierten TLN-Team-Lifecycle nicht degradieren. Konkrete Restlücke: block-versionierte TLN/VOW-Staking-/Technical-Caches konnten von einem älteren offenen Browser-Tab mit kleinerem last_scanned_block zurückgeschrieben werden.", action:"Phase 6.37 schließt die belegte Lücke: vor Writes block-versionierter Staking-/Technical-Caches wird der persistente Blockstand geprüft; ein kleinerer lokaler Block darf einen neueren DB-Stand nicht ersetzen. lastBlock=0 bleibt bewusst unversioniert. Scanner-/DATA_VERSION-Wechsel erzwingen weiterhin fachlichen Neuaufbau. P9 = erledigt; kein pauschaler Cache-Refactor nötig."},
   {priority:"P10", workStatus:"in Arbeit", severity:"high", area:"Security / Supabase / RLS / Data API", finding:"DB-/Codeaudit: alle WalletTracking-public-Tabellen haben RLS; private Userdaten sind über auth.uid() getrennt, no_plain_wallet-Policies sind RESTRICTIVE. Kein bestätigter anon- oder Cross-User-Zugriff auf private Walletdaten. Shared DAO/APTMDAO-/TLN-/Preis-Caches werden bewusst vom authentifizierten Browser beschrieben; manipulierter Client könnte globale Ableitungen verfälschen.", action:"Shared-Cache-Write-Architektur derzeit bewusst nicht umbauen: Regressionsrisiko ist höher als das aktuell nachgewiesene Integritätsrisiko; als akzeptiertes Restrisiko dokumentiert. RPC-Hardening 6.39: direkte EXECUTE-Rechte für anon/authenticated auf vier reine Triggerfunktionen und wallettracking_cleanup_price_refresh_slots entzogen; produktiv bereits ausgeführt und in SQL 074 nachgeführt. Offen vor P10-Abschluss: gezielter Cross-User-Negativtest (Testkonten werden noch vorbereitet) und Restprüfung der RPC-/Admin-Grenzen. 6.39-Regression: DAO/APTMDAO-Tree und Chat-RPC PASS. TLN-Team-Realtest zeigte bei neu importiertem bekanntem TLN-Wallet auch nach Hard-Refresh keinen Baum. 6.41 ergänzte einen Slice-MISS-Trigger, 6.42 korrigierte dessen Script-Cache-Buster, 6.43 beseitigte die Init-Race-Condition. Realtest 6.43 erreichte Step 7 tatsächlich, löste bei fehlendem verifiziertem Globalgraph jedoch den historischen Full-Cold-Fallback ab Block 0 aus und lag bereits bei >3500 Requests ohne Abschluss. Korrektur 6.44: normaler Team-Tab darf bei Slice-MISS keinen Full-History-Scan mehr starten; eigene Roots werden vor dem DB-Slice auf verifizierte TLN-IDs reduziert. Realtest 6.44 zeigte dennoch >1400 einzelne eth_getTransactionByHash-Requests. Ursache: nach einem erfolgreichen Cache-Restore wurden offene Partner-Lifecycles automatisch über teamVerifyMissingLifecycles nachverifiziert. Korrektur 6.45: automatische Lifecycle-Rekonstruktion entfernt. Realtest 6.45 zeigte trotzdem >1000 eth_getTransactionByHash-Aufrufe. Ursache: fehlender Zusatzregistry-Graph-Cache startete im Restore noch teamRestoreAdditionalRegistryGraph() mit kompletter History. Korrektur 6.46: normaler Restore ist auch fuer Zusatzregistries strikt cache-only; weder History-Aufbau noch Evidence-Tx-Parent-Hydrierung laufen automatisch, beides nur noch explizit Step 7. Realtest 6.46: Baum erscheint wieder; zweites Öffnen desselben Team-Tabs erzeugt 0 neue Network-Requests. Phase 6.47 entkoppelt zusätzlich die Dashboard-Partnerzahl vom vorherigen Öffnen des Team-Tabs und ergänzt einen sanitisierten globalen Reward-Summary-Cache für Fresh-User, ohne automatische Chain-Discovery. Realtest 6.47: Partnerzahl 17 erscheint beim neuen User direkt im Dashboard; 0 aktive Partner ist fachlich korrekt; Rewards blieben wegen 0/4 vorhandenen globalen Summaries leer. Phase 6.48 ergänzt deshalb einen serverseitigen, auth-gebundenen Backfill über wallet-private: nur für beim aktuellen User als eigene Wallet gespeicherte Adressen wird der neueste verifizierte private Snapshot derselben On-Chain-Adresse intern gelesen und ausschließlich als sanitiserte Reward-Periodensumme zurückgegeben/globalisiert; kein Chain-Scan. Realtest 6.48: Backfill funktioniert, aber alte Referral-Snapshots konnten Raw-18-Decimals als große JS-Number/Scientific-Notation liefern und wurden dadurch nochmals falsch als Human-Amount gespeichert. Phase 6.49 behebt dies zentral: verifizierte Token-Decimale + Raw-Felder haben Vorrang, Legacy-Number-Rawwerte werden tokengebunden skaliert, Summary-Payloads tragen explizit amountUnit=human/schemaVersion=2 und Cache-v1 wird vollständig verworfen. Cross-User-Negativtest bleibt vorbereitet/offen."},
   {priority:"P11", workStatus:"offen", severity:"high", area:"Wallet-/Datenlöschung End-to-End", finding:"Nach P10 folgt der reale End-to-End-Regressionsaudit für Einzelwallet- und vollständige Userdaten-Löschung einschließlich Snapshots, 31.12., NFTs, Claims/Rewards, Caches und Alias-Provenienz.", action:"Erst nach Abschluss P10 starten; bestehende produktive Delete-RPCs nicht vorzeitig umbauen."},
-  {priority:"P12", workStatus:"in Arbeit", severity:"medium", area:"Admin-/Berechtigungsmodell", finding:"Phase 7.04 stellt den Basis-Login von Magic-Link-only auf E-Mail/Passwort um und migriert Adminrechte auf die stabile Supabase-User-UUID. Magic Link bleibt nur Übergang/Recovery; Google/Apple-Linking ist der nächste Schritt.", action:"Migration 081 produktiv ausführen; bestehenden Admin per Passwort testen und UUID-Gleichheit prüfen. Danach Google und Apple kontrolliert an bestehende User-ID linken, ohne neue Accounts zu erzeugen."},
+  {priority:"P12", workStatus:"in Arbeit", severity:"medium", area:"Admin-/Berechtigungsmodell", finding:"Phase 7.05 härtet den Basis-Login aus 7.04: Magic-Link/Redirect-Sessions initialisieren die App idempotent ohne leeren Zwischenzustand; Passwortmanager erhalten semantische Loginfelder. Adminrechte bleiben UUID-basiert. Magic Link bleibt nur Übergang/Recovery; Google/Apple-Linking ist der nächste Schritt.", action:"Migration 081 produktiv ausführen; bestehenden Admin per Passwort testen und UUID-Gleichheit prüfen. Danach Google und Apple kontrolliert an bestehende User-ID linken, ohne neue Accounts zu erzeugen."},
   {priority:"P13", workStatus:"offen", severity:"medium", area:"Data-API / Schema-Trennung", finding:"Viele Browser-Tabellen liegen historisch in public; neue interne Job-/Admin-/Backend-Tabellen sollen nicht automatisch exponiert werden.", action:"Neue Tabellen vor Anlage als Browser/API oder intern klassifizieren; exponierte Tabellen mit expliziten GRANTs/RLS, interne Tabellen möglichst in nicht exponiertem Schema."},
   {priority:"P14", workStatus:"offen", severity:"medium", area:"Secrets / Provider-Grenzen", finding:"Frontend-Providerkeys und verbleibende direkte Providerzugriffe sind bekannte Hardening-Themen, aber kein Befund dieses P10-RLS-Audits.", action:"Später getrennt prüfen; keine Credentials in public.chains verschieben."},
   {priority:"P15", workStatus:"offen", severity:"medium", area:"Abschluss-Regressionsaudit", finding:"Nach P10–P14 fehlt ein kompakter Gesamt-Regressionstest der Sicherheits-, Lifecycle- und Fresh-Build-Grenzen.", action:"Zum Abschluss definierte Realtests erneut ausführen und Auditstatus dokumentieren."},
