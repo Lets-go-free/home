@@ -1,3 +1,4 @@
+// Phase 7.06 · 02.10.2026 16:01:02 CEST: Login + Passwort-Setzen als echte Password-Manager-Formulare; Browser/iCloud-Keychain kann erfolgreiche Logins und neue Passwörter erkennen. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-State-Callback robust gegen Magic-Link/Redirect-Race; Passwortmanager-freundliches Loginlayout; Versionsfooter korrigiert. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: E-Mail/Passwort-Login + Registrierung/Recovery ergänzt; bestehende Magic-Link-User können im eingeloggten Konto ein Passwort setzen. Adminprüfung nutzt UUID-basierte RPC mit Legacy-Fallback nur solange Migration 081 fehlt. Build 20261002-121802.
 // Phase 7.03 · 02.10.2026 04:52:42 CEST: Globalen Preis-Snapshot auf v4 invalidiert, damit die wiederhergestellte BSC-Voucher-Fachregel sofort gilt; sonst keine Preislogik in app.js geaendert. Build 20261002-045242.
@@ -433,27 +434,26 @@ async function setCurrentUserPassword(){
   const {data,error}=await sb.auth.updateUser({password:p1});
   if(error){if(status)status.textContent="Fehler: "+error.message;return;}
   if(data?.user)currentUser=data.user;
-  const a=document.getElementById("accountNewPassword"),b=document.getElementById("accountNewPasswordRepeat");if(a)a.value="";if(b)b.value="";
   if(status)status.textContent="Passwort gespeichert. Künftige normale Logins benötigen keine E-Mail mehr.";
   renderAuthSecurityState();
+  // Passwortmanager erhalten nach erfolgreichem Form-Submit kurz Gelegenheit,
+  // das neue Passwort zu erkennen, bevor die Felder geleert werden.
+  setTimeout(()=>{
+    const a=document.getElementById("accountNewPassword"),b=document.getElementById("accountNewPasswordRepeat");
+    if(a)a.value="";if(b)b.value="";
+  },1200);
 }
 function renderAuthSecurityState(){
   const el=document.getElementById("authSecurityState");if(!el||!currentUser)return;
   const providers=[...new Set((currentUser.identities||[]).map(x=>x?.provider).filter(Boolean))];
   const labels=providers.map(p=>p==="email"?"E-Mail":p==="google"?"Google":p==="apple"?"Apple":p).join(", ");
+  const username=document.getElementById("accountPasswordUsername");
+  if(username)username.value=String(currentUser.email||"");
   el.innerHTML=`<strong>${escapeAttr(currentUser.email||"")}</strong>${labels?` · Login-Identitäten: ${escapeAttr(labels)}`:""}<br>Deine feste User-ID bleibt <code>${escapeAttr(currentUser.id)}</code>.`;
 }
 function bindAuthCredentialEnter(){
-  for(const id of ["authEmail","authPassword"]){
-    const input=document.getElementById(id);
-    if(!input||input.dataset.enterBound==="1")continue;
-    input.dataset.enterBound="1";
-    input.addEventListener("keydown",e=>{
-      if(e.key!=="Enter"||e.isComposing)return;
-      e.preventDefault();
-      signInWithPassword();
-    });
-  }
+  // Phase 7.06: Enter wird absichtlich dem nativen <form>-Submit überlassen.
+  // Das verbessert die Erkennung erfolgreicher Logins durch iCloud/Browser-Passwortmanager.
 }
 window.signInWithPassword=signInWithPassword;
 window.signUpWithPassword=signUpWithPassword;
