@@ -1,3 +1,5 @@
+// Phase 7.03 · 02.10.2026 04:52:42 CEST: Globalen Preis-Snapshot auf v4 invalidiert, damit die wiederhergestellte BSC-Voucher-Fachregel sofort gilt; sonst keine Preislogik in app.js geaendert. Build 20261002-045242.
+// Phase 7.02 · 02.10.2026 04:37:13 CEST: Apertum-Livepreise batchen getPair + Pair-State ohne Änderung von Routen/Liquiditätsvergleich; TLN/VOW-Referenzen nutzen vorhandene Stammdaten/PriceEngine-Caches vor On-Chain-Fallback. Build 20261002-043713.
 // Phase 7.01 · 02.10.2026 04:18:28 CEST: Preisrefresh-Hotspots werden ohne Preislogikänderung tiefer zerlegt: Generalpreise messen CoinGecko, GeckoTerminal, Apertum, Contract-Fallback und LP separat. Build 20261002-041828.
 // Phase 7.00 · 02.10.2026 04:01:52 CEST: Globaler Preisrefresh misst jede Phase separat im zentralen Request-Audit; doppelter Fee-View-Refresh entfernt. Preislogik unverändert. Build 20261002-040152.
 // Phase 6.99 · 01.10.2026 20:12:06 CEST: Preisrefresh 6.99 nutzt getrennte Preis-/LP-Pair-Daten ohne Änderung der fachlichen Preisermittlung. Build 20261001-201206.
@@ -3672,6 +3674,49 @@ function archiveRpc(chain, method, params) {
   return archiveRpcQueue;
 }
 
+async function archiveRpcBatch(chain,calls,{chunkSize=80}={}) {
+  const list=Array.isArray(calls)?calls.filter(c=>c&&c.method):[];
+  if(!list.length)return [];
+  const size=Math.max(1,Math.min(100,Number(chunkSize)||80));
+  const out=[];
+  for(let offset=0;offset<list.length;offset+=size){
+    const chunk=list.slice(offset,offset+size);
+    const run=async()=>{
+      const wait=Math.max(0,220-(Date.now()-archiveRpcLastCall));
+      if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+      archiveRpcLastCall=Date.now();
+      const url=configuredArchiveRpcUrl(chain),delays=[0,800,1800,3500];
+      let lastError=null;
+      for(let attempt=0;attempt<delays.length;attempt++){
+        if(delays[attempt])await new Promise(resolve=>setTimeout(resolve,delays[attempt]));
+        try{
+          const payload=chunk.map((call,i)=>({jsonrpc:"2.0",id:i+1,method:call.method,params:call.params||[]}));
+          const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+          if(!res.ok){
+            let detail="";try{detail=await res.text();}catch(_){}
+            if((res.status===429||res.status>=500)&&attempt<delays.length-1)continue;
+            throw new Error(`${CHAIN_META[chain]?.label||chain}: Archive-RPC Batch HTTP ${res.status}${detail?" – "+detail.slice(0,180):""}`);
+          }
+          const data=await res.json();
+          if(!Array.isArray(data))throw new Error(`${CHAIN_META[chain]?.label||chain}: RPC unterstützt JSON-RPC-Batch nicht.`);
+          const byId=new Map(data.map(row=>[Number(row?.id),row]));
+          const values=payload.map(req=>{
+            const row=byId.get(Number(req.id));
+            if(!row)throw new Error(`${CHAIN_META[chain]?.label||chain}: unvollständige Batch-Antwort.`);
+            if(row.error)throw new Error(`${CHAIN_META[chain]?.label||chain}: ${row.error.message||"Archive-RPC Batch-Fehler"}`);
+            return row.result;
+          });
+          return values;
+        }catch(e){lastError=e;if(attempt===delays.length-1)throw e;}
+      }
+      throw lastError||new Error("Archive-RPC Batch fehlgeschlagen");
+    };
+    archiveRpcQueue=archiveRpcQueue.then(run,run);
+    out.push(...await archiveRpcQueue);
+  }
+  return out;
+}
+
 function taxBlockHex(block) {
   return "0x" + Number(block).toString(16);
 }
@@ -4569,7 +4614,7 @@ let tokenPrices = {}; // "chain|adresse" -> {price, change24h, source}
 // Keine Historisierung: pro Refresh wird genau der aktuelle Stand überschrieben.
 // TLN/VOW hält seinen globalen Projekt-Snapshot parallel, damit Route/Poolzustand erhalten bleiben.
 const CURRENT_PRICE_GLOBAL_CACHE_TABLE = "wallet_global_current_price_snapshot";
-const CURRENT_PRICE_GLOBAL_CACHE_VERSION = "wallettracking-current-prices-v3";
+const CURRENT_PRICE_GLOBAL_CACHE_VERSION = "wallettracking-current-prices-v4";
 const CURRENT_PRICE_TIMEZONE = "Europe/Zurich";
 const CURRENT_PRICE_SLOT_MINUTES = 15;
 let currentPriceCacheState = { capturedAt:null, source:"none" };
@@ -4853,7 +4898,7 @@ async function apertumCurrentDirectPrice(base,quote,bd,qd,explicitPair=null){
   const rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);
   return rb>0&&rq>0?{price:rq/rb,pair,baseReserve:rb,quoteReserve:rq}:null;
 }
-async function loadApertumCurrentPrices(){
+async function loadApertumCurrentPricesLegacy(){
   const refreshedAt=new Date().toISOString();
   const chain="apertum",u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");
   if(!u||!wa){console.warn("Apertum Live-Kurse: wAPTM oder wUSDT nicht in predefined_tokens gefunden");return false;}
@@ -4891,6 +4936,123 @@ async function loadApertumCurrentPrices(){
     }catch(e){console.warn("Apertum Live-Kurs",sym||addr,e);}
   }
   return true;
+}
+
+
+function apertumCurrentPairKey(a,b){
+  return [normalizeAddress(a,"apertum"),normalizeAddress(b,"apertum")].sort().join("|");
+}
+function apertumCurrentLegFromState(base,quote,bd,qd,pair,state){
+  if(!pair||!state)return null;
+  const is0=normalizeAddress(state.token0,"apertum")===normalizeAddress(base,"apertum");
+  const rb=Number(is0?state.r0:state.r1)/10**Number(bd),rq=Number(is0?state.r1:state.r0)/10**Number(qd);
+  return rb>0&&rq>0?{price:rq/rb,pair,baseReserve:rb,quoteReserve:rq}:null;
+}
+async function apertumCurrentPairLookupBatch(factory,requests){
+  const unique=new Map();
+  for(const row of requests||[]){
+    if(!row?.a||!row?.b)continue;
+    const key=apertumCurrentPairKey(row.a,row.b);
+    if(!unique.has(key))unique.set(key,{key,a:row.a,b:row.b});
+  }
+  const rows=[...unique.values()];
+  if(!rows.length)return new Map();
+  const calls=rows.map(row=>({method:"eth_call",params:[{to:factory,data:taxV2Iface.encodeFunctionData("getPair",[row.a,row.b])},"latest"]}));
+  const raws=await archiveRpcBatch("apertum",calls,{chunkSize:80});
+  const out=new Map();
+  rows.forEach((row,i)=>{
+    const [pair]=taxV2Iface.decodeFunctionResult("getPair",raws[i]);
+    const value=!pair||/^0x0{40}$/i.test(pair)?null:normalizeAddress(pair,"apertum");
+    out.set(row.key,value);
+    const memoKey=`apertum|${[normalizeAddress(row.a,"apertum"),normalizeAddress(row.b,"apertum")].sort().join('|')}|0`;
+    taxV2PairMemo.set(memoKey,Promise.resolve(value));
+  });
+  return out;
+}
+async function apertumCurrentPairStatesBatch(pairs){
+  const unique=[...new Set((pairs||[]).map(p=>normalizeAddress(p,"apertum")).filter(p=>ethers.isAddress(p)))];
+  if(!unique.length)return new Map();
+  const calls=[];
+  for(const pair of unique){
+    calls.push({method:"eth_call",params:[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},"latest"]});
+    calls.push({method:"eth_call",params:[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},"latest"]});
+  }
+  const raws=await archiveRpcBatch("apertum",calls,{chunkSize:80});
+  const out=new Map();
+  unique.forEach((pair,i)=>{
+    const [token0]=taxV2Iface.decodeFunctionResult("token0",raws[i*2]);
+    const [r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",raws[i*2+1]);
+    out.set(pair,{token0:normalizeAddress(token0,"apertum"),r0,r1});
+  });
+  return out;
+}
+async function loadApertumCurrentPrices(){
+  /*
+   * Preislogik identisch zum bisherigen Einzel-RPC-Weg:
+   * - wAPTM/wUSDT bestimmt APTM/USD,
+   * - jeder Token prueft direkt Token/wUSDT und Token/wAPTM,
+   * - die Route mit der groesseren USD-Quote-Liquiditaet gewinnt.
+   *
+   * Geaendert wird ausschliesslich der Transport: alle getPair-Abfragen und
+   * anschliessend alle token0/getReserves-Reads werden gesammelt gebatcht.
+   * Bei jedem Batch-/Providerproblem faellt der Code vollstaendig auf den
+   * bisherigen Legacy-Weg zurueck, damit keine Preisquelle verloren geht.
+   */
+  try{
+    const refreshedAt=new Date().toISOString();
+    const chain="apertum",u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");
+    if(!u||!wa){console.warn("Apertum Live-Kurse: wAPTM oder wUSDT nicht in predefined_tokens gefunden");return false;}
+    const ud=await taxTokenDecimalsCurrent(chain,u),wd=await taxTokenDecimalsCurrent(chain,wa);
+    const prefix=chain+"|";
+    const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...customSafeTokens.filter(t=>t.chain===chain).map(t=>normalizeAddress(t.address,chain)),...Object.keys(predefinedTokenLabels).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length))])];
+    const items=[];
+    for(const rawAddr of addresses){
+      if(String(rawAddr||"").toLowerCase()==="native")continue;
+      const addr=normalizeAddress(rawAddr,chain);if(!ethers.isAddress(addr))continue;
+      const key=chain+"|"+addr,sym=predefinedTokenTicker(chain,addr).toUpperCase();
+      items.push({addr,key,sym,decimals:await taxTokenDecimalsCurrent(chain,{address:addr,symbol:sym,decimals:predefinedTokenDecimals[key]})});
+    }
+
+    const factory=await taxDexFactory(chain);
+    if(!factory)throw new Error("Apertum V2-Factory nicht verfügbar");
+    const lookupRequests=[{a:wa.address,b:u.address}];
+    for(const item of items){
+      if(["WUSDT","USDT","WUSDC","USDC","WAPTM"].includes(item.sym))continue;
+      lookupRequests.push({a:item.addr,b:u.address},{a:item.addr,b:wa.address});
+    }
+    const pairMap=await apertumCurrentPairLookupBatch(factory,lookupRequests);
+    const referencePair=normalizeAddress(window.DAO1Project?.getAptmUsdtPairAddress?.()||"",chain)||null;
+    const discoveredReference=pairMap.get(apertumCurrentPairKey(wa.address,u.address))||null;
+    const allPairs=[referencePair,discoveredReference];
+    for(const pair of pairMap.values())if(pair)allPairs.push(pair);
+    const pairStates=await apertumCurrentPairStatesBatch(allPairs);
+
+    let aptmLeg=referencePair?apertumCurrentLegFromState(wa.address,u.address,wd,ud,referencePair,pairStates.get(referencePair)):null;
+    if(!aptmLeg&&discoveredReference)aptmLeg=apertumCurrentLegFromState(wa.address,u.address,wd,ud,discoveredReference,pairStates.get(discoveredReference));
+    const aptm=aptmLeg?.price;
+    if(!(aptm>0)){console.warn("Apertum Live-Kurse: kein wAPTM/wUSDT-Preis ermittelbar");return false;}
+
+    nativePrices[chain]={price:aptm,change24h:undefined,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};
+    tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD",refreshedAt};
+    tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};
+
+    for(const item of items){
+      const {addr,key,sym,decimals:bd}=item;
+      if(["WUSDT","USDT","WUSDC","USDC"].includes(sym)){tokenPrices[key]={price:1,source:"Apertum DEX · Stablecoin 1 USD",refreshedAt};continue;}
+      if(sym==="WAPTM"){tokenPrices[key]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};continue;}
+      const directPair=pairMap.get(apertumCurrentPairKey(addr,u.address))||null;
+      const viaPair=pairMap.get(apertumCurrentPairKey(addr,wa.address))||null;
+      const direct=directPair?apertumCurrentLegFromState(addr,u.address,bd,ud,directPair,pairStates.get(directPair)):null;
+      const via=viaPair?apertumCurrentLegFromState(addr,wa.address,bd,wd,viaPair,pairStates.get(viaPair)):null;
+      const directLiquidity=direct?direct.quoteReserve:0,viaLiquidity=via?via.quoteReserve*aptm:0;
+      if(direct&&directLiquidity>=viaLiquidity)tokenPrices[key]={price:direct.price,source:`Apertum DEX ${sym||"Token"}/wUSDT · ${direct.pair}`,refreshedAt};
+      else if(via)tokenPrices[key]={price:via.price*aptm,source:`Apertum DEX ${sym||"Token"}/wAPTM → wUSDT · ${via.pair} · ${aptmLeg.pair}`,refreshedAt};
+    }
+    return true;
+  }catch(e){
+    console.warn("Apertum Batch-Preisermittlung fehlgeschlagen; unveränderter Einzel-RPC-Fallback wird verwendet",e);
+    return await loadApertumCurrentPricesLegacy();
+  }
 }
 
 const COINGECKO_PLATFORM_BY_CHAIN={

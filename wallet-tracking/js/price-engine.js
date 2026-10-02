@@ -1,3 +1,4 @@
+// Phase 7.03 · 02.10.2026 04:52:42 CEST: TLN/VOW Voucher-Routing wieder explizit chain-spezifisch: BSC bleibt strikt Voucher → VOW → USDT; Ethereum behaelt reale direkte Stablecoin-Routen plus VOW-Route. Build 20261002-045242.
 // Phase 6.99 · 01.10.2026 20:12:06 CEST: Preis-Pairs laden nur token0/token1/getReserves; LP-Zusatzdaten nur für echte LP-Bewertung. Pool-Factory wird aus Typprüfung wiederverwendet. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: Pair-State-Reads werden chainweit vorab gebatcht; exakt dieselben 6 V2-Felder und dieselbe Preisdekodierung bleiben erhalten. Build 20261001-181931.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; zentrale Preisengine nutzt den vorab gefüllten Pair-Cache des Projektadapters. Build 20261001-171503.
@@ -455,8 +456,14 @@ window.WalletPriceEngine = (() => {
       }
     };
 
-    await addDirectStable(usdc,"USDC");
-    await addDirectStable(usdt,"USDT");
+    // Fachregel TLN/VOW: Auf BSC bleibt die historische Voucher-Preisroute strikt
+    // Voucher → VOW → USDT. Direkte Stablecoin-Pools dürfen dort nicht als
+    // alternative Preisroute konkurrieren. Ethereum bleibt bewusst abweichend:
+    // reale direkte USDC/USDT-Pools dürfen dort zusätzlich zur VOW-Route geprüft werden.
+    if(chain !== "bsc"){
+      await addDirectStable(usdc,"USDC");
+      await addDirectStable(usdt,"USDT");
+    }
 
     if(vow && usdt){
       try{

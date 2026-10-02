@@ -1,3 +1,5 @@
+// Phase 7.03 · 02.10.2026 04:52:42 CEST: BSC-Voucher-Prefetch an die unveraenderte Fachroute angepasst: auf BSC werden nur Voucher/VOW + VOW/USDT vorab gesucht; ETH behaelt direkte Stablecoin-Kandidaten. Build 20261002-045242.
+// Phase 7.02 · 02.10.2026 04:37:13 CEST: Referenzassets werden cache-/stammdaten-first aufgelöst; der bisherige LP-On-Chain-Scan bleibt nur als Fallback. Preisrouten und Preisformeln unverändert. Build 20261002-043713.
 // Phase 7.01 · 02.10.2026 04:18:28 CEST: TLN/VOW-Preisrefresh wird ohne Preislogikänderung nach BSC/ETH und Refresh-Stufen diagnostiziert; RPC- und HTTP-Anteile sind je Stufe sichtbar. Build 20261002-041828.
 // Phase 6.99 · 01.10.2026 20:12:06 CEST: Preis-Routing-Pairs und LP-Zusatzdaten getrennt; doppelte factory()-Reads entfallen, Preisformeln bleiben unverändert. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: konfigurierte V2-Pooltypen und alle aktuellen Pair-States werden chainweit vorab gebatcht; Preis-/LP-Felder bleiben unverändert. Build 20261001-181931.
@@ -464,72 +466,92 @@ async function loadProjectInfrastructure(){
 
 async function resolveReferences(chain){
   /*
-   * WICHTIG:
-   * Seit tln_vow_category nur noch Projekt-Tokens/LPs enthält,
-   * dürfen USDT, USDC, BTCB, WBNB, WETH usw. NICHT mehr davon
-   * abhängig sein, ob sie selbst als Supabase-Tokenzeile vorhanden sind.
+   * Referenz-Assets werden zuerst aus bereits bekannten/cachierten Daten
+   * aufgeloest. Das ist fachlich dieselbe Information wie bisher, vermeidet
+   * aber den erneuten On-Chain-Scan aller LPs nur zur Symbolerkennung.
    *
-   * Deshalb werden Referenz-Assets direkt aus den Token0/Token1-
-   * Contracts der konfigurierten LPs erkannt.
+   * Reihenfolge:
+   * 1) bereits im letzten gueltigen Preisstand aufgeloeste Referenzen,
+   * 2) zentraler predefined_tokens-Stammdatensatz,
+   * 3) bereits vorab geladene Pair-States der WalletPriceEngine,
+   * 4) konfigurierte Projekt-Tokens,
+   * 5) alter On-Chain-LP-Scan ausschliesslich als Fallback fuer Luecken.
    *
-   * Zusätzlich wird, sobald eine Stablecoin-Adresse bekannt ist,
-   * die DEX-Factory für direkte Märkte verwendet.
+   * Damit bleibt der alte On-Chain-Weg als Sicherheitsnetz erhalten; sobald
+   * die Referenzen bereits eindeutig bekannt sind, entstehen dafuer keine
+   * zusaetzlichen RPC-Requests mehr.
    */
 
   const wanted = chain === "bsc"
     ? ["USDT","USDC","BUSD","WBNB","BTCB"]
     : ["USDT","USDC","WETH"];
-
   const found = {};
+  const put=(symbol,address)=>{
+    const sym=String(symbol||"").trim().toUpperCase(),addr=String(address||"").trim();
+    if(wanted.includes(sym) && !found[sym] && addr) found[sym]=addr;
+  };
+  const complete=()=>wanted.every(symbol=>!!found[symbol]);
 
-  for(const dbPool of configuredLPs(chain)){
-    try{
-      const type = await detectPoolType(chain,dbPool.address);
-      const pool = type === "v3"
-        ? await readV3Pool(chain,dbPool.address)
-        : await readV2Pool(chain,dbPool.address);
+  // Vorheriger gueltiger Preisstand: dieselben bereits bewiesenen Referenzen
+  // wiederverwenden. Das verhindert insbesondere bei manuellen Refreshs einen
+  // identischen LP-Metadaten-Scan.
+  const previous=references[chain]||{};
+  put("USDT",previous.usdt);put("USDC",previous.usdc);put("BUSD",previous.busd);
+  put("WBNB",previous.wbnb);put("BTCB",previous.btcb);put("WETH",previous.weth);
 
-      for(const token of [pool.token0,pool.token1]){
-        const symbol = String(token.symbol || "").trim().toUpperCase();
-
-        if(wanted.includes(symbol) && !found[symbol]){
-          found[symbol] = token.address;
-        }
-      }
-    }catch(e){
-      console.warn(
-        "Referenz-Asset konnte aus LP nicht gelesen werden:",
-        dbPool.address,
-        e
-      );
-    }
-  }
-
-  /*
-   * Als zweite Quelle dürfen auch die explizit zugelassenen
-   * Projekt-/Voucher-Tokenzeilen dienen. Das hilft z.B., falls ein
-   * Referenzasset doch bewusst mit tln_vow_category gepflegt wurde.
-   */
-  for(const row of configuredTokens(chain)){
-    try{
-      const token = await getToken(chain,row.address);
-      const symbol = String(token.symbol || "").trim().toUpperCase();
-
-      if(wanted.includes(symbol) && !found[symbol]){
-        found[symbol] = token.address;
-      }
-    }catch(e){
-      console.warn("Referenz-Token konnte nicht gelesen werden:",row.address,e);
-    }
-  }
-
-  // Fehlende Markt-Referenzen kommen aus dem bereits geladenen zentralen
-  // predefined_tokens-Stammdatensatz. Kein zusätzlicher Supabase-Read pro Chain.
-  if(wanted.some(symbol=>!found[symbol])){
+  // Zentrale Token-Stammdaten. Diese wurden fuer den Refresh ohnehin einmal
+  // geladen und enthalten bei den Standard-Referenzassets Symbol + Adresse.
+  if(!complete()){
     for(const [key,row] of predefinedMeta){
       if(!key.startsWith(chain+"|"))continue;
       const symbol=String(row.symbol||row.label||row.name||"").trim().toUpperCase();
-      if(wanted.includes(symbol)&&!found[symbol]&&row.address)found[symbol]=row.address;
+      if(wanted.includes(symbol) && row.address) put(symbol,row.address);
+    }
+  }
+
+  // Die konfigurierten V2-Pairs wurden unmittelbar vor dieser Stufe bereits
+  // vorab geladen. Fehlende Referenzen koennen daher aus deren gecachtem
+  // token0/token1 gelesen werden, ohne einen weiteren RPC-Aufruf auszufuehren.
+  if(!complete()){
+    try{
+      const state=window.WalletPriceEngine?.exportCurrentState?.();
+      for(const entry of Array.isArray(state?.pairPriceStates)?state.pairPriceStates:[]){
+        if(!Array.isArray(entry)||entry.length!==2)continue;
+        const value=entry[1];
+        if(norm(value?.chain)!==chain)continue;
+        for(const token of [value?.token0,value?.token1]) put(token?.symbol,token?.address);
+      }
+    }catch(e){console.warn("Referenz-Assets aus PriceEngine-Cache",chain,e);}
+  }
+
+  // Explizit konfigurierte Projekt-/Voucher-Tokens bleiben eine weitere Quelle.
+  // getToken() nutzt fuer bekannte predefined_tokens keinen RPC-Call.
+  if(!complete()){
+    for(const row of configuredTokens(chain)){
+      try{
+        const token = await getToken(chain,row.address);
+        put(token.symbol,token.address);
+      }catch(e){
+        console.warn("Referenz-Token konnte nicht gelesen werden:",row.address,e);
+      }
+    }
+  }
+
+  // Sicherheits-Fallback: nur falls danach wirklich noch eine Referenz fehlt,
+  // wird die bisherige LP-On-Chain-Erkennung ausgefuehrt. Preisberechnung und
+  // Auswahl der Referenzassets verlieren dadurch keinen bisherigen Datenweg.
+  if(!complete()){
+    for(const dbPool of configuredLPs(chain)){
+      if(complete())break;
+      try{
+        const type = await detectPoolType(chain,dbPool.address);
+        const pool = type === "v3"
+          ? await readV3Pool(chain,dbPool.address)
+          : await readV2Pool(chain,dbPool.address);
+        for(const token of [pool.token0,pool.token1]) put(token.symbol,token.address);
+      }catch(e){
+        console.warn("Referenz-Asset konnte aus LP nicht gelesen werden:",dbPool.address,e);
+      }
     }
   }
 
@@ -802,8 +824,13 @@ async function prefetchV2PairDiscovery(chain){
     const address=row.address;
     const type=rowType(row);
     if(type==="voucher_currency"){
-      addPairCandidate(candidates,chain,address,ref.usdc);
-      addPairCandidate(candidates,chain,address,ref.usdt);
+      // Fachregel: BSC-Voucher werden ausschließlich über VOW → USDT bewertet.
+      // Direkte USDC/USDT-Paare sind dort nicht nur fachlich unzulässig, sondern
+      // müssen deshalb auch nicht für den Preisrefresh vorab entdeckt werden.
+      if(chain !== "bsc"){
+        addPairCandidate(candidates,chain,address,ref.usdc);
+        addPairCandidate(candidates,chain,address,ref.usdt);
+      }
       addPairCandidate(candidates,chain,address,ref.vow);
     }else if(type==="defi_token"){
       addPairCandidate(candidates,chain,address,ref.vow);
