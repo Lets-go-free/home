@@ -1,3 +1,4 @@
+// Phase 6.99 · 01.10.2026 20:12:06 CEST: Preis-Routing-Pairs und LP-Zusatzdaten getrennt; doppelte factory()-Reads entfallen, Preisformeln bleiben unverändert. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: konfigurierte V2-Pooltypen und alle aktuellen Pair-States werden chainweit vorab gebatcht; Preis-/LP-Felder bleiben unverändert. Build 20261001-181931.
 // Phase 6.97 · 01.10.2026 17:36:51 CEST: RPC-Diagnose zaehlt Preis-eth_calls zusätzlich nach ABI-Methode, damit verbliebene Pair-State-Kosten messbar sind. Build 20261001-173651.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: V2-getPair-Discovery wird chain-weit vorab gebatcht; parallele identische Pair-Lookups teilen einen In-Flight-Cache. RPC-Diagnose zaehlt HTTP-Batches/eth_calls. Build 20261001-171503.
@@ -1690,7 +1691,11 @@ async function prefetchConfiguredPoolTypes(chain){
         let type=null;
         if(isConfiguredV2Factory(chain,factory))type="v2";
         if(CONFIG[chain]?.v3Factory && same(factory,CONFIG[chain].v3Factory))type="v3";
-        if(type){ poolTypeCache.set(chain+":"+norm(chunk[i].address),type); loaded++; }
+        if(type){
+          poolTypeCache.set(chain+":"+norm(chunk[i].address),type);
+          if(type==="v2") window.WalletPriceEngine?.setKnownPairFactory?.(chain,chunk[i].address,factory);
+          loaded++;
+        }
       });
     }catch(e){
       // Reine Performance-Vorladung: bei Provider-/Einzelpoolfehlern bleibt der
@@ -1716,16 +1721,19 @@ async function prefetchConfiguredV2PairStates(chain){
 }
 
 async function prefetchDiscoveredV2PairStates(chain){
-  if(!window.WalletPriceEngine?.prefetchPairStates)return 0;
+  if(!window.WalletPriceEngine?.prefetchPricePairStates)return 0;
   configureSharedPriceEngine();
   const prefix=chain+":";
   const addresses=[...pairCache.entries()]
     .filter(([key,value])=>String(key).startsWith(prefix) && typeof value==="string" && ethers.isAddress(value) && value!==ethers.ZeroAddress)
     .map(([,value])=>value);
   try{
-    return await window.WalletPriceEngine.prefetchPairStates(chain,addresses,"latest",{chunkCalls:72});
+    // Entdeckte Routing-Pairs brauchen für die Preisermittlung ausschließlich
+    // token0/token1/getReserves. LP-Supply/LP-decimals werden nur für die
+    // tatsächlich konfigurierten LP-Positionen separat vorgeladen.
+    return await window.WalletPriceEngine.prefetchPricePairStates(chain,addresses,"latest",{chunkCalls:72});
   }catch(e){
-    console.warn(`${chain}: entdeckter Pair-State-Prefetch fehlgeschlagen; bestehender Lazy-Reader bleibt aktiv`,e);
+    console.warn(`${chain}: entdeckter Preis-Pair-State-Prefetch fehlgeschlagen; bestehender Lazy-Reader bleibt aktiv`,e);
     return 0;
   }
 }
@@ -2196,14 +2204,15 @@ async function refreshCurrentPrices({manual=false,render=true}={}){
     resetCurrentPriceCaches();
     const chains=projectChains.filter(c=>["bsc","eth"].includes(c));
     priceRpcStats.reset();
-    // 6.98: zuerst die konfigurierten Pooltypen und exakt dieselben sechs V2-Pair-Felder
-    // chainweit laden. resolveReferences()/buildCurrentProjectPrices() lesen danach nur Cache.
+    // 6.99: konfigurierte LPs erhalten weiterhin vollständige LP-Daten, Preis-Routing-Pairs
+    // dagegen nur token0/token1/getReserves. Die Preisformeln bleiben unverändert;
+    // factory() wird aus der bereits erfolgten Pooltyp-Prüfung wiederverwendet.
     await Promise.all(chains.map(chain=>prefetchConfiguredPoolTypes(chain)));
     await Promise.all(chains.map(chain=>prefetchConfiguredV2PairStates(chain)));
     for(const chain of chains) await resolveReferences(chain);
     await Promise.all(chains.map(chain=>prefetchV2PairDiscovery(chain)));
-    // Auch die zusätzlich entdeckten Preisrouten werden vor der Preislogik mit
-    // denselben Feldern/dekodierenden Funktionen wie bisher in wenige Batches gelegt.
+    // Zusätzlich entdeckte Preisrouten werden chainweit nur mit den drei für Preise
+    // benötigten Pair-Feldern vorgeladen. LP-Zusatzdaten bleiben konfigurierten LPs vorbehalten.
     await Promise.all(chains.map(chain=>prefetchDiscoveredV2PairStates(chain)));
     await Promise.all(chains.map(chain=>buildCurrentProjectPrices(chain)));
     if(render) await Promise.all(chains.map(chain=>renderDashboard(chain,{cacheMode:false})));

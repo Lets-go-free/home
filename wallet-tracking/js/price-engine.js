@@ -1,3 +1,4 @@
+// Phase 6.99 · 01.10.2026 20:12:06 CEST: Preis-Pairs laden nur token0/token1/getReserves; LP-Zusatzdaten nur für echte LP-Bewertung. Pool-Factory wird aus Typprüfung wiederverwendet. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: Pair-State-Reads werden chainweit vorab gebatcht; exakt dieselben 6 V2-Felder und dieselbe Preisdekodierung bleiben erhalten. Build 20261001-181931.
 // Phase 6.96 · 01.10.2026 17:15:03 CEST: Release-Synchronisierung; zentrale Preisengine nutzt den vorab gefüllten Pair-Cache des Projektadapters. Build 20261001-171503.
 // Phase 6.95 · 01.10.2026 16:47:46 CEST: aktuelle Pair-RPC-Reads können per JSON-RPC-Batch gebündelt werden; reduziert Browser-Requests ohne Preislogik zu ändern. Build 20261001-164746.
@@ -20,6 +21,9 @@ window.WalletPriceEngine = (() => {
 
   let ctx = () => ({});
   const pairStateCache = new Map();
+  const pairPriceStateCache = new Map();
+  const pairFactoryCache = new Map();
+  const pairStateInFlight = new Map();
   const tokenMetaCache = new Map();
   const tokenPriceCache = new Map();
   const priceGraphCache = new Map();
@@ -86,56 +90,65 @@ window.WalletPriceEngine = (() => {
     return out;
   }
 
-  async function decodePairState(chain,address,block,raw){
+  async function decodePricePairState(chain,address,block,raw){
     const [token0] = V2.decodeFunctionResult("token0",raw[0]);
     const [token1] = V2.decodeFunctionResult("token1",raw[1]);
     const [r0Raw,r1Raw,blockTimestampLast] = V2.decodeFunctionResult("getReserves",raw[2]);
-    const [totalSupplyRaw] = V2.decodeFunctionResult("totalSupply",raw[3]);
-    const [lpDecimalsRaw] = V2.decodeFunctionResult("decimals",raw[4]);
-    const [factory] = V2.decodeFunctionResult("factory",raw[5]);
 
     if(!token0 || !token1 || norm(token0) === norm(token1)) throw new Error(`${chain}: ${address} liefert ungültige token0/token1-Adressen.`);
 
     const [t0,t1] = await Promise.all([tokenMeta(chain,token0),tokenMeta(chain,token1)]);
-    const lpDecimals = Number(lpDecimalsRaw);
-    const reserve0 = Number(ethers.formatUnits(r0Raw,t0.decimals));
-    const reserve1 = Number(ethers.formatUnits(r1Raw,t1.decimals));
-    const totalSupply = Number(ethers.formatUnits(totalSupplyRaw,lpDecimals));
-
     return {
       chain,
       address:norm(address),
       block:block === "latest" ? "latest" : Number(block),
-      factory:norm(factory),
       token0:t0,
       token1:t1,
-      reserve0,
-      reserve1,
-      totalSupply,
-      lpDecimals,
+      reserve0:Number(ethers.formatUnits(r0Raw,t0.decimals)),
+      reserve1:Number(ethers.formatUnits(r1Raw,t1.decimals)),
       blockTimestampLast:Number(blockTimestampLast)
     };
   }
 
-  function pairStateCalls(address){
+  function pricePairCalls(address){
     return [
-      ["token0",[]], ["token1",[]], ["getReserves",[]],
-      ["totalSupply",[]], ["decimals",[]], ["factory",[]]
+      ["token0",[]], ["token1",[]], ["getReserves",[]]
     ].map(([fn,args])=>({to:address,data:V2.encodeFunctionData(fn,args)}));
   }
 
-  async function prefetchPairStates(chain,addresses,block="latest",{chunkCalls=90}={}){
+  function pairFactoryKey(chain,address){ return `${chain}|${norm(address)}`; }
+
+  function setKnownPairFactory(chain,address,factory){
+    if(!chain || !address || !factory) return false;
+    const value=norm(factory);
+    pairFactoryCache.set(pairFactoryKey(chain,address),value);
+    const keyPrefix=`${chain}|${norm(address)}@`;
+    for(const [key,state] of pairStateCache.entries()){
+      if(String(key).startsWith(keyPrefix) && state && typeof state?.then !== "function" && !state.factory){
+        pairStateCache.set(key,{...state,factory:value});
+      }
+    }
+    return true;
+  }
+
+  function knownPairFactory(chain,address){
+    return pairFactoryCache.get(pairFactoryKey(chain,address)) || null;
+  }
+
+  async function prefetchPricePairStates(chain,addresses,block="latest",{chunkCalls=90}={}){
     const unique=[...new Set((Array.isArray(addresses)?addresses:[]).map(norm).filter(Boolean))];
-    const missing=unique.filter(address=>!pairStateCache.has(`${chain}|${address}@${blockKey(block)}`));
+    const missing=unique.filter(address=>{
+      const key=`${chain}|${address}@${blockKey(block)}`;
+      return !pairPriceStateCache.has(key) && !pairStateCache.has(key);
+    });
     if(!missing.length) return 0;
 
     const calls=[];
     for(const address of missing){
-      const rows=pairStateCalls(address);
-      rows.forEach((call,index)=>calls.push({address,index,...call}));
+      pricePairCalls(address).forEach((call,index)=>calls.push({address,index,...call}));
     }
-    const rawByAddress=new Map(missing.map(address=>[address,new Array(6)]));
-    const size=Math.max(6,Math.trunc(Number(chunkCalls)||90));
+    const rawByAddress=new Map(missing.map(address=>[address,new Array(3)]));
+    const size=Math.max(3,Math.trunc(Number(chunkCalls)||90));
     for(let offset=0;offset<calls.length;offset+=size){
       const chunk=calls.slice(offset,offset+size);
       const raws=await callMany(chain,chunk.map(({to,data})=>({to,data})),block);
@@ -146,59 +159,154 @@ window.WalletPriceEngine = (() => {
     }
     for(const address of missing){
       const key=`${chain}|${address}@${blockKey(block)}`;
-      const out=await decodePairState(chain,address,block,rawByAddress.get(address));
+      const out=await decodePricePairState(chain,address,block,rawByAddress.get(address));
+      pairPriceStateCache.set(key,out);
+    }
+    return missing.length;
+  }
+
+  async function getPricePairState(chain,address,block="latest"){
+    const key=`${chain}|${norm(address)}@${blockKey(block)}`;
+    const full=pairStateCache.get(key);
+    if(full){
+      const resolved=typeof full?.then === "function" ? await full : full;
+      if(resolved) return resolved;
+    }
+    if(pairPriceStateCache.has(key)){
+      const cached=pairPriceStateCache.get(key);
+      return typeof cached?.then === "function" ? await cached : cached;
+    }
+
+    const c=ctx();
+    if(typeof c.pairState === "function"){
+      const external=await c.pairState(chain,address,block);
+      if(external){
+        const t0=external.token0?.address ? external.token0 : await tokenMeta(chain,external.token0);
+        const t1=external.token1?.address ? external.token1 : await tokenMeta(chain,external.token1);
+        const out={
+          chain,address:norm(address),block:block === "latest" ? "latest" : Number(block),
+          token0:t0,token1:t1,
+          reserve0:Number(external.reserve0 ?? external.r0),
+          reserve1:Number(external.reserve1 ?? external.r1),
+          blockTimestampLast:Number(external.blockTimestampLast ?? 0)
+        };
+        if(out.token0?.address && out.token1?.address && Number.isFinite(out.reserve0) && Number.isFinite(out.reserve1)){
+          pairPriceStateCache.set(key,out);
+          if(external.factory) setKnownPairFactory(chain,address,external.factory);
+          return out;
+        }
+      }
+    }
+
+    const promise=(async()=>{
+      const raw=await callMany(chain,pricePairCalls(address),block);
+      return await decodePricePairState(chain,address,block,raw);
+    })();
+    pairPriceStateCache.set(key,promise);
+    try{
+      const out=await promise;
+      pairPriceStateCache.set(key,out);
+      return out;
+    }catch(e){
+      pairPriceStateCache.delete(key);
+      throw e;
+    }
+  }
+
+  async function prefetchLpPairDetails(chain,addresses,block="latest",{chunkCalls=90}={}){
+    const unique=[...new Set((Array.isArray(addresses)?addresses:[]).map(norm).filter(Boolean))];
+    const missing=unique.filter(address=>!pairStateCache.has(`${chain}|${address}@${blockKey(block)}`));
+    if(!missing.length) return 0;
+
+    await prefetchPricePairStates(chain,missing,block,{chunkCalls});
+    const calls=[];
+    const rawByAddress=new Map(missing.map(address=>[address,{}]));
+    for(const address of missing){
+      calls.push({address,fn:"totalSupply",to:address,data:V2.encodeFunctionData("totalSupply",[])});
+      calls.push({address,fn:"decimals",to:address,data:V2.encodeFunctionData("decimals",[])});
+      if(!knownPairFactory(chain,address)) calls.push({address,fn:"factory",to:address,data:V2.encodeFunctionData("factory",[])});
+    }
+    const size=Math.max(2,Math.trunc(Number(chunkCalls)||90));
+    for(let offset=0;offset<calls.length;offset+=size){
+      const chunk=calls.slice(offset,offset+size);
+      const raws=await callMany(chain,chunk.map(({to,data})=>({to,data})),block);
+      raws.forEach((raw,i)=>{ rawByAddress.get(chunk[i].address)[chunk[i].fn]=raw; });
+    }
+
+    for(const address of missing){
+      const key=`${chain}|${address}@${blockKey(block)}`;
+      const core=await getPricePairState(chain,address,block);
+      const raws=rawByAddress.get(address);
+      const [totalSupplyRaw]=V2.decodeFunctionResult("totalSupply",raws.totalSupply);
+      const [lpDecimalsRaw]=V2.decodeFunctionResult("decimals",raws.decimals);
+      let factory=knownPairFactory(chain,address);
+      if(!factory && raws.factory){
+        [factory]=V2.decodeFunctionResult("factory",raws.factory);
+        setKnownPairFactory(chain,address,factory);
+      }
+      const lpDecimals=Number(lpDecimalsRaw);
+      const out={
+        ...core,
+        factory:norm(factory || ""),
+        totalSupply:Number(ethers.formatUnits(totalSupplyRaw,lpDecimals)),
+        lpDecimals
+      };
       pairStateCache.set(key,out);
     }
     return missing.length;
   }
 
-  async function getPairState(chain,address,block="latest"){
-    const key = `${chain}|${norm(address)}@${blockKey(block)}`;
-    if(pairStateCache.has(key)) return pairStateCache.get(key);
+  async function prefetchPairStates(chain,addresses,block="latest",options={}){
+    await prefetchPricePairStates(chain,addresses,block,options);
+    return await prefetchLpPairDetails(chain,addresses,block,options);
+  }
 
-    const promise = (async()=>{
-      const c = ctx();
-      // Optionaler Chain-Facts-Adapter: Discovery kann bereits gebatchte/cachierte
-      // historische Pair-States einspeisen, ohne dieselben RPC-Reads erneut auszuführen.
+  async function getPairState(chain,address,block="latest"){
+    const key=`${chain}|${norm(address)}@${blockKey(block)}`;
+    if(pairStateCache.has(key)) return pairStateCache.get(key);
+    if(pairStateInFlight.has(key)) return await pairStateInFlight.get(key);
+
+    const promise=(async()=>{
+      const c=ctx();
       if(typeof c.pairState === "function"){
-        const external = await c.pairState(chain,address,block);
+        const external=await c.pairState(chain,address,block);
         if(external){
-          const t0 = external.token0?.address ? external.token0 : await tokenMeta(chain,external.token0);
-          const t1 = external.token1?.address ? external.token1 : await tokenMeta(chain,external.token1);
-          const out = {
-            chain,
-            address:norm(address),
-            block:block === "latest" ? "latest" : Number(block),
-            factory:norm(external.factory || ""),
-            token0:t0,
-            token1:t1,
+          const t0=external.token0?.address ? external.token0 : await tokenMeta(chain,external.token0);
+          const t1=external.token1?.address ? external.token1 : await tokenMeta(chain,external.token1);
+          const out={
+            chain,address:norm(address),block:block === "latest" ? "latest" : Number(block),
+            factory:norm(external.factory || knownPairFactory(chain,address) || ""),
+            token0:t0,token1:t1,
             reserve0:Number(external.reserve0 ?? external.r0),
             reserve1:Number(external.reserve1 ?? external.r1),
             totalSupply:Number(external.totalSupply ?? external.total),
             lpDecimals:Number(external.lpDecimals ?? 18),
             blockTimestampLast:Number(external.blockTimestampLast ?? 0)
           };
-          if(out.token0?.address && out.token1?.address && Number.isFinite(out.reserve0) && Number.isFinite(out.reserve1) && Number.isFinite(out.totalSupply)) return out;
+          if(out.token0?.address && out.token1?.address && Number.isFinite(out.reserve0) && Number.isFinite(out.reserve1) && Number.isFinite(out.totalSupply)){
+            if(out.factory) setKnownPairFactory(chain,address,out.factory);
+            pairPriceStateCache.set(key,{chain:out.chain,address:out.address,block:out.block,token0:out.token0,token1:out.token1,reserve0:out.reserve0,reserve1:out.reserve1,blockTimestampLast:out.blockTimestampLast});
+            pairStateCache.set(key,out);
+            return out;
+          }
         }
       }
 
-      const raw = await callMany(chain,pairStateCalls(address),block);
-      return await decodePairState(chain,address,block,raw);
-    })();
-
-    pairStateCache.set(key,promise);
-    try{
-      const out = await promise;
-      pairStateCache.set(key,out);
+      await prefetchLpPairDetails(chain,[address],block);
+      const out=pairStateCache.get(key);
+      if(!out) throw new Error(`${chain}: ${address} Pair-State konnte nicht aufgebaut werden.`);
       return out;
-    }catch(e){
-      pairStateCache.delete(key);
-      throw e;
+    })();
+    pairStateInFlight.set(key,promise);
+    try{
+      return await promise;
+    }finally{
+      pairStateInFlight.delete(key);
     }
   }
 
   async function getV2Price(chain,pairAddress,baseToken,block="latest"){
-    const p = await getPairState(chain,pairAddress,block);
+    const p = await getPricePairState(chain,pairAddress,block);
     if(!(p.reserve0 > 0) || !(p.reserve1 > 0)) return null;
     if(norm(baseToken) === norm(p.token0.address)) return {price:p.reserve1/p.reserve0,quote:p.token1.address,pairState:p};
     if(norm(baseToken) === norm(p.token1.address)) return {price:p.reserve0/p.reserve1,quote:p.token0.address,pairState:p};
@@ -248,7 +356,7 @@ window.WalletPriceEngine = (() => {
       try{
         const pairAddress = await findPair(chain,tokenAddress,stable.address);
         if(!pairAddress) continue;
-        const pair = await getPairState(chain,pairAddress,block);
+        const pair = await getPricePairState(chain,pairAddress,block);
         let tokenReserve = null, stableReserve = null, price = null;
         if(same(pair.token0.address,tokenAddress)){
           tokenReserve = pair.reserve0; stableReserve = pair.reserve1; price = pair.reserve1/pair.reserve0;
@@ -310,7 +418,7 @@ window.WalletPriceEngine = (() => {
     try{
       const pairAddress = await findPair(chain,token.address,usdt);
       if(!pairAddress) return null;
-      const pair = await getPairState(chain,pairAddress,block);
+      const pair = await getPricePairState(chain,pairAddress,block);
       let price = null, tokenReserve = null, usdtReserve = null;
       if(same(pair.token0.address,token.address)){
         price = pair.reserve1/pair.reserve0; tokenReserve = pair.reserve0; usdtReserve = pair.reserve1;
@@ -337,7 +445,7 @@ window.WalletPriceEngine = (() => {
         if(!pairAddress) return;
         const leg = await getV2Price(chain,pairAddress,token.address,block);
         if(!leg || !(Number(leg.price)>0)) return;
-        const pool = leg.pairState || await getPairState(chain,pairAddress,block);
+        const pool = leg.pairState || await getPricePairState(chain,pairAddress,block);
         const tokenReserve = same(pool.token0.address,token.address) ? pool.reserve0 : pool.reserve1;
         const stableReserve = same(pool.token0.address,stableAddress) ? pool.reserve0 : pool.reserve1;
         const liquidity = tokenReserve*leg.price + stableReserve;
@@ -362,8 +470,8 @@ window.WalletPriceEngine = (() => {
           if(vToVow && vowToUsdt){
             const tokenUsd = vToVow.price*vowToUsdt.price;
             const [vPool,vowPool] = await Promise.all([
-              vToVow.pairState || getPairState(chain,vToVowPair,block),
-              vowToUsdt.pairState || getPairState(chain,vowToUsdtPair,block)
+              vToVow.pairState || getPricePairState(chain,vToVowPair,block),
+              vowToUsdt.pairState || getPricePairState(chain,vowToUsdtPair,block)
             ]);
             const vPoolTVL = same(vPool.token0.address,token.address)
               ? vPool.reserve0*tokenUsd + vPool.reserve1*vowToUsdt.price
@@ -412,8 +520,8 @@ window.WalletPriceEngine = (() => {
                 const tokenUsd = tokenToVow.price*vowToUsdt.price;
                 let pathLiquidityUSD = null;
                 try{
-                  const tokenVowPool = tokenToVow.pairState || await getPairState(chain,tokenVowPair,block);
-                  const vowUsdtPool = vowToUsdt.pairState || await getPairState(chain,vowUsdtPair,block);
+                  const tokenVowPool = tokenToVow.pairState || await getPricePairState(chain,tokenVowPair,block);
+                  const vowUsdtPool = vowToUsdt.pairState || await getPricePairState(chain,vowUsdtPair,block);
                   const tokenVowTVL = same(tokenVowPool.token0.address,token.address)
                     ? tokenVowPool.reserve0*tokenUsd + tokenVowPool.reserve1*vowToUsdt.price
                     : tokenVowPool.reserve1*tokenUsd + tokenVowPool.reserve0*vowToUsdt.price;
@@ -465,7 +573,7 @@ window.WalletPriceEngine = (() => {
         try{
           const type = await c.poolType(chain,dbPool.address);
           if(type === "v2"){
-            const p = await getPairState(chain,dbPool.address,block);
+            const p = await getPricePairState(chain,dbPool.address,block);
             if(p.reserve0 > 0 && p.reserve1 > 0){
               edges.push({type:"v2",from:p.token0.address,to:p.token1.address,rate:p.reserve1/p.reserve0,fromSymbol:p.token0.symbol,toSymbol:p.token1.symbol,pool:dbPool.address,reserveFrom:p.reserve0,reserveTo:p.reserve1});
               edges.push({type:"v2",from:p.token1.address,to:p.token0.address,rate:p.reserve0/p.reserve1,fromSymbol:p.token1.symbol,toSymbol:p.token0.symbol,pool:dbPool.address,reserveFrom:p.reserve1,reserveTo:p.reserve0});
@@ -588,10 +696,11 @@ window.WalletPriceEngine = (() => {
   function configure(fn){ ctx = fn || ctx; }
   function clearCurrent(){
     for(const k of [...pairStateCache.keys()]) if(k.endsWith("@latest")) pairStateCache.delete(k);
+    for(const k of [...pairPriceStateCache.keys()]) if(k.endsWith("@latest")) pairPriceStateCache.delete(k);
     for(const k of [...tokenPriceCache.keys()]) if(k.endsWith("@latest")) tokenPriceCache.delete(k);
     for(const k of [...priceGraphCache.keys()]) if(k.endsWith("@latest")) priceGraphCache.delete(k);
   }
-  function clearAll(){ pairStateCache.clear(); tokenMetaCache.clear(); tokenPriceCache.clear(); priceGraphCache.clear(); }
+  function clearAll(){ pairStateCache.clear(); pairPriceStateCache.clear(); pairFactoryCache.clear(); pairStateInFlight.clear(); tokenMetaCache.clear(); tokenPriceCache.clear(); priceGraphCache.clear(); }
 
   function currentEntries(map,latestOnly=false){
     return [...map.entries()]
@@ -603,6 +712,8 @@ window.WalletPriceEngine = (() => {
     return {
       schemaVersion:1,
       pairStates:currentEntries(pairStateCache,true),
+      pairPriceStates:currentEntries(pairPriceStateCache,true),
+      pairFactories:[...pairFactoryCache.entries()],
       tokenMeta:currentEntries(tokenMetaCache,false),
       tokenPrices:currentEntries(tokenPriceCache,true),
       priceGraphs:currentEntries(priceGraphCache,true)
@@ -619,18 +730,23 @@ window.WalletPriceEngine = (() => {
       }
     };
     restore(pairStateCache,state.pairStates);
+    restore(pairPriceStateCache,state.pairPriceStates);
+    restore(pairFactoryCache,state.pairFactories);
     restore(tokenMetaCache,state.tokenMeta);
     restore(tokenPriceCache,state.tokenPrices);
     restore(priceGraphCache,state.priceGraphs);
     return true;
   }
 
-  function stats(){ return {pairStates:pairStateCache.size,tokenMeta:tokenMetaCache.size,tokenPrices:tokenPriceCache.size,priceGraphs:priceGraphCache.size}; }
+  function stats(){ return {pairStates:pairStateCache.size,pricePairStates:pairPriceStateCache.size,pairFactories:pairFactoryCache.size,tokenMeta:tokenMetaCache.size,tokenPrices:tokenPriceCache.size,priceGraphs:priceGraphCache.size}; }
 
   return {
     configure,
     getPairState,
+    getPricePairState,
     prefetchPairStates,
+    prefetchPricePairStates,
+    setKnownPairFactory,
     getV2Price,
     getTokenPrice,
     getLpValuation,
