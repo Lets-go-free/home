@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Phase 7.04 · 02.10.2026 12:18:02 CEST: Passwort-Login + bestehende User-Migration; Adminrechte UUID-basiert. Build 20261002-121802. -->
 <html lang="de">
 <head>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -71,15 +72,26 @@
   <!-- Login-Bereich: sichtbar solange niemand eingeloggt ist -->
   <div id="authGate" class="custom-token-card">
     <h3 style="margin-top:0">Login</h3>
-    <div class="field-grid" style="grid-template-columns:1fr auto;align-items:end">
+    <div class="field-grid" style="grid-template-columns:minmax(220px,1fr) minmax(180px,.75fr);align-items:end">
       <div>
         <span class="field-label">E-Mail-Adresse</span>
-        <input type="email" id="authEmail" placeholder="deine@email.ch" />
+        <input type="email" id="authEmail" placeholder="deine@email.ch" autocomplete="email" />
       </div>
       <div>
-        <button onclick="sendMagicLink()">Login-Link senden</button>
+        <span class="field-label">Passwort</span>
+        <input type="password" id="authPassword" placeholder="Passwort" autocomplete="current-password" />
       </div>
     </div>
+    <div class="action-row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+      <button id="passwordLoginBtn" onclick="signInWithPassword()">Anmelden</button>
+      <button class="secondary" onclick="signUpWithPassword()">Konto erstellen</button>
+      <button class="secondary" onclick="sendPasswordReset()">Passwort vergessen</button>
+    </div>
+    <details style="margin-top:12px">
+      <summary class="note" style="cursor:pointer">Noch kein Passwort? Bestehenden Login einmalig per E-Mail öffnen</summary>
+      <div class="note" style="margin-top:8px">Bestehende Magic-Link-User können sich einmal wie bisher anmelden und danach unter <strong>Support &amp; Info → Daten &amp; Konto</strong> ein Passwort setzen. Dieser Übergangsweg verschickt eine E-Mail.</div>
+      <button class="secondary" style="margin-top:8px" onclick="sendMagicLink()">Einmaligen Login-Link senden</button>
+    </details>
     <div id="authStatus" class="note" style="margin-top:10px"></div>
   </div>
 
@@ -554,6 +566,18 @@
     </div>
 
     <div id="tab-account-data" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="section-title">🔐 Login &amp; Sicherheit</div>
+        <p class="note">Normale Anmeldungen verwenden künftig E-Mail + Passwort und benötigen keine Login-Mail. Deine Supabase-User-ID und alle WalletTracking-Daten bleiben dabei unverändert.</p>
+        <div id="authSecurityState" class="note" style="margin-top:8px"></div>
+        <div class="field-grid" style="grid-template-columns:minmax(200px,1fr) minmax(200px,1fr);align-items:end;margin-top:12px">
+          <div><span class="field-label">Neues Passwort</span><input type="password" id="accountNewPassword" autocomplete="new-password" placeholder="Neues Passwort" /></div>
+          <div><span class="field-label">Passwort wiederholen</span><input type="password" id="accountNewPasswordRepeat" autocomplete="new-password" placeholder="Passwort wiederholen" /></div>
+        </div>
+        <button class="secondary" style="margin-top:10px" onclick="setCurrentUserPassword()">Passwort setzen / ändern</button>
+        <div id="accountPasswordStatus" class="note" style="margin-top:8px"></div>
+        <div class="note" style="margin-top:10px">Google- und Apple-Login werden im nächsten Schritt optional mit demselben bestehenden Konto verknüpft. Es wird dafür kein neuer WalletTracking-User benötigt.</div>
+      </div>
       <div class="custom-token-card">
         <div class="section-title">🗑️ Daten &amp; Konto</div>
         <p class="note"><strong>Alle WalletTracking-Daten löschen</strong> entfernt sämtliche zu deinem Login gespeicherten WalletTracking-Daten: Wallets und Adressen, Bestände, Snapshots und 31.12.-Stichtage, persönliche Token, Gebühren, NFTs und Besitzhistorien, Projekttransaktionen, Claims/Rewards, LP-/Staking-/Discovery-/Loan-Daten, persönliche Partner-Aliase, Support-Nachrichten, UI-Einstellungen sowie Release-/Migrationsstände.</p>
@@ -1196,20 +1220,20 @@
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="./js/browser-cache.js?v=20260922-140348"></script>
-<script src="./js/price-engine.js?v=20261002-045242"></script>
+<script src="./js/price-engine.js?v=20261002-121802"></script>
 <script src="./js/lp-engine.js?v=20260930-013813"></script>
 <script src="./js/staking-engine.js?v=20260929-174845"></script>
 <script src="./projects/tln-vow/tln-vow-loans.js?v=20260928-133530"></script>
-<script src="./projects/tln-vow/tln-vow.js?v=20261002-045242"></script>
+<script src="./projects/tln-vow/tln-vow.js?v=20261002-121802"></script>
 <script src="./projects/dao1/dao1.js?v=20260929-181743"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20261002-045242"></script>
-<script src="./help/help-general.js?v=20261002-045242"></script>
-<script src="./projects/tln-vow/help.js?v=20261002-045242"></script>
+<script src="./admin/ideas.js?v=20261002-121802"></script>
+<script src="./help/help-general.js?v=20261002-121802"></script>
+<script src="./projects/tln-vow/help.js?v=20261002-121802"></script>
 <script src="./projects/dao1/help.js?v=20260929-181743"></script>
-<script src="./js/app.js?v=20261002-045242"></script>
+<script src="./js/app.js?v=20261002-121802"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260929-152557"></script>
 
 
@@ -1228,6 +1252,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 02.10.2026 04:52:42 CEST · Phase 7.03 · Build 20261002-045242</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 02.10.2026 12:18:02 CEST · Phase 7.04 · Build 20261002-121802</div>
 </body>
 </html>

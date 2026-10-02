@@ -1,3 +1,4 @@
+// Phase 7.04 · 02.10.2026 12:18:02 CEST: E-Mail/Passwort-Login + Registrierung/Recovery ergänzt; bestehende Magic-Link-User können im eingeloggten Konto ein Passwort setzen. Adminprüfung nutzt UUID-basierte RPC mit Legacy-Fallback nur solange Migration 081 fehlt. Build 20261002-121802.
 // Phase 7.03 · 02.10.2026 04:52:42 CEST: Globalen Preis-Snapshot auf v4 invalidiert, damit die wiederhergestellte BSC-Voucher-Fachregel sofort gilt; sonst keine Preislogik in app.js geaendert. Build 20261002-045242.
 // Phase 7.02 · 02.10.2026 04:37:13 CEST: Apertum-Livepreise batchen getPair + Pair-State ohne Änderung von Routen/Liquiditätsvergleich; TLN/VOW-Referenzen nutzen vorhandene Stammdaten/PriceEngine-Caches vor On-Chain-Fallback. Build 20261002-043713.
 // Phase 7.01 · 02.10.2026 04:18:28 CEST: Preisrefresh-Hotspots werden ohne Preislogikänderung tiefer zerlegt: Generalpreise messen CoinGecko, GeckoTerminal, Apertum, Contract-Fallback und LP separat. Build 20261002-041828.
@@ -333,9 +334,17 @@ window.reportWalletTrackingAsyncIssue=wtReportAsyncIssue;
 
 async function checkIsAdmin() {
   try {
-    const { data, error } = await sb.from("admins").select("email").eq("email", currentUser.email).maybeSingle();
-    if (error) { console.error(error); return false; }
-    return !!data;
+    // Phase 7.04: Adminrecht hängt an der stabilen auth.users.id.
+    // Migration 081 stellt die SECURITY-DEFINER-RPC bereit, ohne public.admins im Browser lesen zu müssen.
+    const { data, error } = await sb.rpc("wallettracking_is_admin");
+    if (!error) return data === true;
+    // Übergangs-Fallback ausschließlich für den Fall, dass Migration 081 noch nicht eingespielt wurde.
+    const migrationMissing = /wallettracking_is_admin|function.*does not exist|PGRST202|404/i.test(String(error?.message||error));
+    if (!migrationMissing) { console.error(error); return false; }
+    console.warn("Admin-UUID-Migration 081 fehlt noch; temporärer E-Mail-Fallback aktiv.");
+    const legacy = await sb.from("admins").select("email").eq("email", currentUser.email).maybeSingle();
+    if (legacy.error) { console.error(legacy.error); return false; }
+    return !!legacy.data;
   } catch (e) {
     wtReportAsyncIssue("retryable","Admin-Berechtigung",e);
     return false;
@@ -366,31 +375,91 @@ function toggleAdminDebugMode(){
   if(document.getElementById("tab-tax")?.classList.contains("active"))renderTaxResults(document.getElementById("taxDate")?.value||"",document.getElementById("taxTimezone")?.value||"");
 }
 
+function authCredentials(){
+  return {
+    email:String(document.getElementById("authEmail")?.value||"").trim(),
+    password:String(document.getElementById("authPassword")?.value||"")
+  };
+}
+function authStatus(message,isError=false){
+  const el=document.getElementById("authStatus");if(!el)return;
+  el.textContent=String(message||"");
+  el.classList.toggle("error",!!isError);
+}
+async function signInWithPassword(){
+  const {email,password}=authCredentials();
+  if(!email||!password){authStatus("Bitte E-Mail-Adresse und Passwort eingeben.",true);return;}
+  authStatus("Anmeldung läuft …");
+  const {error}=await sb.auth.signInWithPassword({email,password});
+  if(error){authStatus("Anmeldung fehlgeschlagen. E-Mail oder Passwort prüfen.",true);return;}
+  authStatus("Angemeldet.");
+}
+async function signUpWithPassword(){
+  const {email,password}=authCredentials();
+  if(!email||!password){authStatus("Bitte E-Mail-Adresse und Passwort eingeben.",true);return;}
+  if(password.length<8){authStatus("Das Passwort muss mindestens 8 Zeichen haben.",true);return;}
+  authStatus("Konto wird erstellt …");
+  const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:REDIRECT_URL}});
+  if(error){authStatus("Registrierung fehlgeschlagen: "+error.message,true);return;}
+  if(data?.session) authStatus("Konto erstellt und angemeldet.");
+  else authStatus("Konto erstellt. Bitte die einmalige Bestätigungs-Mail öffnen.");
+}
+async function sendPasswordReset(){
+  const {email}=authCredentials();
+  if(!email){authStatus("Bitte zuerst deine E-Mail-Adresse eingeben.",true);return;}
+  authStatus("Passwort-Reset wird gesendet …");
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:REDIRECT_URL});
+  authStatus(error?("Fehler: "+error.message):"Reset-Mail verschickt. Dies ist nur bei vergessenem Passwort nötig.",!!error);
+}
 async function sendMagicLink() {
-  const email = document.getElementById("authEmail").value.trim();
-  const statusEl = document.getElementById("authStatus");
-  if (!email) { statusEl.textContent = "Bitte E-Mail-Adresse eingeben."; return; }
-  statusEl.textContent = "Sende Login-Link...";
+  const {email}=authCredentials();
+  if (!email) { authStatus("Bitte E-Mail-Adresse eingeben.",true); return; }
+  authStatus("Sende einmaligen Login-Link …");
   const { error } = await sb.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: REDIRECT_URL }
   });
-  statusEl.textContent = error
-    ? "Fehler: " + error.message
-    : "Link verschickt - check dein E-Mail-Postfach und klick auf den Link.";
+  authStatus(error?("Fehler: "+error.message):"Link verschickt. Nach der Anmeldung kannst du unter Daten & Konto ein Passwort setzen.",!!error);
 }
-
-function bindAuthEmailEnter(){
-  const input=document.getElementById("authEmail");
-  if(!input||input.dataset.enterBound==="1")return;
-  input.dataset.enterBound="1";
-  input.addEventListener("keydown",e=>{
-    if(e.key!=="Enter"||e.isComposing)return;
-    e.preventDefault();
-    sendMagicLink();
-  });
+async function setCurrentUserPassword(){
+  const status=document.getElementById("accountPasswordStatus");
+  const p1=String(document.getElementById("accountNewPassword")?.value||"");
+  const p2=String(document.getElementById("accountNewPasswordRepeat")?.value||"");
+  if(!currentUser?.id){if(status)status.textContent="Bitte zuerst anmelden.";return;}
+  if(p1.length<8){if(status)status.textContent="Das Passwort muss mindestens 8 Zeichen haben.";return;}
+  if(p1!==p2){if(status)status.textContent="Die beiden Passwörter stimmen nicht überein.";return;}
+  if(status)status.textContent="Passwort wird gespeichert …";
+  const {data,error}=await sb.auth.updateUser({password:p1});
+  if(error){if(status)status.textContent="Fehler: "+error.message;return;}
+  if(data?.user)currentUser=data.user;
+  const a=document.getElementById("accountNewPassword"),b=document.getElementById("accountNewPasswordRepeat");if(a)a.value="";if(b)b.value="";
+  if(status)status.textContent="Passwort gespeichert. Künftige normale Logins benötigen keine E-Mail mehr.";
+  renderAuthSecurityState();
 }
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bindAuthEmailEnter,{once:true});else bindAuthEmailEnter();
+function renderAuthSecurityState(){
+  const el=document.getElementById("authSecurityState");if(!el||!currentUser)return;
+  const providers=[...new Set((currentUser.identities||[]).map(x=>x?.provider).filter(Boolean))];
+  const labels=providers.map(p=>p==="email"?"E-Mail":p==="google"?"Google":p==="apple"?"Apple":p).join(", ");
+  el.innerHTML=`<strong>${escapeAttr(currentUser.email||"")}</strong>${labels?` · Login-Identitäten: ${escapeAttr(labels)}`:""}<br>Deine feste User-ID bleibt <code>${escapeAttr(currentUser.id)}</code>.`;
+}
+function bindAuthCredentialEnter(){
+  for(const id of ["authEmail","authPassword"]){
+    const input=document.getElementById(id);
+    if(!input||input.dataset.enterBound==="1")continue;
+    input.dataset.enterBound="1";
+    input.addEventListener("keydown",e=>{
+      if(e.key!=="Enter"||e.isComposing)return;
+      e.preventDefault();
+      signInWithPassword();
+    });
+  }
+}
+window.signInWithPassword=signInWithPassword;
+window.signUpWithPassword=signUpWithPassword;
+window.sendPasswordReset=sendPasswordReset;
+window.sendMagicLink=sendMagicLink;
+window.setCurrentUserPassword=setCurrentUserPassword;
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bindAuthCredentialEnter,{once:true});else bindAuthCredentialEnter();
 
 const WELCOME_META_KEY = "wallet_tracking_welcome_dismissed_v1";
 const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
@@ -761,6 +830,7 @@ async function initAuth() {
   sb.auth.onAuthStateChange((event, newSession) => {
     if(newSession?.user){
       wtRestoreAuthenticatedUi(newSession);
+      if(event==="PASSWORD_RECOVERY"){setTimeout(()=>{try{showTab("account-data");}catch(_){ }const st=document.getElementById("accountPasswordStatus");if(st)st.textContent="Reset-Link bestätigt. Bitte jetzt ein neues Passwort setzen.";},0);}
       if (!document.getElementById("appContent")?.style.display) {
         beginDataJobUi("Daten werden geladen …");
         onLoggedIn(newSession).finally(()=>endDataJobUi());
@@ -802,6 +872,7 @@ async function onLoggedIn(session) {
   updateContextNavigation(startupTab);
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
   document.getElementById("heroUserActions").style.display = "block";
+  renderAuthSecurityState();
 
   // Chain-Konfiguration ist zwingend. Ohne public.chains wird NICHT mit versteckten
   // HTML-Fallbacks weitergearbeitet.
@@ -3292,7 +3363,7 @@ const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P9", workStatus:"erledigt", severity:"medium", area:"Cache-Ownership / Invalidierung", finding:"Phase 6.36/6.37: Ownership- und Invalidierungs-Audit abgeschlossen. Browser-/IndexedDB-Graphen werden über DATA_VERSIONS, Payload-/Storage-Schema und Root-Scope gegated; private Refresh-States prüfen data_version vor Tageslimit; Partial-Lifecycle darf einen verifizierten TLN-Team-Lifecycle nicht degradieren. Konkrete Restlücke: block-versionierte TLN/VOW-Staking-/Technical-Caches konnten von einem älteren offenen Browser-Tab mit kleinerem last_scanned_block zurückgeschrieben werden.", action:"Phase 6.37 schließt die belegte Lücke: vor Writes block-versionierter Staking-/Technical-Caches wird der persistente Blockstand geprüft; ein kleinerer lokaler Block darf einen neueren DB-Stand nicht ersetzen. lastBlock=0 bleibt bewusst unversioniert. Scanner-/DATA_VERSION-Wechsel erzwingen weiterhin fachlichen Neuaufbau. P9 = erledigt; kein pauschaler Cache-Refactor nötig."},
   {priority:"P10", workStatus:"in Arbeit", severity:"high", area:"Security / Supabase / RLS / Data API", finding:"DB-/Codeaudit: alle WalletTracking-public-Tabellen haben RLS; private Userdaten sind über auth.uid() getrennt, no_plain_wallet-Policies sind RESTRICTIVE. Kein bestätigter anon- oder Cross-User-Zugriff auf private Walletdaten. Shared DAO/APTMDAO-/TLN-/Preis-Caches werden bewusst vom authentifizierten Browser beschrieben; manipulierter Client könnte globale Ableitungen verfälschen.", action:"Shared-Cache-Write-Architektur derzeit bewusst nicht umbauen: Regressionsrisiko ist höher als das aktuell nachgewiesene Integritätsrisiko; als akzeptiertes Restrisiko dokumentiert. RPC-Hardening 6.39: direkte EXECUTE-Rechte für anon/authenticated auf vier reine Triggerfunktionen und wallettracking_cleanup_price_refresh_slots entzogen; produktiv bereits ausgeführt und in SQL 074 nachgeführt. Offen vor P10-Abschluss: gezielter Cross-User-Negativtest (Testkonten werden noch vorbereitet) und Restprüfung der RPC-/Admin-Grenzen. 6.39-Regression: DAO/APTMDAO-Tree und Chat-RPC PASS. TLN-Team-Realtest zeigte bei neu importiertem bekanntem TLN-Wallet auch nach Hard-Refresh keinen Baum. 6.41 ergänzte einen Slice-MISS-Trigger, 6.42 korrigierte dessen Script-Cache-Buster, 6.43 beseitigte die Init-Race-Condition. Realtest 6.43 erreichte Step 7 tatsächlich, löste bei fehlendem verifiziertem Globalgraph jedoch den historischen Full-Cold-Fallback ab Block 0 aus und lag bereits bei >3500 Requests ohne Abschluss. Korrektur 6.44: normaler Team-Tab darf bei Slice-MISS keinen Full-History-Scan mehr starten; eigene Roots werden vor dem DB-Slice auf verifizierte TLN-IDs reduziert. Realtest 6.44 zeigte dennoch >1400 einzelne eth_getTransactionByHash-Requests. Ursache: nach einem erfolgreichen Cache-Restore wurden offene Partner-Lifecycles automatisch über teamVerifyMissingLifecycles nachverifiziert. Korrektur 6.45: automatische Lifecycle-Rekonstruktion entfernt. Realtest 6.45 zeigte trotzdem >1000 eth_getTransactionByHash-Aufrufe. Ursache: fehlender Zusatzregistry-Graph-Cache startete im Restore noch teamRestoreAdditionalRegistryGraph() mit kompletter History. Korrektur 6.46: normaler Restore ist auch fuer Zusatzregistries strikt cache-only; weder History-Aufbau noch Evidence-Tx-Parent-Hydrierung laufen automatisch, beides nur noch explizit Step 7. Realtest 6.46: Baum erscheint wieder; zweites Öffnen desselben Team-Tabs erzeugt 0 neue Network-Requests. Phase 6.47 entkoppelt zusätzlich die Dashboard-Partnerzahl vom vorherigen Öffnen des Team-Tabs und ergänzt einen sanitisierten globalen Reward-Summary-Cache für Fresh-User, ohne automatische Chain-Discovery. Realtest 6.47: Partnerzahl 17 erscheint beim neuen User direkt im Dashboard; 0 aktive Partner ist fachlich korrekt; Rewards blieben wegen 0/4 vorhandenen globalen Summaries leer. Phase 6.48 ergänzt deshalb einen serverseitigen, auth-gebundenen Backfill über wallet-private: nur für beim aktuellen User als eigene Wallet gespeicherte Adressen wird der neueste verifizierte private Snapshot derselben On-Chain-Adresse intern gelesen und ausschließlich als sanitiserte Reward-Periodensumme zurückgegeben/globalisiert; kein Chain-Scan. Realtest 6.48: Backfill funktioniert, aber alte Referral-Snapshots konnten Raw-18-Decimals als große JS-Number/Scientific-Notation liefern und wurden dadurch nochmals falsch als Human-Amount gespeichert. Phase 6.49 behebt dies zentral: verifizierte Token-Decimale + Raw-Felder haben Vorrang, Legacy-Number-Rawwerte werden tokengebunden skaliert, Summary-Payloads tragen explizit amountUnit=human/schemaVersion=2 und Cache-v1 wird vollständig verworfen. Cross-User-Negativtest bleibt vorbereitet/offen."},
   {priority:"P11", workStatus:"offen", severity:"high", area:"Wallet-/Datenlöschung End-to-End", finding:"Nach P10 folgt der reale End-to-End-Regressionsaudit für Einzelwallet- und vollständige Userdaten-Löschung einschließlich Snapshots, 31.12., NFTs, Claims/Rewards, Caches und Alias-Provenienz.", action:"Erst nach Abschluss P10 starten; bestehende produktive Delete-RPCs nicht vorzeitig umbauen."},
-  {priority:"P12", workStatus:"offen", severity:"medium", area:"Admin-/Berechtigungsmodell", finding:"Admin-Erkennung verwendet teilweise weiterhin E-Mail-Zuordnung; Google-Login/Account-Linking ist separat geplant.", action:"Admin-Berechtigung langfristig an stabile User-UUID koppeln und bestehende Admin-UUID beim kontrollierten Google-Linking erhalten."},
+  {priority:"P12", workStatus:"in Arbeit", severity:"medium", area:"Admin-/Berechtigungsmodell", finding:"Phase 7.04 stellt den Basis-Login von Magic-Link-only auf E-Mail/Passwort um und migriert Adminrechte auf die stabile Supabase-User-UUID. Magic Link bleibt nur Übergang/Recovery; Google/Apple-Linking ist der nächste Schritt.", action:"Migration 081 produktiv ausführen; bestehenden Admin per Passwort testen und UUID-Gleichheit prüfen. Danach Google und Apple kontrolliert an bestehende User-ID linken, ohne neue Accounts zu erzeugen."},
   {priority:"P13", workStatus:"offen", severity:"medium", area:"Data-API / Schema-Trennung", finding:"Viele Browser-Tabellen liegen historisch in public; neue interne Job-/Admin-/Backend-Tabellen sollen nicht automatisch exponiert werden.", action:"Neue Tabellen vor Anlage als Browser/API oder intern klassifizieren; exponierte Tabellen mit expliziten GRANTs/RLS, interne Tabellen möglichst in nicht exponiertem Schema."},
   {priority:"P14", workStatus:"offen", severity:"medium", area:"Secrets / Provider-Grenzen", finding:"Frontend-Providerkeys und verbleibende direkte Providerzugriffe sind bekannte Hardening-Themen, aber kein Befund dieses P10-RLS-Audits.", action:"Später getrennt prüfen; keine Credentials in public.chains verschieben."},
   {priority:"P15", workStatus:"offen", severity:"medium", area:"Abschluss-Regressionsaudit", finding:"Nach P10–P14 fehlt ein kompakter Gesamt-Regressionstest der Sicherheits-, Lifecycle- und Fresh-Build-Grenzen.", action:"Zum Abschluss definierte Realtests erneut ausführen und Auditstatus dokumentieren."},
