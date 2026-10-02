@@ -1,3 +1,4 @@
+// Phase 7.01 · 02.10.2026 04:18:28 CEST: Preisrefresh-Hotspots werden ohne Preislogikänderung tiefer zerlegt: Generalpreise messen CoinGecko, GeckoTerminal, Apertum, Contract-Fallback und LP separat. Build 20261002-041828.
 // Phase 7.00 · 02.10.2026 04:01:52 CEST: Globaler Preisrefresh misst jede Phase separat im zentralen Request-Audit; doppelter Fee-View-Refresh entfernt. Preislogik unverändert. Build 20261002-040152.
 // Phase 6.99 · 01.10.2026 20:12:06 CEST: Preisrefresh 6.99 nutzt getrennte Preis-/LP-Pair-Daten ohne Änderung der fachlichen Preisermittlung. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: Preisjob nutzt chainweiten Pair-State-Prefetch; fachliche Preisformeln unverändert. Build 20261001-181931.
@@ -4720,6 +4721,16 @@ async function measurePriceRefreshPhase(diag,name,fn){
     markRequestAudit(`price-refresh:${name}:end`);
   }
 }
+async function measureNativePriceSubphase(diag,name,fn){
+  if(!diag.phases)diag.phases={};
+  const startIndex=WT_REQUEST_AUDIT.entries.length,t0=performance.now();
+  markRequestAudit(`price-refresh:general:${name}:start`);
+  try{return await fn();}
+  finally{
+    diag.phases[name]={elapsedMs:Math.round((performance.now()-t0)*10)/10,...priceRefreshAuditSummary(startIndex)};
+    markRequestAudit(`price-refresh:general:${name}:end`);
+  }
+}
 async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   beginCentralPriceJob();setCentralPriceBusy(true);setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Globaler 15-Minuten-Preisstand wird aktualisiert…","note");
   const auditStart=WT_REQUEST_AUDIT.entries.length,auditT0=performance.now(),diag={manual,slotKey,phases:{}};
@@ -4946,6 +4957,7 @@ async function loadCustomSafeLpPrices(){
 
 async function loadNativePrices() {
   const refreshedAt=new Date().toISOString();
+  const diagnostics={phases:{}};
   // Nur IDs abfragen, die der aktuelle globale Preisstand tatsaechlich benoetigt:
   // native Chain-Coins plus aktive vordefinierte Safe-Token. Keine unbenutzten
   // Metadaten-IDs aus predefined_tokens in den CoinGecko-Request ziehen.
@@ -4960,6 +4972,7 @@ async function loadNativePrices() {
   const alreadyPriced = {}; // "chain|adresse" -> true, deckt USDT/USDC ab (kein Doppel-Fetch via GeckoTerminal)
   let coinGeckoState={ok:false,status:"skipped",ids:idList.length};
 
+  await measureNativePriceSubphase(diagnostics,"coinGeckoPrimary",async()=>{
   if(idList.length && coinGeckoPublicAvailable()){
     try {
       // CoinGecko dokumentiert bis zu 515 IDs fuer /simple/price. Der gemessene
@@ -5011,15 +5024,20 @@ async function loadNativePrices() {
   }else if(idList.length){
     coinGeckoState={ok:false,status:"blocked",ids:idList.length,reason:coinGeckoPublicBlockReason};
   }
+  });
 
-  const geckoTerminalState=await loadTokenPricesViaGeckoTerminal(alreadyPriced);
-  const apertumOk=await loadApertumCurrentPrices();
-  const customCoinGeckoState=await loadCustomSafePricesViaCoinGeckoContract(alreadyPriced);
-  const customLpState=await loadCustomSafeLpPrices();
+  const geckoTerminalState=await measureNativePriceSubphase(diagnostics,"geckoTerminal",()=>loadTokenPricesViaGeckoTerminal(alreadyPriced));
+  const apertumOk=await measureNativePriceSubphase(diagnostics,"apertumDex",()=>loadApertumCurrentPrices());
+  const customCoinGeckoState=await measureNativePriceSubphase(diagnostics,"coinGeckoContractFallback",()=>loadCustomSafePricesViaCoinGeckoContract(alreadyPriced));
+  const customLpState=await measureNativePriceSubphase(diagnostics,"customLpPricing",()=>loadCustomSafeLpPrices());
   if(document.getElementById("tab-predefined")?.classList.contains("active")) renderSafeTokenTable();
 
   // Gebührenansicht wird vom zentralen Preisjob genau einmal nach dem Snapshot/Rerender aktualisiert.
-  return {coinGecko:coinGeckoState,geckoTerminal:geckoTerminalState,customCoinGecko:customCoinGeckoState,customLp:customLpState,apertumOk};
+  diagnostics.totalRequests=Object.values(diagnostics.phases).reduce((n,p)=>n+Number(p.requests||0),0);
+  diagnostics.elapsedMs=Math.round(Object.values(diagnostics.phases).reduce((n,p)=>n+Number(p.elapsedMs||0),0)*10)/10;
+  console.info("Generalpreise · Unterphasendiagnose",diagnostics);
+  try{console.table(Object.fromEntries(Object.entries(diagnostics.phases).map(([k,v])=>[k,{ms:v.elapsedMs,requests:v.requests,topResource:Object.keys(v.topResources||{})[0]||"–",topCaller:Object.keys(v.topCallers||{})[0]||"–"}])));}catch(_){ }
+  return {coinGecko:coinGeckoState,geckoTerminal:geckoTerminalState,customCoinGecko:customCoinGeckoState,customLp:customLpState,apertumOk,diagnostics};
 }
 
 async function refreshFeePriceViews() {

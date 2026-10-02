@@ -1,3 +1,4 @@
+// Phase 7.01 · 02.10.2026 04:18:28 CEST: TLN/VOW-Preisrefresh wird ohne Preislogikänderung nach BSC/ETH und Refresh-Stufen diagnostiziert; RPC- und HTTP-Anteile sind je Stufe sichtbar. Build 20261002-041828.
 // Phase 6.99 · 01.10.2026 20:12:06 CEST: Preis-Routing-Pairs und LP-Zusatzdaten getrennt; doppelte factory()-Reads entfallen, Preisformeln bleiben unverändert. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: konfigurierte V2-Pooltypen und alle aktuellen Pair-States werden chainweit vorab gebatcht; Preis-/LP-Felder bleiben unverändert. Build 20261001-181931.
 // Phase 6.97 · 01.10.2026 17:36:51 CEST: RPC-Diagnose zaehlt Preis-eth_calls zusätzlich nach ABI-Methode, damit verbliebene Pair-State-Kosten messbar sind. Build 20261001-173651.
@@ -67,16 +68,96 @@ const priceRpcStats = {
   getPairCalls:0,
   pairDiscoveryBatches:0,
   methods:{},
-  countCalls(calls){
+  byChain:{},
+  ensureChain(chain){
+    const key=String(chain||"unknown");
+    if(!this.byChain[key])this.byChain[key]={httpBatchRequests:0,ethCalls:0,getPairCalls:0,pairDiscoveryBatches:0,methods:{}};
+    return this.byChain[key];
+  },
+  countCalls(calls,chain){
+    const cs=this.ensureChain(chain);
     for(const call of Array.isArray(calls)?calls:[]){
       const selector=String(call?.data||"").slice(0,10).toLowerCase();
       const name=PRICE_RPC_METHOD_BY_SELECTOR.get(selector)||selector||"unknown";
       this.methods[name]=(this.methods[name]||0)+1;
+      cs.methods[name]=(cs.methods[name]||0)+1;
     }
   },
-  reset(){ this.httpBatchRequests=0; this.ethCalls=0; this.getPairCalls=0; this.pairDiscoveryBatches=0; this.methods={}; },
-  snapshot(){ return {httpBatchRequests:this.httpBatchRequests,ethCalls:this.ethCalls,getPairCalls:this.getPairCalls,pairDiscoveryBatches:this.pairDiscoveryBatches,methods:{...this.methods}}; }
+  recordBatch(chain,calls){
+    const count=Array.isArray(calls)?calls.length:0,cs=this.ensureChain(chain);
+    this.httpBatchRequests++;this.ethCalls+=count;
+    cs.httpBatchRequests++;cs.ethCalls+=count;
+    this.countCalls(calls,chain);
+  },
+  recordGetPair(chain,count=1){
+    const n=Math.max(0,Number(count)||0),cs=this.ensureChain(chain);
+    this.getPairCalls+=n;cs.getPairCalls+=n;
+  },
+  recordDiscoveryBatch(chain){
+    const cs=this.ensureChain(chain);
+    this.pairDiscoveryBatches++;cs.pairDiscoveryBatches++;
+  },
+  reset(){ this.httpBatchRequests=0; this.ethCalls=0; this.getPairCalls=0; this.pairDiscoveryBatches=0; this.methods={}; this.byChain={}; },
+  snapshot(){
+    return {
+      httpBatchRequests:this.httpBatchRequests,ethCalls:this.ethCalls,getPairCalls:this.getPairCalls,pairDiscoveryBatches:this.pairDiscoveryBatches,methods:{...this.methods},
+      byChain:Object.fromEntries(Object.entries(this.byChain).map(([chain,v])=>[chain,{...v,methods:{...(v.methods||{})}}]))
+    };
+  }
 };
+
+function subtractCounterMap(after={},before={}){
+  const out={};
+  for(const key of new Set([...Object.keys(before||{}),...Object.keys(after||{})])){
+    const value=Number(after?.[key]||0)-Number(before?.[key]||0);
+    if(value)out[key]=value;
+  }
+  return out;
+}
+function rpcStatsDelta(before={},after={}){
+  const out={
+    httpBatchRequests:Number(after.httpBatchRequests||0)-Number(before.httpBatchRequests||0),
+    ethCalls:Number(after.ethCalls||0)-Number(before.ethCalls||0),
+    getPairCalls:Number(after.getPairCalls||0)-Number(before.getPairCalls||0),
+    pairDiscoveryBatches:Number(after.pairDiscoveryBatches||0)-Number(before.pairDiscoveryBatches||0),
+    methods:subtractCounterMap(after.methods,before.methods),
+    byChain:{}
+  };
+  for(const chain of new Set([...Object.keys(before.byChain||{}),...Object.keys(after.byChain||{})])){
+    const b=before.byChain?.[chain]||{},a=after.byChain?.[chain]||{};
+    out.byChain[chain]={
+      httpBatchRequests:Number(a.httpBatchRequests||0)-Number(b.httpBatchRequests||0),
+      ethCalls:Number(a.ethCalls||0)-Number(b.ethCalls||0),
+      getPairCalls:Number(a.getPairCalls||0)-Number(b.getPairCalls||0),
+      pairDiscoveryBatches:Number(a.pairDiscoveryBatches||0)-Number(b.pairDiscoveryBatches||0),
+      methods:subtractCounterMap(a.methods,b.methods)
+    };
+  }
+  return out;
+}
+function projectRequestAuditSnapshot(){
+  try{return window.getRequestAuditSnapshot?.()||null;}catch(_){return null;}
+}
+function projectRequestAuditSummary(startIndex){
+  const snap=projectRequestAuditSnapshot(),entries=Array.isArray(snap?.entries)?snap.entries:[];
+  if(!Number.isInteger(startIndex))return {requests:null,topResources:{},topCallers:{}};
+  const rows=entries.slice(Math.max(0,startIndex)),resources={},callers={};
+  for(const row of rows){
+    const resource=String(row?.resource||"unknown"),caller=String(row?.caller||"unknown");
+    resources[resource]=(resources[resource]||0)+1;callers[caller]=(callers[caller]||0)+1;
+  }
+  const top=o=>Object.fromEntries(Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,8));
+  return {requests:rows.length,topResources:top(resources),topCallers:top(callers)};
+}
+async function measureProjectPriceStage(diag,name,fn){
+  const reqSnap=projectRequestAuditSnapshot(),startIndex=Array.isArray(reqSnap?.entries)?reqSnap.entries.length:null;
+  const before=priceRpcStats.snapshot(),t0=performance.now();
+  try{return await fn();}
+  finally{
+    const after=priceRpcStats.snapshot();
+    diag.stages[name]={elapsedMs:Math.round((performance.now()-t0)*10)/10,...projectRequestAuditSummary(startIndex),rpc:rpcStatsDelta(before,after)};
+  }
+}
 
 const V3_ABI = [
   "function token0() view returns (address)",
@@ -196,9 +277,7 @@ async function batchRpcCalls(chain,calls,block="latest"){
   if(!rpc || !Array.isArray(calls) || !calls.length)throw new Error(`${chain}: RPC-Batch nicht verfügbar.`);
   const tag=rpcBlockTag(block);
   const payload=calls.map((x,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_call",params:[{to:x.to,data:x.data},tag]}));
-  priceRpcStats.httpBatchRequests++;
-  priceRpcStats.ethCalls += payload.length;
-  priceRpcStats.countCalls(calls);
+  priceRpcStats.recordBatch(chain,calls);
   const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
   if(!response.ok)throw new Error(`${chain}: RPC-Batch HTTP ${response.status}`);
   const json=await response.json();
@@ -664,7 +743,7 @@ async function lookupPairAcrossFactories(chain,tokenA,tokenB){
     data:FACTORY_IFACE.encodeFunctionData("getPair",[tokenA,tokenB])
   }));
   try{
-    priceRpcStats.getPairCalls += calls.length;
+    priceRpcStats.recordGetPair(chain,calls.length);
     const raws=await batchRpcCalls(chain,calls,"latest");
     for(let i=0;i<raws.length;i++){
       const [pair]=FACTORY_IFACE.decodeFunctionResult("getPair",raws[i]);
@@ -676,7 +755,7 @@ async function lookupPairAcrossFactories(chain,tokenA,tokenB){
     for(const factoryAddress of factories){
       try{
         const factory=new ethers.Contract(factoryAddress,FACTORY_ABI,providers[chain]);
-        priceRpcStats.getPairCalls++;
+        priceRpcStats.recordGetPair(chain,1);
         const pair=await factory.getPair(tokenA,tokenB);
         if(pair!==ethers.ZeroAddress)return pair;
       }catch(inner){console.warn(`${chain}: V2 Pair-Lookup über ${factoryAddress} fehlgeschlagen`,inner);}
@@ -752,8 +831,8 @@ async function prefetchV2PairDiscovery(chain){
   try{
     for(let offset=0;offset<calls.length;offset+=chunkSize){
       const chunk=calls.slice(offset,offset+chunkSize);
-      priceRpcStats.pairDiscoveryBatches++;
-      priceRpcStats.getPairCalls += chunk.length;
+      priceRpcStats.recordDiscoveryBatch(chain);
+      priceRpcStats.recordGetPair(chain,chunk.length);
       const raws=await batchRpcCalls(chain,chunk.map(x=>({to:x.to,data:x.data})),"latest");
       raws.forEach((raw,i)=>{ rawByCall[offset+i]=raw; });
     }
@@ -2198,25 +2277,22 @@ async function buildCurrentProjectPrices(chain){
 async function refreshCurrentPrices({manual=false,render=true}={}){
   if(priceRefreshPromise) return priceRefreshPromise;
   priceRefreshPromise=(async()=>{
-    await ensureInfrastructure();
     setPriceRefreshBusy(true);
     setPriceStatus(manual?"Aktuelle Preise werden manuell neu ermittelt…":"Aktuelle Projektpreise werden on-chain ermittelt…","loading");
+    priceRpcStats.reset();
+    const diagnostics={stages:{}};
+    await measureProjectPriceStage(diagnostics,"infrastructure",()=>ensureInfrastructure());
     resetCurrentPriceCaches();
     const chains=projectChains.filter(c=>["bsc","eth"].includes(c));
-    priceRpcStats.reset();
-    // 6.99: konfigurierte LPs erhalten weiterhin vollständige LP-Daten, Preis-Routing-Pairs
-    // dagegen nur token0/token1/getReserves. Die Preisformeln bleiben unverändert;
-    // factory() wird aus der bereits erfolgten Pooltyp-Prüfung wiederverwendet.
-    await Promise.all(chains.map(chain=>prefetchConfiguredPoolTypes(chain)));
-    await Promise.all(chains.map(chain=>prefetchConfiguredV2PairStates(chain)));
-    for(const chain of chains) await resolveReferences(chain);
-    await Promise.all(chains.map(chain=>prefetchV2PairDiscovery(chain)));
-    // Zusätzlich entdeckte Preisrouten werden chainweit nur mit den drei für Preise
-    // benötigten Pair-Feldern vorgeladen. LP-Zusatzdaten bleiben konfigurierten LPs vorbehalten.
-    await Promise.all(chains.map(chain=>prefetchDiscoveredV2PairStates(chain)));
-    await Promise.all(chains.map(chain=>buildCurrentProjectPrices(chain)));
-    if(render) await Promise.all(chains.map(chain=>renderDashboard(chain,{cacheMode:false})));
-    const saved=await saveCurrentPriceSnapshot();
+    // Fachlogik unverändert: 7.01 misst nur die bereits bestehenden Stufen tiefer.
+    await measureProjectPriceStage(diagnostics,"configuredPoolTypes",()=>Promise.all(chains.map(chain=>prefetchConfiguredPoolTypes(chain))));
+    await measureProjectPriceStage(diagnostics,"configuredPairStates",()=>Promise.all(chains.map(chain=>prefetchConfiguredV2PairStates(chain))));
+    await measureProjectPriceStage(diagnostics,"references",async()=>{for(const chain of chains)await resolveReferences(chain);});
+    await measureProjectPriceStage(diagnostics,"pairDiscovery",()=>Promise.all(chains.map(chain=>prefetchV2PairDiscovery(chain))));
+    await measureProjectPriceStage(diagnostics,"discoveredPairStates",()=>Promise.all(chains.map(chain=>prefetchDiscoveredV2PairStates(chain))));
+    await measureProjectPriceStage(diagnostics,"priceBuild",()=>Promise.all(chains.map(chain=>buildCurrentProjectPrices(chain))));
+    if(render)await measureProjectPriceStage(diagnostics,"render",()=>Promise.all(chains.map(chain=>renderDashboard(chain,{cacheMode:false}))));
+    const saved=await measureProjectPriceStage(diagnostics,"snapshotSave",()=>saveCurrentPriceSnapshot());
     currentPriceSource="live";
     const stamp=formatPriceTimestamp(currentPriceCapturedAt || new Date());
     setPriceStatus(saved
@@ -2224,7 +2300,10 @@ async function refreshCurrentPrices({manual=false,render=true}={}){
       : `Preisstand: ${stamp} · aktuell on-chain · Supabase-Preiscache konnte nicht gespeichert werden.`,
       saved?"success":"warning");
     notifyCurrentPricesUpdated(manual);
-    console.info("TLN/VOW Preisrefresh abgeschlossen",{render,prices:exportedPrices.size,pairs:pairCache.size,rpc:priceRpcStats.snapshot(),engine:window.WalletPriceEngine?.stats?.()||null});
+    diagnostics.total=priceRpcStats.snapshot();
+    diagnostics.totalStageRequests=Object.values(diagnostics.stages).reduce((n,x)=>n+Number(x.requests||0),0);
+    console.info("TLN/VOW Preisrefresh abgeschlossen",{render,prices:exportedPrices.size,pairs:pairCache.size,rpc:diagnostics.total,engine:window.WalletPriceEngine?.stats?.()||null,diagnostics});
+    try{console.table(Object.fromEntries(Object.entries(diagnostics.stages).map(([k,v])=>[k,{ms:v.elapsedMs,requests:v.requests,ethCalls:v.rpc?.ethCalls||0,bsc:v.rpc?.byChain?.bsc?.ethCalls||0,eth:v.rpc?.byChain?.eth?.ethCalls||0,httpBatches:v.rpc?.httpBatchRequests||0,topResource:Object.keys(v.topResources||{})[0]||"–"}])));}catch(_){ }
     return true;
   })().finally(()=>{setPriceRefreshBusy(false);priceRefreshPromise=null;});
   return priceRefreshPromise;
