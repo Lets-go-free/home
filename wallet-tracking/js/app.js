@@ -1,3 +1,5 @@
+// Phase 7.14 · 03.10.2026 12:24:00 CEST: Discovery-Chainfilter wirkt auch auf Ergebnisliste/Zähler; Imitationsprüfung nutzt sichere Label-Ticker als Symbol-Fallback; vordefinierte Token zeigen echtes Symbol separat. Polygon USDC/USDT-Metadaten werden per Migration 083 mit 6 technischen Decimals vervollständigt. Build 20261003-122400.
+// Phase 7.13 · 03.10.2026 12:06:08 CEST: Auth-Umbau abgeschlossen; Magic Link nur noch klarer Recovery-/Übergangsweg, Standardlogin E-Mail/Passwort + optional Google. Build 20261003-120608.
 // Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt ERC-20-Tokenname explizit; bekannte vordefinierte Tokenidentitäten werden gegen Contract/Mint-Adresse abgeglichen und abweichende Imitationen als Spam-Verdacht markiert. Build 20261003-114755.
 // Phase 7.11 · 03.10.2026 11:29:57 CEST: Predefined-Token-Chainfilter nutzt dieselben lesbaren Chain-Namen wie die Admin-Auswahl; Base/Solana/Avalanche Stablecoin-Stammdaten per Migration 082. Build 20261003-112957.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Login + Passwort-Setzen als echte Password-Manager-Formulare; Browser/iCloud-Keychain kann erfolgreiche Logins und neue Passwörter erkennen. Build 20261002-160102.
@@ -418,12 +420,12 @@ async function sendPasswordReset(){
 async function sendMagicLink() {
   const {email}=authCredentials();
   if (!email) { authStatus("Bitte E-Mail-Adresse eingeben.",true); return; }
-  authStatus("Sende einmaligen Login-Link …");
+  authStatus("Sende Recovery-/Übergangslink …");
   const { error } = await sb.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: REDIRECT_URL }
   });
-  authStatus(error?("Fehler: "+error.message):"Link verschickt. Nach der Anmeldung kannst du unter Daten & Konto ein Passwort setzen.",!!error);
+  authStatus(error?("Fehler: "+error.message):"Recovery-/Übergangslink verschickt. Nach der Anmeldung unter Daten & Konto ein Passwort setzen; für normale Logins danach E-Mail + Passwort oder Google verwenden.",!!error);
 }
 
 const WT_GOOGLE_LINK_EXPECTED_UID_KEY="wt_google_link_expected_uid_v1";
@@ -4640,8 +4642,9 @@ function renderSafeTokenTable() {
   Object.keys(CHAIN_META).forEach(chain => {
     const native=predefinedNativeAssets[chain];
     rows.push(native ? { ...native, isNative:true } : {
-      chain, address:"native", label:(NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative:true, nativeMissing:true,
-      technicalDecimals:null, displayDecimals:null, summaryDecimals:null, dashboardVisible:false
+      chain, address:"native", label:(NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)",
+      symbol:NATIVE_SYMBOL[chain] || chain.toUpperCase(), name:CHAIN_META[chain]?.label || chain,
+      isNative:true, nativeMissing:true, technicalDecimals:null, displayDecimals:null, summaryDecimals:null, dashboardVisible:false
     });
   });
 
@@ -4654,6 +4657,8 @@ function renderSafeTokenTable() {
       }
       const key=chain+"|"+address;
       rows.push({ chain, address, label,
+        symbol:predefinedTokenSymbols[key] || "",
+        name:predefinedTokenNames[key] || "",
         technicalDecimals:predefinedTokenDecimals[key],
         displayDecimals:predefinedTokenDisplayDecimals[key],
         summaryDecimals:predefinedTokenSummaryDecimals[key],
@@ -4680,6 +4685,8 @@ function renderSafeTokenTable() {
   if (tokenFilter) filtered = filtered.filter(r => r.label === tokenFilter);
   if (textFilter) {
     filtered = filtered.filter(r =>
+      (r.symbol || "").toLowerCase().includes(textFilter) ||
+      (r.name || "").toLowerCase().includes(textFilter) ||
       (r.label || "").toLowerCase().includes(textFilter) ||
       (r.address || "").toLowerCase().includes(textFilter)
     );
@@ -4703,8 +4710,8 @@ function renderSafeTokenTable() {
   const DEFI_CATEGORY_LABELS = { voucher_currency:"Voucher-Währung", lp_token:"LP Token", defi_token:"DeFi-Token" };
 
   const tableHeader = isAdmin
-    ? `<tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:center">Im Dashboard<br>immer anzeigen</th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th><th></th></tr>`
-    : `<tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr>`;
+    ? `<tr><th>Chain</th><th>Symbol</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:center">Im Dashboard<br>immer anzeigen</th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th><th></th></tr>`
+    : `<tr><th>Chain</th><th>Symbol</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr>`;
   el.innerHTML = `<table class="project-data-table"><thead>${tableHeader}</thead><tbody>
     ${filtered.map(r => {
       let p;
@@ -4723,6 +4730,7 @@ function renderSafeTokenTable() {
         const readonlyAddress = r.isNative ? '<span style="color:var(--muted)">native</span>' : r.address;
         return `<tr>
           <td><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[r.chain]?.displayColor || "#6b7280")}"></span>${r.chain.toUpperCase()}</td>
+          <td><strong>${escapeAttr(r.symbol || "–")}</strong></td>
           <td>${readonlyLabel}</td>
           <td style="font-size:0.78rem;word-break:break-all">${readonlyAddress}</td>
           <td style="text-align:right">${priceCell}</td>
@@ -4758,6 +4766,7 @@ function renderSafeTokenTable() {
 
       return `<tr>
       <td><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[r.chain]?.displayColor || "#6b7280")}"></span>${r.chain.toUpperCase()}</td>
+      <td><strong>${escapeAttr(r.symbol || "–")}</strong></td>
       <td>${labelCell}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">native</span>' : r.address}</td>
       <td style="text-align:center">${r.technicalDecimals??'<span style="color:var(--muted)">–</span>'}</td>
@@ -8879,11 +8888,15 @@ function renderDiscoveryChainFilter() {
 function toggleDiscoveryChain(chain, isChecked) {
   if (isChecked) activeDiscoveryChains.add(chain);
   else activeDiscoveryChains.delete(chain);
+  // Dieselbe Auswahl steuert Scan UND reine Anzeige der bereits gespeicherten Ergebnisse.
+  // Kein neuer Scan/Request: nur clientseitiges Filtern.
+  if (lastDiscoveryFindings.length) renderDiscoveryResults(lastDiscoveryFindings);
 }
 
 function setAllDiscoveryChains(selectAll) {
   activeDiscoveryChains = selectAll ? new Set(discoveryChains()) : new Set();
   renderDiscoveryChainFilter();
+  if (lastDiscoveryFindings.length) renderDiscoveryResults(lastDiscoveryFindings);
 }
 
 // ---- Gebühren-Auswertung ----
@@ -11689,9 +11702,15 @@ function discoveryPredefinedIdentityMismatch(f){
     const officialAddress=normalizeAddress(key.slice(prefix.length),chain);
     if(!officialAddress||officialAddress===current)continue;
     if(!(SAFE_ADDRESSES[chain]||[]).includes(officialAddress))continue;
-    const officialSymbol=String(predefinedTokenSymbols[key]||"").trim();
-    const officialName=String(predefinedTokenNames[key]||predefinedTokenLabels[key]||"").trim();
-    const symbolMatch=!!symbol && symbol.length>=2 && discoveryIdentityText(officialSymbol)===symbol;
+    const officialLabel=String(predefinedTokenLabels[key]||"").trim();
+    const storedSymbol=String(predefinedTokenSymbols[key]||"").trim();
+    // Ältere Stammdaten enthalten teilweise nur ein tickerartiges Label (z.B. USDC).
+    // Dieses darf als Symbol-Fallback dienen; ein beschreibendes Label wie "USD Coin"
+    // wird ausdrücklich NICHT als Symbol interpretiert.
+    const labelTicker=/^[A-Za-z0-9.$€£_-]{2,12}$/.test(officialLabel) ? officialLabel : "";
+    const officialSymbol=storedSymbol||labelTicker;
+    const officialName=String(predefinedTokenNames[key]||(!labelTicker?officialLabel:"")).trim();
+    const symbolMatch=!!symbol && symbol.length>=2 && !!officialSymbol && discoveryIdentityText(officialSymbol)===symbol;
     const nameMatch=!!name && name.length>=4 && discoveryIdentityText(officialName)===name;
     if(symbolMatch||nameMatch)matches.push({address:officialAddress,symbol:officialSymbol||null,name:officialName||null,symbolMatch,nameMatch});
   }
@@ -12088,9 +12107,14 @@ function renderDiscoveryResults(findings) {
   const el = document.getElementById("discoveryResults");
   // Alte Discovery-Caches duerfen einen inzwischen manuell als sicher hinterlegten Token
   // nicht weiter als unbekannt/Spam-Kandidat anbieten.
-  const actionableFindings=(findings||[]).filter(f=>!isSafeTokenAddress(f.address,f.chain));
+  const chainScopedFindings=(findings||[]).filter(f=>activeDiscoveryChains.has(f.chain));
+  const actionableFindings=chainScopedFindings.filter(f=>!isSafeTokenAddress(f.address,f.chain));
+  if (activeDiscoveryChains.size === 0) {
+    el.innerHTML = `<div class="empty">Keine Chain ausgewählt. Wähle oben mindestens eine Chain, um gespeicherte Discovery-Ergebnisse anzuzeigen.</div>`;
+    return;
+  }
   if (actionableFindings.length === 0) {
-    el.innerHTML = `<div class="empty">Keine unbekannten Token gefunden - alles, was deine Wallets halten, steht bereits auf der sicheren Liste (oder es gibt nichts Nennenswertes).</div>`;
+    el.innerHTML = `<div class="empty">Für die ausgewählten Chains wurden keine unbekannten Token gefunden - alles steht bereits auf der sicheren Liste (oder es gibt nichts Nennenswertes).</div>`;
     return;
   }
 
@@ -12158,10 +12182,10 @@ function renderDiscoveryResults(findings) {
 
 
 async function markAllDiscoverySuspectsAsSpam(){
-  const suspects=lastDiscoveryFindings.filter(f=>isFindingScamSuspect(f)&&!f.userMarkedScam&&!isSafeTokenAddress(f.address,f.chain));
+  const suspects=lastDiscoveryFindings.filter(f=>activeDiscoveryChains.has(f.chain)&&isFindingScamSuspect(f)&&!f.userMarkedScam&&!isSafeTokenAddress(f.address,f.chain));
   if(!suspects.length)return;
   if(!confirm(`${suspects.length} Spam-Verdacht(e) dieser Wallet wirklich als Spam markieren?`))return;
-  lastDiscoveryFindings=lastDiscoveryFindings.map(f=>(isFindingScamSuspect(f)&&!isSafeTokenAddress(f.address,f.chain))?{...f,userMarkedScam:true}:f);
+  lastDiscoveryFindings=lastDiscoveryFindings.map(f=>(activeDiscoveryChains.has(f.chain)&&isFindingScamSuspect(f)&&!isSafeTokenAddress(f.address,f.chain))?{...f,userMarkedScam:true}:f);
   renderDiscoveryResults(lastDiscoveryFindings);
   const walletId=currentDiscoveryWalletId(),cache=getDiscoveryCacheForWallet(walletId);if(!cache)return;
   const {data,error}=await sb.from('discovery_cache').update({findings:lastDiscoveryFindings}).eq('user_id',currentUser.id).eq('wallet_id',String(walletId)).select().single();
