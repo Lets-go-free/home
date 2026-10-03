@@ -1,4 +1,4 @@
-// Phase 7.10 · 02.10.2026 21:17:41 CEST: Apple-OAuth wieder entfernt; E-Mail/Passwort + Google bleiben produktive Auth-Wege, Magic Link bleibt Recovery/Übergang. Build 20261002-211741.
+// Phase 7.11 · 03.10.2026 11:29:57 CEST: Predefined-Token-Chainfilter nutzt dieselben lesbaren Chain-Namen wie die Admin-Auswahl; Base/Solana/Avalanche Stablecoin-Stammdaten per Migration 082. Build 20261003-112957.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Login + Passwort-Setzen als echte Password-Manager-Formulare; Browser/iCloud-Keychain kann erfolgreiche Logins und neue Passwörter erkennen. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-State-Callback robust gegen Magic-Link/Redirect-Race; Passwortmanager-freundliches Loginlayout; Versionsfooter korrigiert. Build 20261002-154032.
 // Phase 7.04 · 02.10.2026 12:18:02 CEST: E-Mail/Passwort-Login + Registrierung/Recovery ergänzt; bestehende Magic-Link-User können im eingeloggten Konto ein Passwort setzen. Adminprüfung nutzt UUID-basierte RPC mit Legacy-Fallback nur solange Migration 081 fehlt. Build 20261002-121802.
@@ -4664,7 +4664,7 @@ function renderSafeTokenTable() {
   // Filter-Dropdowns befüllen (Auswahl dabei erhalten). Der Token-Subfilter richtet
   // sich immer nach der aktuell gewählten Chain; nicht passende alte Auswahl fällt
   // automatisch auf „Alle Token“ zurück.
-  populateSelectPreserving("predefChainFilter", Object.keys(CHAIN_META).sort(), c => c.toUpperCase(), "Alle Chains");
+  populateSelectPreserving("predefChainFilter", Object.keys(CHAIN_META), c => CHAIN_META[c]?.label || c, "Alle Chains");
   const chainFilter = document.getElementById("predefChainFilter").value;
   const tokenRows = chainFilter ? rows.filter(r => r.chain === chainFilter) : rows;
   const distinctLabels = [...new Set(tokenRows.map(r => r.label).filter(Boolean))].sort((a, b) => a.localeCompare(b));
