@@ -1,4 +1,4 @@
-<!-- Phase 7.17 · 04.10.2026 00:18:30 CEST: Verifizierte Supabase-Live-Baseline ins Repo uebernommen; Migration 080 bestaetigt, leere Migrationshistorie dokumentiert und Stammdaten-Seed-Strategie festgelegt. Build 20261004-001830. -->
+<!-- Phase 7.18 · 04.10.2026 00:24:17 CEST: Datenschutzgesicherten read-only Stammdaten-Export fuer die Seed-Erstellung ergänzt; nur explizite globale Allowlist, Live-Schema-basierter Ausschluss aller übrigen public-Tabellen und Sicherheitsprüfung des Rohdumps. Build 20261004-002417. -->
 <!-- Phase 7.16 · 03.10.2026 19:08:37 CEST: DB-Reproduzierbarkeit Phase 1: read-only Supabase-Baseline-Export, Repo-Objektinventar und dokumentierter Migrations-Gap; XRPL issued currencies/Trustlines inkl. USDC + RLUSD als spaeterer produktiver Ausbaupunkt dokumentiert. Build 20261003-190837. -->
 <!-- Phase 7.11 · 03.10.2026 11:29:57 CEST: Predefined-Token-Chainfilter mit lesbaren Chain-Namen; sichere USDC/USDT-Stammdaten für Base, Solana und Avalanche via Migration 082. Build 20261003-114755. -->
 <!DOCTYPE html>
@@ -1253,7 +1253,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 04.10.2026 00:18:30 CEST · Phase 7.17 · Build 20261004-001830</span><br>
+    <span id="footerVersionLine">Version: 04.10.2026 00:24:17 CEST · Phase 7.18 · Build 20261004-002417</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1272,11 +1272,11 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20261004-001830"></script>
-<script src="./help/help-general.js?v=20261004-001830"></script>
+<script src="./admin/ideas.js?v=20261004-002417"></script>
+<script src="./help/help-general.js?v=20261004-002417"></script>
 <script src="./projects/tln-vow/help.js?v=20261002-121802"></script>
 <script src="./projects/dao1/help.js?v=20260929-181743"></script>
-<script src="./js/app.js?v=20261004-001830"></script>
+<script src="./js/app.js?v=20261004-002417"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260929-152557"></script>
 
 
@@ -1295,6 +1295,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 04.10.2026 00:18:30 CEST · Phase 7.17 · Build 20261004-001830</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 04.10.2026 00:24:17 CEST · Phase 7.18 · Build 20261004-002417</div>
 </body>
 </html>

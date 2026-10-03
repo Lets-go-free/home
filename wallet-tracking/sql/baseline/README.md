@@ -1,6 +1,6 @@
 # WalletTracking · Supabase DB-Baseline
 
-Stand: Phase 7.17 · 04.10.2026
+Stand: Phase 7.18 · 04.10.2026
 
 ## Ziel
 
@@ -72,3 +72,18 @@ Die Ausgabe landet unter `sql/baseline/generated/<Zeitstempel>/`.
 ## Sicherheitsregel
 
 `supabase db reset --linked` ist auf Produktion destruktiv und gehört **nicht** in diesen Workflow.
+
+
+## Kontrollierter Stammdaten-Export
+
+Ab Phase 7.18 liegt im Projektroot `_wt-db-seed-export.command`. Der Helper arbeitet read-only und dient nur dazu, die freigegebenen globalen Stammdaten für die anschließende Seed-Erstellung bereitzustellen.
+
+Sicherheitsprinzip:
+
+1. Zuerst wird das aktuelle Live-Schema read-only gelesen.
+2. Aus allen aktuell vorhandenen `public`-Tabellen werden ausschließlich die Tabellen der festen Seed-Allowlist freigegeben.
+3. Jede andere Live-Tabelle wird dem `supabase db dump --data-only` explizit als Ausschluss übergeben.
+4. Der erzeugte Rohdump wird nochmals auf `INSERT INTO`/`COPY`-Ziele geprüft. Wird eine nicht freigegebene Tabelle gefunden, wird `raw-seed.sql` gelöscht und der Export gestoppt.
+5. Der Rohdump wird **nicht** automatisch in Produktion eingespielt und noch nicht als finaler Repo-Seed betrachtet. Er wird zuerst in deterministische/idempotente Seeds umgewandelt und geprüft.
+
+Ausgaben liegen unter `sql/baseline/seed-export/generated/<Zeitstempel>/`; zusätzlich wird eine ZIP-Datei zum Review erzeugt.

@@ -60,3 +60,15 @@ Abhängigkeiten/FKs sind vor dem finalen Seed-Export gegen den verifizierten Sch
 - Änderungen an globalen Stammdaten müssen künftig entweder über eine dauerhafte Migration oder über eine aktualisierte Seed-Datei nachvollziehbar sein.
 - Seeds ersetzen keine Migrationen für Schemaänderungen.
 - Produktive Datenänderungen werden nicht automatisch durch einen Seed-Export ins Repo übernommen; jeder Seed-Update wird geprüft.
+
+## Export-Workflow ab Phase 7.18
+
+Der read-only Helper `_wt-db-seed-export.command` erzeugt **noch nicht** den finalen Seed. Er liefert einen kontrollierten Rohdump nur aus der oben definierten Allowlist.
+
+Wichtig:
+
+- Vor jedem Datenexport wird das aktuelle Live-Schema neu gelesen. Dadurch werden auch später neu hinzugekommene Tabellen standardmäßig ausgeschlossen.
+- Alle nicht erlaubten `public`-Tabellen werden explizit vom Data-Dump ausgeschlossen.
+- Nach dem Dump wird geprüft, welche Tabellen tatsächlich in `INSERT INTO`/`COPY` vorkommen. Bei einem Treffer außerhalb der Allowlist wird der Rohdump gelöscht und der Vorgang abgebrochen.
+- Erst nach Review wird der Rohdump in deterministische `INSERT ... ON CONFLICT DO UPDATE`-Seeds mit stabilen Schlüsseln umgewandelt.
+- Der Exporthelper führt keine Schreiboperation an der produktiven DB aus.
