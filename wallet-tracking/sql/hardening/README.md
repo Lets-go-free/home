@@ -1,10 +1,10 @@
-# Supabase-Härtung – Stand Phase 7.23
+# Supabase-Härtungsaudit – Phase 7.24
 
 Stand: 04.10.2026, verifizierter Live-Snapshot `sql/baseline/verified/`.
 
 ## Ergebnis
 
-Die Baseline ist strukturell reproduzierbar. Der Audit aus Phase 7.20 hat historisch zu breite Rechte sichtbar gemacht; seit Phase 7.21 werden diese Rechte in kleinen, getrennt testbaren Migrationen reduziert.
+Die Baseline ist strukturell reproduzierbar; die Rechte stammen jedoch historisch aus mehreren Entwicklungsphasen und sind breiter als nötig. **Dieser Audit ändert keine produktiven Rechte.**
 
 Verifiziert:
 
@@ -75,24 +75,10 @@ Diese Liste ist **nur eine Kandidatenliste**. Dynamische Tabellennamen, RPC-Abh�
 4. **Migration D – Cache-/Jobtabellen:** Service-/RPC-Pfade schaffen und erst danach geeignete Tabellen in ein nicht exponiertes Schema verschieben.
 5. Nach jeder Migration Regressionstest mit Admin + normalem User.
 
-Keine dieser Migrationen ist in Phase 7.20 produktiv ausgeführt.
+Stand der vorbereiteten Härtungsmigrationen:
 
+- `084-hardening-anon-rpc-execute.sql` – Migration A, RPC-EXECUTE
+- `085-hardening-global-master-data-grants.sql` – Migration B, globale Stammdaten
+- `086-hardening-user-wallet-grants.sql` – Migration C, private User-/Wallettabellen
 
-## Umgesetzte Härtungsmigrationen
-
-### SQL 084 – anonyme RPC-Ausführung
-
-Entfernt direkten `EXECUTE`-Zugriff von `PUBLIC`/`anon` auf die geschützten Wallet-/Admin-RPCs und vergibt nur die fachlich benötigten Rollenrechte neu.
-
-### SQL 085 – globale Stammdaten
-
-Betrifft exakt die neun globalen Stammdatentabellen des reproduzierbaren Seeds: `chains`, `defi_projects`, `defi_project_tokens`, `defi_staking_contracts`, `dex_configs`, `predefined_tokens`, `project_nfts`, `tax_asset_prices`, `tax_fx_rates`.
-
-- `anon`: keine direkten Tabellen- oder zugehörigen Sequenzrechte.
-- `authenticated`: `SELECT` auf allen neun Tabellen.
-- Admin-Pflegewege erhalten nur die konkret benötigten `INSERT`/`UPDATE`/`DELETE`-Rechte; die bestehenden Admin-RLS-Policies bleiben entscheidend.
-- `defi_staking_contracts` bleibt im Browser read-only.
-- `service_role` bleibt unverändert.
-- Keine Datenänderung, kein Schema-Move, keine RLS-Änderung.
-
-Vor SQL 085 wurde der aktuelle Browsercode geprüft: Chain-Konfiguration und globale Stammdaten werden erst nach vorhandener Auth-Session geladen; ein Pre-Login-`anon`-Read dieser Tabellen ist nicht erforderlich.
+Migration C umfasst bewusst keine `tm_*`-Tabellen und keine globalen Cache-/Jobtabellen. Diese bleiben getrennte Prüfblöcke, damit keine andere Anwendung oder ein Backend-Job versehentlich beeinträchtigt wird.

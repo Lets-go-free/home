@@ -1,4 +1,4 @@
-// Phase 7.23 · 04.10.2026 01:18:53 CEST: Supabase-Härtung: globale Stammdaten erhalten Least-Privilege-GRANTs; normale App-Nutzung bleibt authenticated, Admin-Schreibrechte werden weiterhin per RLS begrenzt. Build 20261004-011853.
+// Phase 7.24 · 04.10.2026 01:33:35 CEST: Supabase-Härtung: User-/Wallettabellen erhalten Least-Privilege-GRANTs; RLS bleibt unverändert. Admin-Chains markiert technisch kritische Konfiguration sichtbar orange. Build 20261004-013335.
 // Phase 7.22 · 04.10.2026 00:58:30 CEST: Dashboard-Hinweis für Bestandschecks präzisiert; Erstcheck und veralteter Stand werden getrennt behandelt. Build 20261004-005830.
 // Phase 7.21 · 04.10.2026 00:42:41 CEST: Supabase-Härtung A dokumentiert; Migration 084 reduziert RPC-EXECUTE auf Least Privilege. Build 20261004-004241.
 // Phase 7.20 · 04.10.2026 00:38:58 CEST: Supabase-Härtungsaudit und Least-Privilege-Plan dokumentiert; produktive Rechte unverändert. Build 20261004-003858.

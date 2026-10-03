@@ -1,4 +1,4 @@
-<!-- Phase 7.23 · 04.10.2026 01:18:53 CEST: Supabase-Härtung Migration B: globale Stammdaten auf Least-Privilege-GRANTs reduziert; anon ohne direkte Rechte, authenticated nur Lesen plus RLS-geschützte Admin-Pflege. Build 20261004-011853. -->
+<!-- Phase 7.24 · 04.10.2026 01:33:35 CEST: User-/Wallet-Grants auf Least Privilege vorbereitet (Migration 086); Admin-Chains zeigt technisch kritische Spalten wieder orange. Build 20261004-013335. -->
 <!-- Phase 7.21 · 04.10.2026 00:42:41 CEST: Supabase-Härtung A vorbereitet: Migration 084 entfernt anon/PUBLIC-EXECUTE von sensiblen RPCs, vergibt Browser-RPCs nur an authenticated/service_role und härtet Function-Default-Privileges. Build 20261004-004241. -->
 <!-- Phase 7.20 · 04.10.2026 00:38:58 CEST: Supabase-Härtungsaudit dokumentiert; breite Alt-GRANTs, anon-RPCs und public-Schema-Kandidaten klassifiziert, noch keine produktiven Rechte geändert. Build 20261004-003858. -->
 <!-- Phase 7.19 · 04.10.2026 00:33:34 CEST: Verifizierten globalen Stammdaten-Seed ergänzt; 9 Allowlist-Tabellen, idempotente Upserts, FK-sichere Reihenfolge und sequenzsichere Wiederherstellung. Build 20261004-003334. -->
@@ -55,7 +55,7 @@
 </script>
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css?v=20261001-173651">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20261004-013335">
 <link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260928-042301">
 <style>
   /* Phase 7.06: Login bleibt auch mit Browser-/iCloud-/1Password-Popups bedienbar.
@@ -1256,7 +1256,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 04.10.2026 01:18:53 CEST · Phase 7.23 · Build 20261004-011853</span><br>
+    <span id="footerVersionLine">Version: 04.10.2026 01:33:35 CEST · Phase 7.24 · Build 20261004-013335</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1298,6 +1298,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 04.10.2026 01:18:53 CEST · Phase 7.23 · Build 20261004-011853</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 04.10.2026 01:33:35 CEST · Phase 7.24 · Build 20261004-013335</div>
 </body>
 </html>
