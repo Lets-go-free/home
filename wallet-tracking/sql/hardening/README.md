@@ -1,10 +1,10 @@
-# Supabase-Härtungsaudit – Phase 7.21
+# Supabase-Härtung – Stand Phase 7.23
 
 Stand: 04.10.2026, verifizierter Live-Snapshot `sql/baseline/verified/`.
 
 ## Ergebnis
 
-Die Baseline ist strukturell reproduzierbar; die Rechte stammen jedoch historisch aus mehreren Entwicklungsphasen und sind breiter als nötig. **Phase 7.21 ergänzt Migration 084 für H1. Sie wird erst produktiv, nachdem sie einmal im Supabase SQL Editor ausgeführt wurde.**
+Die Baseline ist strukturell reproduzierbar. Der Audit aus Phase 7.20 hat historisch zu breite Rechte sichtbar gemacht; seit Phase 7.21 werden diese Rechte in kleinen, getrennt testbaren Migrationen reduziert.
 
 Verifiziert:
 
@@ -21,7 +21,7 @@ RLS ist eine wichtige Schutzschicht, ersetzt aber keine minimalen SQL-GRANTs. Ei
 
 ## Höchste Priorität
 
-### H1 – anonyme RPC-Ausführung reduzieren · Migration 084 vorbereitet
+### H1 – anonyme RPC-Ausführung reduzieren
 
 Im Live-Snapshot sind folgende Functions für `anon` ausführbar:
 
@@ -78,6 +78,21 @@ Diese Liste ist **nur eine Kandidatenliste**. Dynamische Tabellennamen, RPC-Abh�
 Keine dieser Migrationen ist in Phase 7.20 produktiv ausgeführt.
 
 
-## Phase 7.21 · Migration 084
+## Umgesetzte Härtungsmigrationen
 
-`sql/084-hardening-anon-rpc-execute.sql` entfernt sowohl direkte `anon`-EXECUTE-Rechte als auch den indirekten Weg über `PUBLIC` für alle aktuell relevanten WalletTracking-RPCs. Browser-RPCs werden explizit nur für `authenticated` und `service_role` freigegeben; Trigger-/Maintenance-Functions bleiben `service_role`-only. Zusätzlich werden die Default Privileges für künftig von `postgres` angelegte `public`-Functions gehärtet, sodass neue RPCs nicht automatisch an `PUBLIC`/`anon` freigegeben werden. Die Migration enthält eine Abschlussprüfung mit `has_function_privilege`.
+### SQL 084 – anonyme RPC-Ausführung
+
+Entfernt direkten `EXECUTE`-Zugriff von `PUBLIC`/`anon` auf die geschützten Wallet-/Admin-RPCs und vergibt nur die fachlich benötigten Rollenrechte neu.
+
+### SQL 085 – globale Stammdaten
+
+Betrifft exakt die neun globalen Stammdatentabellen des reproduzierbaren Seeds: `chains`, `defi_projects`, `defi_project_tokens`, `defi_staking_contracts`, `dex_configs`, `predefined_tokens`, `project_nfts`, `tax_asset_prices`, `tax_fx_rates`.
+
+- `anon`: keine direkten Tabellen- oder zugehörigen Sequenzrechte.
+- `authenticated`: `SELECT` auf allen neun Tabellen.
+- Admin-Pflegewege erhalten nur die konkret benötigten `INSERT`/`UPDATE`/`DELETE`-Rechte; die bestehenden Admin-RLS-Policies bleiben entscheidend.
+- `defi_staking_contracts` bleibt im Browser read-only.
+- `service_role` bleibt unverändert.
+- Keine Datenänderung, kein Schema-Move, keine RLS-Änderung.
+
+Vor SQL 085 wurde der aktuelle Browsercode geprüft: Chain-Konfiguration und globale Stammdaten werden erst nach vorhandener Auth-Session geladen; ein Pre-Login-`anon`-Read dieser Tabellen ist nicht erforderlich.
