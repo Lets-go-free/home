@@ -1,3 +1,4 @@
+// Phase 7.22 · 04.10.2026 00:58:30 CEST: Dashboard-Bestandscheck unterscheidet frisch noch nicht geprüfte Wallets von tatsächlich veralteten Ständen; nur Chains mit Balance-Provider zählen. Nach Wallet-Erstaufbau wird der Aktionsblock sofort neu bewertet. Build 20261004-005830.
 // Phase 7.15 · 03.10.2026 14:55:16 CEST: Discovery-Imitationscheck normalisiert äquivalente Chain-Keys (u. a. matic/polygon/pol/polygon-pos) über zentrale Chain-Konfiguration/Chain-ID, ohne DB-Keys zu migrieren. Dadurch werden sichere Polygon-Stammdaten auch bei abweichendem Discovery-Alias erkannt. Build 20261003-145516.
 // Phase 7.13 · 03.10.2026 12:06:08 CEST: Auth-Umbau abgeschlossen; Magic Link nur noch klarer Recovery-/Übergangsweg, Standardlogin E-Mail/Passwort + optional Google. Build 20261003-120608.
 // Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt ERC-20-Tokenname explizit; bekannte vordefinierte Tokenidentitäten werden gegen Contract/Mint-Adresse abgeglichen und abweichende Imitationen als Spam-Verdacht markiert. Build 20261003-114755.
@@ -6033,6 +6034,10 @@ async function saveWallet(id) {
     if(freshStatus)freshStatus.textContent="Gespeichert · Datenaufbau fehlgeschlagen.";
     renderCacheStatusNote(`Wallet gespeichert · Datenaufbau teilweise fehlgeschlagen: ${e?.message||e}`);
   }
+  // Der Erstaufbau pflegt wallet_refresh_state schrittweise. Nach Abschluss muss der
+  // Dashboard-Aktionsblock den neuen Status sofort neu bewerten; sonst bleibt die
+  // vor dem Erstaufbau gerenderte Meldung bis zum nächsten Seitenrefresh sichtbar.
+  renderDashboard();
 }
 
 // Format-Validierung pro Chain (Länge/Präfix/Zeichensatz) - rein strukturell, keine
@@ -7503,7 +7508,24 @@ function chainIconHtml(chain,sizeClass="sm") {
   return `<span class="dashboard-chain-native-symbol" title="${title}">${escapeAttr(sym.slice(0,5))}</span>`;
 }
 
-function dashboardActionItems(targetWallets,involvedProjects,staleWallets){
+function dashboardBalanceCheckSummary(targetWallets){
+  let pendingWallets=0,staleWallets=0;
+  for(const w of targetWallets||[]){
+    let pending=false,stale=false;
+    for(const chain of Object.keys(CHAIN_CONFIG)){
+      if(!CHAIN_CONFIG[chain]?.balanceProvider||!walletAddressForChain(w,chain))continue;
+      if(refreshedToday(w,chain,"balances"))continue;
+      const state=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,"balances"));
+      if(!state?.last_checked_at)pending=true;
+      else stale=true;
+    }
+    if(pending)pendingWallets++;
+    else if(stale)staleWallets++;
+  }
+  return {pendingWallets,staleWallets,total:pendingWallets+staleWallets};
+}
+
+function dashboardActionItems(targetWallets,involvedProjects,balanceCheck){
   const items=[];
   const d=discoveryReviewSummary(targetWallets);
   if(d.unresolved||d.unscanned){
@@ -7514,8 +7536,20 @@ function dashboardActionItems(targetWallets,involvedProjects,staleWallets){
     if(d.unscanned)parts.push(`${d.unscanned} Wallet(s) noch nicht geprüft`);
     items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Token prüfen</strong><small style="display:block;margin-top:2px">${parts.join(" · ")}</small><button class="secondary" style="margin-top:8px" onclick="openDiscoveryReview('${escapeAttr(d.firstWalletId||"")}')">Jetzt prüfen</button></div></div>`);
   }
-  if(staleWallets){
-    items.push(`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`);
+  if(balanceCheck?.total){
+    const pending=Number(balanceCheck.pendingWallets||0),stale=Number(balanceCheck.staleWallets||0),total=Number(balanceCheck.total||0);
+    let title="",detail="";
+    if(pending&&stale){
+      title=`${total} Wallet(s) mit offenem Bestandscheck`;
+      detail=`${pending} noch nicht vollständig geprüft · ${stale} Bestandsstand${stale===1?"":"e"} älter als heute.`;
+    }else if(pending){
+      title=`${pending} Wallet(s) mit ausstehendem Bestandscheck`;
+      detail="Die Bestände wurden nach dem Erfassen noch nicht vollständig geprüft.";
+    }else{
+      title=`${stale} Wallet(s) mit veraltetem Bestandsstand`;
+      detail="Der letzte vollständige Bestandscheck ist älter als heute.";
+    }
+    items.push(`<div><span class="dashboard-action-icon warning">!</span><p><strong>${title}</strong><small>${detail}</small></p></div>`);
   }
   if(involvedProjects.has("tln_vow")){
     const tlnStats=dashboardProjectCacheStats.tln_vow||{};
@@ -7558,8 +7592,8 @@ function renderDashboard(){
   const globalRewards=dashboardMergeRewardPeriods("rewards"),globalReferralRewards=dashboardMergeRewardPeriods("referralRewards");
   const globalRewardState=dashboardCombinedRewardState([...involvedProjects]);
   const rewardKpi=(title,group)=>{const order=dashboardRewardAssetOrder(group);return `<article class="dashboard-kpi dashboard-kpi-gold dashboard-reward-kpi"><span>${title}</span><div class="dashboard-kpi-reward-lines"><div><small>Gesamt</small>${dashboardRewardPeriodHtml(group.total,order,globalRewardState)}</div><div><small>Vorjahr</small>${dashboardRewardPeriodHtml(group.previousYear,order,globalRewardState)}</div><div><small>Jahr</small>${dashboardRewardPeriodHtml(group.year,order,globalRewardState)}</div><div><small>Monat</small>${dashboardRewardPeriodHtml(group.month,order,globalRewardState)}</div></div></article>`;};
-  const staleWallets=targetWallets.filter(w=>Object.keys(CHAIN_CONFIG).some(c=>walletAddressForChain(w,c)&&!refreshedToday(w,c,"balances"))).length;
-  const actionItems=dashboardActionItems(targetWallets,involvedProjects,staleWallets);
+  const balanceCheck=dashboardBalanceCheckSummary(targetWallets);
+  const actionItems=dashboardActionItems(targetWallets,involvedProjects,balanceCheck);
   const actionCount=actionItems.length;
   const actionPanel=`<details class="dashboard-card dashboard-action-card" ${actionCount?"open":""}><summary class="dashboard-action-summary"><span><strong>Was muss ich tun?</strong>${actionCount?`<small>${actionCount} offene Aufgabe${actionCount===1?"":"n"}</small>`:`<span class="dashboard-action-all-ok" title="Keine offenen Aufgaben">✓</span><small>Keine offenen Aufgaben</small>`}</span><span class="dashboard-action-chevron" aria-hidden="true">⌄</span></summary>${actionCount?`<div class="dashboard-action-list dashboard-action-grid">${actionItems.join("")}</div>`:`<div class="dashboard-action-empty">Aktuell ist keine Aktion nötig.</div>`}</details>`;
   root.innerHTML=`
