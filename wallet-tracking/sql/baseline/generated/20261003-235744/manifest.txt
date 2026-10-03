@@ -1,0 +1,5 @@
+WalletTracking Supabase baseline capture
+Timestamp Europe/Zurich: 2026-10-03 23:57:44 CEST
+Git commit: 56ee1971a3166616cb9ee55140a336b0a4f3e6f8
+Supabase CLI: 2.119.0
+Mode: READ ONLY (db dump / migration list)

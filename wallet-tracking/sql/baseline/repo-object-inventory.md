@@ -1,6 +1,16 @@
-# Repo-Objektinventar · Phase 7.16
+# Repo-Objektinventar · Phase 7.17
 
-Dieses Inventar basiert auf den Supabase-Aufrufen im aktuellen Frontend-/Admin-Code. Es ist **kein** Ersatz für den Live-Schema-Dump, sondern eine Prüfliste.
+Dieses Inventar ergänzt die verifizierte Live-Baseline. Es ist eine Prüfliste für Code-/DB-Abgleich und kein Ersatz für `verified/schema.sql`.
+
+## Verifizierter Live-Stand 04.10.2026
+
+- 69 Tabellen in `public`
+- RLS auf allen 69 Tabellen
+- 218 Policies
+- 17 Functions in `public`
+- 4 Trigger
+- Migration 080 / `historical_dex_pair_state_cache`: produktiv vorhanden
+- Supabase-Migrationshistorie: leer
 
 ## Vom Code referenzierte Tabellen
 
@@ -61,17 +71,10 @@ Dieses Inventar basiert auf den Supabase-Aufrufen im aktuellen Frontend-/Admin-C
 - 082-predefined-stablecoins-base-solana-avalanche.sql
 - 083-predefined-polygon-stablecoin-metadata.sql
 
-## Nachweislich referenzierte, aktuell fehlende ältere Migrationen
+## Historische Lücke
 
-Die Projekt-Historie in `admin/ideas.js` erwähnt mindestens:
+Die Projekthistorie erwähnt mindestens die Migrationen/SQL-Stände 057, 058, 059, 063, 065, 068, 072 und 073, die im heutigen Repo fehlen. Weitere ältere Migrationen können ebenfalls fehlen. Diese Dateien werden nicht aus Vermutungen rekonstruiert.
 
-- Migration 057
-- Migration 058
-- Migration 059
-- Migration 063
-- Migration 065
-- Migration 068
-- SQL 072
-- SQL 073
+## Separater Härtungspunkt
 
-Weitere ältere Migrationen können ebenfalls fehlen. Deshalb wird die vollständige Baseline aus dem produktiven Live-Schema verifiziert und nicht aus dieser Liste geraten.
+Der Live-Snapshot enthält ältere breite Grants auf mehreren Tabellen und historisch interne Cache-/Jobobjekte in `public`. Beides wird separat auditiert und gehärtet, ohne den verifizierten Baseline-Snapshot rückwirkend umzuschreiben.

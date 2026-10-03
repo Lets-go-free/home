@@ -1,5 +1,5 @@
 -- WalletTracking · read-only DB inventory helper
--- Phase 7.16 · 03.10.2026
+-- Phase 7.17 · 04.10.2026
 -- Keine DDL/DML-Anweisungen. Kann im Supabase SQL Editor ausgeführt werden.
 
 select jsonb_pretty(jsonb_build_object(
