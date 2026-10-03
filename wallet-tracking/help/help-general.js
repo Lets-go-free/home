@@ -1,3 +1,4 @@
+// Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt Tokenname separat zum Symbol und warnt bei Name-/Symbol-Imitation eines sicheren vordefinierten Tokens unter abweichender Adresse. Build 20261003-114755.
 // Phase 7.11 · 03.10.2026 11:29:57 CEST: Vordefinierte Token verwenden im Chain-Filter dieselben zentralen Anzeigenamen wie die Admin-Auswahl; Base/Solana/Avalanche Stablecoins ergänzt, XRPL-Issued-Currency-Support bleibt separat offen. Build 20261003-112957.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Login-/Passwortformular fuer iCloud/Browser-Passwortmanager dokumentiert. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Login-Hilfe um Redirect-/Session-Verhalten und Passwortmanager-Kompatibilität ergänzt. Build 20261002-154032.

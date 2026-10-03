@@ -1,3 +1,4 @@
+// Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt ERC-20-Tokenname explizit; bekannte vordefinierte Tokenidentitäten werden gegen Contract/Mint-Adresse abgeglichen und abweichende Imitationen als Spam-Verdacht markiert. Build 20261003-114755.
 // Phase 7.11 · 03.10.2026 11:29:57 CEST: Predefined-Token-Chainfilter nutzt dieselben lesbaren Chain-Namen wie die Admin-Auswahl; Base/Solana/Avalanche Stablecoin-Stammdaten per Migration 082. Build 20261003-112957.
 // Phase 7.06 · 02.10.2026 16:01:02 CEST: Login + Passwort-Setzen als echte Password-Manager-Formulare; Browser/iCloud-Keychain kann erfolgreiche Logins und neue Passwörter erkennen. Build 20261002-160102.
 // Phase 7.05 · 02.10.2026 15:40:32 CEST: Auth-State-Callback robust gegen Magic-Link/Redirect-Race; Passwortmanager-freundliches Loginlayout; Versionsfooter korrigiert. Build 20261002-154032.
@@ -11665,6 +11666,38 @@ function riskFlags(info) {
   return flags;
 }
 
+function discoveryIdentityText(value){
+  return String(value||"").trim().toLocaleLowerCase("en-US");
+}
+
+// Erkennt Tokens, die Symbol oder Namen eines sicheren vordefinierten Tokens derselben Chain
+// uebernehmen, aber unter einer anderen Contract-/Mint-Adresse laufen. Das ist ein starkes
+// Warnsignal, aber kein kryptographischer Echtheitsbeweis; massgeblich bleibt die Adresse.
+function discoveryPredefinedIdentityMismatch(f){
+  if(!f?.chain||!f?.address)return null;
+  const chain=f.chain, current=normalizeAddress(f.address,chain);
+  const symbol=discoveryIdentityText(f.symbol), name=discoveryIdentityText(f.name);
+  if(!symbol&&!name)return null;
+  const prefix=chain+"|";
+  const keys=new Set([
+    ...Object.keys(predefinedTokenSymbols||{}),
+    ...Object.keys(predefinedTokenNames||{}),
+    ...Object.keys(predefinedTokenLabels||{})
+  ].filter(k=>k.startsWith(prefix)));
+  const matches=[];
+  for(const key of keys){
+    const officialAddress=normalizeAddress(key.slice(prefix.length),chain);
+    if(!officialAddress||officialAddress===current)continue;
+    if(!(SAFE_ADDRESSES[chain]||[]).includes(officialAddress))continue;
+    const officialSymbol=String(predefinedTokenSymbols[key]||"").trim();
+    const officialName=String(predefinedTokenNames[key]||predefinedTokenLabels[key]||"").trim();
+    const symbolMatch=!!symbol && symbol.length>=2 && discoveryIdentityText(officialSymbol)===symbol;
+    const nameMatch=!!name && name.length>=4 && discoveryIdentityText(officialName)===name;
+    if(symbolMatch||nameMatch)matches.push({address:officialAddress,symbol:officialSymbol||null,name:officialName||null,symbolMatch,nameMatch});
+  }
+  return matches.length?{matches}:null;
+}
+
 
 // ---- Discovery-Cache (Supabase): Nicht-Admins max. 1 Scan pro Wallet alle 30 Tage; Admins ohne Sperre ----
 const DISCOVERY_COOLDOWN_DAYS = 30;
@@ -12041,6 +12074,7 @@ window.openDiscoveryReview=openDiscoveryReview;
 function isFindingScamSuspect(f) {
   if (f.nameScamFlag) return true;
   if (f.risk && f.risk.length > 0) return true;
+  if (discoveryPredefinedIdentityMismatch(f)) return true;
   return false;
 }
 function isFindingScam(f) { return !!f.userMarkedScam || isFindingScamSuspect(f); }
@@ -12090,6 +12124,12 @@ function renderDiscoveryResults(findings) {
       const reasons = [];
       if (f.userMarkedScam) reasons.push("vom Benutzer als Spam markiert");
       if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
+      const identityMismatch=discoveryPredefinedIdentityMismatch(f);
+      if(identityMismatch){
+        const official=identityMismatch.matches[0];
+        const officialLabel=official.symbol||official.name||"vordefinierter Token";
+        reasons.push(`Name/Symbol imitiert ${officialLabel}, Contract-Adresse weicht ab`);
+      }
       if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
       riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ SPAM-VERDACHT: ${reasons.join(", ")}</span>`;
     } else if (f.risk === null) {
@@ -12099,7 +12139,8 @@ function renderDiscoveryResults(findings) {
     }
     return `<div class="custom-token-row" style="align-items:flex-start;${scam ? 'border-color:var(--danger)' : ''}">
       <div>
-        <div><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[f.chain]?.displayColor || "#6b7280")}"></span>${escapeAttr(f.symbol)}${f.name && f.name !== f.symbol ? ' <span class="note" style="display:inline">(' + escapeAttr(f.name) + ')</span>' : ''} · ${f.historical && Number(f.amount)<DUST_THRESHOLD ? '<span class="badge">historisch gehalten</span>' : fmt(f.amount,{chain:f.chain,address:f.address,symbol:f.symbol})} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
+        <div><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[f.chain]?.displayColor || "#6b7280")}"></span><strong>${escapeAttr(f.symbol)}</strong> · ${f.historical && Number(f.amount)<DUST_THRESHOLD ? '<span class="badge">historisch gehalten</span>' : fmt(f.amount,{chain:f.chain,address:f.address,symbol:f.symbol})} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
+        ${f.name ? `<div class="meta"><strong>Name:</strong> ${escapeAttr(f.name)}</div>` : ''}
         <div class="meta">${meta.label} · ${f.address}</div>
         ${f.isLp?`<div style="margin-top:5px"><span class="badge safe">LP erkannt</span> <span class="note" style="display:inline">${escapeAttr(f.lpToken0?.symbol||"Token0")}/${escapeAttr(f.lpToken1?.symbol||"Token1")}${f.lpFactory?` · Factory ${escapeAttr(dashboardShortAddress(f.lpFactory))}`:""}</span></div>`:""}
         ${Array.isArray(f.lpStakingCandidates)&&f.lpStakingCandidates.length?`<div class="note" style="margin-top:4px"><strong>${f.lpStakingCandidates.filter(x=>!x.verified).length} möglicher Staking-Contract${f.lpStakingCandidates.filter(x=>!x.verified).length===1?"":"s"}</strong> erkannt · Admin-Verifikation erforderlich. Verifizierte Stakings zählen danach automatisch zum Vermögen.</div>`:""}
