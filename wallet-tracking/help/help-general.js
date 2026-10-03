@@ -1,4 +1,4 @@
-// Phase 7.15 · 03.10.2026 14:55:16 CEST: Discovery normalisiert Chain-Aliase beim Abgleich mit sicheren vordefinierten Tokens. Interne Legacy-Keys wie `matic` bleiben unverändert; externe Bezeichnungen wie polygon/pol/polygon-pos werden nur für den Vergleich zugeordnet. Build 20261003-145516.
+// Phase 7.16 · 03.10.2026 19:08:37 CEST: Technische Projektdokumentation um read-only Supabase-Baseline-Export ergänzt; XRPL-Token/Trustlines bleiben bis zu einem realen Testfall bewusst offen. Build 20261003-190837.
 // Phase 7.13 · 03.10.2026 12:06:08 CEST: Login-Hilfe finalisiert; Magic Link nur Recovery/Übergang, produktive Standardwege E-Mail/Passwort + optional Google. Build 20261003-120608.
 // Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt Tokenname separat zum Symbol und warnt bei Name-/Symbol-Imitation eines sicheren vordefinierten Tokens unter abweichender Adresse. Build 20261003-114755.
 // Phase 7.11 · 03.10.2026 11:29:57 CEST: Vordefinierte Token verwenden im Chain-Filter dieselben zentralen Anzeigenamen wie die Admin-Auswahl; Base/Solana/Avalanche Stablecoins ergänzt, XRPL-Issued-Currency-Support bleibt separat offen. Build 20261003-112957.

@@ -1,4 +1,4 @@
-// Phase 7.15 · 03.10.2026 14:55:16 CEST: Discovery-Imitationscheck gleicht interne/externe Chain-Aliase robust ab (z. B. matic/polygon/pol/polygon-pos), ohne bestehende DB-Keys umzubenennen. Polygon-Fake-USDC kann dadurch gegen den sicheren matic-Stammdatensatz geprüft werden. Build 20261003-145516.
+// Phase 7.16 · 03.10.2026 19:08:37 CEST: DB-Reproduzierbarkeit Phase 1 vorbereitet: read-only Baseline-Export/Inventar im Repo; fehlende historische Migrationen werden nicht erfunden. XRPL issued currencies/Trustlines inkl. USDC + RLUSD als spaeterer Ausbaupunkt dokumentiert. Build 20261003-190837.
 // Phase 7.13 · 03.10.2026 12:06:08 CEST: Auth-Strang offiziell abgeschlossen; Magic Link nur noch Recovery/Übergang, E-Mail/Passwort + Google sind produktive Loginwege. Build 20261003-120608.
 // Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt Tokenname separat und erkennt Imitationen vordefinierter sicherer Token anhand Name/Symbol bei abweichender Contract-/Mint-Adresse als Spam-Verdacht. Build 20261003-114755.
 // Phase 7.11 · 03.10.2026 11:29:57 CEST: Predefined-Token-Filter zeigt zentrale Chain-Labels; Migration 082 ergänzt native USDC/USDT-Stammdaten auf Base/Solana/Avalanche. XRPL-USDC bleibt offen bis issued-currency/Trustline-Support. Build 20261003-112957.
@@ -156,6 +156,20 @@ const ADMIN_IDEAS = [
     priority: "high",
     title: "Login · E-Mail/Passwort + Google OAuth",
     desc: `Phase 7.13 schließt den Auth-Umbau auf E-Mail + Passwort sowie Google OAuth offiziell ab. Eingeloggte Bestandsuser starten Google über Supabase linkIdentity; vor dem Redirect wird die vorhandene auth.users.id sessionlokal gemerkt und nach Rückkehr strikt auf Gleichheit geprüft. E-Mail + Passwort bleibt parallel bestehen; Magic Link ist ausschließlich ein klar gekennzeichneter Recovery-/Übergangsweg für bestehende Konten ohne Passwort und kein Standardlogin. Google-Provider und Manual Linking müssen im Supabase-Projekt konfiguriert sein. Der Verknüpfungsstatus wird angezeigt; „Google trennen“ ist nur möglich, wenn Supabase mindestens eine weitere Identität am selben User meldet. Die WalletTracking-User-ID und Daten bleiben beim Verknüpfen/Trennen unverändert. Realtests: bestehende Google-Verknüpfung, neuer Google-User, Login und Logout funktionieren. Apple-Login wird bewusst nicht angeboten. Kein Admin-Flag im Frontend/localStorage.`
+  },
+  {
+    status: "in_progress",
+    category: "Security & Privacy",
+    priority: "high",
+    title: "DB-Reproduzierbarkeit · verifizierte Supabase-Baseline",
+    desc: `Phase 7.16 startet die Wiederherstellung der DB-Reproduzierbarkeit. Der aktuelle Repo-Stand enthält nur die Migrationen 074–083, während die Projektdokumentation frühere produktive Migrationen u. a. 057, 058, 059, 063, 065, 068, 072 und 073 referenziert. Diese Lücke wird ausdrücklich nicht durch erfundene SQL-Dateien geschlossen. Neu im Repo: sql/baseline/README.md, repo-object-inventory.md, verify-baseline.sql sowie _wt-db-baseline.command. Der Helper liest die verknüpfte produktive Supabase-DB ausschließlich mit db dump/migration list aus und schreibt Schema-/Rollen-Dump plus Checksummen lokal; er führt keine Migration, keinen Reset und keine Datenänderung aus. Nächster Schritt: Live-Baseline erzeugen, mit den vorhandenen Migrationen/Code-Referenzen vergleichen und erst danach einen verifizierten Baseline-Stand committen. Ausgeführte Migrationen werden künftig nicht gelöscht.`
+  },
+  {
+    status: "open",
+    category: "Chains & Tokens",
+    priority: "medium",
+    title: "XRPL · issued currencies / Trustlines",
+    desc: `Bewusst zurückgestellt bis ein echter Testfall/Testwallet mit XRPL-Token vorhanden ist. Produktiver Ausbau soll account_lines für aktuelle und historische Trustlines nutzen. XRPL-Tokens werden fachlich über Currency Code + Issuer identifiziert; keine ERC-20-Decimals-Logik übernehmen. Discovery/Spam-Erkennung muss gleiche Currency/Symbol-Namen mit abweichendem Issuer erkennen. Sobald produktiv umgesetzt, mindestens offizielles Circle-USDC und Ripple USD (RLUSD) als sichere vordefinierte XRPL-Tokens aufnehmen. Native XRP-Unterstützung bleibt unverändert.`
   },
   {
     status: "open",
