@@ -1,4 +1,4 @@
-<!-- Phase 7.14 · 03.10.2026 12:24:00 CEST: Discovery-Chainfilter filtert Scan und Ergebnisliste; Stammdatentabelle zeigt echtes Symbol separat; Polygon USDC/USDT erhalten vollständige Symbol/Name/6-Dec.-Metadaten via Migration 083. Build 20261003-122400. -->
+<!-- Phase 7.15 · 03.10.2026 14:55:16 CEST: Discovery-Imitationscheck normalisiert Chain-Aliase (matic/polygon/pol/polygon-pos) gegen die sichere Stammdaten-Chain, ohne bestehende DB-Keys zu ändern. Build 20261003-145516. -->
 <!-- Phase 7.11 · 03.10.2026 11:29:57 CEST: Predefined-Token-Chainfilter mit lesbaren Chain-Namen; sichere USDC/USDT-Stammdaten für Base, Solana und Avalanche via Migration 082. Build 20261003-114755. -->
 <!DOCTYPE html>
 <!-- Phase 7.06 · 02.10.2026 16:01:02 CEST: Login und Passwort-Setzen als echte Passwortmanager-Formulare; iCloud/Browser-Keychain kann neue bzw. verwendete Zugangsdaten zuverlässig erkennen. Build 20261002-160102. -->
@@ -1252,7 +1252,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 03.10.2026 12:24:00 CEST · Phase 7.14 · Build 20261003-122400</span><br>
+    <span id="footerVersionLine">Version: 03.10.2026 14:55:16 CEST · Phase 7.15 · Build 20261003-145516</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1271,11 +1271,11 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20261003-122400"></script>
-<script src="./help/help-general.js?v=20261003-122400"></script>
+<script src="./admin/ideas.js?v=20261003-145516"></script>
+<script src="./help/help-general.js?v=20261003-145516"></script>
 <script src="./projects/tln-vow/help.js?v=20261002-121802"></script>
 <script src="./projects/dao1/help.js?v=20260929-181743"></script>
-<script src="./js/app.js?v=20261003-122400"></script>
+<script src="./js/app.js?v=20261003-145516"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260929-152557"></script>
 
 
@@ -1294,6 +1294,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 03.10.2026 12:24:00 CEST · Phase 7.14 · Build 20261003-122400</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 03.10.2026 14:55:16 CEST · Phase 7.15 · Build 20261003-145516</div>
 </body>
 </html>

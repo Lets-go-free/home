@@ -1,4 +1,4 @@
-// Phase 7.14 · 03.10.2026 12:24:00 CEST: Discovery-Chainfilter wirkt auch auf Ergebnisliste/Zähler; Imitationsprüfung nutzt sichere Label-Ticker als Symbol-Fallback; vordefinierte Token zeigen echtes Symbol separat. Polygon USDC/USDT-Metadaten werden per Migration 083 mit 6 technischen Decimals vervollständigt. Build 20261003-122400.
+// Phase 7.15 · 03.10.2026 14:55:16 CEST: Discovery-Imitationscheck normalisiert äquivalente Chain-Keys (u. a. matic/polygon/pol/polygon-pos) über zentrale Chain-Konfiguration/Chain-ID, ohne DB-Keys zu migrieren. Dadurch werden sichere Polygon-Stammdaten auch bei abweichendem Discovery-Alias erkannt. Build 20261003-145516.
 // Phase 7.13 · 03.10.2026 12:06:08 CEST: Auth-Umbau abgeschlossen; Magic Link nur noch klarer Recovery-/Übergangsweg, Standardlogin E-Mail/Passwort + optional Google. Build 20261003-120608.
 // Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt ERC-20-Tokenname explizit; bekannte vordefinierte Tokenidentitäten werden gegen Contract/Mint-Adresse abgeglichen und abweichende Imitationen als Spam-Verdacht markiert. Build 20261003-114755.
 // Phase 7.11 · 03.10.2026 11:29:57 CEST: Predefined-Token-Chainfilter nutzt dieselben lesbaren Chain-Namen wie die Admin-Auswahl; Base/Solana/Avalanche Stablecoin-Stammdaten per Migration 082. Build 20261003-112957.
@@ -11683,38 +11683,82 @@ function discoveryIdentityText(value){
   return String(value||"").trim().toLocaleLowerCase("en-US");
 }
 
+// Liefert interne/alternative Chain-Keys, die dieselbe Chain meinen. Die DB bleibt bewusst
+// bei ihren bestehenden Keys (z. B. `matic`); Discovery-/Provider-Aliase werden nur fuer
+// Vergleiche normalisiert.
+function discoveryEquivalentChainKeys(chain){
+  const raw=String(chain||"").trim();
+  const keys=new Set(raw?[raw]:[]);
+  const lower=raw.toLowerCase();
+  const aliases={
+    matic:["matic","polygon","pol","polygon-pos"],
+    polygon:["matic","polygon","pol","polygon-pos"],
+    pol:["matic","polygon","pol","polygon-pos"],
+    "polygon-pos":["matic","polygon","pol","polygon-pos"]
+  };
+  (aliases[lower]||[]).forEach(k=>keys.add(k));
+  const cfg=CHAIN_CONFIG?.[raw]||CHAIN_CONFIG?.[lower]||null;
+  const chainId=cfg?.evmChainId==null?null:String(cfg.evmChainId);
+  if(chainId){
+    Object.keys(CHAIN_CONFIG||{}).forEach(k=>{
+      if(String(CHAIN_CONFIG[k]?.evmChainId??"")===chainId)keys.add(k);
+    });
+  }
+  // Auch vorhandene Stammdaten-Keys mit gleicher menschenlesbarer Chain aufnehmen.
+  const label=String(CHAIN_META?.[raw]?.label||CHAIN_META?.[lower]?.label||"").trim().toLowerCase();
+  if(label){
+    Object.keys(CHAIN_META||{}).forEach(k=>{
+      if(String(CHAIN_META[k]?.label||"").trim().toLowerCase()===label)keys.add(k);
+    });
+  }
+  return [...keys].filter(Boolean);
+}
+
 // Erkennt Tokens, die Symbol oder Namen eines sicheren vordefinierten Tokens derselben Chain
 // uebernehmen, aber unter einer anderen Contract-/Mint-Adresse laufen. Das ist ein starkes
 // Warnsignal, aber kein kryptographischer Echtheitsbeweis; massgeblich bleibt die Adresse.
 function discoveryPredefinedIdentityMismatch(f){
   if(!f?.chain||!f?.address)return null;
-  const chain=f.chain, current=normalizeAddress(f.address,chain);
+  const sourceChain=f.chain;
+  const chainKeys=discoveryEquivalentChainKeys(sourceChain);
+  const current=normalizeAddress(f.address,sourceChain);
   const symbol=discoveryIdentityText(f.symbol), name=discoveryIdentityText(f.name);
   if(!symbol&&!name)return null;
-  const prefix=chain+"|";
-  const keys=new Set([
-    ...Object.keys(predefinedTokenSymbols||{}),
-    ...Object.keys(predefinedTokenNames||{}),
-    ...Object.keys(predefinedTokenLabels||{})
-  ].filter(k=>k.startsWith(prefix)));
   const matches=[];
-  for(const key of keys){
-    const officialAddress=normalizeAddress(key.slice(prefix.length),chain);
-    if(!officialAddress||officialAddress===current)continue;
-    if(!(SAFE_ADDRESSES[chain]||[]).includes(officialAddress))continue;
-    const officialLabel=String(predefinedTokenLabels[key]||"").trim();
-    const storedSymbol=String(predefinedTokenSymbols[key]||"").trim();
-    // Ältere Stammdaten enthalten teilweise nur ein tickerartiges Label (z.B. USDC).
-    // Dieses darf als Symbol-Fallback dienen; ein beschreibendes Label wie "USD Coin"
-    // wird ausdrücklich NICHT als Symbol interpretiert.
-    const labelTicker=/^[A-Za-z0-9.$€£_-]{2,12}$/.test(officialLabel) ? officialLabel : "";
-    const officialSymbol=storedSymbol||labelTicker;
-    const officialName=String(predefinedTokenNames[key]||(!labelTicker?officialLabel:"")).trim();
-    const symbolMatch=!!symbol && symbol.length>=2 && !!officialSymbol && discoveryIdentityText(officialSymbol)===symbol;
-    const nameMatch=!!name && name.length>=4 && discoveryIdentityText(officialName)===name;
-    if(symbolMatch||nameMatch)matches.push({address:officialAddress,symbol:officialSymbol||null,name:officialName||null,symbolMatch,nameMatch});
+  for(const officialChain of chainKeys){
+    const prefix=officialChain+"|";
+    const keys=new Set([
+      ...Object.keys(predefinedTokenSymbols||{}),
+      ...Object.keys(predefinedTokenNames||{}),
+      ...Object.keys(predefinedTokenLabels||{})
+    ].filter(k=>k.startsWith(prefix)));
+    for(const key of keys){
+      const officialAddress=normalizeAddress(key.slice(prefix.length),officialChain);
+      if(!officialAddress||officialAddress===current)continue;
+      if(!(SAFE_ADDRESSES[officialChain]||[]).includes(officialAddress))continue;
+      const officialLabel=String(predefinedTokenLabels[key]||"").trim();
+      const storedSymbol=String(predefinedTokenSymbols[key]||"").trim();
+      // Ältere Stammdaten enthalten teilweise nur ein tickerartiges Label (z.B. USDC).
+      // Dieses darf als Symbol-Fallback dienen; ein beschreibendes Label wie "USD Coin"
+      // wird ausdrücklich NICHT als Symbol interpretiert.
+      const labelTicker=/^[A-Za-z0-9.$€£_-]{2,12}$/.test(officialLabel) ? officialLabel : "";
+      const officialSymbol=storedSymbol||labelTicker;
+      const officialName=String(predefinedTokenNames[key]||(!labelTicker?officialLabel:"")).trim();
+      const symbolMatch=!!symbol && symbol.length>=2 && !!officialSymbol && discoveryIdentityText(officialSymbol)===symbol;
+      const nameMatch=!!name && name.length>=4 && !!officialName && discoveryIdentityText(officialName)===name;
+      if(symbolMatch||nameMatch)matches.push({chain:officialChain,address:officialAddress,symbol:officialSymbol||null,name:officialName||null,symbolMatch,nameMatch});
+    }
   }
-  return matches.length?{matches}:null;
+  if(!matches.length)return null;
+  // Deduplizieren, falls Alias-Keys dieselben Stammdaten mehrfach sichtbar machen.
+  const dedup=[];
+  const seen=new Set();
+  for(const m of matches){
+    const k=String(m.address).toLowerCase()+"|"+discoveryIdentityText(m.symbol)+"|"+discoveryIdentityText(m.name);
+    if(seen.has(k))continue;
+    seen.add(k);dedup.push(m);
+  }
+  return dedup.length?{matches:dedup,sourceChain,chainKeys}:null;
 }
 
 

@@ -1,4 +1,4 @@
-// Phase 7.14 · 03.10.2026 12:24:00 CEST: Discovery-Chainfilter filtert auch gespeicherte Tokenliste/Zähler; vordefinierte Token zeigen separates echtes Symbol, technische Decimals kommen aus Stammdaten; Polygon USDC/USDT werden mit Migration 083 auf 6 Decimals vervollständigt. Build 20261003-122400.
+// Phase 7.15 · 03.10.2026 14:55:16 CEST: Discovery normalisiert Chain-Aliase beim Abgleich mit sicheren vordefinierten Tokens. Interne Legacy-Keys wie `matic` bleiben unverändert; externe Bezeichnungen wie polygon/pol/polygon-pos werden nur für den Vergleich zugeordnet. Build 20261003-145516.
 // Phase 7.13 · 03.10.2026 12:06:08 CEST: Login-Hilfe finalisiert; Magic Link nur Recovery/Übergang, produktive Standardwege E-Mail/Passwort + optional Google. Build 20261003-120608.
 // Phase 7.12 · 03.10.2026 11:47:55 CEST: Discovery zeigt Tokenname separat zum Symbol und warnt bei Name-/Symbol-Imitation eines sicheren vordefinierten Tokens unter abweichender Adresse. Build 20261003-114755.
 // Phase 7.11 · 03.10.2026 11:29:57 CEST: Vordefinierte Token verwenden im Chain-Filter dieselben zentralen Anzeigenamen wie die Admin-Auswahl; Base/Solana/Avalanche Stablecoins ergänzt, XRPL-Issued-Currency-Support bleibt separat offen. Build 20261003-112957.
@@ -143,3 +143,5 @@ else renderGeneralHelp();
 // Phase 5.76 · 21.09.2026 16:25:41 CEST: Request-Audit/Systemübersicht-Hotfix. cache_data_versions wird im Systemtab in-flight dedupliziert und kurz wiederverwendet; DAO-Team-Versionen werden vor dem UI-Status zusammengeführt, damit kein rekursiver Requestloop entsteht. Build 20260921-162541.// Hinweis 31.12.: Fehlt für einen verifizierten Token ein historischer Kurs, zeigt die Bestandesaufnahme eine Token-Prüfaufgabe. Zuerst Relevanz/Spam/Legacy prüfen; erst danach eine zusätzliche Preisquelle pflegen.
 
 // Phase 7.14: Discovery-Chaincheckboxen steuern sowohl den nächsten Scan als auch die reine Anzeige bereits gespeicherter Ergebnisse. Vordefinierte Token zeigen das echte Symbol separat; technische Decimals sind Blockchain-Metadaten und dürfen nicht mit Anzeige-/Summary-Rundung verwechselt werden.
+
+// Phase 7.15: Beim Spam-/Imitationscheck werden äquivalente Chain-Bezeichnungen über Chain-ID und bekannte Aliase zusammengeführt; die gespeicherten Chain-Keys selbst werden nicht verändert.
