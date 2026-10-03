@@ -1,10 +1,10 @@
-# Supabase-Härtungsaudit – Phase 7.20
+# Supabase-Härtungsaudit – Phase 7.21
 
 Stand: 04.10.2026, verifizierter Live-Snapshot `sql/baseline/verified/`.
 
 ## Ergebnis
 
-Die Baseline ist strukturell reproduzierbar; die Rechte stammen jedoch historisch aus mehreren Entwicklungsphasen und sind breiter als nötig. **Dieser Audit ändert keine produktiven Rechte.**
+Die Baseline ist strukturell reproduzierbar; die Rechte stammen jedoch historisch aus mehreren Entwicklungsphasen und sind breiter als nötig. **Phase 7.21 ergänzt Migration 084 für H1. Sie wird erst produktiv, nachdem sie einmal im Supabase SQL Editor ausgeführt wurde.**
 
 Verifiziert:
 
@@ -21,7 +21,7 @@ RLS ist eine wichtige Schutzschicht, ersetzt aber keine minimalen SQL-GRANTs. Ei
 
 ## Höchste Priorität
 
-### H1 – anonyme RPC-Ausführung reduzieren
+### H1 – anonyme RPC-Ausführung reduzieren · Migration 084 vorbereitet
 
 Im Live-Snapshot sind folgende Functions für `anon` ausführbar:
 
@@ -76,3 +76,8 @@ Diese Liste ist **nur eine Kandidatenliste**. Dynamische Tabellennamen, RPC-Abh�
 5. Nach jeder Migration Regressionstest mit Admin + normalem User.
 
 Keine dieser Migrationen ist in Phase 7.20 produktiv ausgeführt.
+
+
+## Phase 7.21 · Migration 084
+
+`sql/084-hardening-anon-rpc-execute.sql` entfernt sowohl direkte `anon`-EXECUTE-Rechte als auch den indirekten Weg über `PUBLIC` für alle aktuell relevanten WalletTracking-RPCs. Browser-RPCs werden explizit nur für `authenticated` und `service_role` freigegeben; Trigger-/Maintenance-Functions bleiben `service_role`-only. Zusätzlich werden die Default Privileges für künftig von `postgres` angelegte `public`-Functions gehärtet, sodass neue RPCs nicht automatisch an `PUBLIC`/`anon` freigegeben werden. Die Migration enthält eine Abschlussprüfung mit `has_function_privilege`.

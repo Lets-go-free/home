@@ -1,6 +1,6 @@
 # Härtungsplan
 
-Phase 7.20 ist Audit-only. Für produktive Änderungen werden getrennte Migrationen erstellt und einzeln getestet.
+Phase 7.20 war Audit-only. Phase 7.21 bereitet Migration A (`084-hardening-anon-rpc-execute.sql`) vor; produktiv gilt sie erst nach einmaliger Ausführung im Supabase SQL Editor und anschließendem Regressionstest.
 
 ## Testmatrix je Härtungsmigration
 

@@ -1,3 +1,4 @@
+// Phase 7.21 · 04.10.2026 00:42:41 CEST: Supabase-Härtung A: Migration 084 für anon/PUBLIC-RPC-EXECUTE vorbereitet; Default-Privileges für neue Functions gehärtet. Build 20261004-004241.
 // Phase 7.20 · 04.10.2026 00:38:58 CEST: Supabase-Härtungsaudit: Least-Privilege-Lücken und interne public-Kandidaten klassifiziert; keine produktiven GRANTs geändert. Build 20261004-003858.
 // Phase 7.19 · 04.10.2026 00:33:34 CEST: Verifizierten globalen Stammdaten-Seed aus geprüftem Live-Export ergänzt; 9 Tabellen, idempotente Upserts und sichere Sequenzbehandlung. Build 20261004-003334.
 // Phase 7.16 · 03.10.2026 19:08:37 CEST: DB-Reproduzierbarkeit Phase 1 vorbereitet: read-only Baseline-Export/Inventar im Repo; fehlende historische Migrationen werden nicht erfunden. XRPL issued currencies/Trustlines inkl. USDC + RLUSD als spaeterer Ausbaupunkt dokumentiert. Build 20261003-190837.
