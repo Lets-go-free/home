@@ -1,0 +1,9 @@
+chains
+defi_project_tokens
+defi_projects
+defi_staking_contracts
+dex_configs
+predefined_tokens
+project_nfts
+tax_asset_prices
+tax_fx_rates

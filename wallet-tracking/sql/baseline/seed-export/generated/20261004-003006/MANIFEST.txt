@@ -1,0 +1,43 @@
+WalletTracking Stammdaten-Export
+Zeitpunkt (Europe/Zurich): 04.10.2026 00:30:40 CEST
+Modus: read-only
+Quelle: verknüpftes Supabase-Projekt
+
+Freigegebene Allowlist:
+- chains
+- defi_projects
+- dex_configs
+- predefined_tokens
+- defi_project_tokens
+- defi_staking_contracts
+- project_nfts
+- tax_fx_rates
+- tax_asset_prices
+
+Im Live-Schema vorhandene freigegebene Tabellen:
+- chains
+- defi_projects
+- dex_configs
+- predefined_tokens
+- defi_project_tokens
+- defi_staking_contracts
+- project_nfts
+- tax_fx_rates
+- tax_asset_prices
+
+Freigegebene Tabellen, die im Live-Schema fehlen:
+- keine
+
+Tatsächlich im Datendump erkannte Tabellen:
+- chains
+- defi_project_tokens
+- defi_projects
+- defi_staking_contracts
+- dex_configs
+- predefined_tokens
+- project_nfts
+- tax_asset_prices
+- tax_fx_rates
+
+WICHTIG: raw-seed.sql ist ein Prüf-/Rohdump. Er wird NICHT automatisch produktiv eingespielt.
+Er wird vor Aufnahme ins Repo in deterministische, idempotente Seeds umgewandelt und geprüft.
