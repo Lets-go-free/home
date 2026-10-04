@@ -1,4 +1,4 @@
-# Supabase-Härtungsaudit – Phase 7.26
+# Supabase-Härtungsaudit – Phase 7.27
 
 Stand: 04.10.2026, verifizierter Live-Snapshot `sql/baseline/verified/`.
 
@@ -94,3 +94,8 @@ Die Cache-/Job-Klassifizierung wurde gegen den gesamten Browser-/Projektcode und
 ## Phase 7.26 – Retirement-/Altbestand-Audit
 
 Nicht referenzierte Alt-/Übergangstabellen werden nicht blind gelöscht. Die statische Klassifizierung liegt in `retirement-audit.md`; `retirement-audit-live.sql` liefert read-only Zeilenzahlen und DB-Abhängigkeiten für die verbleibenden Kandidaten.
+
+
+## Phase 7.27 – Retirement Migration 088
+
+Nach Live- und Source-Audit werden `project_miner_ownership` und `wallet_current_price_snapshots` kontrolliert retired. `wallet_current_price_snapshots` war der alte userbezogene Tages-Preiscache und ist durch `wallet_global_current_price_snapshot` plus globalen 15-Minuten-Refresh-Slot ersetzt. Die Migration aktualisiert die beiden Delete-RPCs und nutzt `DROP ... RESTRICT` sowie Daten-/Zeitstempel-Guards, damit unerwartete Wiederverwendung den Drop stoppt. `apertum_nft_history_coverage`, `user_settings` und `tln_wallet_identity_cache` bleiben bestehen.

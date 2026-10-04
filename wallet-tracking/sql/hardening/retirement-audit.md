@@ -1,4 +1,4 @@
-# Retirement-/Altbestand-Audit · Phase 7.26
+# Retirement-/Altbestand-Audit · Phase 7.27
 
 Ziel dieses Audits ist **nicht** das sofortige Löschen alter Tabellen. Zuerst wird unterschieden zwischen aktivem Produktionspfad, backendvermitteltem Pfad, separatem Fremd-/Nebenprodukt und echtem Retirement-Kandidaten.
 
@@ -14,15 +14,18 @@ Zusätzlich ausdrücklich behalten:
 - `chat_notification_state` – backend/service-role-only.
 - `tm_accounts`, `tm_trades`, `tm_wallet_transactions` – gehören erkennbar zu einem separaten TagMarkets-/Trading-Modul. Sie werden **nicht** aus WalletTracking heraus gelöscht oder gehärtet, bevor dieses Modul separat auditiert ist.
 
-### Retirement-Kandidaten · noch NICHT löschen
-Im aktuellen produktiven WalletTracking-Code wurde keine direkte Laufzeitreferenz gefunden für:
+### Ergebnis nach Live-Audit
 
-- `apertum_nft_history_coverage`
-- `project_miner_ownership`
-- `user_settings`
-- `wallet_current_price_snapshots`
+**Behalten:**
+- `apertum_nft_history_coverage` – aktive NFT-Historien-Coverage; zuletzt am 01.10.2026 aktualisiert.
+- `user_settings` – enthält noch Scam-/Auto-Load-Zustand; keine Löschung ohne separaten Funktionsaudit.
+- `tln_wallet_identity_cache` – derzeit leer, aber weiterhin Test-/Nachweispfad und Wallet-Purge-Kompatibilität.
 
-Mögliche Nachfolger sind fachlich erkennbar (`project_nft_ownership`, `user_ui_preferences`/`wallet_refresh_state`, globale Preis-Snapshots), aber daraus folgt **noch keine Löschfreigabe**. Vor einer Entfernung müssen Live-Zeilenanzahl, letzte Nutzung, DB-Abhängigkeiten und ggf. historische Datenmigration geprüft werden.
+**Retired mit Migration 088:**
+- `project_miner_ownership` – Live-Audit: 0 Zeilen; keine produktive Laufzeitreferenz, nur alte Purge-Kompatibilität.
+- `wallet_current_price_snapshots` – alter userbezogener Tagescache für aktuelle Preise; nur zwei Altzeilen (14./19.09.2026), keine Trigger/RPCs/aktuellen Codezugriffe. Ersetzt durch `wallet_global_current_price_snapshot` plus 15-Minuten-Refresh-Slot.
+
+Migration 088 besitzt Sicherheitsbremsen: Sie bricht ab, falls `project_miner_ownership` nicht mehr leer ist oder `wallet_current_price_snapshots` seit dem geprüften Altstand wieder beschrieben wurde.
 
 ### Test-/Diagnosepfad · separat prüfen
 - `tln_wallet_identity_cache` wird derzeit in TLN-Test-/Nachweisseiten referenziert, nicht im normalen App-Pfad. Nicht löschen, solange die technische Teststrecke benötigt wird oder bis ein bestätigter Ersatz dokumentiert ist.
