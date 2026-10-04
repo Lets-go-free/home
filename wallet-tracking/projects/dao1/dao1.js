@@ -1,3 +1,4 @@
+// Phase 7.30 · 04.10.2026 17:04:30 CEST: DAO-Team in normale getrennte DAO1-/APTMDAO-Bäume zurückgeführt; Dashboard bleibt wallet-dedupliziert. Referral-Tabelle zeigt DID-Name/Alias sauber und korrigierte Spalten. Build 20261004-170430.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: DAO-Team-Force-Aktionen als Admin-Retry gekennzeichnet; normaler Team-Start bleibt cache-first mit automatischem inkrementellem Chain-Freshness-Check. Build 20261004-035351.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: DAO1 Liquidity-Pools-Tab nutzt zentralen cache-first Auto-Refresh bei fehlendem/veraltetem Tagesstand. Build 20260929-181743.
 // Phase 6.74 · 29.09.2026 15:25:57 CEST: Persistente Projekt-Auswahl TLN/VOW | DAO1 bleibt auch innerhalb der DAO1-Projektseite sichtbar. Build 20260929-152557.
@@ -390,7 +391,7 @@ window.DAO1Project = (() => {
       transactionRows=await loadAllApertumTransactionRows(wallets,null);
       transactionAssetFlows=await loadAllAssetFlowRows(wallets);
       if(name==="claims")renderClaimsTab();
-      if(name==="referrals")renderReferralRewardsTab();
+      if(name==="referrals"){if(!dao1TeamAliasesLoaded)await loadDAO1TeamAliases();renderReferralRewardsTab();}
     }
   }
 
@@ -6994,15 +6995,18 @@ window.DAO1Project = (() => {
 
   async function renderDAO1TeamTab(){
     const el=document.getElementById("dao1TeamContent");if(!el)return;
-    // Phase 5.79: DAO Team besitzt nur noch eine normale User-Ansicht.
-    // Die beiden on-chain Graphen bleiben intern getrennt, werden in der UI aber
-    // ausschließlich wallet-zentriert zusammengeführt (1 Wallet = 1 Partner).
-    dao1TeamTreeMode="wallet";
+    // Phase 7.30: Die normale User-Ansicht trennt DAO1 (alt) und APTMDAO (neu) wieder
+    // fachlich. Dashboard-/Summary-Zahlen bleiben separat wallet-dedupliziert.
+    if(dao1TeamTreeMode==="wallet")dao1TeamTreeMode="legacy";
     // Wichtig: nie vor dem ersten Rendern auf DB/RPC/NFT-Cache warten. Genau das
     // führte bisher zum komplett leeren Team-Tab.
     el.innerHTML=`<div class="custom-token-card">
       <div class="chain-title">🌳 DAO Team</div>
-      <div class="note"><strong>1 Wallet = 1 Partner.</strong> Alle erreichbaren DAO1-/APTMDAO-DIDs eines Wallets werden in diesem Team-Baum zusammengefasst. Die beiden on-chain Graphen bleiben intern getrennt und belegbar; separate DAO1-/APTMDAO-Diagnoseansichten gehören nicht zur normalen User-Oberfläche.</div>
+      <div class="note">DAO1 (alt) und APTMDAO (neu) werden als <strong>getrennte on-chain Team-Bäume</strong> angezeigt. Nur Dashboard-/Gesamtkennzahlen deduplizieren nach der Regel <strong>1 Wallet = 1 Partner</strong>.</div>
+      <div id="dao1TeamTreeTabs" class="project-subtabs" style="margin-top:12px">
+        <button type="button" class="tab-btn ${dao1TeamTreeMode!=="aptmdao"?"active":""}" onclick="DAO1Project.setTeamTreeMode('legacy',this)">DAO1 (alt)</button>
+        <button type="button" class="tab-btn ${dao1TeamTreeMode==="aptmdao"?"active":""}" onclick="DAO1Project.setTeamTreeMode('aptmdao',this)">APTMDAO (neu)</button>
+      </div>
       <div id="dao1TeamRootArea"><div class="status info" style="margin-top:12px"><strong>Eigene DAO-Wallets / DIDs werden aus dem gespeicherten Ownership-Bestand ermittelt …</strong></div></div>
       <div id="dao1TeamTreePanel"></div>
     </div>`;
@@ -7036,8 +7040,8 @@ window.DAO1Project = (() => {
 
   function renderDAO1TeamTreePanel(){
     const el=document.getElementById("dao1TeamTreePanel");if(!el)return;
-    // Normale DAO-Team-Oberfläche ist seit Phase 5.79 ausschließlich wallet-zentriert.
-    dao1TeamTreeMode="wallet";
+    // Normale User-Ansicht bleibt fachlich getrennt; "wallet" ist nur noch ein
+    // interner Summary-/Kompatibilitätsmodus und wird nicht als Team-Baum angeboten.
     const rootArea=document.getElementById("dao1TeamRootArea");if(rootArea&&dao1AllOwnedDidRoots().length)rootArea.innerHTML=teamOwnedRootCardsHtml();
     const renderT0=performance.now();
     if(dao1TeamTreeMode==="wallet"){
@@ -7058,7 +7062,7 @@ window.DAO1Project = (() => {
     try{const rows=legacyTreeRows(st.edges||[]),wallets=new Set(rows.map(r=>lower(r.wallet)).filter(Boolean)),patch={updatedAt:new Date().toISOString()};if(isOld){patch.dao1Partners=wallets.size;}else patch.aptmdaoPartners=wallets.size;window.setDashboardProjectCacheStats?.("dao1",patch);}catch(e){console.warn("DAO Team Dashboard-Summary",e);}
     const d=dao1OldTreeCacheDiag;
     const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div></div>`:`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · APTMDAO Tree Cache</strong><div class="note">${escapeHtml(aptmdaoTreeCacheDiag.source)} · lokal ${Number(aptmdaoTreeCacheDiag.localRows||0).toLocaleString("de-DE")} · DB ${Number(aptmdaoTreeCacheDiag.dbRows||0).toLocaleString("de-DE")} · RPC-Logs ${Number(aptmdaoTreeCacheDiag.rpcLogs||0).toLocaleString("de-DE")} · Änderungen ${Number(aptmdaoTreeCacheDiag.changedEdges||0).toLocaleString("de-DE")}</div></div>`;
-    el.innerHTML=`<div class="custom-token-card" style="margin-top:12px"><div class="chain-title">${isOld?"DAO1 (alt) · Diagnose":"APTMDAO (neu) · Diagnose"}</div><div class="status ${st.error?"warn":"info"}" style="margin-top:10px"><strong>${st.status}</strong>${st.error?`<div class="note" style="margin-top:4px">${escapeHtml(st.error)}</div>`:""}</div><div style="margin-top:10px"><div class="custom-token-grid" style="grid-template-columns:minmax(260px,420px) auto;align-items:end">${teamRootSelectorHtml()}${getContext?.()?.isAdmin?`<div><button type="button" class="secondary" title="Admin/Retry: erneuten On-Chain-Refresh für den Diagnosegraph erzwingen." onclick="DAO1Project.discoverTeamTree()" ${st.running?"disabled":""}>${st.running?"Discovery läuft …":(isOld?"DAO1-Refresh erzwingen":"APTMDAO-Refresh erzwingen")}</button></div>`:"<div></div>"}</div></div></div>${cacheDiagHtml}${teamDiscoveryTableHtml(st,isOld)}`;
+    el.innerHTML=`<div class="custom-token-card" style="margin-top:12px"><div class="chain-title">${isOld?"DAO1 (alt)":"APTMDAO (neu)"}</div><div class="status ${st.error?"warn":"info"}" style="margin-top:10px"><strong>${st.status}</strong>${st.error?`<div class="note" style="margin-top:4px">${escapeHtml(st.error)}</div>`:""}</div><div style="margin-top:10px"><div class="custom-token-grid" style="grid-template-columns:minmax(260px,420px) auto;align-items:end">${teamRootSelectorHtml()}${getContext?.()?.isAdmin?`<div><button type="button" class="secondary" title="Admin/Retry: erneuten On-Chain-Refresh für diesen Team-Baum erzwingen." onclick="DAO1Project.discoverTeamTree()" ${st.running?"disabled":""}>${st.running?"Discovery läuft …":(isOld?"DAO1-Refresh erzwingen":"APTMDAO-Refresh erzwingen")}</button></div>`:"<div></div>"}</div></div></div>${cacheDiagHtml}${teamDiscoveryTableHtml(st,isOld)}`;
     dao1OldTreeCacheDiag.renderMs=performance.now()-renderT0;if(st.edges.length)bindDAO1TeamTreeControls(st);window.applyDebugModeVisibility?.();
   }
 
@@ -7074,9 +7078,9 @@ window.DAO1Project = (() => {
     const rows=verifiedReferralRewards(sourceRows);
     const candidates=referralRewardCandidates(sourceRows);
     const payoutSummary=referralPayoutSummary(rows);
-    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">🤝 Referral Rewards</div><div class="note">Fachregel: Alle Auszahlungen, die dem DID zugeordnet sind, sind Referral Rewards. Sie werden ausschließlich für Wallet 0x239c…B47 ausgewertet und nicht mehr als Bot-Claims gezählt. Das Auszahlungsasset kann z. B. wUSDT oder wSOL sein.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("referrals",referralFilterWallet)}</div></div>
+    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">🤝 Referral Rewards</div><div class="note">Fachregel: Alle Auszahlungen, die dem DID zugeordnet sind, sind Referral Rewards. Sie werden ausschließlich für Wallet 0x239c…B47 ausgewertet und nicht mehr als Bot-Claims gezählt. Das Auszahlungsasset kann z. B. wUSDT oder wSOL sein. Ein gespeicherter DID-Name wird angezeigt; der verursachende Partner wird nur ergänzt, wenn er on-chain eindeutig belegt werden kann.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("referrals",referralFilterWallet)}</div></div>
       <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,"","Referral Rewards",rows.length)}</div>
-      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>DID</th><th>Auszahlung</th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.length?rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=r._referralFlows||[];const value=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td><strong>Referral Reward</strong></td><td><strong>${d?.name||"DID"}</strong>${d?.id?`<div class="meta">#${d.id} · DID</div>`:""}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):"–"}</td><td>${value?usd(value):"–"}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join(""):`<tr><td colspan="8"><div class="empty">Keine Referral Rewards im geladenen Zeitraum gefunden.</div></td></tr>`}</tbody></table></div></div>
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>DID / Name</th><th>Auszahlung</th><th>Wert USD<div class="meta">historisch</div></th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.length?rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=r._referralFlows||[];const value=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);const aliasMode=String(d?.subtype||"").toUpperCase().includes("APTMDAO")?"aptmdao":"legacy";const didAlias=d?.id?dao1TeamAliasFor(d.id,aliasMode):"";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td><strong>Referral Reward</strong></td><td><strong>${didAlias?escapeHtml(didAlias):(d?.name||"DID")}</strong>${d?.id?`<div class="meta">#${d.id} · ${escapeHtml(d?.name||"DID")}</div>`:""}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):"–"}</td><td>${value?usd(value):"–"}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join(""):`<tr><td colspan="8"><div class="empty">Keine Referral Rewards im geladenen Zeitraum gefunden.</div></td></tr>`}</tbody></table></div></div>
       ${candidates.length?`<div class="custom-token-card debug-frame"><strong>DEBUG / DEV · weitere wUSDT-Kandidaten (${candidates.length})</strong><div class="note">Nur Diagnose: Diese Zeilen sind keinem DID zugeordnet und werden nicht als Referral Reward summiert.</div></div>`:""}`;
     window.applyDebugModeVisibility?.();
   }
