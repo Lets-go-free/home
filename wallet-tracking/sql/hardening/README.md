@@ -1,4 +1,4 @@
-# Supabase-Härtungsaudit – Phase 7.24
+# Supabase-Härtungsaudit – Phase 7.25
 
 Stand: 04.10.2026, verifizierter Live-Snapshot `sql/baseline/verified/`.
 
@@ -82,3 +82,10 @@ Stand der vorbereiteten Härtungsmigrationen:
 - `086-hardening-user-wallet-grants.sql` – Migration C, private User-/Wallettabellen
 
 Migration C umfasst bewusst keine `tm_*`-Tabellen und keine globalen Cache-/Jobtabellen. Diese bleiben getrennte Prüfblöcke, damit keine andere Anwendung oder ein Backend-Job versehentlich beeinträchtigt wird.
+
+
+## Phase 7.25 – Migration D1
+
+Die Cache-/Job-Klassifizierung wurde gegen den gesamten Browser-/Projektcode und die Edge Functions nachgezogen. Wichtigster Befund: Mehrere technisch benannte Cachetabellen werden direkt im Browser benutzt und duerfen nicht blind in ein internes Schema verschoben werden.
+
+`087-hardening-backend-mediated-grants.sql` entfernt deshalb zunaechst nur direkte Browserrechte auf zwei eindeutig backendvermittelte Tabellen: `security_crypto_tests` und `user_team_aliases_private`. `chat_notification_state` und `wallet_global_price_refresh_slots` sind bereits service-role-only. Details: `sql/hardening/internal-schema-classification.md`.
