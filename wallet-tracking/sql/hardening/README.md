@@ -1,4 +1,4 @@
-# Supabase-Härtungsaudit – Phase 7.25
+# Supabase-Härtungsaudit – Phase 7.26
 
 Stand: 04.10.2026, verifizierter Live-Snapshot `sql/baseline/verified/`.
 
@@ -89,3 +89,8 @@ Migration C umfasst bewusst keine `tm_*`-Tabellen und keine globalen Cache-/Jobt
 Die Cache-/Job-Klassifizierung wurde gegen den gesamten Browser-/Projektcode und die Edge Functions nachgezogen. Wichtigster Befund: Mehrere technisch benannte Cachetabellen werden direkt im Browser benutzt und duerfen nicht blind in ein internes Schema verschoben werden.
 
 `087-hardening-backend-mediated-grants.sql` entfernt deshalb zunaechst nur direkte Browserrechte auf zwei eindeutig backendvermittelte Tabellen: `security_crypto_tests` und `user_team_aliases_private`. `chat_notification_state` und `wallet_global_price_refresh_slots` sind bereits service-role-only. Details: `sql/hardening/internal-schema-classification.md`.
+
+
+## Phase 7.26 – Retirement-/Altbestand-Audit
+
+Nicht referenzierte Alt-/Übergangstabellen werden nicht blind gelöscht. Die statische Klassifizierung liegt in `retirement-audit.md`; `retirement-audit-live.sql` liefert read-only Zeilenzahlen und DB-Abhängigkeiten für die verbleibenden Kandidaten.

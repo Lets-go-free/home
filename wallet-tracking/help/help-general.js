@@ -1,3 +1,4 @@
+// Phase 7.26 · 04.10.2026 02:18:30 CEST: Retirement-/Altbestand-Audit dokumentiert; keine Tabellen gelöscht. Build 20261004-021830.
 // Phase 7.25 · 04.10.2026 01:54:16 CEST: Supabase-Härtung D1: backendvermittelte Tabellen service-role-only; Cache-/Jobtabellen werden vor internem Schema anhand echter Browserzugriffe klassifiziert. Build 20261004-015416.
 // Phase 7.24 · 04.10.2026 01:33:35 CEST: Supabase-Härtung: User-/Wallettabellen erhalten Least-Privilege-GRANTs; RLS bleibt unverändert. Admin-Chains markiert technisch kritische Konfiguration sichtbar orange. Build 20261004-013335.
 // Phase 7.22 · 04.10.2026 00:58:30 CEST: Dashboard-Hinweis für Bestandschecks präzisiert; Erstcheck und veralteter Stand werden getrennt behandelt. Build 20261004-005830.
