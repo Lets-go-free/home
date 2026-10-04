@@ -1,4 +1,4 @@
-// Phase 7.31 · 04.10.2026 18:45:30 CEST: DAO-Team Regression 7.30 korrigiert: zentrale 5%-Rand-Geometrie ohne 1720px-Cap, eigene DID zeigt aktuellen Owner statt Mint-Wallet, Legacy-Mining-Bots mit verifiziertem Own-History-Fallback. Build 20261004-184530.
+// Phase 7.32 · 04.10.2026 23:31:15 CEST: Bot-DID-Zuordnung ist dynamisch aus aktuellem Owner-Wallet + DID-Kombination; Mining/Trading-Regeln getrennt, Rewards bleiben wallet-genau und contract+id-genau. Build 20261004-233115.
 // Phase 7.30 · 04.10.2026 17:04:30 CEST: DAO/APTM-Teamtrennung in User-UI wiederhergestellt; Dashboard bleibt 1 Wallet = 1 Partner. Referral-Tabelle korrigiert und DID-Alias ergänzt; verursachender Partner bleibt ohne eindeutige On-Chain-Evidenz offen. Build 20261004-170430.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: UI/Admin-Aufräumaudit finalisiert: Aktualisierungszeitpunkte und Buttonrollen verifiziert; Loan-/DAO-Team-Vollrefresh als Admin-Retry beschriftet, bestehende zentrale Daten-/Preislogik unverändert. Build 20261004-035351.
 // Phase 7.29 · UI/Admin-Refresh-Audit final:

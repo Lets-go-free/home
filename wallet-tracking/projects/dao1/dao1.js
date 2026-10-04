@@ -1,4 +1,4 @@
-// Phase 7.31 · 04.10.2026 18:45:30 CEST: DAO-Team-Geometrie korrigiert; eigene DID-Knoten priorisieren aktuelle Ownership-Wallet; alte Mining-Bots bleiben über verifizierte Legacy-Fallbacks sichtbar. Build 20261004-184530.
+// Phase 7.32 · 04.10.2026 23:31:15 CEST: Aktuelle Bot-Zuordnung folgt der heutigen Owner-Wallet + DID-Kombination; historische Rewards bleiben wallet-genau, Claims werden contract+id-genau gruppiert. Build 20261004-233115.
 // Phase 7.30 · 04.10.2026 17:04:30 CEST: DAO-Team in normale getrennte DAO1-/APTMDAO-Bäume zurückgeführt; Dashboard bleibt wallet-dedupliziert. Referral-Tabelle zeigt DID-Name/Alias sauber und korrigierte Spalten. Build 20261004-170430.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: DAO-Team-Force-Aktionen als Admin-Retry gekennzeichnet; normaler Team-Start bleibt cache-first mit automatischem inkrementellem Chain-Freshness-Check. Build 20261004-035351.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: DAO1 Liquidity-Pools-Tab nutzt zentralen cache-first Auto-Refresh bei fehlendem/veraltetem Tagesstand. Build 20260929-181743.
@@ -5952,9 +5952,16 @@ window.DAO1Project = (() => {
   function dao1TeamKnownNfts(wallet){
     const a=lower(wallet||"");if(!a)return [];
     const rows=ownershipRows.filter(o=>lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"")===a);
-    const seen=new Set(),out=[];
-    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id),name=cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`;let subtype=cls?.subtype||dao1TeamProjectNftSubtype(o.nft_contract,o.nft_id,name,"");if(lower(o.nft_contract)===lower(DEFAULT_MINER_NFT_CONTRACT))subtype="Mining-Bot";out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name,subtype:subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,current_wallet:!!o.is_current?a:""});}
-    return out;
+    const out=[];
+    for(const o of rows){
+      const cls=classificationFor(o.nft_contract,o.nft_id),name=cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`;
+      let subtype=cls?.subtype||dao1TeamProjectNftSubtype(o.nft_contract,o.nft_id,name,"");
+      if(lower(o.nft_contract)===lower(DEFAULT_MINER_NFT_CONTRACT))subtype="Mining-Bot";
+      out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name,subtype:subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,acquisition_wallet:a,current_wallet:!!o.is_current?a:"",own_history:true});
+    }
+    // Nicht „erste Zeile gewinnt“: ein älterer Besitzabschnitt darf einen späteren
+    // aktuellen Besitzabschnitt desselben Bots nicht verdecken.
+    return dao1MergeWalletBotCandidates(out);
   }
   function dao1TeamOwnHistoricalBotCandidates(){
     // Historische Bot-Kandidaten aller eigenen DAO-Wallets aus derselben zentralen
@@ -6180,11 +6187,65 @@ window.DAO1Project = (() => {
       return direct?direct===mode:mode==="legacy";
     }
     if(dao1TeamIsBot(nft)){
-      if(nft?.assigned_system!==mode)return false;
-      if(did!=null&&Number(nft?.assigned_did)!==Number(did))return false;
+      // Phase 7.32: Die sichtbare DID-Zuordnung eines AKTUELL gehaltenen Bots ist keine
+      // historische Bot-Eigenschaft. Sie wird aus dem heutigen Owner-Wallet und dessen
+      // aktuell gehaltenen alten/neuen DIDs abgeleitet. assigned_* bleibt ausschließlich
+      // historische Erwerbs-/Lifecycle-Evidenz und darf den aktuellen Baum nicht filtern.
+      const system=nft?.current?(nft?.display_system||null):(nft?.assigned_system||null);
+      const displayDid=nft?.current?(nft?.display_did||null):(nft?.assigned_did||null);
+      if(system!==mode)return false;
+      if(did!=null&&Number(displayDid)!==Number(did))return false;
       return true;
     }
     return false;
+  }
+
+  async function dao1TeamResolveCurrentBotDisplayAssignment(nft,ownerWallet){
+    const wallet=lower(ownerWallet||nft?.current_wallet||"");
+    if(!dao1TeamIsBot(nft)||!nft?.current||!/^0x[0-9a-f]{40}$/.test(wallet))return {system:null,did:null,type:"no_current_owner"};
+    const own=dao1OwnWalletSet().has(wallet);
+    if(!own&&!dao1PartnerIdentityStats.has(wallet))await dao1TeamFetchPartnerIdentity(wallet);
+    const partner=dao1PartnerIdentityStats.get(wallet)||{legacy:[],aptmdao:[]};
+    const legacy=[...new Set([
+      ...dao1OwnedDidRoots.filter(r=>lower(r?.wallet_address||"")===wallet).map(r=>Number(r.did)),
+      ...(partner.legacy||[]).map(Number)
+    ].filter(x=>Number.isFinite(x)&&x>0))].sort((a,b)=>a-b);
+    const aptmdao=[...new Set([
+      ...aptmdaoOwnedDidRoots.filter(r=>lower(r?.wallet_address||"")===wallet).map(r=>Number(r.did)),
+      ...(partner.aptmdao||[]).map(Number)
+    ].filter(x=>Number.isFinite(x)&&x>0))].sort((a,b)=>a-b);
+
+    // Verbindliche aktuelle Zuordnungsregeln:
+    // 1) nur alte DAO1-DID -> alle Bots zur alten DID
+    // 2) nur neue APTMDAO-DID -> alle Bots zur neuen DID
+    // 3) alte + neue DID -> Trading-Bot zur alten, Mining-Bot zur neuen DID
+    // Bei mehreren DIDs derselben benötigten Generation wird NICHT geraten.
+    if(legacy.length&&!aptmdao.length){
+      if(legacy.length===1)return {system:"legacy",did:legacy[0],type:"current_owner_only_legacy_did",wallet,legacy,aptmdao};
+      return {system:null,did:null,type:"ambiguous_current_legacy_dids",wallet,legacy,aptmdao};
+    }
+    if(aptmdao.length&&!legacy.length){
+      if(aptmdao.length===1)return {system:"aptmdao",did:aptmdao[0],type:"current_owner_only_aptmdao_did",wallet,legacy,aptmdao};
+      return {system:null,did:null,type:"ambiguous_current_aptmdao_dids",wallet,legacy,aptmdao};
+    }
+    if(legacy.length&&aptmdao.length){
+      const preferLegacy=nft?.subtype==="Trading-Bot";
+      const ids=preferLegacy?legacy:aptmdao,system=preferLegacy?"legacy":"aptmdao";
+      if(ids.length===1)return {system,did:ids[0],type:preferLegacy?"current_owner_mixed_trading_to_legacy":"current_owner_mixed_mining_to_aptmdao",wallet,legacy,aptmdao};
+      return {system:null,did:null,type:preferLegacy?"ambiguous_current_legacy_dids":"ambiguous_current_aptmdao_dids",wallet,legacy,aptmdao};
+    }
+    return {system:null,did:null,type:"current_owner_has_no_did",wallet,legacy,aptmdao};
+  }
+
+  async function dao1TeamApplyCurrentBotDisplayAssignment(nft,fallbackWallet=""){
+    if(!dao1TeamIsBot(nft))return nft;
+    const owner=lower(nft?.current_wallet||(nft?.current?fallbackWallet:"")||"");
+    const display=await dao1TeamResolveCurrentBotDisplayAssignment(nft,owner);
+    nft.display_system=display.system;
+    nft.display_did=display.did;
+    nft.display_assignment_type=display.type;
+    nft.display_owner_wallet=display.wallet||owner||null;
+    return nft;
   }
 
   function dao1PurchaseDidFromInput(input){
@@ -6448,10 +6509,20 @@ window.DAO1Project = (() => {
     const a=lower(n?.source_wallet||"");if(!a||a==="0x0000000000000000000000000000000000000000")return "";
     const own=walletByAddress(a);return own?`${own.label||"Eigene Wallet"} · ${teamShortAddress(a)}`:teamShortAddress(a);
   }
-  function dao1BotClaimTotalsForNft(nftId){
+  function dao1BotClaimRowsForNft(nftId,nftContract=null){
+    const id=String(nftId??""),contract=lower(nftContract||"");
+    return (transactionRows||[]).filter(r=>{
+      if(String(r.claim_nft_id??"")!==id)return false;
+      const rowContract=lower(r.claim_nft_contract||"");
+      // Contract+Token-ID ist die belastbare Bot-Identität. Alte Claims ohne gespeicherten
+      // Contract bleiben als Legacy-Fallback sichtbar; sobald ein Contract vorhanden ist,
+      // darf eine gleiche Token-ID eines anderen Contracts niemals vermischt werden.
+      return !contract||!rowContract||rowContract===contract;
+    });
+  }
+  function dao1BotClaimTotalsForNft(nftId,nftContract=null){
     const groups=new Map();
-    for(const r of transactionRows||[]){
-      if(String(r.claim_nft_id??"")!==String(nftId))continue;
+    for(const r of dao1BotClaimRowsForNft(nftId,nftContract)){
       for(const f of claimPayoutEntriesForTx(r)){
         const symbol=isWrappedAptmSymbol(f.token_symbol,f.token_name)?"wAPTM":String(f.token_symbol||"TOKEN");
         const key=`${lower(f.token_address||"")||f.source}|${symbol}`;
@@ -6459,6 +6530,22 @@ window.DAO1Project = (() => {
       }
     }
     return [...groups.values()].filter(x=>x.amount>0);
+  }
+  function dao1BotClaimWalletBreakdownHtml(nftId,nftContract=null){
+    const byWallet=new Map();
+    for(const r of dao1BotClaimRowsForNft(nftId,nftContract)){
+      const w=claimWalletDisplay(r),address=lower(w?.address||walletAddress(walletByDbId(r.wallet_id))||"");
+      const key=address||String(r.wallet_id||"unbekannt"),entry=byWallet.get(key)||{name:w?.name||"Wallet",address,assets:new Map()};
+      for(const f of claimPayoutEntriesForTx(r)){
+        const symbol=isWrappedAptmSymbol(f.token_symbol,f.token_name)?"wAPTM":String(f.token_symbol||"TOKEN");
+        const assetKey=`${lower(f.token_address||"")||f.source}|${symbol}`;
+        const prev=entry.assets.get(assetKey)||{symbol,amount:0};prev.amount+=Number(f.amount||0);entry.assets.set(assetKey,prev);
+      }
+      byWallet.set(key,entry);
+    }
+    const rows=[...byWallet.values()].filter(w=>[...w.assets.values()].some(a=>a.amount>0));
+    if(rows.length<=1)return "";
+    return `<div class="meta" style="margin-top:4px">${rows.map(w=>`${escapeHtml(w.name||"Wallet")}${w.address?` (${escapeHtml(teamShortAddress(w.address))})`:""}: ${[...w.assets.values()].filter(a=>a.amount>0).map(a=>`${fmt(a.amount)} ${escapeHtml(a.symbol)}`).join(" · ")}`).join("<br>")}</div>`;
   }
   function dao1MultiAssetText(groups){
     if(!groups?.length)return "–";
@@ -6486,17 +6573,23 @@ window.DAO1Project = (() => {
     return [...by.values()];
   }
   function dao1BotOverviewTableHtml(rows,loading=false){
-    const purchaseGroups=new Map(),claimGroups=new Map();
+    const purchaseGroups=new Map(),claimGroups=new Map(),seenPurchaseBots=new Set(),seenClaimBots=new Set();
     for(const n of rows){
-      if(n.purchase?.amount>0){const k=`${n.purchase.contract||""}|${n.purchase.symbol}`,g=purchaseGroups.get(k)||{amount:0,symbol:n.purchase.symbol,contract:n.purchase.contract};g.amount+=n.purchase.amount;purchaseGroups.set(k,g);}
-      for(const c of dao1BotClaimTotalsForNft(n.id)){const k=`${c.contract||""}|${c.symbol}`,g=claimGroups.get(k)||{amount:0,symbol:c.symbol,contract:c.contract};g.amount+=c.amount;claimGroups.set(k,g);}
+      const botKey=`${lower(n.contract||"")}|${String(n.id??"")}`;
+      // Derselbe Bot kann nach Transfers in mehreren Wallet-Historienzeilen vorkommen.
+      // Lizenzkauf und Claim-Gesamtsumme dürfen in der Summary trotzdem nur EINMAL zählen.
+      if(!seenPurchaseBots.has(botKey)&&n.purchase?.amount>0){seenPurchaseBots.add(botKey);const k=`${n.purchase.contract||""}|${n.purchase.symbol}`,g=purchaseGroups.get(k)||{amount:0,symbol:n.purchase.symbol,contract:n.purchase.contract};g.amount+=n.purchase.amount;purchaseGroups.set(k,g);}
+      if(!seenClaimBots.has(botKey)){
+        seenClaimBots.add(botKey);
+        for(const c of dao1BotClaimTotalsForNft(n.id,n.contract)){const k=`${c.contract||""}|${c.symbol}`,g=claimGroups.get(k)||{amount:0,symbol:c.symbol,contract:c.contract};g.amount+=c.amount;claimGroups.set(k,g);}
+      }
     }
     const current=dao1CurrentBotRows(rows), mining=current.filter(n=>n.subtype==="Mining-Bot").length,trading=current.filter(n=>n.subtype==="Trading-Bot").length;
     const historical=Math.max(0,(rows||[]).length-current.length);
     return `<div class="custom-token-card"><div class="chain-title">🤖 Bots</div><div class="note">Zentrale NFT-Basis, ergänzt um DAO1-spezifische Lifecycle-Daten. Die Summary zählt ausschließlich den eindeutigen aktuellen Bestand; historische bzw. zwischen eigenen Wallets transferierte Zuordnungen bleiben nur in der Detailtabelle sichtbar. Kaufpreis = Lizenz-/Bot-Kauf. Trading-Guthaben wird getrennt geführt und erst angezeigt, sobald Funding-Transaktion und Bot-ID on-chain eindeutig verknüpft sind. Claims bleiben je Währung getrennt.</div></div>
       <div class="project-summary" style="margin-top:12px"><div class="custom-token-card project-summary-box"><span class="field-label">Mining-Bots</span><strong>${mining}</strong><div class="note">aktueller Bestand</div></div><div class="custom-token-card project-summary-box"><span class="field-label">Trading-Bots</span><strong>${trading}</strong><div class="note">aktueller Bestand</div></div><div class="custom-token-card project-summary-box"><span class="field-label">Kaufpreise</span><strong>${dao1MultiAssetText([...purchaseGroups.values()])}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${dao1MultiAssetText([...claimGroups.values()])}</strong></div>${historical?`<div class="custom-token-card project-summary-box"><span class="field-label">Historische/Transfer-Zuordnungen</span><strong>${historical}</strong><div class="note">nicht im aktuellen Bot-Bestand</div></div>`:''}</div>
       ${loading?'<div class="status info" style="margin-top:12px"><strong>Bot-Lifecycle wird ergänzt …</strong><div class="note">Kauftransaktionen werden on-chain geprüft.</div></div>':""}
-      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden;margin-top:12px"><div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>Bot</th><th>Name</th><th>Wallet</th><th>Erworben am</th><th>Kaufpreis</th><th>Trading-Guthaben</th><th>Geclaimt</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td><strong>#${escapeHtml(n.id)}</strong></td><td><strong>${escapeHtml(n.name)}</strong></td><td>${escapeHtml(n.walletLabel)}<div class="meta">${teamShortAddress(n.wallet)}</div></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${n.subtype==="Trading-Bot"?"noch nicht ermittelt":"–"}</td><td>${dao1MultiAssetText(dao1BotClaimTotalsForNft(n.id))}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join(""):'<tr><td colspan="9" class="empty">Keine klassifizierten Bots im aktuellen NFT-Bestand.</td></tr>'}</tbody></table></div></div>`;
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden;margin-top:12px"><div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>Bot</th><th>Name</th><th>Wallet</th><th>Erworben am</th><th>Kaufpreis</th><th>Trading-Guthaben</th><th>Geclaimt</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td><strong>#${escapeHtml(n.id)}</strong></td><td><strong>${escapeHtml(n.name)}</strong></td><td>${escapeHtml(n.walletLabel)}<div class="meta">${teamShortAddress(n.wallet)}</div></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${n.subtype==="Trading-Bot"?"noch nicht ermittelt":"–"}</td><td>${dao1MultiAssetText(dao1BotClaimTotalsForNft(n.id,n.contract))}${dao1BotClaimWalletBreakdownHtml(n.id,n.contract)}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join(""):'<tr><td colspan="9" class="empty">Keine klassifizierten Bots im aktuellen NFT-Bestand.</td></tr>'}</tbody></table></div></div>`;
   }
   function dao1OverviewAssetLines(rows,empty="–"){
     const list=Array.isArray(rows)?rows:[]; if(!list.length)return `<span class="muted">${empty}</span>`;
@@ -6716,14 +6809,14 @@ window.DAO1Project = (() => {
   }
   function dao1WalletDetailsHtml(node,graph){
     const relevant=dao1WalletRelevantDidSet(node),r=node.primary,kids=(graph.children.get(node.wallet)||[]).length;
-    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>${escapeHtml(dao1WalletDisplayName(node))}</strong><div class="meta">${escapeHtml(node.wallet)}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">DAO1-DIDs</span><strong>${node.dao1Dids.size?[...node.dao1Dids].sort((a,b)=>a-b).map(x=>`#${x}`).join(", "):"–"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">APTMDAO-DIDs</span><strong>${node.aptmdaoDids.size?[...node.aptmdaoDids].sort((a,b)=>a-b).map(x=>`#${x}`).join(", "):"–"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Upline / Hauptbeziehung</span><strong>${escapeHtml(dao1WalletRelationLabel(node))}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner-Wallets</span><strong>${kids}</strong></div></div><h4 style="margin:18px 0 8px">Aktueller NFT-/Bot-Bestand dieses Wallets</h4><div data-dao1-wallet-assets data-relevant-dids="${[...relevant].join(",")}"><div class="status info"><strong>NFTs / Bots werden on-chain geladen …</strong></div></div><div class="note" style="margin-top:12px">Bots werden nicht anhand des heutigen Wallet-Inhalts einem Zweig zugerechnet. Bei neuen MinerBot-Käufen wird die im Kaufaufruf verwendete APTMDAO-DID ausgewertet; ältere Fälle verwenden nur belastbare historische Evidenz.</div></div></div></div>`;
+    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>${escapeHtml(dao1WalletDisplayName(node))}</strong><div class="meta">${escapeHtml(node.wallet)}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">DAO1-DIDs</span><strong>${node.dao1Dids.size?[...node.dao1Dids].sort((a,b)=>a-b).map(x=>`#${x}`).join(", "):"–"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">APTMDAO-DIDs</span><strong>${node.aptmdaoDids.size?[...node.aptmdaoDids].sort((a,b)=>a-b).map(x=>`#${x}`).join(", "):"–"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Upline / Hauptbeziehung</span><strong>${escapeHtml(dao1WalletRelationLabel(node))}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner-Wallets</span><strong>${kids}</strong></div></div><h4 style="margin:18px 0 8px">Aktueller NFT-/Bot-Bestand dieses Wallets</h4><div data-dao1-wallet-assets data-relevant-dids="${[...relevant].join(",")}"><div class="status info"><strong>NFTs / Bots werden on-chain geladen …</strong></div></div><div class="note" style="margin-top:12px">Aktuelle Bot-Zuordnung: maßgebend ist immer die heutige Besitzer-Wallet. Nur alte DID → alle Bots alt; nur neue DID → alle Bots neu; alte + neue DID → Trading-Bots alt, Mining-Bots neu. Erwerbs-/Reward-Historie bleibt davon getrennt.</div></div></div></div>`;
   }
 
   function dao1TeamDetailsHtml(did,st){
     did=Number(did);const edge=dao1TeamMintEdge(did,st);const root=dao1TeamRootList().find(r=>Number(r.did)===did);
     const wallet=root?.wallet_address||edge?.wallet||"";const kids=st.edges.filter(e=>Number(e.parent_id)===did).length;
     const nfts=[],membership="wird bei Details geprüft";
-    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did,wallet)?` · ${escapeHtml(dao1TeamAlias(did,wallet))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Upline</span><strong>${edge?`DID #${edge.parent_id}`:"Root / außerhalb Auswahl"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">DID Mint</span><strong data-dao1-mint-block="${Number(edge?.block||0)}">${edge?.block?"wird geladen …":"nicht ermittelt"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong data-dao1-membership>${escapeHtml(membership)}</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<h4 style="margin:18px 0 8px">NFTs / Bots</h4><div data-dao1-partner-assets>${dao1TeamNftTableHtml(nfts)}</div><div class="note" style="margin-top:12px">Kaufdatum/-preis und Referral Rewards werden nur angezeigt, wenn sie aus den vorhandenen bzw. on-chain verifizierten Daten belastbar hervorgehen. Fremde Partner-Wallets werden nicht aufgrund von Annahmen klassifiziert.</div></div></div></div>`;
+    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did,wallet)?` · ${escapeHtml(dao1TeamAlias(did,wallet))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Upline</span><strong>${edge?`DID #${edge.parent_id}`:"Root / außerhalb Auswahl"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">DID Mint</span><strong data-dao1-mint-block="${Number(edge?.block||0)}">${edge?.block?"wird geladen …":"nicht ermittelt"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong data-dao1-membership>${escapeHtml(membership)}</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<h4 style="margin:18px 0 8px">NFTs / Bots</h4><div data-dao1-partner-assets>${dao1TeamNftTableHtml(nfts)}</div><div class="note" style="margin-top:12px">Der aktuelle Bot-Zweig wird aus der heutigen Besitzer-Wallet und deren aktuellen DIDs abgeleitet. Kaufdatum/-preis und Rewards bleiben historische, wallet-genaue Daten und werden dadurch nicht umgeschrieben.</div></div></div></div>`;
   }
 
   function dao1MergeWalletBotCandidates(rows){
@@ -6833,7 +6926,7 @@ window.DAO1Project = (() => {
       await identityJob;
       const due=await dao1PartnerBotScanDue(wallet);
       if(!due.due)return !hadIdentity||!hadStats;
-      let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const a=await dao1TeamResolveBotAssignment(n,wallet,acq);n.assigned_system=a.system;n.assigned_did=a.did;n.assignment_type=a.type;n.assigned_parent_did=a.parentDid||0;}}
+      let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const a=await dao1TeamResolveBotAssignment(n,wallet,acq);n.assigned_system=a.system;n.assigned_did=a.did;n.assignment_type=a.type;n.assigned_parent_did=a.parentDid||0;await dao1TeamApplyCurrentBotDisplayAssignment(n,wallet);}}
       await Promise.all(Array.from({length:Math.min(2,nfts.length)},worker));await Promise.all(nfts.filter(n=>n.assigned_system&&n.assigned_did).map(n=>saveDAO1PartnerBotLifecycle(n,wallet)));await dao1SavePartnerBotScanState(due.hash,"ok");return true;
     }catch(e){
       try{const due=await dao1PartnerBotScanDue(wallet);await dao1SavePartnerBotScanState(due.hash,"error",String(e?.message||e).slice(0,500));}catch(_){}
@@ -6880,7 +6973,7 @@ window.DAO1Project = (() => {
         // Reihenfolge ist absichtlich egal: der Merge kombiniert historische Erwerbsdaten
         // mit dem aktuellen Owner-Status, statt den ersten Datensatz je NFT zu behalten.
         let nfts=dao1MergeWalletBotCandidates([...historicalOwn,...centralCurrent,...known,...live].filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n)));
-        let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acquisitionWallet=lower(n.acquisition_wallet||wallet),acq=await dao1TeamAcquisitionForNft(n,acquisitionWallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const assignment=await dao1TeamResolveBotAssignment(n,acquisitionWallet,acq);n.assigned_system=assignment.system;n.assigned_did=assignment.did;n.assignment_type=assignment.type;n.assigned_parent_did=assignment.parentDid||0;}}
+        let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acquisitionWallet=lower(n.acquisition_wallet||wallet),acq=await dao1TeamAcquisitionForNft(n,acquisitionWallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const assignment=await dao1TeamResolveBotAssignment(n,acquisitionWallet,acq);n.assigned_system=assignment.system;n.assigned_did=assignment.did;n.assignment_type=assignment.type;n.assigned_parent_did=assignment.parentDid||0;await dao1TeamApplyCurrentBotDisplayAssignment(n,wallet);}}
         await Promise.all(Array.from({length:Math.min(2,nfts.length)},worker));
         await Promise.all(nfts.filter(n=>n.assigned_system&&n.assigned_did).map(n=>saveDAO1PartnerBotLifecycle(n,lower(n.acquisition_wallet||wallet))));
         const relevant=dao1WalletRelevantDidSet(node);
@@ -6927,7 +7020,7 @@ window.DAO1Project = (() => {
         const historicalOwnBots=root?dao1TeamOwnHistoricalBotCandidates():[];
         // Nur bekannte Bot-Contracts werden gezielt nachgeladen; kein breiter Wallet-NFT-Scan.
         const live=await dao1TeamFetchPartnerNfts(wallet,dao1TeamTreeMode);
-        const by=new Map([...nfts,...live,...historicalOwnBots].map(n=>[`${lower(n.contract)}|${n.id}`,n]));nfts=[...by.values()];
+        nfts=dao1MergeWalletBotCandidates([...nfts,...live,...historicalOwnBots]);
         const membershipSource=[...nfts];
         // Identitäts-NFTs und Membership-Zeilen gehören nicht in die Tabelle „NFTs / Bots“.
         // Die Membership wird ausschließlich in der separaten Kachel oben dargestellt.
@@ -6951,6 +7044,7 @@ window.DAO1Project = (() => {
             n.assignment_type=assignment.type;
             n.system_evidence=acq.systemEvidence||null;
             n.system_evidence_type=acq.systemEvidenceType||null;
+            await dao1TeamApplyCurrentBotDisplayAssignment(n,wallet);
           }
         }
         await Promise.all(Array.from({length:Math.min(2,nfts.length)},acqWorker));
