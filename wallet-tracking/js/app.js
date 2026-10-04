@@ -1,3 +1,4 @@
+// Phase 7.28 · 04.10.2026 03:28:40 CEST: 31.12.-Steueraudit: ESTV-Direktkurse nur fuer native bzw. explizit sichere Token; Polygon-Native nutzt fuer historische ESTV-Stammdaten den Assetcode MATIC trotz heutiger POL-Anzeige. Build 20261004-032840.
 // Phase 7.22 · 04.10.2026 00:58:30 CEST: Dashboard-Bestandscheck unterscheidet frisch noch nicht geprüfte Wallets von tatsächlich veralteten Ständen; nur Chains mit Balance-Provider zählen. Nach Wallet-Erstaufbau wird der Aktionsblock sofort neu bewertet. Build 20261004-005830.
 // Phase 7.15 · 03.10.2026 14:55:16 CEST: Discovery-Imitationscheck normalisiert äquivalente Chain-Keys (u. a. matic/polygon/pol/polygon-pos) über zentrale Chain-Konfiguration/Chain-ID, ohne DB-Keys zu migrieren. Dadurch werden sichere Polygon-Stammdaten auch bei abweichendem Discovery-Alias erkannt. Build 20261003-145516.
 // Phase 7.13 · 03.10.2026 12:06:08 CEST: Auth-Umbau abgeschlossen; Magic Link nur noch klarer Recovery-/Übergangsweg, Standardlogin E-Mail/Passwort + optional Google. Build 20261003-120608.
@@ -1323,9 +1324,22 @@ function taxAssetAddressBrowserHtml(r){
 function taxAssetAddressExportText(r){
   return (!r?.asset || r.asset==="native")?"nativ":dashboardShortAddress(r.asset);
 }
+function taxEstvAssetCode(r){
+  const symbol=String(r?.symbol||"").trim().toUpperCase();
+  if(!symbol)return null;
+  // Native Polygon-Bestaende werden heute als POL angezeigt. Die vorhandenen Schweizer
+  // Steuerkurs-Stammdaten 2022-2024 fuehren den historischen Assetcode jedoch als MATIC.
+  if(!r?.asset || r.asset==="native")return r?.chain==="matic"?"MATIC":symbol;
+  // Direkte ESTV-Werte sind symbolbasiert. Deshalb duerfen unbekannte/ungepruefte
+  // Contracts mit imitiertem Symbol (z.B. BTC/USDC) niemals einen offiziellen
+  // Steuerkurs erben. Nur explizit sichere Token duerfen den Direktwert verwenden.
+  if(!isSafeTokenAddress(r.asset,r.chain))return null;
+  return symbol;
+}
 function taxDisplayValuation(r){
   if(!taxIsEstvMode())return {currency:"USD",price:r.price_usd,value:r.value_usd,source:r.price_source||null,direct:false};
-  const direct=taxEstvAssetPrices.get(String(r.symbol||"").trim().toUpperCase());
+  const directCode=taxEstvAssetCode(r);
+  const direct=directCode?taxEstvAssetPrices.get(directCode):null;
   if(direct?.price_chf!=null){const price=Number(direct.price_chf);return {currency:"CHF",price,value:r.amount==null?null:Number(r.amount)*price,source:`ESTV direkt · ${direct.source_name||"ESTV"}`,direct:true};}
   if(r.price_usd!=null && Number.isFinite(taxEstvFxRate)){const price=Number(r.price_usd)*taxEstvFxRate;return {currency:"CHF",price,value:r.amount==null?null:Number(r.amount)*price,source:`${r.price_source||"USD-Stichtagspreis"} × ESTV USD/CHF ${taxEstvFxRate}`,direct:false};}
   return {currency:"CHF",price:null,value:null,source:null,direct:false};
