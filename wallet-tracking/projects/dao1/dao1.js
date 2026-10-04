@@ -1,3 +1,4 @@
+// Phase 7.31 · 04.10.2026 18:45:30 CEST: DAO-Team-Geometrie korrigiert; eigene DID-Knoten priorisieren aktuelle Ownership-Wallet; alte Mining-Bots bleiben über verifizierte Legacy-Fallbacks sichtbar. Build 20261004-184530.
 // Phase 7.30 · 04.10.2026 17:04:30 CEST: DAO-Team in normale getrennte DAO1-/APTMDAO-Bäume zurückgeführt; Dashboard bleibt wallet-dedupliziert. Referral-Tabelle zeigt DID-Name/Alias sauber und korrigierte Spalten. Build 20261004-170430.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: DAO-Team-Force-Aktionen als Admin-Retry gekennzeichnet; normaler Team-Start bleibt cache-first mit automatischem inkrementellem Chain-Freshness-Check. Build 20261004-035351.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: DAO1 Liquidity-Pools-Tab nutzt zentralen cache-first Auto-Refresh bei fehlendem/veraltetem Tagesstand. Build 20260929-181743.
@@ -5399,7 +5400,7 @@ window.DAO1Project = (() => {
   function dao1TeamAlias(did){return dao1TeamAliasFor(did,dao1TeamTreeMode);}
   function dao1TeamRootList(){return dao1TeamTreeMode==="aptmdao"?aptmdaoOwnedDidRoots:dao1OwnedDidRoots;}
   function dao1AllOwnedDidRoots(){return [...dao1OwnedDidRoots.map(r=>({...r,system:"legacy"})),...aptmdaoOwnedDidRoots.map(r=>({...r,system:"aptmdao"}))];}
-  function dao1TeamWalletForDid(did,st=teamDiscoveryState()){const edge=(st?.edges||[]).find(e=>Number(e.child_id)===Number(did));const root=dao1TeamRootList().find(r=>Number(r.did)===Number(did));return edge?.wallet||root?.wallet_address||"";}
+  function dao1TeamWalletForDid(did,st=teamDiscoveryState()){const edge=(st?.edges||[]).find(e=>Number(e.child_id)===Number(did));const root=dao1TeamRootList().find(r=>Number(r.did)===Number(did));return root?.wallet_address||edge?.wallet||"";}
   async function loadDAO1TeamAliases(){
     dao1TeamAliases={};dao1TeamAliasesLoaded=true;
     try{
@@ -5952,7 +5953,7 @@ window.DAO1Project = (() => {
     const a=lower(wallet||"");if(!a)return [];
     const rows=ownershipRows.filter(o=>lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"")===a);
     const seen=new Set(),out=[];
-    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id),name=cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype=cls?.subtype||dao1TeamProjectNftSubtype(o.nft_contract,o.nft_id,name,"");out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name,subtype:subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,current_wallet:!!o.is_current?a:""});}
+    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id),name=cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`;let subtype=cls?.subtype||dao1TeamProjectNftSubtype(o.nft_contract,o.nft_id,name,"");if(lower(o.nft_contract)===lower(DEFAULT_MINER_NFT_CONTRACT))subtype="Mining-Bot";out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name,subtype:subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,current_wallet:!!o.is_current?a:""});}
     return out;
   }
   function dao1TeamOwnHistoricalBotCandidates(){
@@ -5972,7 +5973,7 @@ window.DAO1Project = (() => {
       const acquisitionWallet=lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"");
       if(!own.has(acquisitionWallet))continue;
       const cls=classificationFor(o.nft_contract,o.nft_id);
-      const n={id:String(o.nft_id),contract:lower(o.nft_contract),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,acquisition_wallet:acquisitionWallet,current_wallet:currentOwnerByKey.get(`${lower(o.nft_contract)}|${o.nft_id}`)||"",own_history:true};
+      let subtype=cls?.subtype||dao1TeamProjectNftSubtype(o.nft_contract,o.nft_id,cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,"");if(lower(o.nft_contract)===lower(DEFAULT_MINER_NFT_CONTRACT))subtype="Mining-Bot";const n={id:String(o.nft_id),contract:lower(o.nft_contract),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,acquisition_wallet:acquisitionWallet,current_wallet:currentOwnerByKey.get(`${lower(o.nft_contract)}|${o.nft_id}`)||"",own_history:true};
       if(dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n))out.push(n);
     }
     return dao1MergeWalletBotCandidates(out);
@@ -6236,6 +6237,15 @@ window.DAO1Project = (() => {
     if(aptmIds.length>1)return {system:null,did:null,type:"ambiguous_aptmdao_dids_at_bot_acquisition",aptmIds,legacyIds};
     if(legacyIds.length===1)return {system:"legacy",did:Number(legacyIds[0]),type:"did_ownership_at_bot_acquisition"};
     if(legacyIds.length>1)return {system:null,did:null,type:"ambiguous_legacy_dids_at_bot_acquisition",aptmIds,legacyIds};
+    // Phase 7.31: alte eigene Mining-Bots dürfen nicht verschwinden, nur weil für sehr alte
+    // Erwerbsblöcke keine vollständige DID-Historie mehr aus dem Cache/RPC rekonstruierbar ist.
+    // Der Fallback gilt ausschließlich für persistente eigene Erwerbshistorie, den bekannten
+    // Legacy-Miner-Contract und nur ohne positiven APTMDAO-Nachweis. Neue APTMDAO-Käufe
+    // werden weiterhin über purchaseDid/Manager-/Ownership-Evidenz vorrangig erkannt.
+    if(persistedOwnAcquisition&&lower(nft?.contract)===lower(DEFAULT_MINER_NFT_CONTRACT)&&acq?.systemEvidence!=="aptmdao"){
+      const ownLegacyRoots=dao1OwnedDidRoots.filter(r=>lower(r?.wallet_address||"")===a);
+      if(ownLegacyRoots.length===1)return {system:"legacy",did:Number(ownLegacyRoots[0].did),type:"legacy_own_history_fallback"};
+    }
     return {system:null,did:null,type:"no_did_owned_at_bot_acquisition",aptmIds,legacyIds};
   }
 
@@ -6590,12 +6600,14 @@ window.DAO1Project = (() => {
     const kids=(childrenMap.get(did)||[]).slice().sort((a,b)=>a.child_id-b.child_id);
     const collapsed=dao1TeamCollapsed.has(did);
     const root=dao1TeamRootList().find(r=>Number(r.did)===did);
+    // Eigene DID: aktuelle verifizierte Ownership-Wallet hat Vorrang vor der historischen Mint-Wallet der Kante.
+    const displayWallet=String(root?.wallet_address||wallet||"");
     const alias=dao1TeamAlias(did),displayName=alias||root?.wallet?.label||"";
     return `<li class="wt-team-li"><div class="wt-team-node ${level===0?"root":""} ${root?"own-wallet":""}">
       <div class="wt-team-node-title"><span class="wt-team-depth-badge">${level===0?"Leader":`Linie ${level}`}</span><span>DID #${did}</span>${root?'<span class="wt-team-own-badge">MEINE DID</span>':""}</div>
       ${displayName?`<div class="wt-team-node-name"><b>${escapeHtml(displayName)}</b></div>`:""}
-      <div class="wt-team-wallet-row"><div class="wt-team-node-meta">${escapeHtml(teamShortAddress(wallet||root?.wallet_address||"–"))}</div>${dao1TeamCopyButtonHtml(wallet||root?.wallet_address||"")}</div>
-      ${dao1TeamBotSummaryHtml(wallet||root?.wallet_address||"",did)}
+      <div class="wt-team-wallet-row"><div class="wt-team-node-meta">${escapeHtml(teamShortAddress(displayWallet||"–"))}</div>${dao1TeamCopyButtonHtml(displayWallet)}</div>
+      ${dao1TeamBotSummaryHtml(displayWallet,did)}
       ${(()=>{const mint=dao1TeamMintEdge(did);return mint?.block?`<div class="wt-team-node-mint" data-dao1-mint-block="${Number(mint.block)}">DID Mint: wird geladen …</div>`:`<div class="wt-team-node-mint">DID Mint: nicht ermittelt</div>`;})()}
       ${level?`<div class="wt-team-node-parent">Upline: DID #${Number(node.parent_id||0)}</div>`:""}
       <div class="wt-team-alias-row"><span class="wt-team-alias-label">Name</span><input class="wt-team-alias-input" data-dao1-team-alias="${did}" value="${escapeHtml(alias)}" placeholder="Name / Alias"></div>
@@ -6709,7 +6721,7 @@ window.DAO1Project = (() => {
 
   function dao1TeamDetailsHtml(did,st){
     did=Number(did);const edge=dao1TeamMintEdge(did,st);const root=dao1TeamRootList().find(r=>Number(r.did)===did);
-    const wallet=edge?.wallet||root?.wallet_address||"";const kids=st.edges.filter(e=>Number(e.parent_id)===did).length;
+    const wallet=root?.wallet_address||edge?.wallet||"";const kids=st.edges.filter(e=>Number(e.parent_id)===did).length;
     const nfts=[],membership="wird bei Details geprüft";
     return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did,wallet)?` · ${escapeHtml(dao1TeamAlias(did,wallet))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Upline</span><strong>${edge?`DID #${edge.parent_id}`:"Root / außerhalb Auswahl"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">DID Mint</span><strong data-dao1-mint-block="${Number(edge?.block||0)}">${edge?.block?"wird geladen …":"nicht ermittelt"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong data-dao1-membership>${escapeHtml(membership)}</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<h4 style="margin:18px 0 8px">NFTs / Bots</h4><div data-dao1-partner-assets>${dao1TeamNftTableHtml(nfts)}</div><div class="note" style="margin-top:12px">Kaufdatum/-preis und Referral Rewards werden nur angezeigt, wenn sie aus den vorhandenen bzw. on-chain verifizierten Daten belastbar hervorgehen. Fremde Partner-Wallets werden nicht aufgrund von Annahmen klassifiziert.</div></div></div></div>`;
   }
@@ -6904,7 +6916,7 @@ window.DAO1Project = (() => {
         modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
         dao1BindDetailsModalEscape(modal);
       }
-      const edge=dao1TeamMintEdge(did,st),root=dao1TeamRootList().find(r=>Number(r.did)===did),wallet=edge?.wallet||root?.wallet_address||"";
+      const edge=dao1TeamMintEdge(did,st),root=dao1TeamRootList().find(r=>Number(r.did)===did),wallet=root?.wallet_address||edge?.wallet||"";
       const area=modal?.querySelector("[data-dao1-partner-assets]");if(!area||!wallet)return;
       area.innerHTML='<div class="status info"><strong>NFTs / Bots werden on-chain geladen …</strong></div>';
       try{

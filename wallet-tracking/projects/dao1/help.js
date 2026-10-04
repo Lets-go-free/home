@@ -1,3 +1,4 @@
+// Phase 7.31 · 04.10.2026 18:45:30 CEST: Team-Baum nutzt aktuelle Ownership-Wallet für eigene DIDs; Legacy-Mining-Bots bleiben bei fehlender alter DID-Historie über konservativen Own-History-Fallback sichtbar. Build 20261004-184530.
 // Phase 7.30 · 04.10.2026 17:04:30 CEST: Team-Useransicht wieder fachlich getrennt in DAO1 (alt) und APTMDAO (neu); Dashboard bleibt wallet-dedupliziert. Referral-Tabelle zeigt DID-Alias ohne heuristische Partnerzuordnung. Build 20261004-170430.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: DAO-Team-Refresh geklärt: cache-first + automatischer inkrementeller Freshness-Check; manueller Force-Refresh nur Admin/Retry. Build 20261004-035351.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: DAO1 Liquidity Pools laden Cache sofort und starten bei fehlendem/veraltetem Tagesstand automatisch einen inkrementellen Refresh; Force-Refresh bleibt Admin-only. Build 20260929-181743.

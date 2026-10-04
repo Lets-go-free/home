@@ -1,3 +1,4 @@
+// Phase 7.31 · 04.10.2026 18:45:30 CEST: DAO-Team-Breite und eigene DID-Walletanzeige korrigiert; alte verifizierte Mining-Bots bleiben in DAO1 (alt) sichtbar. Build 20261004-184530.
 // Phase 7.30 · 04.10.2026 17:04:30 CEST: DAO-Team fachlich wieder getrennt in DAO1/APTMDAO; Dashboard dedupliziert weiterhin nach Wallet. Build 20261004-170430.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: Aktualisierungs-Buttons final dokumentiert: zentrale User-Aktion im Dashboard, Preise automatisch/global, technische Loan-/Team-Force-Aktionen nur Admin-Retry. Build 20261004-035351.
 // Phase 7.28 · 04.10.2026 03:28:40 CEST: 31.12.-Steuerbewertung gehaertet: direkte ESTV-CHF-Werte nur fuer native oder explizit sichere Token; Polygon-Historie nutzt den ESTV-Code MATIC trotz heutiger POL-Anzeige. Build 20261004-032840.

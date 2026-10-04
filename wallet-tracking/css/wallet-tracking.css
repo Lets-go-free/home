@@ -1618,15 +1618,16 @@ body.wt-modal-open{overflow:hidden}
 .project-context-switch .field-label{margin-right:4px;color:var(--muted);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
 
 
-/* Phase 7.24: technisch kritische Chain-Spalten muessen auch bei Sticky/Hover sichtbar bleiben. */
-.chain-admin-table th.critical-cell {
-  color: #d97706 !important;
-  background: rgba(217,119,6,.16) !important;
-  box-shadow: inset 0 3px 0 #d97706;
-}
-.chain-admin-table td.critical-cell {
-  background: rgba(217,119,6,.075) !important;
-}
-.chain-admin-table tr:hover td.critical-cell {
-  background: rgba(217,119,6,.13) !important;
+/* ======================================================================
+   Phase 7.31 · zentrale Desktop-Geometrie · Build 20261004-184530
+   Die frühere max-width:1720px-Regel widersprach dem definierten 5%-Rand.
+   Hauptcontent nutzt wieder 90% der Viewportbreite; Sidebar ragt links in
+   denselben Außenrand. Projektbäume scrollen nur innerhalb ihres Panels.
+   ====================================================================== */
+@media(min-width:1051px){
+  .wrap{width:90%!important;max-width:none!important;margin-left:auto!important;margin-right:auto!important}
+  .app-shell{margin-left:max(-210px,calc(-5vw + 8px))!important;width:calc(100% - max(-210px,calc(-5vw + 8px)))!important}
+  .app-main,#appContent,#tab-dao1,#tab-tlnvow{min-width:0!important;max-width:none!important;width:100%!important}
+  .wt-team-tree-card{width:100%!important;max-width:none!important}
+  .wt-team-tree{width:100%!important;max-width:100%!important;overflow-x:auto!important}
 }
