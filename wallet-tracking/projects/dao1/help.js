@@ -1,3 +1,4 @@
+// Phase 7.29 · 04.10.2026 03:53:51 CEST: DAO-Team-Refresh geklärt: cache-first + automatischer inkrementeller Freshness-Check; manueller Force-Refresh nur Admin/Retry. Build 20261004-035351.
 // Phase 6.79 · 29.09.2026 18:17:43 CEST: DAO1 Liquidity Pools laden Cache sofort und starten bei fehlendem/veraltetem Tagesstand automatisch einen inkrementellen Refresh; Force-Refresh bleibt Admin-only. Build 20260929-181743.
 // Phase 6.62 · 28.09.2026 13:35:30 CEST: DAO1-Hilfe dokumentiert den täglichen inkrementellen Transaktions-/Claim-/Referral-Sync und Admin-only Retry. Build 20260928-133530.
 // Phase 6.34 · 27.09.2026 03:45:02 CEST: P8: DAO1 Edge-Historie startet nur mit aktiver Session; bei Session-Verlust bleibt Cache sichtbar und die App fordert zur Neuanmeldung auf. Build 20260927-034502.
@@ -185,7 +186,7 @@ else renderDAO1Help();
 */
 
 /* Phase 5.71 · 21.09.2026 11:39:58 CEST
-   Normaler DAO-Team-Start ist weiterhin Cache-first, fuehrt bei vorhandenen Roots aber automatisch einen inkrementellen Chain-Freshness-Check fuer DAO1-alt und APTMDAO aus. Ist die Chain unveraendert, endet der Lauf ohne Delta-Scan; bei neuen Bloecken wird nur ab letztem bestaetigten Block mit Overlap nachgezogen. Dadurch darf ein veralteter Tree-Cache nicht erst durch „Beide Trees on-chain aktualisieren“ korrigiert werden. Referenzwallet Monica 0x568281…fe4940: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots; Trading-Bot-Zuordnung bleibt separat offen.
+   Normaler DAO-Team-Start ist weiterhin Cache-first, fuehrt bei vorhandenen Roots aber automatisch einen inkrementellen Chain-Freshness-Check fuer DAO1-alt und APTMDAO aus. Ist die Chain unveraendert, endet der Lauf ohne Delta-Scan; bei neuen Bloecken wird nur ab letztem bestaetigten Block mit Overlap nachgezogen. Ein manueller Team-Neulauf ist damit keine Voraussetzung mehr; „Team-Refresh erzwingen“ bleibt ausschließlich für Admins als Retry-/Diagnoseaktion sichtbar. Referenzwallet Monica 0x568281…fe4940: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots; Trading-Bot-Zuordnung bleibt separat offen.
    Build 20260921-113958.
 */
 

@@ -1,3 +1,4 @@
+/* TLN/VOW Loans central engine · Phase 7.29 · 04.10.2026 03:53:51 CEST · Normaler Tab lädt inkrementell/Lifecycle automatisch; manueller Voll-Neulauf bleibt eindeutig Admin-Retry. Build 20261004-035351 */
 /* TLN/VOW Loans central engine · Phase 6.62 · 28.09.2026 13:35:30 CEST · Force-Refresh-Button nur Admin; normaler Tab-Ladevorgang bleibt inkrementell. Build 20260928-133530 */
 (function(global){
 'use strict';
@@ -1755,7 +1756,7 @@ function initLoanDiscovery(){
   loanShowInnerPanel('loans');
   ['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax','loanFilterType'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderLoanDiscovery));
   document.getElementById('loanFilterReset')?.addEventListener('click',()=>{['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});sel.value='all';renderLoanDiscovery();});
-  const loanReload=document.getElementById('loanDiscoveryReload');if(loanReload){loanReload.style.display=document.body.classList.contains('admin-user')?'inline-block':'none';loanReload.addEventListener('click',()=>void discoverLoansOnchain({force:true}));}
+  const loanReload=document.getElementById('loanDiscoveryReload');if(loanReload){loanReload.title=loanReload.title||'Admin/Retry: vollständigen On-Chain-Neulauf erzwingen. Der normale Loan-Tab aktualisiert inkrementell und prüft Lifecycle-Daten automatisch.';loanReload.addEventListener('click',()=>void discoverLoansOnchain({force:true}));}
   document.getElementById('loanDiagRun')?.addEventListener('click',()=>void loanSearchPositionBackwards());
   document.getElementById('loanStateRun')?.addEventListener('click',()=>void loanReadPositionState());
   document.getElementById('loanStatusCompareRun')?.addEventListener('click',()=>void loanComparePositionStatusFields());

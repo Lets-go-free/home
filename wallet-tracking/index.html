@@ -1,3 +1,4 @@
+<!-- Phase 7.29 · 04.10.2026 03:53:51 CEST: UI/Admin-Refresh-Audit finalisiert: zentrale User-Aktualisierung bleibt im Dashboard; Loan-/DAO-Team-Force-Aktionen als Admin-Retry klar gekennzeichnet und Admin-Sichtbarkeit CSS-basiert robust. Build 20261004-035351. -->
 <!-- Phase 7.28 · 04.10.2026 03:28:40 CEST: 31.12.-Steueraudit: ESTV-Direktkurse gegen Symbol-Imitationen gehaertet; Polygon/POL wird fuer vorhandene historische ESTV-Direktwerte als MATIC aufgeloest. Build 20261004-032840. -->
 <!-- Phase 7.25 · 04.10.2026 01:54:16 CEST: Supabase-Härtung D1 – backendvermittelte Tabellen service-role-only; Cache-/Jobklassifizierung ohne riskanten Schema-Umzug. Build 20261004-015416. -->
 <!-- Phase 7.25 · 04.10.2026 01:54:16 CEST: User-/Wallet-Grants auf Least Privilege vorbereitet (Migration 086); Admin-Chains zeigt technisch kritische Spalten wieder orange. Build 20261004-015416. -->
@@ -1019,7 +1020,7 @@
         <p class="muted">Zentrale On-Chain-Auswertung aller erkannten TLN/VOW-Loans und Optionen über deine erfassten Wallets. Eröffnungsdaten werden persistent gecacht und nur inkrementell ergänzt. Veränderliche Lifecycle-Daten werden beim Öffnen dieses Tabs immer live nachgeprüft; bereits bestätigte Rückzahlungen bleiben im Cache erhalten. Unbekannte Typen bleiben sichtbar und werden nicht weggefiltert.</p>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 12px">
-          <button id="loanDiscoveryReload" type="button" style="display:none">Loans aktualisieren</button>
+          <button id="loanDiscoveryReload" type="button" class="secondary tln-admin-only" title="Admin/Retry: erzwingt einen vollständigen On-Chain-Neulauf. Beim normalen Öffnen des Loan-Tabs werden Eröffnungen inkrementell ergänzt und Lifecycle-Daten automatisch geprüft.">Loans neu laden erzwingen</button>
           <span id="loanDiscoveryState" class="muted">Noch nicht geladen.</span>
         </div>
 
@@ -1258,7 +1259,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 04.10.2026 03:28:40 CEST · Phase 7.28 · Build 20261004-032840</span><br>
+    <span id="footerVersionLine">Version: 04.10.2026 03:53:51 CEST · Phase 7.29 · Build 20261004-035351</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1271,17 +1272,17 @@
 <script src="./js/price-engine.js?v=20261002-121802"></script>
 <script src="./js/lp-engine.js?v=20260930-013813"></script>
 <script src="./js/staking-engine.js?v=20260929-174845"></script>
-<script src="./projects/tln-vow/tln-vow-loans.js?v=20260928-133530"></script>
+<script src="./projects/tln-vow/tln-vow-loans.js?v=20261004-035351"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20261002-121802"></script>
-<script src="./projects/dao1/dao1.js?v=20260929-181743"></script>
+<script src="./projects/dao1/dao1.js?v=20261004-035351"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20261004-032840"></script>
-<script src="./help/help-general.js?v=20261004-032840"></script>
-<script src="./projects/tln-vow/help.js?v=20261002-121802"></script>
-<script src="./projects/dao1/help.js?v=20260929-181743"></script>
-<script src="./js/app.js?v=20261004-032840"></script>
+<script src="./admin/ideas.js?v=20261004-035351"></script>
+<script src="./help/help-general.js?v=20261004-035351"></script>
+<script src="./projects/tln-vow/help.js?v=20261004-035351"></script>
+<script src="./projects/dao1/help.js?v=20261004-035351"></script>
+<script src="./js/app.js?v=20261004-035351"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260929-152557"></script>
 
 
@@ -1300,6 +1301,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 04.10.2026 03:28:40 CEST · Phase 7.28 · Build 20261004-032840</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 04.10.2026 03:53:51 CEST · Phase 7.29 · Build 20261004-035351</div>
 </body>
 </html>

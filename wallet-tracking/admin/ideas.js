@@ -1,3 +1,10 @@
+// Phase 7.29 · 04.10.2026 03:53:51 CEST: UI/Admin-Aufräumaudit finalisiert: Aktualisierungszeitpunkte und Buttonrollen verifiziert; Loan-/DAO-Team-Vollrefresh als Admin-Retry beschriftet, bestehende zentrale Daten-/Preislogik unverändert. Build 20261004-035351.
+// Phase 7.29 · UI/Admin-Refresh-Audit final:
+// • Dashboard „Daten aktualisieren“ bleibt die zentrale manuelle User-Aktion; der erste aktive Tagesstart führt weiterhin den kontrollierten Delta-Refresh aus.
+// • Aktuelle Preise werden global je 15-Minuten-Slot nachgeführt; manueller Preis-Refresh bleibt Admin-only.
+// • TLN/VOW Loans: Tab-Öffnen lädt Cache, ergänzt Eröffnungen inkrementell und prüft Lifecycle automatisch; „Loans neu laden erzwingen“ ist nur Admin/Retry.
+// • DAO Team: normaler Start cache-first + inkrementeller Freshness-Check; „Team-Refresh erzwingen“ ist nur Admin/Retry.
+// • DAO1 NFT-/Historical-Reprice-Reparaturen bleiben Admin-only. „Datenstand pro Wallet“ bleibt standardmäßig eingeklappt. Legacy „Liquidity Pools_old“ bleibt entfernt.
 // Phase 7.28 · 04.10.2026 03:28:40 CEST: 31.12.-Steueraudit: Spam-Filter bestaetigt; ESTV-Direktbewertung gegen unbekannte Symbol-Imitationen gehaertet und historischer Polygon/MATIC-Code trotz POL-Anzeige korrekt aufgeloest. Build 20261004-032840.
 // Phase 7.27 · 04.10.2026 03:19:00 CEST: Retirement Migration 088 fuer project_miner_ownership und alten userbezogenen Preis-Tagescache wallet_current_price_snapshots; Sicherheitsguards + Delete-RPC-Bereinigung. Build 20261004-031900.
 // Phase 7.26 · 04.10.2026 02:18:30 CEST: Retirement-/Altbestand-Audit: produktive Tabellen gegen Browsercode, Edge Functions und DB-Rollen klassifiziert; vier echte Kandidaten plus tln_wallet_identity_cache als Testpfad dokumentiert. Keine Tabelle gelöscht. Read-only Live-Audit SQL ergänzt. Build 20261004-021830.
