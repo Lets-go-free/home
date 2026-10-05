@@ -95,3 +95,17 @@ Die führende aktuelle Anleitung steht unter Admin → Dokumentation → Export 
 Der verifizierte Dump vom 04.10.2026 enthält 074–083. Die danach ausgeführten Härtungen 084–088 und der neue Export 089 sind separat zu berücksichtigen. Ein neuer Dump kann sie bereits enthalten: Migrationsstand prüfen statt blind doppelt anwenden. Migrationen bleiben dauerhaft erhalten. Historische Dateien können ohne die nicht mitgelieferte Git-Historie nicht rekonstruiert werden. Ein Restore-Test auf einer frischen separaten Supabase-Umgebung ist noch offen. Auth-Nutzer, private Daten, Edge Functions, Secrets und Storage werden durch den Stammdatenexport nicht gesichert.
 
 Der Admin-Bereich verlinkt die vorhandenen CLI-Helper für neue Live-Struktur-/Rohdaten-Dumps. Sie sind lokal im verknüpften Projekt auszuführen; Browser-Downloads führen keine lokalen Befehle aus. Der Helper ist kein automatischer Restore.
+
+## Exportdateien ablegen
+
+| Export | Ablage relativ zu wallet-tracking/ | Ins Repository? |
+|---|---|---|
+| Geprüftes Stammdaten-SQL | `sql/baseline/seeds/` | Ja, nach Prüfung |
+| Ungeprüfte JSON-/SQL-Exporte | `_backups/stammdaten/<Zeitstempel>/` | Nein |
+| Neue Struktur-/Rollen-Dumps | `_backups/db/<Zeitstempel>/` | Nein, zunächst prüfen |
+| Verifizierte Struktur-Baseline | `sql/baseline/verified/` | Ja, nach Prüfung |
+| Private Daten oder Auth-Sicherungen | `Separater geschützter Backup-Ordner außerhalb der Website` | Nein |
+
+Beispiel: `_backups/stammdaten/20261005-153414/`. `_backups/` in der für diesen Ordner geltenden `.gitignore` ausschließen. Diese Anleitung ändert die Ignore-Regeln nicht automatisch. Provider-URLs können Schlüssel enthalten: vor Veröffentlichung prüfen. Rohsicherungen zusätzlich außerhalb der Website sichern; `.gitignore` verhindert keine anderen Upload-/Deployment-Wege. Die CLI-Helper schreiben weiterhin in ihre bisherigen `generated/`-Verzeichnisse: Rohdateien ebenfalls prüfen/aus Git und Veröffentlichung ausschließen oder in den Backup-Ordner verschieben. Erst geprüfte Seeds bzw. verifizierte Strukturdateien ins Repository übernehmen.
+
+Im Hauptverzeichnis des Repositorys `home` die Zeile `/wallet-tracking/_backups/` in `.gitignore` eintragen. Bereits von Git erfasste Dateien werden dadurch nicht entfernt; dafür `git rm -r --cached --ignore-unmatch wallet-tracking/_backups/` im Repository-Root verwenden. Lokale Dateien bleiben erhalten.
