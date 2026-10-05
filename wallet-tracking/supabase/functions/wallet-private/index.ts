@@ -1,3 +1,4 @@
+// Phase 7.33 · 05.10.2026 02:00:33 CEST: Partnernamen DAO1/APTMDAO/TLN-VOW mit nutzerbegrenztem Service-Zugriff; TLN-Sammelspeicherung bewahrt DAO-Aliase. Build 20261005-020033.
 // Phase 6.54 · 28.09.2026 03:44:15 CEST: TLN Fresh-User Detail-Backfill robust gegen fehlende/inkompatible Step-6-Valuation-Caches: Bewertungs-Lookup ist optional und darf den bereits verifizierten Staking/Reward/Referral/Bonus-Detailbackfill nicht mehr komplett abbrechen. Build 20260928-034415.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: TLN globaler Detailcache v2. Beim sanitisierten Fresh-User-Backfill werden vorhandene Step-6-USD-Bewertungen aus dem privaten technischen snapshot-valuation-Cache derselben Source-Wallet in die öffentlichen On-Chain-Lots übernommen. Build 20260928-024440.
 // Phase 6.52 · 28.09.2026 02:20:05 CEST: TLN Fresh-User Detail-Reuse. Neue geschützte Aktion tln_detail_snapshot übernimmt nur rein on-chain abgeleitete Staking-/Reward-/Referral-/Bonus-Details aus einem bereits verifizierten Discovery-Snapshot derselben eigenen Wallet, entfernt userbezogene/private Felder, persistiert das Ergebnis im globalen technischen Cache und liefert es cache-only zurück. Kein Blockchain-Scan. Build 20260928-022005.
@@ -679,7 +680,11 @@ async function replaceAllAliases(
   key: CryptoKey,
   userId: string,
   aliasesValue: unknown,
+  scope: unknown = 'tln-vow',
 ): Promise<void> {
+  // Einziger Sammel-Client ist die TLN-Legacy-Migration. Alte Clients ohne scope
+  // werden ebenso begrenzt; DAO1/APTMDAO-Namen duerfen nie mitgeloescht werden.
+  if (scope !== 'tln-vow') throw new Error('Ungueltiger Alias-Scope.')
   if (!aliasesValue || typeof aliasesValue !== 'object' || Array.isArray(aliasesValue)) {
     throw new Error('aliases muss ein Objekt sein.')
   }
@@ -690,6 +695,9 @@ async function replaceAllAliases(
     aliasesValue as Record<string, unknown>,
   )) {
     const reference = normalizeTeamAliasReference(rawReference)
+    if (!/^(id:|wallet:)/.test(reference)) {
+      throw new Error('TLN-Sammelspeicherung akzeptiert nur TLN-Referenzen.')
+    }
     const alias = cleanString(rawAlias, 300)
     if (alias) wanted.set(reference, alias)
   }
@@ -705,7 +713,7 @@ async function replaceAllAliases(
   }
 
   for (const [reference, row] of existingByReference.entries()) {
-    if (!wanted.has(reference)) {
+    if (/^(id:|wallet:)/.test(reference) && !wanted.has(reference)) {
       const { error } = await supabase
         .from('user_team_aliases_private')
         .delete()
@@ -1276,6 +1284,7 @@ export default {
       }
 
       if (action === 'db_self_test') {
+        const service = serviceSupabaseClient()
         const keep = body.keep === true
         const recordId = crypto.randomUUID()
         const plain = randomTestPlaintext()
@@ -1288,7 +1297,7 @@ export default {
           plain,
         )
 
-        const { error: insertError } = await ctx.supabase
+        const { error: insertError } = await service
           .from('security_crypto_tests')
           .insert({
             id: recordId,
@@ -1304,12 +1313,13 @@ export default {
           )
         }
 
-        const { data: row, error: readError } = await ctx.supabase
+        const { data: row, error: readError } = await service
           .from('security_crypto_tests')
           .select(
             'id,user_id,encryption_version,key_version,test_ciphertext',
           )
           .eq('id', recordId)
+          .eq('user_id', userId)
           .single()
 
         if (readError || !row) {
@@ -1333,10 +1343,11 @@ export default {
         )
 
         if (!keep) {
-          const { error: deleteError } = await ctx.supabase
+          const { error: deleteError } = await service
             .from('security_crypto_tests')
             .delete()
             .eq('id', recordId)
+            .eq('user_id', userId)
 
           if (deleteError) {
             throw new Error(
@@ -1359,9 +1370,11 @@ export default {
       }
 
       if (action === 'cleanup_tests') {
-        const { error } = await ctx.supabase
+        const service = serviceSupabaseClient()
+        const { error } = await service
           .from('security_crypto_tests')
           .delete()
+          .eq('user_id', userId)
 
         if (error) {
           throw new Error(`Cleanup fehlgeschlagen: ${error.message}`)
@@ -1458,14 +1471,16 @@ export default {
         return json({ ok: true, action, result })
       }
 
+      // Migration 087: Tabellenzugriff nur serverseitig. userId stammt ausschliesslich
+      // aus verifizierten Claims; Alias-Helper begrenzen jede Operation auf diesen User.
       if (action === 'team_alias_list') {
-        const aliases = await listAliases(ctx.supabase, key, userId)
+        const aliases = await listAliases(serviceSupabaseClient(), key, userId)
         return json({ ok: true, action, aliases })
       }
 
       if (action === 'team_alias_save') {
         await saveAlias(
-          ctx.supabase,
+          serviceSupabaseClient(),
           key,
           userId,
           body.reference,
@@ -1476,10 +1491,11 @@ export default {
 
       if (action === 'team_alias_replace_all') {
         await replaceAllAliases(
-          ctx.supabase,
+          serviceSupabaseClient(),
           key,
           userId,
           body.aliases,
+          body.scope ?? 'tln-vow',
         )
         return json({ ok: true, action })
       }

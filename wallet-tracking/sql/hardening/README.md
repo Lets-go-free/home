@@ -1,4 +1,4 @@
-# Supabase-Härtungsaudit – Phase 7.27
+# Supabase-Härtungsaudit – Phase 7.33
 
 Stand: 04.10.2026, verifizierter Live-Snapshot `sql/baseline/verified/`.
 
@@ -99,3 +99,9 @@ Nicht referenzierte Alt-/Übergangstabellen werden nicht blind gelöscht. Die st
 ## Phase 7.27 – Retirement Migration 088
 
 Nach Live- und Source-Audit werden `project_miner_ownership` und `wallet_current_price_snapshots` kontrolliert retired. `wallet_current_price_snapshots` war der alte userbezogene Tages-Preiscache und ist durch `wallet_global_current_price_snapshot` plus globalen 15-Minuten-Refresh-Slot ersetzt. Die Migration aktualisiert die beiden Delete-RPCs und nutzt `DROP ... RESTRICT` sowie Daten-/Zeitstempel-Guards, damit unerwartete Wiederverwendung den Drop stoppt. `apertum_nft_history_coverage`, `user_settings` und `tln_wallet_identity_cache` bleiben bestehen.
+
+## Korrektur Phase 7.33 – Migration 087 / Edge-Client
+
+Die damalige Annahme in Migration 087, dass Aliase und DB-Verschlüsselungstests bereits Service-Role verwenden, war falsch: `ctx.supabase` verwendet den angemeldeten Nutzer. Nach 087 führte dies zu `permission denied`. `wallet-private` verwendet jetzt für diese beiden Tabellen explizit `serviceSupabaseClient()`. Die verifizierte User-ID bestimmt alle Reads, Updates, Deletes und Inserts; Nutzerdaten aus dem Request bestimmen keine User-ID. Wallet-Zugriffe bleiben RLS-gebunden.
+
+TLN `team_alias_replace_all` ist auf `id:`/`wallet:` begrenzt, auch bei alten Clients ohne Scope; DAO1/APTMDAO-Referenzen bleiben bestehen. Vor einer TLN-Sammelspeicherung muss der Alias-Bestand erfolgreich geladen worden sein. Keine neue SQL-Migration; die Edge Function muss neu deployed werden.

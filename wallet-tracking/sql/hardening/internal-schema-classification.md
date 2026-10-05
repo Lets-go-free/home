@@ -1,4 +1,4 @@
-# Cache-/Job-/Backend-Tabellen – Klassifizierung Phase 7.25
+# Cache-/Job-/Backend-Tabellen – Klassifizierung Phase 7.33
 
 Stand: 04.10.2026. Grundlage: verifizierter Live-Snapshot, Produktions-JavaScript, Projektmodule und Supabase Edge Functions.
 
@@ -14,6 +14,8 @@ Diese Tabellen werden im aktuellen Produktionscode nicht direkt vom Browser ange
 - `user_team_aliases_private` – ausschliesslich `wallet-private` mit Service-Role; Partnernamen bleiben serverseitig verschluesselt.
 - `chat_notification_state` – bereits service_role-only seit Migration 086.
 - `wallet_global_price_refresh_slots` – bereits service_role-only; Browser nutzt den geschuetzten RPC `wallettracking_claim_price_refresh_slot(...)`.
+
+Phase 7.33 korrigiert den zuvor fälschlich als Service-Zugriff klassifizierten `ctx.supabase`-Pfad: Alias-CRUD und DB-Tests verwenden jetzt explizit `serviceSupabaseClient()` mit verifizierter User-ID in allen Operationen.
 
 Migration 087 entfernt fuer die ersten beiden Tabellen die direkten Rechte von `anon` und `authenticated`. Ein Schema-Umzug erfolgt **noch nicht**, weil die Edge Function aktuell ueber Supabase/PostgREST auf `public` zugreift. Fuer ein nicht exponiertes Schema muss zuerst ein serverseitiger DB-/RPC-Pfad geschaffen werden.
 

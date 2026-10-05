@@ -1,3 +1,4 @@
+// Phase 7.33 · 05.10.2026 02:00:33 CEST: Partnernamen DAO1/APTMDAO/TLN-VOW mit nutzerbegrenztem Service-Zugriff; TLN-Sammelspeicherung bewahrt DAO-Aliase. Build 20261005-020033.
 // Phase 6.74 · 29.09.2026 15:25:57 CEST: TLN/VOW-Staking-Principal bleibt Vermögen bis zum tatsächlichen Unstake – Vertragsende allein beendet Eigentum nicht. Cache-only Bridge liefert offene PCLP/LPT-Positionen für Wallet-Bestand/Dashboard und historischen 31.12.-Stichtag; persistente Projekt-Navigation ergänzt. Build 20260929-152557.
 // Phase 6.61 · 28.09.2026 12:16:20 CEST: Team-Leerzustand trennt User- und Admin-Sicht. Normale User sehen bei fehlendem Slice keine internen Cache-/Step-7-/Fullscan-Hinweise, sondern einen fachlichen Hinweis auf den vorhandenen Team-Datenstand; Admins sehen die technische Diagnose weiterhin. Build 20260928-121620.
 // Phase 6.59 · 28.09.2026 11:17:45 CEST: Fresh-Wallet Reward-Status ans Dashboard angebunden; kontrollierte Erst-Discovery meldet loading/complete/unknown und bleibt auf Steps 1–6 ohne Team-/Step-7-Vollscan begrenzt. Build 20260928-111745.
@@ -23,7 +24,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260929-152557';
+const BUILD_ID='20261005-020033';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -221,7 +222,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='29.09.2026 15:25:57 CEST';
+const APP_VERSION='05.10.2026 02:00:33 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13981,13 +13982,14 @@ function canonicalTeamAliasReference(rawKey){
 }
 async function persistTeamAliasesToSupabase(){
   if(!currentUserId)return false;
+  if(!TEAM_ALIAS_CACHE_LOADED){log('Partner-Namen: Sammelspeicherung wartet auf erfolgreich geladenen Alias-Bestand.','warn');return false}
   const aliases={};
   for(const [k,v] of Object.entries(TEAM_ALIAS_CACHE||{})){
     const name=String(v||'').trim(),canonical=canonicalTeamAliasReference(k);
     if(canonical&&name&&!String(aliases[canonical]||'').trim())aliases[canonical]=name;
   }
   try{
-    const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_replace_all',aliases}});
+    const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_replace_all',scope:'tln-vow',aliases}});
     if(error)throw error;
     if(!data?.ok)throw new Error(data?.error||'team_alias_replace_all fehlgeschlagen');
     return true;
@@ -14122,6 +14124,8 @@ function teamAliasFor(wallet,ident){
   // unterschiedlichen Praefixen geliefert. Nicht auf ein bestimmtes Prefix angewiesen sein:
   // fachlich eindeutig sind die enthaltene TLN-ID bzw. die 40-stellige Wallet-Adresse.
   for(const [rawKey,rawValue] of Object.entries(aliases||{})){
+    // DAO-DIDs koennen dieselbe Zahl wie eine TLN-ID tragen; nie projektuebergreifend uebernehmen.
+    if(/^(dao1|aptmdao):/i.test(String(rawKey||'').trim()))continue;
     const value=String(rawValue||'').trim();if(!value)continue;
     const facts=teamAliasReferenceFacts(rawKey);
     if(nodeId&&facts.ids.includes(nodeId))return value;
