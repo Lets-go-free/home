@@ -1,4 +1,5 @@
-// Phase 7.36 · 05.10.2026 14:08:37 CEST: DAO-Teamjobs im zentralen Lauf ohne Queue-Deadlock; kritische Chain-Spalten wieder orange in Hell/Dunkel/Sticky/Hover. Build 20261005-140837.
+// Phase 7.37 · 05.10.2026 15:21:10 CEST: Admin-Stammdatenexport, Restore-Doku, Sticky-Spaltenbreiten. Build 20261005-152110.
+// Phase 7.36 · 05.10.2026 15:21:10 CEST: DAO-Teamjobs im zentralen Lauf ohne Queue-Deadlock; kritische Chain-Spalten wieder orange in Hell/Dunkel/Sticky/Hover. Build 20261005-152110.
 // Phase 7.35 · 05.10.2026 04:13:47 CEST: RPC-Retry, Cache-Erhalt bei Fehlern, korrekte Tagesmarker und Abschluss nach gesamtem Lauf. Build 20261005-041347.
 // Phase 7.34 · 05.10.2026 03:12:13 CEST: Mining-Bot-Upgrade on-chain verknuepft; urspruenglicher Kaufpreis/Datum/Tx uebernommen, Summen dedupliziert. Build 20261005-031213.
 // Phase 7.33 · 05.10.2026 02:00:33 CEST: Partnernamen DAO1/APTMDAO/TLN-VOW mit nutzerbegrenztem Service-Zugriff; TLN-Sammelspeicherung bewahrt DAO-Aliase. Build 20261005-020033.
@@ -105,13 +106,14 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20261005-140837";
-const HELP_MODULE_TIMESTAMP="05.10.2026 14:08:37 CEST";
+const HELP_MODULE_BUILD="20261005-152110";
+const HELP_MODULE_TIMESTAMP="05.10.2026 15:21:10 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
   el.innerHTML=`<div class="section-title">❓ Hilfe / Handbuch</div>
 
+      <div class="custom-token-card"><h3>Sicherung und Wiederherstellung</h3><p class="note">Admins finden unter Admin → Dokumentation die Stammdatenexporte als JSON und SQL sowie die Anleitung zur Datenbankstruktur-Sicherung. Diese Exporte enthalten globale Konfigurationen, keine persönlichen Walletdaten. Eine vollständige Wiederherstellung braucht zusätzlich Schema, spätere Migrationen, Edge-/Auth-/Storage-Konfiguration und gegebenenfalls private Datensicherungen. Der Restore-Test in einer frischen Umgebung ist noch offen.</p></div>
       <div class="custom-token-card"><h3>Datenaktualisierung bei Verbindungsfehlern</h3><p class="note">Vorübergehende EVM-RPC-Fehler werden begrenzt erneut versucht. Scheitert der Abruf weiterhin, bleibt ein vorhandener gültiger Bestand erhalten und wird als veraltet gekennzeichnet. Im Datenstand pro Wallet erscheinen die Bestände einzeln nach Chain. Fehlgeschlagene Abrufe bleiben für eine erneute Aktualisierung fällig; das letzte Erfolgsdatum bleibt erhalten. Die Hinweise nennen Wallet, Chain und Abrufart. Der gesamte Lauf ist erst nach den anschliessenden DAO1/APTMDAO-Schritten abgeschlossen. Deren Team-Aktualisierung gehört zum selben laufenden Job; separate Admin-Aktionen warten weiterhin auf einen freien Job. Im Admin-Bereich Chains sind technisch kritische Spalten mit orangefarbenem Hintergrund und orangefarbener Überschrift markiert, auch beim Scrollen, bei Hover und im Dunkelmodus. Bei Teilfehlern wird kein neuer vollständiger Snapshot gespeichert. Auch bei einem Speicherfehler bleibt der bisherige Snapshot erhalten. Später erneut „Daten aktualisieren“ ausführen; anhaltende Fehler anhand der konkreten Hinweise prüfen.</p></div>
 
       <div class="custom-token-card"><h3>Mining-Bot Upgrade</h3><p class="note">Beim Upgrade eines alten MineBots auf einen neuen Apertum Miner werden beide NFTs anhand derselben erfolgreichen Upgrade-Transaktion verknüpft. Der neue Bot übernimmt den ursprünglichen Kaufpreis, das Kaufdatum und die Kauf-Tx. Die Upgrade-Tx und der Besitzbeginn des neuen NFTs bleiben separat sichtbar. Der alte Bot erscheint als migriert; seine Kauf- und Reward-Historie bleibt erhalten. Kaufpreissummen zählen den übernommenen Betrag nur einmal. Fehlt der alte Kaufpreis, bleibt er offen statt 0. Zusätzliche Zahlungen der Upgrade-Tx werden getrennt gespeichert und nicht als alter Kaufpreis ausgegeben. Mehrdeutige Alt-/Neu-Zuordnungen werden nicht geraten.</p></div><div class="custom-token-card"><h3>Partnernamen</h3><p class="note">Partnernamen für DAO1, APTMDAO und TLN/VOW werden verschlüsselt über wallet-private gespeichert. Das Backend prüft die Anmeldung und begrenzt jeden Zugriff auf die angemeldete User-ID; direkte Browserrechte auf die Alias-Tabelle bleiben gesperrt. Die TLN-Sammelspeicherung verändert ausschließlich TLN-Referenzen und bewahrt DAO1-/APTMDAO-Namen.</p></div><div class="custom-token-card">

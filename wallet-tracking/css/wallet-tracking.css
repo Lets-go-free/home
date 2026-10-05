@@ -147,8 +147,8 @@
 
   /* Erste drei Spalten bleiben beim horizontalen Scrollen stehen. */
   .chain-admin-table .sticky-col-1 { position: sticky; left: 0; z-index: 7; min-width: 110px; max-width: 110px; }
-  .chain-admin-table .sticky-col-2 { position: sticky; left: 110px; z-index: 7; min-width: 200px; max-width: 200px; }
-  .chain-admin-table .sticky-col-3 { position: sticky; left: 310px; z-index: 7; min-width: 105px; max-width: 105px; }
+  .chain-admin-table .sticky-col-2 { position: sticky; left: var(--chain-sticky-left-2, 110px); z-index: 7; min-width: 200px; max-width: 200px; }
+  .chain-admin-table .sticky-col-3 { position: sticky; left: var(--chain-sticky-left-3, 310px); z-index: 7; min-width: 105px; max-width: 105px; }
   .chain-admin-table th.sticky-col-1,
   .chain-admin-table th.sticky-col-2,
   .chain-admin-table th.sticky-col-3 {
@@ -1662,3 +1662,11 @@ body.wt-modal-open{overflow:hidden}
 #appContent .chain-admin-table th.sticky-col-3 {
   z-index:10;
 }
+
+/* Phase 7.37: Felder bleiben in der Zelle; Sticky-Abstände folgen realen Breiten. */
+.chain-admin-table .sticky-col-1 input,
+.chain-admin-table .sticky-col-2 input,
+.chain-admin-table .sticky-col-3 input,
+.chain-admin-table .sticky-col-1 select,
+.chain-admin-table .sticky-col-2 select,
+.chain-admin-table .sticky-col-3 select { min-width: 0; max-width: 100%; width: 100%; }

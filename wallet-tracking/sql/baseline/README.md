@@ -87,3 +87,11 @@ Sicherheitsprinzip:
 5. Der Rohdump wird **nicht** automatisch in Produktion eingespielt und noch nicht als finaler Repo-Seed betrachtet. Er wird zuerst in deterministische/idempotente Seeds umgewandelt und geprüft.
 
 Ausgaben liegen unter `sql/baseline/seed-export/generated/<Zeitstempel>/`; zusätzlich wird eine ZIP-Datei zum Review erzeugt.
+
+## Aktueller Export-/Restore-Ablauf (7.37)
+
+Die führende aktuelle Anleitung steht unter Admin → Dokumentation → Export & Wiederherstellung und in der Systemübersicht. Stammdaten: RPC `wallettracking_export_master_data()` (Migration 089), UUID-Admin-Prüfung, neun feste Tabellen in einem read-only Snapshot. JSON zur Kontrolle; SQL zum Upsert in eine leere/kompatible Baseline-DB, ohne Löschung zusätzlicher Daten. Exportierte Provider-URLs können darin gespeicherte Schlüssel enthalten; vor Veröffentlichung prüfen.
+
+Der verifizierte Dump vom 04.10.2026 enthält 074–083. Die danach ausgeführten Härtungen 084–088 und der neue Export 089 sind separat zu berücksichtigen. Ein neuer Dump kann sie bereits enthalten: Migrationsstand prüfen statt blind doppelt anwenden. Migrationen bleiben dauerhaft erhalten. Historische Dateien können ohne die nicht mitgelieferte Git-Historie nicht rekonstruiert werden. Ein Restore-Test auf einer frischen separaten Supabase-Umgebung ist noch offen. Auth-Nutzer, private Daten, Edge Functions, Secrets und Storage werden durch den Stammdatenexport nicht gesichert.
+
+Der Admin-Bereich verlinkt die vorhandenen CLI-Helper für neue Live-Struktur-/Rohdaten-Dumps. Sie sind lokal im verknüpften Projekt auszuführen; Browser-Downloads führen keine lokalen Befehle aus. Der Helper ist kein automatischer Restore.

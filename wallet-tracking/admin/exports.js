@@ -1,0 +1,66 @@
+/* Phase 7.37: Admin-only master data export; shared UI and offline SQL formatter. */
+(function(global){
+  'use strict';
+  const keys={chains:['chain_key'],defi_projects:['project_key'],defi_project_tokens:['project_key','chain_key','role','contract_address'],defi_staking_contracts:['project_key','chain_key','contract_address'],dex_configs:['chain_key','dex_key'],predefined_tokens:['chain','address'],project_nfts:['project_key','chain_key','nft_contract','nft_id'],tax_asset_prices:['tax_year','asset_code'],tax_fx_rates:['tax_year','from_currency','to_currency']};
+  const ident=value=>'"'+String(value).replace(/"/g,'""')+'"';
+  const literal=value=>"'"+String(value).replace(/'/g,"''")+"'";
+  function validate(data){
+    if(data?.format!=='wallettracking-master-data-v1'||!data.exported_at||!data.tables)throw Error('Unbekanntes Exportformat.');
+    const names=Object.keys(data.tables);
+    if(names.length!==Object.keys(keys).length||names.some(t=>!Object.hasOwn(keys,t)))throw Error('Unvollständiger Export oder nicht freigegebene Tabelle.');
+    for(const [table,k] of Object.entries(keys)){
+      const block=data.tables[table];
+      if(!Array.isArray(block.columns)||!Array.isArray(block.rows)||block.count!==block.rows.length)throw Error(`Ungültige Daten: ${table}`);
+      if(new Set(block.columns).size!==block.columns.length||!k.every(c=>block.columns.includes(c)))throw Error(`Ungültige Spalten: ${table}`);
+      const seen=new Set();
+      for(const row of block.rows){
+        if(!row||typeof row!=='object'||Array.isArray(row)||k.some(c=>row[c]===null||row[c]===undefined))throw Error(`Fehlender Schlüssel: ${table}`);
+        if(Object.keys(row).some(c=>!block.columns.includes(c)))throw Error(`Unbekannte Spalte: ${table}`);
+        const id=JSON.stringify(k.map(c=>row[c]));if(seen.has(id))throw Error(`Doppelter Schlüssel: ${table}`);seen.add(id);
+      }
+    }
+    return data;
+  }
+  function makeSql(data){
+    validate(data);
+    const out=[`-- WalletTracking Stammdaten ${data.exported_at}`, '-- Nur globale Stammdaten; kompatible Baseline erforderlich. Keine Löschungen.', 'BEGIN;', "SET LOCAL standard_conforming_strings = on;"];
+    for(const [table,k] of Object.entries(keys)){
+      const {columns,rows}=data.tables[table];
+      if(!rows.length){out.push(`-- public.${table}: 0 Zeilen`);continue;}
+      const sorted=[...rows].sort((a,b)=>JSON.stringify(k.map(c=>a[c])).localeCompare(JSON.stringify(k.map(c=>b[c]))));
+      const updates=columns.filter(c=>!k.includes(c)&&c!=='id').map(c=>`${ident(c)} = EXCLUDED.${ident(c)}`);
+      const cols=columns.map(ident).join(', ');
+      out.push(`INSERT INTO public.${ident(table)} (${cols})\nSELECT ${cols} FROM jsonb_populate_recordset(NULL::public.${ident(table)}, ${literal(JSON.stringify(sorted))}::jsonb)\nON CONFLICT (${k.map(ident).join(', ')}) ${updates.length?'DO UPDATE SET '+updates.join(', '):'DO NOTHING'};`);
+      if(columns.includes('id'))out.push(`DO $sequence$ DECLARE seq text; top_id bigint; BEGIN\nseq := pg_get_serial_sequence(${literal('public.'+table)}, 'id');\nIF seq IS NOT NULL THEN SELECT MAX(id) INTO top_id FROM public.${ident(table)}; IF top_id IS NOT NULL THEN EXECUTE format('SELECT setval(%L, greatest(%s, (SELECT last_value FROM %s)), true)', seq, top_id, seq); END IF; END IF;\nEND $sequence$;`);
+    }
+    out.push('COMMIT;');return out.join('\n\n')+'\n';
+  }
+  function download(name,text,type){
+    const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  async function exportData(format){
+    if(typeof isAdmin==='undefined'||!isAdmin)return;
+    const status=document.getElementById('adminExportStatus');
+    const buttons=document.querySelectorAll('[data-master-export]');buttons.forEach(b=>b.disabled=true);
+    if(status)status.textContent='Stammdaten werden aus der Datenbank gelesen…';
+    try{
+      const {data,error}=await sb.rpc('wallettracking_export_master_data');
+      if(error)throw Error(error.message+' (Migration 089 und Admin-Anmeldung prüfen.)');
+      validate(data);
+      const stamp=new Date(data.exported_at).toISOString().replace(/[-:]/g,'').replace('T','-').slice(0,15);
+      download(`wt-master-data-${stamp}-UTC.${format}`,format==='sql'?makeSql(data):JSON.stringify(data,null,2),format==='sql'?'text/plain':'application/json');
+      if(status)status.textContent='Export erstellt: '+Object.entries(data.tables).map(([t,b])=>`${t}: ${b.count}`).join(' · ')+'. Stand: '+new Date(data.exported_at).toLocaleString('de-CH')+'. JSON und SQL je Klick aus einem neuen Snapshot.';
+    }catch(e){if(status)status.textContent='Export fehlgeschlagen: '+e.message;}
+    finally{buttons.forEach(b=>b.disabled=false);}
+  }
+  function render(){return `<div class="custom-token-card"><h3>Export &amp; Wiederherstellung</h3>
+<p>Aktuelle globale Stammdaten direkt aus der Datenbank exportieren. Jeder Klick liest alle neun freigegebenen Tabellen in einem konsistenten Snapshot. Keine Wallets, privaten Namen, Snapshots oder Caches. Exportdateien können Provider-URLs mit darin gespeicherten Schlüsseln enthalten: lokal aufbewahren und vor Aufnahme ins öffentliche Repository prüfen.</p>
+<button type="button" data-master-export onclick="WTAdminExports.exportData('json')">Stammdaten als JSON</button>
+<button type="button" data-master-export onclick="WTAdminExports.exportData('sql')">Stammdaten als SQL</button>
+<p id="adminExportStatus" class="meta" role="status">Migration 089 erforderlich. Export erfolgt nur auf Klick; keine automatischen Exportjobs.</p>
+<h4>Datenbankstruktur sichern</h4><p>Für einen frischen vollständigen Struktur-Dump den <a href="./_wt-db-baseline.command" download>Baseline-Helper herunterladen</a>, im lokalen wallet-tracking-Ordner speichern und dort ausführen. Supabase CLI, verknüpftes Projekt und OrbStack/Docker sind erforderlich. Der Browser startet keine lokalen Programme. Der Helper liest Schema, Rollen und Migrationsliste; er verändert die Datenbank nicht. Alternativ: <a href="./_wt-db-seed-export.command" download>CLI-Stammdatenexport</a>.</p>
+<h4>Wiederherstellung</h4><ol><li>Neue separate Supabase-Testumgebung vorbereiten. Die bestehende Produktion bleibt unangetastet.</li><li>Verifizierte Baseline unter sql/baseline/verified verwenden. Stand 04.10.2026; ältere Migrationen 074–083 sind darin bereits enthalten. Spätere Migrationen 084–089 in Reihenfolge prüfen/anwenden. Einen neu erzeugten Dump zuerst gegen den tatsächlichen Migrationsstand prüfen; bereits enthaltene Migrationen nicht blind nochmals ausführen. Rollen-Dump auf Zielumgebung prüfen.</li><li>Aktuellen SQL-Stammdatenexport in die kompatible Struktur einspielen. Er ergänzt/aktualisiert anhand stabiler Schlüssel; zusätzliche vorhandene Datensätze werden nicht gelöscht. JSON ist ein Kontroll-/Austauschformat, kein automatischer Import. Explizite IDs setzen eine leere bzw. kompatible Ziel-DB voraus.</li><li>Edge Functions, Secrets, Google-/E-Mail-Auth, Redirect-URLs und Storage separat einrichten. Private Daten und Auth-Nutzer benötigen eine separate geeignete Sicherung; Stammdatenexport und Baseline enthalten sie nicht.</li><li>Admin-Rechte mit passender Ziel-UUID prüfen, Exportvergleich durchführen und Login, Walletimport/-löschung, Aktualisierung und Monica-Kontrollwallet testen.</li></ol>
+<p><strong>Status:</strong> Eine vollständige Restore-Automatik und ein erfolgreicher Restore-Test sind noch nicht vorhanden. Fehlende historische SQL-Dateien werden nur aus nachweisbarer Git-Historie rekonstruiert; die vorhandene Baseline ist der technische Ausgangsstand. Alle vorhandenen Migrationen bleiben dauerhaft erhalten.</p>
+<h4>Dokumentation und Diagnose-Dateien</h4><p>Diese Dokumentation und die Systemübersicht beschreiben den aktuellen Betrieb. Release-Historie: <a href="./docs/releases/CHANGELOG.md">Änderungshistorie</a>; Originalberichte 7.33–7.36 unter docs/releases/. Alte gleichnamige Root-READMEs können danach entfernt werden. SQL-Anleitungen bleiben bei ihren Wiederherstellungsdateien. Temporäre polygon-rpc-test.html und README-polygon-rpc-test.md können entfernt werden. TLN-Diagnoseseiten und tests/*.mjs bleiben für offene Prüfungen; eine Admin-Zugangssperre für separate HTML-Diagnoseseiten ist noch nicht umgesetzt.</p></div>`;}
+  global.WTAdminExports={keys,validate,makeSql,exportData,render};
+})(typeof window!=='undefined'?window:globalThis);

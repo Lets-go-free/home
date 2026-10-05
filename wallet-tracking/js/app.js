@@ -1,3 +1,4 @@
+// Phase 7.37 · 05.10.2026 15:21:10 CEST: Admin-Export und reale Sticky-Spaltenbreiten. Build 20261005-152110.
 // Phase 7.36 · 05.10.2026 14:08:37 CEST: DAO-Teamjobs im zentralen Lauf ohne Queue-Deadlock; kritische Chain-Spalten wieder orange in Hell/Dunkel/Sticky/Hover. Build 20261005-140837.
 // Phase 7.35 · 05.10.2026 04:13:47 CEST: RPC-Retry, Cache-Erhalt bei Fehlern, korrekte Tagesmarker und Abschluss nach gesamtem Lauf. Build 20261005-041347.
 // Phase 7.34 · 05.10.2026 03:12:13 CEST: Mining-Bot-Upgrade on-chain verknuepft; urspruenglicher Kaufpreis/Datum/Tx uebernommen, Summen dedupliziert. Build 20261005-031213.
@@ -3135,6 +3136,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"admin-defi",level:1,label:"🏦 DeFi-Projekte",status:"planning",start:"Projekt-Konfig DB",daily:"–",open:"DB",manual:"DB",details:[]},
   {id:"admin-dex",level:1,label:"🔄 DEX",status:"planning",start:"–",daily:"–",open:"DB",manual:"DB",details:[]},
   {id:"admin-hard",level:1,label:"🧪 Hardcoding-Audit",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[]},
+  {id:"admin-export",level:1,label:"💾 Export & Wiederherstellung",status:"done",start:"–",daily:"–",open:"Anleitung lokal",manual:"Admin → Dokumentation",details:[["Stammdaten","–","RPC wallettracking_export_master_data / neun globale Tabellen","Ein konsistenter DB-Snapshot bei Klick","JSON + idempotentes SQL; keine Wallet-/User-/Cache-Daten. Migration 089 erforderlich."],["DB-Struktur","–","Supabase CLI / verknüpftes Projekt","Read-only Helper lokal","Admin lädt Helper; kein Live-DDL-Dump im Browser. Baseline 04.10.2026 + spätere Migrationen; Restore in frischer DB noch zu testen."]]},
   {id:"admin-system",level:1,label:"🗺️ Systemübersicht",status:"done",idea:"Systemübersicht · Funktionsbaum",start:"Release-/Migrationscheck",daily:"–",open:"lokal",manual:"–",details:[["Funktions-/Ladebaum","JS Definition","–","–","Admin-Tab öffnen; Status mit Ideen/TODOs verknüpft"],["Release-Management / DATA_MIGRATIONS","userbezogener Versionsstand","Supabase user_data_migrations + user_release_acknowledgements","gezielte API/RPC nur wenn ein registrierter Migrationsjob dies fachlich verlangt","Phase 5.93: SQL 072 erweitert den DB-Status-Constraint um partial; der Apertum-RPC-Proxy wird mit enger eth_call-Allowlist versioniert/deployed. Phase 5.92: complete/partial/failed wird persistent unterschieden; partial/failed erhöht die Datenversion nicht und wird erneut versucht. Phase 5.89: beim Login nur fehlende Datenmigrationen ausführen; Abschluss erst nach Erfolg persistieren. Relevante Release-Mitteilungen erscheinen pro User einmal als quittierungspflichtiges Popup."]]},
   {id:"admin-ideas",level:1,label:"💡 Ideen / Umbau",status:"in_progress",start:"JS geladen",daily:"–",open:"lokal",manual:"–",details:[["Projekt-TODOs","admin/ideas.js","–","–","Datei wird mit Cache-Buster geladen"]]},
   {id:"admin-testing",level:1,label:"🧪 Zu testen",status:"in_progress",idea:"Zu testen · Wallet- und Datenlöschungs-Flows",start:"–",daily:"–",open:"lokal",manual:"praktischer Test",details:[["Wallet hinzufügen","–","Wallet-/Projekt-Daten + Caches","projektbezogene Initialisierung","Neue Wallet erfassen; sichtbaren Ladebalken bis Job-Ende, DAO1 Claim-Auszahlungen/Asset-Flows, Projekt-Erkennung und Dashboard-Summen prüfen"],["Wallet löschen","–","walletbezogene DB-Daten + Caches","–","Einzel-Wallet-Löschung vollständig prüfen; Summen aus verbleibenden Wallets neu validieren"],["Sämtliche Daten löschen","–","wallettracking_delete_all_user_data() + Browsercache","–","Zweistufige Bestätigung, vollständige serverseitige + lokale Löschung prüfen; normale User: Logout/Re-Login, Admin-Testuser: Session bleibt erhalten und leerer Neustart ohne neuen Magic Link"]]},
@@ -3224,9 +3226,29 @@ window.closeAdminSystemDetailModal=closeAdminSystemDetailModal;
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.getElementById("adminSystemDetailModal")?.classList.contains("open"))closeAdminSystemDetailModal();});
 
 
+function configureChainStickyColumns(root){
+  root.querySelectorAll('.chain-admin-table').forEach(table=>{
+    const first=table.querySelector('th.sticky-col-1');
+    const second=table.querySelector('th.sticky-col-2');
+    if(!first||!second)return;
+    const measure=()=>{
+      const a=first.getBoundingClientRect().width,b=second.getBoundingClientRect().width;
+      if(a<=0||b<=0)return;
+      table.style.setProperty('--chain-sticky-left-2',`${a}px`);
+      table.style.setProperty('--chain-sticky-left-3',`${a+b}px`);
+    };
+    measure();
+    if(typeof ResizeObserver!=="undefined"){
+      const observer=new ResizeObserver(()=>{if(!table.isConnected){observer.disconnect();return;}measure();});
+      observer.observe(first);observer.observe(second);
+      table._stickyObserver=observer;
+    }
+  });
+}
 function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
+  ${window.WTAdminExports.render()}
   <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.80</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Abschlussmessung:</strong> TLN/VOW-Haupttab wurde von 143 auf 42 und danach auf ca. 16 Requests reduziert. DAO-Team sank im Warm-Run von ca. 130 auf 16 Requests; Bot-Claims → Referral-Rewards verursacht in derselben Session keine zusätzlichen History-Reads. Weitere Optimierungen erfolgen nur noch bei konkretem Messbeleg.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
@@ -3630,6 +3652,7 @@ function chainTableRow(row={}, isNew=false) {
 async function loadAdminChains() {
   const el = document.getElementById("adminChainsList");
   if (!el || !isAdmin) return;
+  el.querySelectorAll(".chain-admin-table").forEach(t=>t._stickyObserver?.disconnect());
   el.innerHTML = '<div class="note">Chains werden geladen…</div>';
   const {data,error} = await sb.from("chains").select("*").order("sort_order",{ascending:true});
   if (error) { el.innerHTML = `<div class="error">${escapeAttr(error.message)}</div>`; return; }
@@ -3640,11 +3663,13 @@ async function loadAdminChains() {
       <tbody>${(data||[]).map(r=>chainTableRow(r,false)).join("")}</tbody>
     </table>
   </div>`;
+  configureChainStickyColumns(el);
 }
 
 function openNewChainEditor() {
   const el=document.getElementById("adminChainEditor");
   if (!el) return;
+  el.querySelectorAll(".chain-admin-table").forEach(t=>t._stickyObserver?.disconnect());
   el.style.display="block";
   el.innerHTML=`<div class="chain-table-wrap">
     <table class="chain-admin-table">
@@ -3652,10 +3677,11 @@ function openNewChainEditor() {
       <tbody>${chainTableRow({enabled:true,sort_order:100},true)}</tbody>
     </table>
   </div>`;
+  configureChainStickyColumns(el);
 }
 function closeNewChainEditor() {
   const el=document.getElementById("adminChainEditor");
-  if (el) { el.style.display="none"; el.innerHTML=""; }
+  if (el) { el.querySelectorAll(".chain-admin-table").forEach(t=>t._stickyObserver?.disconnect()); el.style.display="none"; el.innerHTML=""; }
 }
 
 function readChainEditor(id) {
