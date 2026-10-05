@@ -19,10 +19,11 @@ await vm.runInContext(`(async()=>{
  await markWalletRefreshFailed(w,'matic','balances');const failed=walletRefreshStates.get('w|matic|balances');assert.equal(failed.last_refreshed_at,date);assert.equal(failed.last_checked_block,88);assert.equal(refreshedToday(w,'matic','balances'),false);
  escapeAttr=String;assert.match(walletDataFreshnessMarkup(),/Polygon: Abruf fehlgeschlagen/);
  fetchEvmAddressInfo=async()=>({native:43,tokens:[]});await loadWalletChain(w,'matic');assert.equal(walletData.w.matic.native,43);assert.equal(walletData.w.matic.stale,undefined);
+ enrichCentralNftPurchaseEvidence=async()=>{events.push('evidence')};cachedNftsForSelection=()=>[];renderNftResults=()=>{events.push('nft-view')};lastNftFindings=[];
  loadAllCore=async()=>({failures:[],progress:[]});refreshDashboardProjectSummaries=async()=>{events.push('summaries');};createSnapshot=async()=>{events.push('snapshot');};finishAllRefresh=async(core)=>{events.push('finish');return core;};
- window.DAO1Project={runDailyDeltaRefresh:async()=>{events.push('dao');return {transactions:{ok:true},team:{ok:true}};}};
- await loadAll();assert.deepEqual(Array.from(events),['dao','summaries','snapshot','finish']);
- events.length=0;window.DAO1Project.runDailyDeltaRefresh=async()=>{events.push('dao');throw new Error('Timeout');};const partial=await loadAll();assert.match(partial.failures[0].error,/Apertum.*Timeout/);assert.deepEqual(Array.from(events),['dao','summaries','finish']);
+ window.DAO1Project={refreshCachedViews:async()=>events.push('dao-view'),runDailyDeltaRefresh:async()=>{events.push('dao');return {transactions:{ok:true},team:{ok:true}};}};
+ await loadAll();assert.deepEqual(Array.from(events),['dao','evidence','nft-view','dao-view','summaries','snapshot','finish']);
+ events.length=0;window.DAO1Project.runDailyDeltaRefresh=async()=>{events.push('dao');throw new Error('Timeout');};const partial=await loadAll();assert.match(partial.failures[0].error,/Apertum.*Timeout/);assert.deepEqual(Array.from(events),['dao','evidence','nft-view','dao-view','summaries','finish']);
  events.length=0;window.DAO1Project.runDailyDeltaRefresh=async()=>({transactions:{ok:false},team:{ok:false}});assert.equal((await loadAll()).failures.length,2);assert.equal(events.includes('snapshot'),false);
 })()`,ctx);
 // Exercise the real core failure path with only a Polygon balance, no projects/NFTs.

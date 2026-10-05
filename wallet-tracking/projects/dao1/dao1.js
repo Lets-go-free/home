@@ -1,3 +1,4 @@
+// Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261005-225448.
 // Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
 // Phase 7.39 · 05.10.2026 17:43:04 CEST: Privater Datenbank-Backup-Helper inkl. Auth; Kauf-/Upgrade-Datum sichtbar. Build 20261005-174304.
 // Phase 7.38 · 05.10.2026 16:38:37 CEST: Prelaunch-Claims getrennt von fehlenden USD-Preisen; Claim-Prüfpunkt niedrige Priorität; Backup-Dokumentation. Build 20261005-163837.
@@ -5408,7 +5409,7 @@ window.DAO1Project = (() => {
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const payouts=claimPayoutEntriesForTx(r);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=payouts.length?payouts.map(f=>{const isWrapped=isWrappedAptmSymbol(f.token_symbol,f.token_name);const amount=isWrapped?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"TOKEN"})} ${escapeHtml(f.token_symbol||"TOKEN")}`;return `<strong>${amount}</strong><div class="meta">${claimPayoutHistoricalUsdHtml(f,r)}</div>`;}).join(""):"–";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${(()=>{const p=payouts.find(f=>((String(f.token_address||"").toLowerCase()==="native"&&String(f.token_symbol||"").toUpperCase()==="APTM")||isWrappedAptmSymbol(f.token_symbol,f.token_name))&&f.price_usd!=null&&Number.isFinite(Number(f.price_usd)));return p?usd(Number(p.price_usd)):(payouts.some(f=>isPrelaunchClaimPayout(f,r))?`<span class="meta">Prelaunch</span>`:"–");})()}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
   }
 
-  let dao1TeamTreeMode="wallet";
+  let dao1TeamTreeMode="aptmdao";
   let dao1TeamRootFilter="__all";
   let dao1OwnedDidRoots=[];
   let aptmdaoOwnedDidRoots=[];
@@ -6619,10 +6620,32 @@ window.DAO1Project = (() => {
     return `<div class="meta">${escapeHtml(label)} · <a href="${EXPLORER}/tx/${escapeHtml(link.txHash)}" target="_blank" rel="noopener">Upgrade-Tx</a></div><div class="meta">${originLabel}: ${date?dao1TeamDate(date):(original?.historyUnavailable?"Historie nicht verfügbar":"Datum nicht ermittelt")}${!purchaseDate&&kind?` · ${kind}`:""}</div><div class="meta">Upgrade: ${link.at?dao1TeamDate(link.at):"Datum nicht ermittelt"}</div>${!purchaseDate&&original?.txHash?`<div class="meta"><a href="${EXPLORER}/tx/${escapeHtml(original.txHash)}" target="_blank" rel="noopener">Erwerbs-Tx</a></div>`:""}${n.purchase_tx_hash?`<div class="meta"><a href="${EXPLORER}/tx/${escapeHtml(n.purchase_tx_hash)}" target="_blank" rel="noopener">Kauf-Tx</a></div>`:""}`;
   }
 
+  function dao1AcquisitionCacheKey(nft,wallet){
+    return `acq:v5:${getContext?.()?.currentUser?.id||""}:${lower(nft.contract)}:${nft.id}:${lower(wallet)}`;
+  }
+  function dao1ApplyCachedAcquisitionEvidence(n,wallet){
+    const acq=dao1TeamPartnerDetailsCache.get(dao1AcquisitionCacheKey(n,wallet));
+    if(acq){
+      if(acq.purchase)n.purchase=acq.purchase;
+      if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;
+      if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}
+      dao1ApplyAcquisitionEvidence(n,acq);
+    }
+    // Persistierter Nachweis hat Vorrang vor einem älteren Sitzungsergebnis.
+    return dao1ApplyStoredPurchaseEvidence(n);
+  }
   async function dao1TeamAcquisitionForNft(nft,wallet){
-    const a=lower(wallet),cacheKey=`acq:v5:${getContext?.()?.currentUser?.id||""}:${lower(nft.contract)}:${nft.id}:${a}`;
+    const a=lower(wallet),cacheKey=dao1AcquisitionCacheKey(nft,a);
     const cached=dao1TeamPartnerDetailsCache.get(cacheKey);
     if(cached){
+      const stored=dao1CachedNftPurchaseEvidence(nft.contract,nft.id);
+      if(stored?.purchase){
+        const updated={...cached,purchase:stored.purchase,purchaseTxHash:stored.purchaseTxHash||cached.purchaseTxHash,
+          purchaseWallet:stored.purchaseWallet||cached.purchaseWallet,purchaseAt:stored.purchaseAt||stored.purchase.timestamp||cached.purchaseAt,
+          purchaseBlock:stored.purchaseBlock||stored.purchase.block||cached.purchaseBlock,
+          upgrade:stored.upgrade||cached.upgrade,originalAcquisition:stored.originalAcquisition||cached.originalAcquisition};
+        dao1TeamPartnerDetailsCache.set(cacheKey,updated);return updated;
+      }
       const original=cached.upgrade&&!cached.purchase?dao1CachedNftPurchaseEvidence(cached.upgrade.oldContract,cached.upgrade.oldId):null;
       if(!(Number(original?.purchase?.amount||0)>0))return cached;
       dao1TeamPartnerDetailsCache.delete(cacheKey);
@@ -6837,17 +6860,22 @@ window.DAO1Project = (() => {
   }
 
   let dao1BotOverviewRun=0;
-  async function renderDAO1BotOverview(){
+  let dao1CachedOverviewTeamCount=null;
+  async function renderDAO1BotOverview({cacheOnly=false}={}){
     const el=document.getElementById("dao1-subtab-overview");if(!el)return;
     const run=++dao1BotOverviewRun;
     try{
       const wallets=allProjectWalletOptions();
-      transactionRows=await loadAllApertumTransactionRows(wallets,null);transactionAssetFlows=await loadAllAssetFlowRows(wallets);
-      const rows=dao1BotOverviewRows(), periods=dashboardRewardPeriods(transactionRows,transactionAssetFlows), teamCount=await dao1OverviewTeamCount();
+      if(!cacheOnly){transactionRows=await loadAllApertumTransactionRows(wallets,null);transactionAssetFlows=await loadAllAssetFlowRows(wallets);}
+      const rows=dao1BotOverviewRows().map(n=>dao1ApplyCachedAcquisitionEvidence(n,n.wallet));
+      const periods=dashboardRewardPeriods(transactionRows,transactionAssetFlows), teamCount=cacheOnly?dao1CachedOverviewTeamCount:await dao1OverviewTeamCount();
+      dao1CachedOverviewTeamCount=teamCount;
+      if(run!==dao1BotOverviewRun)return;
+      if(cacheOnly){el.innerHTML=dao1OverviewSummaryHtml(rows,periods,teamCount)+dao1BotOverviewTableHtml(rows,false);return;}
       const summary=dao1OverviewSummaryHtml(rows,periods,teamCount);el.innerHTML=summary+dao1BotOverviewTableHtml(rows,true);
-      let cursor=0;async function worker(){while(cursor<rows.length&&run===dao1BotOverviewRun){const n=rows[cursor++];try{const acq=await dao1TeamAcquisitionForNft(n,n.wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;dao1ApplyAcquisitionEvidence(n,acq);}catch(e){console.warn("DAO1 Übersicht Bot-Erwerb",n.id,e);}}}
+      let cursor=0;async function worker(){while(cursor<rows.length&&run===dao1BotOverviewRun){const n=rows[cursor++];try{const acq=await dao1TeamAcquisitionForNft(n,n.wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;dao1ApplyAcquisitionEvidence(n,acq);dao1ApplyStoredPurchaseEvidence(n);}catch(e){console.warn("DAO1 Übersicht Bot-Erwerb",n.id,e);}}}
       await Promise.all(Array.from({length:Math.min(5,rows.length)},worker));if(run===dao1BotOverviewRun)el.innerHTML=summary+dao1BotOverviewTableHtml(rows,false);
-    }catch(e){console.warn("DAO1 Bot-Übersicht",e);el.innerHTML=`<div class="status warn"><strong>Bot-Übersicht konnte nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
+    }catch(e){if(run!==dao1BotOverviewRun)return;console.warn("DAO1 Bot-Übersicht",e);el.innerHTML=`<div class="status warn"><strong>Bot-Übersicht konnte nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
   }
 
   function dao1TeamMembershipLabel(nfts){
@@ -7316,7 +7344,7 @@ window.DAO1Project = (() => {
     const el=document.getElementById("dao1TeamContent");if(!el)return;
     // Phase 7.30: Die normale User-Ansicht trennt DAO1 (alt) und APTMDAO (neu) wieder
     // fachlich. Dashboard-/Summary-Zahlen bleiben separat wallet-dedupliziert.
-    if(dao1TeamTreeMode==="wallet")dao1TeamTreeMode="legacy";
+    if(dao1TeamTreeMode==="wallet")dao1TeamTreeMode="aptmdao";
     // Wichtig: nie vor dem ersten Rendern auf DB/RPC/NFT-Cache warten. Genau das
     // führte bisher zum komplett leeren Team-Tab.
     el.innerHTML=`<div class="custom-token-card">
@@ -8696,6 +8724,14 @@ window.DAO1Project = (() => {
     return {transactions:txResult,team:{due:teamDue,ok:teamOk}};
   }
 
+  async function refreshCachedViews(){
+    const overview=document.getElementById("dao1-subtab-overview");
+    if(overview&&overview.style.display!=="none")await renderDAO1BotOverview({cacheOnly:true});
+    // Kein Discovery-/RPC-Aufruf beim abschließenden Anzeigen gespeicherter Daten.
+    renderAssetSummary();
+    renderNftClassification();
+  }
+
   async function ensureLoaded() {
     await ensureMounted();
     if (!loaded) { await refreshConfig(); loaded = true; }
@@ -8780,7 +8816,7 @@ window.DAO1Project = (() => {
     }catch(e){console.warn("DAO1 Dashboard-Summary Cache",e);}
   }
 
-  return { nftPurchaseResolverVersion, switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, runDailyDeltaRefresh, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  return { nftPurchaseResolverVersion, refreshCachedViews, switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, runDailyDeltaRefresh, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,

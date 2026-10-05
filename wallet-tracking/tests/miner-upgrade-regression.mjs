@@ -12,7 +12,7 @@ const transfers=[tr(OLD,'90270',WALLET,SINK),tr(NEW,'46489',ZERO,WALLET)];
 let caches=[],user='A',history=new Map(),evidence=new Map();
 const sandbox={window:{getCachedNftsForWalletId:()=>caches,getAllCachedNfts:()=>caches},ethers:{id:()=> '0x'+'0'.repeat(64)},console,TextEncoder,TextDecoder,URL,Map,Set,Date,Intl,setTimeout,clearTimeout,performance};
 let source=readFileSync(new URL('../projects/dao1/dao1.js',import.meta.url),'utf8');
-source=source.replace('return { nftPurchaseResolverVersion,','return { __test:{original:dao1OriginalMinerAcquisition,inheritOriginal:dao1InheritedMinerPurchase,parse:dao1MinerUpgradeFromTx,link:dao1MinerUpgradeForNft,inherit:dao1InheritedMinerPurchase,basis:dao1PurchaseBasisKey,overview:dao1BotOverviewTableHtml,totals:dao1TeamPurchaseTotalsHtml,kind:dao1TeamAcquisitionText,status:dao1TeamBotStatus,setup:(context,ev,hist)=>{getContext=()=>context;ensureLoaded=async()=>{};dao1PaymentEvidenceForTx=async hash=>ev.get(hash)||{txHash:hash,purchase:null,transfers:[],paymentCandidates:[]};fetchCachedNftHistories=async(contract,ids)=>{if(context.failHistory)throw Error("Synthetic history HTTP 500");return new Map(ids.map(id=>[id,hist.get(contract+"|"+id)||[]]));};loadWalletNftTransferHistory=async()=>[];dao1TeamPartnerDetailsCache.clear();}}, nftPurchaseResolverVersion,');
+source=source.replace('return { nftPurchaseResolverVersion,','return { __test:{cachedApply:dao1ApplyCachedAcquisitionEvidence,acquire:dao1TeamAcquisitionForNft,seedAcq:(n,w,value)=>dao1TeamPartnerDetailsCache.set(dao1AcquisitionCacheKey(n,w),value),original:dao1OriginalMinerAcquisition,inheritOriginal:dao1InheritedMinerPurchase,parse:dao1MinerUpgradeFromTx,link:dao1MinerUpgradeForNft,inherit:dao1InheritedMinerPurchase,basis:dao1PurchaseBasisKey,overview:dao1BotOverviewTableHtml,totals:dao1TeamPurchaseTotalsHtml,kind:dao1TeamAcquisitionText,status:dao1TeamBotStatus,setup:(context,ev,hist)=>{getContext=()=>context;ensureLoaded=async()=>{};dao1PaymentEvidenceForTx=async hash=>ev.get(hash)||{txHash:hash,purchase:null,transfers:[],paymentCandidates:[]};fetchCachedNftHistories=async(contract,ids)=>{if(context.failHistory)throw Error("Synthetic history HTTP 500");return new Map(ids.map(id=>[id,hist.get(contract+"|"+id)||[]]));};loadWalletNftTransferHistory=async()=>[];dao1TeamPartnerDetailsCache.clear();}}, nftPurchaseResolverVersion,');
 vm.runInNewContext(source,sandbox);
 const api=sandbox.window.DAO1Project,t=api.__test;
 function setup(failHistory=false){t.setup({currentUser:{id:user},wallets:[{id:'wallet'}],failHistory},evidence,history);}
@@ -122,3 +122,17 @@ caches=[];setup(true);origin=await t.original(parsed);assert.equal(origin.histor
 caches=[{chain:'apertum',tokenAddress:NEW,tokenId:'46489',purchaseEvidence:{status:'upgrade_price_inherited',upgrade:parsed,purchase,purchaseBlock:100000,purchaseAt:purchase.timestamp,purchaseTxHash:BUY}}];
 const preserved=await t.inheritOriginal(parsed);assert.equal(preserved.purchase.amount,1000);assert.equal(preserved.purchaseTxHash,BUY);assert.equal(preserved.originalAcquisition.historyUnavailable,true);
 console.log('PASS: HTTP 500 remains unavailable, verified inherited price survives, no false original date.');
+
+// A missing-price session result must adopt a subsequently persisted price without a reload.
+user='A';caches=[];setup();
+const refreshedBot={contract:NEW,id:'46489'};
+t.seedAcq(refreshedBot,WALLET,{txHash:HASH,at:detail.timestamp,purchase:null,upgrade:parsed});
+caches=[{chain:'apertum',tokenAddress:NEW,tokenId:'46489',purchaseEvidence:{purchase,purchaseTxHash:BUY,purchaseAt:purchase.timestamp,upgrade:parsed}}];
+const adopted=await t.acquire(refreshedBot,WALLET);
+assert.equal(adopted.purchase.amount,1000);assert.equal(adopted.purchaseTxHash,BUY);
+const display=t.cachedApply({...refreshedBot,purchase:null},WALLET);
+assert.equal(display.purchase.amount,1000);assert.equal(display.purchase_at,purchase.timestamp);
+// A later unavailable price result cannot erase the verified persisted price in the view.
+t.seedAcq(refreshedBot,WALLET,{purchase:null,upgrade:parsed});
+assert.equal(t.cachedApply({...refreshedBot},WALLET).purchase.amount,1000);
+console.log('PASS: cached missing-price result adopts persisted price immediately; cached view preserves verified evidence.');
