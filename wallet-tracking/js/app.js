@@ -1,3 +1,4 @@
+// Phase 7.34 · 05.10.2026 03:12:13 CEST: Mining-Bot-Upgrade on-chain verknuepft; urspruenglicher Kaufpreis/Datum/Tx uebernommen, Summen dedupliziert. Build 20261005-031213.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: UI/Admin-Refresh-Audit finalisiert; zentrale Datenaktualisierung/15-Minuten-Preisjob unverändert, technische Force-/Retry-Aktionen klar Admin-only dokumentiert. Build 20261004-035351.
 // Phase 7.28 · 04.10.2026 03:28:40 CEST: 31.12.-Steueraudit: ESTV-Direktkurse nur fuer native bzw. explizit sichere Token; Polygon-Native nutzt fuer historische ESTV-Stammdaten den Assetcode MATIC trotz heutiger POL-Anzeige. Build 20261004-032840.
 // Phase 7.22 · 04.10.2026 00:58:30 CEST: Dashboard-Bestandscheck unterscheidet frisch noch nicht geprüfte Wallets von tatsächlich veralteten Ständen; nur Chains mit Balance-Provider zählen. Nach Wallet-Erstaufbau wird der Aktionsblock sofort neu bewertet. Build 20261004-005830.
@@ -3088,7 +3089,7 @@ const ADMIN_SYSTEM_TREE = [
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"in_progress",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","year_end_positions / year_end_coverage","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung USD","Cache + persistenter Stichtags-/DEX-Pair-State-Cache","historische Markt-/DEX-/LP-Preise + historical_tax_chain_context_cache + historical_dex_pair_state_cache","Archive RPC/API nur bei Cache-Miss bzw. inkrementellem Blockintervall","Stichtagsberechnung"],["Schweiz / ESTV CHF","globaler Stammdatencache","tax_asset_prices + tax_fx_rates","keine externe API im User-Flow","Direkter ESTV-CHF-Wert je Symbol; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs. Pflege nur im Admin-Tab Steuerkurse."]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
-  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"Current-State DB-Registry",daily:"kein Blind-Refresh",open:"RAM zuerst · History danach",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.75: zentrale NFT-Registry lädt beim App-Start nur den für Current State nötigen Bestand/Ownership. Globale Ersterwerbs- und Kaufpreis-Historie wird erst beim Öffnen des NFT-Tabs nachgeladen. NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe zentrale Datenbasis. Manuelle/gezielte Chain-Refreshs bleiben inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet. Phase 6.29 startet Audit P6: nft_cache (aktueller Wallet-NFT-Bestand) und project_nft_ownership (Besitzhistorie) sind die persistenten Wahrheiten; DAO1-Session-Sichten werden nach ihrer Initialisierung gegen diese zentralen Read-Models geprüft und als „DAO1 NFT Read-Model Audit“ protokolliert."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
+  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"Current-State DB-Registry",daily:"kein Blind-Refresh",open:"RAM zuerst · History danach",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 7.34: Eindeutige MineBot-Upgrades verknüpfen Alt-/Neu-NFT anhand erfolgreicher Upgrade-Tx und Transfers. Der neue Apertum Miner übernimmt den alten Kaufpreis mit ursprünglichem Kaufdatum und Kauf-Tx. Persistenz im privaten nft_cache.purchaseEvidence-JSON, keine neue Tabelle. Kaufpreissummen zählen die gemeinsame Bot-Kostenbasis nur einmal; historische Claims bleiben contract+id-genau. Gezielter Resolver-v4-Refresh nur für den neuen Miner-Contract; keine globale Erst-Discovery beim Dashboard-Start. Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.75: zentrale NFT-Registry lädt beim App-Start nur den für Current State nötigen Bestand/Ownership. Globale Ersterwerbs- und Kaufpreis-Historie wird erst beim Öffnen des NFT-Tabs nachgeladen. NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe zentrale Datenbasis. Manuelle/gezielte Chain-Refreshs bleiben inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet. Phase 6.29 startet Audit P6: nft_cache (aktueller Wallet-NFT-Bestand) und project_nft_ownership (Besitzhistorie) sind die persistenten Wahrheiten; DAO1-Session-Sichten werden nach ihrer Initialisierung gegen diese zentralen Read-Models geprüft und als „DAO1 NFT Read-Model Audit“ protokolliert."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
@@ -11189,9 +11190,27 @@ async function setNftUserSafe(walletId, chain, tokenAddress, tokenId, marked) {
 function nftPurchaseText(n){
   const p=n?.purchaseEvidence?.purchase;
   if(Number(p?.amount||0)>0)return `${Number(p.amount).toLocaleString("de-CH",{maximumFractionDigits:8})} ${escapeAttr(p.symbol||"TOKEN")}`;
+  if(n?.purchaseEvidence?.status==="upgrade_original_price_unresolved")return "Kaufpreis des alten Bots offen";
   if(["transfer_no_purchase_expected","mint_no_purchase_expected"].includes(n?.purchaseEvidence?.status))return "–";
   if(n?.purchaseEvidence?.checked)return "keine eindeutige Zahlung";
   return "Kaufpreis-Prüfung offen";
+}
+
+function nftMinerUpgradeInfo(n){
+  const contract=lowerAddressForNft(n?.tokenAddress),id=String(n?.tokenId??"");
+  const direct=n?.purchaseEvidence?.upgrade;
+  if(direct)return {...direct,direction:"in"};
+  for(const x of window.getAllCachedNfts?.()||[]){
+    const link=x?.purchaseEvidence?.upgrade;
+    if(link&&contract===lowerAddressForNft(link.oldContract)&&id===String(link.oldId))return {...link,direction:"out"};
+  }
+  return null;
+}
+function nftPurchaseProvenanceHtml(n){
+  const ev=n?.purchaseEvidence,link=nftMinerUpgradeInfo(n);if(!link)return "";
+  const label=link.direction==="out"?`Migriert zu #${link.newId}`:`Upgrade von #${link.oldId}`;
+  const date=ev?.purchaseAt||ev?.purchase?.timestamp;
+  return `<div class="meta">${escapeAttr(label)} · <a href="https://explorer.apertum.io/tx/${escapeAttr(link.txHash)}" target="_blank" rel="noopener">Upgrade-Tx</a></div>${date?`<div class="meta">Ursprünglicher Kauf: ${nftOwnershipDate(date)}</div>`:""}${ev?.purchaseTxHash?`<div class="meta"><a href="https://explorer.apertum.io/tx/${escapeAttr(ev.purchaseTxHash)}" target="_blank" rel="noopener">Ursprüngliche Kauf-Tx</a></div>`:""}`;
 }
 
 function centralNftPurchaseEvidenceKey(n,own=null){
@@ -11207,7 +11226,12 @@ function centralNftPurchaseEvidenceKey(n,own=null){
 
 function centralNftPurchaseEvidenceIsCurrent(n){
   const ev=n?.purchaseEvidence||null;
-  if(Number(ev?.resolverVersion||0)<3)return false;
+  const required=window.DAO1Project?.nftPurchaseResolverVersion?.(n?.tokenAddress)||3;
+  if(Number(ev?.resolverVersion||0)<required)return false;
+  if(ev?.status==="upgrade_original_price_unresolved"&&ev?.upgrade){
+    const old=window.getAllCachedNfts?.().find(x=>String(x?.chain||"")==="apertum"&&lowerAddressForNft(x.tokenAddress)===lowerAddressForNft(ev.upgrade.oldContract)&&String(x.tokenId)===String(ev.upgrade.oldId));
+    if(Number(old?.purchaseEvidence?.purchase?.amount||0)>0)return false;
+  }
   if(!ev?.status)return false;
   return String(ev?.inputEvidenceKey||"")===centralNftPurchaseEvidenceKey(n);
 }
@@ -11345,6 +11369,8 @@ function renderNftResults(nfts, errors = []) {
           const firstWalletAddress=own?.firstOwnedWalletAddress||nftWalletAddressById(own?.firstOwnedWalletId,n.chain);
           const currentWalletAddress=nftWalletAddressById(own?.currentWalletId||n?.walletId||n?.wallet_id,n.chain)||n?.walletAddress||null;
           const statusParts=[];
+          const upgrade=nftMinerUpgradeInfo(n);
+          if(upgrade)statusParts.push(`<span class="badge">${upgrade.direction==="out"?"migriert":"Upgrade"}</span>`);
           if(spam)statusParts.push(`<span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Spam markiert" : "Spam-Verdacht"}</span>`);
           if(n.userMarkedSafe)statusParts.push(`<span class="badge safe">✓ Sicher</span>`);
           if(!statusParts.length)statusParts.push(`<span class="badge safe">✓ unauffällig</span>`);
@@ -11353,7 +11379,7 @@ function renderNftResults(nfts, errors = []) {
             <td><strong>${escapeAttr(n.name)}</strong><div class="meta">${n.collectionName?escapeAttr(n.collectionName)+" · ":""}#${escapeAttr(String(n.tokenId))}</div><div class="meta"><code>${escapeAttr(String(n.tokenAddress||""))}</code></div></td>
             <td><div style="display:flex;align-items:center;gap:5px"><span class="dot ${meta.dot}" style="width:7px;height:7px"></span><strong>${escapeAttr(meta.label||n.chain)}</strong></div><div class="meta">${escapeAttr(n.walletLabel||"")}</div></td>
             <td><strong>${firstOwned}</strong>${nftWalletAddressHtml(firstWalletAddress,"Kauf/Mint-Wallet")}${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${own?.known?(own?.acquisitionVerified?`<div class="meta">${own.acquisitionKind==="purchase_same_tx"?"✓ Kauf on-chain belegt":"✓ Mint/Erwerb on-chain belegt"}</div>`:`<div class="meta">Nur Wallet-Eingang on-chain belegt</div>`):`<div class="meta">Transfer-/Ownership-Historie wird noch aufgebaut</div>`}${own?.acquisitionTxHash&&CHAIN_META[n.chain]?.explorer?`<div class="meta"><a href="${CHAIN_META[n.chain].explorer}/tx/${escapeAttr(own.acquisitionTxHash)}" target="_blank" rel="noopener">Erwerbs-TX</a></div>`:""}</td>
-            <td><strong>${nftPurchaseText(n)}</strong>${n?.purchaseEvidence?.purchase?`<div class="meta">on-chain Zahlung</div>`:(n?.purchaseEvidence?.checked?`<div class="meta">geprüft · keine eindeutige Zahlung</div>`:"")}</td>
+            <td><strong>${nftPurchaseText(n)}</strong>${n?.purchaseEvidence?.purchase?`<div class="meta">${n?.purchaseEvidence?.status==="upgrade_price_inherited"?"Kaufpreis übernommen":"on-chain Zahlung"}</div>`:(n?.purchaseEvidence?.checked?`<div class="meta">geprüft · keine eindeutige Zahlung</div>`:"")}${nftPurchaseProvenanceHtml(n)}</td>
             <td><strong>${walletSince}</strong>${nftWalletAddressHtml(currentWalletAddress,"Aktuelles Wallet")}${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}</td>
             <td>${statusParts.join("<br>")}</td>
             <td><div style="display:flex;gap:6px;flex-wrap:wrap">

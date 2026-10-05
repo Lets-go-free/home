@@ -1,3 +1,4 @@
+// Phase 7.34 · 05.10.2026 03:12:13 CEST: Mining-Bot-Upgrade on-chain verknuepft; urspruenglicher Kaufpreis/Datum/Tx uebernommen, Summen dedupliziert. Build 20261005-031213.
 // Phase 7.33 · 05.10.2026 02:00:33 CEST: Partnernamen DAO1/APTMDAO/TLN-VOW mit nutzerbegrenztem Service-Zugriff; TLN-Sammelspeicherung bewahrt DAO-Aliase. Build 20261005-020033.
 // Phase 7.32 · 04.10.2026 23:31:15 CEST: Bot-DID-Zuordnung ist dynamisch aus aktuellem Owner-Wallet + DID-Kombination; Mining/Trading-Regeln getrennt, Rewards bleiben wallet-genau und contract+id-genau. Build 20261004-233115.
 // Phase 7.30 · 04.10.2026 17:04:30 CEST: DAO/APTM-Teamtrennung in User-UI wiederhergestellt; Dashboard bleibt 1 Wallet = 1 Partner. Referral-Tabelle korrigiert und DID-Alias ergänzt; verursachender Partner bleibt ohne eindeutige On-Chain-Evidenz offen. Build 20261004-170430.
@@ -169,6 +170,7 @@ const ADMIN_IDEAS_MODULE_TIMESTAMP = "23.09.2026 01:44:44 CEST";
 // Aenderung vom 30.10.2026 umgebaut. DB-Reset/Preview-Branch-Faehigkeit ist bei Migrationen mitzupruefen.
 
 const ADMIN_IDEAS = [
+  {status:"done",category:"DAO1 / APTMDAO",priority:"high",title:"Mining-Bot Upgrade · Kaufpreis weiterführen",desc:'Phase 7.34: Beim Upgrade eines alten MineBots auf einen neuen Apertum Miner werden beide NFTs anhand derselben erfolgreichen Upgrade-Transaktion verknüpft. Der neue Bot übernimmt den ursprünglichen Kaufpreis, das Kaufdatum und die Kauf-Tx. Die Upgrade-Tx und der Besitzbeginn des neuen NFTs bleiben separat sichtbar. Der alte Bot erscheint als migriert; seine Kauf- und Reward-Historie bleibt erhalten. Kaufpreissummen zählen den übernommenen Betrag nur einmal. Fehlt der alte Kaufpreis, bleibt er offen statt 0. Zusätzliche Zahlungen der Upgrade-Tx werden getrennt gespeichert und nicht als alter Kaufpreis ausgegeben. Mehrdeutige Alt-/Neu-Zuordnungen werden nicht geraten. Kontrollfall #90270 → #46489. Datenquelle: bekannte Upgrade-Methode 0x454b0608 am Upgrade-Contract plus ERC-721-Transfers. Nutzung vorhandener globaler Transfer-Caches; verifizierte Verknüpfung und Kaufprovenienz persistent im userbezogenen nft_cache-JSON. Lokale Regression bestanden; produktiver Test nach Installation noch offen.'},
   {
     status: "done",
     category: "Security & Privacy",
