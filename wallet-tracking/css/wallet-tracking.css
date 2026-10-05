@@ -1,3 +1,4 @@
+/* Phase 7.36 · 05.10.2026 14:08:37 CEST · Build 20261005-140837: Kritische Admin-Chain-Spalten. */
 /* Phase 6.64 · 28.09.2026 14:12:28 CEST · Dark Mode: project-data-table Grund-/Zebra-/Hover-Zeilen vollständig dunkel; verhindert helle Odd-Rows in „Vordefinierte Token“. Build 20260928-141228. */
 /* Phase 6.40 · 27.09.2026 13:16:34 CEST · Dark Mode: DAO1 Partner-Wallet-Detailmodal erhält explizite dunkle Grund-/Zebra-/Hover-Zeilen außerhalb des #tab-dao1 DOM-Scopes. Build 20260927-131634. */
 /* Phase 6.27 · 26.09.2026 18:08:50 CEST · Dark Mode: Projekt-Subnav-Container und Buttons vollständig dunkel; DAO1 Tabellenfix bleibt bestehen. Build 20260926-180850. */
@@ -1630,4 +1631,34 @@ body.wt-modal-open{overflow:hidden}
   .app-main,#appContent,#tab-dao1,#tab-tlnvow{min-width:0!important;max-width:none!important;width:100%!important}
   .wt-team-tree-card{width:100%!important;max-width:none!important}
   .wt-team-tree{width:100%!important;max-width:100%!important;overflow-x:auto!important}
+}
+
+/* Phase 7.36: Kritische Chain-Felder behalten ihre Farbe in allen Tabellenzuständen.
+   Opaque Farben verdecken beim horizontalen Scrollen darunterliegende Zellen. */
+:root {
+  --chain-critical-bg:#fff4e5;
+  --chain-critical-head:#ffe8c7;
+  --chain-critical-hover:#ffecd1;
+  --chain-critical-text:#9a4d00;
+}
+:root[data-theme="dark"] {
+  --chain-critical-bg:#30271f;
+  --chain-critical-head:#403021;
+  --chain-critical-hover:#473422;
+  --chain-critical-text:#ffc078;
+}
+#appContent .chain-admin-table td.critical-cell {
+  background:var(--chain-critical-bg)!important;
+}
+#appContent .chain-admin-table th.critical-cell {
+  background:var(--chain-critical-head)!important;
+  color:var(--chain-critical-text)!important;
+}
+#appContent .chain-admin-table tr:hover td.critical-cell {
+  background:var(--chain-critical-hover)!important;
+}
+#appContent .chain-admin-table th.sticky-col-1,
+#appContent .chain-admin-table th.sticky-col-2,
+#appContent .chain-admin-table th.sticky-col-3 {
+  z-index:10;
 }

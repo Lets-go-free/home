@@ -1,3 +1,4 @@
+// Phase 7.36 · 05.10.2026 14:08:37 CEST: DAO-Teamjobs im zentralen Lauf ohne Queue-Deadlock; kritische Chain-Spalten wieder orange in Hell/Dunkel/Sticky/Hover. Build 20261005-140837.
 // Phase 7.34 · 05.10.2026 03:12:13 CEST: Mining-Bot-Upgrade on-chain verknuepft; urspruenglicher Kaufpreis/Datum/Tx uebernommen, Summen dedupliziert. Build 20261005-031213.
 // Phase 7.32 · 04.10.2026 23:31:15 CEST: Aktuelle Bot-Zuordnung folgt der heutigen Owner-Wallet + DID-Kombination; historische Rewards bleiben wallet-genau, Claims werden contract+id-genau gruppiert. Build 20261004-233115.
 // Phase 7.30 · 04.10.2026 17:04:30 CEST: DAO-Team in normale getrennte DAO1-/APTMDAO-Bäume zurückgeführt; Dashboard bleibt wallet-dedupliziert. Referral-Tabelle zeigt DID-Name/Alias sauber und korrigierte Spalten. Build 20261004-170430.
@@ -8612,8 +8613,10 @@ window.DAO1Project = (() => {
     const anchor=wallets[0],teamDue=!!(anchor&&teamDueByState);
     let teamOk=true;
     if(teamDue){
-      if(dao1OwnedDidRoots.length) await scanOldDao1Tree({checkChain:true});
-      if(aptmdaoOwnedDidRoots.length) await scanAptmdaoTree({checkChain:true});
+      // Expliziter Parent-Job-Scope: kein eigener Queue-Job, auf den der Parent warten würde.
+      // Eigenständige Aufrufe behalten die serialisierten Team-Wrapper.
+      if(dao1OwnedDidRoots.length) await (options.withinDataJob ? scanOldDao1TreeCore({checkChain:true}) : scanOldDao1Tree({checkChain:true}));
+      if(aptmdaoOwnedDidRoots.length) await (options.withinDataJob ? scanAptmdaoTreeCore({checkChain:true}) : scanAptmdaoTree({checkChain:true}));
       teamOk=!dao1TeamDiscovery.legacy.error&&!dao1TeamDiscovery.aptmdao.error;
       if(teamOk) await ctx.saveWalletRefreshState(anchor,CHAIN_KEY,teamType,{last_checked_at:now(),last_refreshed_at:now(),last_result:"refreshed"});
     }
