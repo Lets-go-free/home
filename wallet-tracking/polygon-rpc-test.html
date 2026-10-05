@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Polygon · RPC-Vergleich</title>
+<style>body{font:16px system-ui;margin:0;background:#101827;color:#e4ebf7}main{max-width:1050px;margin:32px auto;padding:20px}h1{font-size:25px}p{line-height:1.5;color:#becbe1}input,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #536581}input{box-sizing:border-box;width:100%;background:#18243a;color:inherit;margin:8px 0 16px}button{background:#2573de;color:white;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.wrap{overflow:auto}table{border-collapse:collapse;width:100%;margin-top:20px}td,th{padding:12px;text-align:left;border-bottom:1px solid #38475e}th{background:#1a2942}.ok{color:#7ee5a2}.bad{color:#ffac9d}pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;background:#18243a}label{display:block}small{color:#b0bfd4}</style></head>
+<body><main><h1>Polygon · RPC-Vergleich</h1><p>Diese Testseite vergleicht PublicNode mit dem bisherigen Zugangspfad, PublicNode ohne Pfad und dRPC. Jeder Anbieter bekommt dieselben drei Leseanfragen. Bitte währenddessen keine weitere Datenaktualisierung starten.</p>
+<label for="wallet">Wallet-Adresse</label><input id="wallet" value="0x239c5822a0d2a67e629d7a3b5c8180721e228b47" spellcheck="false" autocomplete="off">
+<button id="start">Vergleich starten</button> <small>Bis etwa 45 Sekunden. Keine Datenbankänderungen.</small><p id="status" role="status">Bereit. Die Datei muss im bestehenden wallet-tracking-Verzeichnis auf der Website liegen.</p>
+<div class="wrap"><table><thead><tr><th>Anbieter</th><th>Abfrage</th><th>Ergebnis</th><th>Dauer</th></tr></thead><tbody id="rows"></tbody></table></div><p id="summary"></p><pre id="report" hidden></pre>
+<p><small>Der kleine Token-Batch prüft den Bestand von Polygon-USDC und USDT. Er bildet nicht zwingend alle neu erfassten Token oder den vollständigen App-Batch ab. „Netzwerk/CORS“ lässt sich im Browser ohne weitere Diagnose nicht genauer unterscheiden. Quelle des alternativen RPC: <a href="https://docs.polygon.technology/pos/reference/rpc-endpoints/" style="color:#8cbcff" target="_blank" rel="noopener">Polygon-Dokumentation</a>.</small></p>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const base='https://polygon-bor-rpc.publicnode.com';
+const rpc=(id,method,params)=>({jsonrpc:'2.0',id,method,params});
+function validateReply(value,request){
+  const requests=Array.isArray(request)?request:[request];
+  const responses=Array.isArray(value)?value:[value];
+  if(responses.length!==requests.length)throw new Error('Unvollständige RPC-Antwort');
+  return requests.map(q=>{
+    const matches=responses.filter(x=>x?.id===q.id);
+    if(matches.length!==1)throw new Error('RPC-Antwort-ID fehlt oder ist doppelt');
+    const r=matches[0];
+    if(r.error)throw new Error('JSON-RPC '+String(r.error.code??'')+' '+String(r.error.message||'Fehler').slice(0,120));
+    if(typeof r.result!=='string'||!/^0x[0-9a-f]+$/i.test(r.result))throw new Error('Ungültiger RPC-Wert');
+    if(q.method==='eth_chainId'&&BigInt(r.result)!==137n)throw new Error('Falsche Chain-ID (erwartet 137)');
+    return r.result;
+  });
+}
+async function request(url,body){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000),t0=performance.now();
+  try{
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal,credentials:'omit'});
+    if(!res.ok)return {ok:false,text:'HTTP '+res.status,ms:Math.round(performance.now()-t0)};
+    const results=validateReply(await res.json(),body);
+    return {ok:true,text:'OK',values:results,ms:Math.round(performance.now()-t0)};
+  }catch(e){return {ok:false,text:e.name==='AbortError'?'Timeout (15 s)':e instanceof TypeError?'Netzwerk/CORS':String(e.message).slice(0,180),ms:Math.round(performance.now()-t0)};}
+  finally{clearTimeout(timer);}
+}
+function renderRow(provider,label,result){
+  const tr=document.createElement('tr');
+  for(const value of [provider,label,result.text,(result.ms/1000).toFixed(2)+' s']){
+    const td=document.createElement('td');td.textContent=value;tr.append(td);
+  }
+  tr.children[2].className=result.ok?'ok':'bad';$('rows').append(tr);
+}
+async function previousToken(){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+  try{
+    const res=await fetch('./js/app.js',{cache:'no-store',signal:controller.signal,credentials:'omit'});
+    if(!res.ok)throw new Error('app.js nicht lesbar');
+    const source=await res.text();
+    const match=source.match(/const PUBLICNODE_TOKEN\s*=\s*"([a-f0-9]+)"/i);
+    if(!match)throw new Error('Bisheriger PublicNode-Zugang nicht gefunden');
+    return match[1];
+  }finally{clearTimeout(timer);}
+}
+async function runComparison(wallet,token,onResult){
+  const calldata='0x70a08231'+wallet.slice(2).toLowerCase().padStart(64,'0');
+  const tests=[['Chain-ID',rpc(1,'eth_chainId',[])],['Nativer POL-Bestand',rpc(1,'eth_getBalance',[wallet,'latest'])],['Token-Batch (USDC/USDT)',[
+    rpc(1,'eth_call',[{to:'0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',data:calldata},'latest']),
+    rpc(2,'eth_call',[{to:'0xc2132d05d31c914a87c6611c10748aeb04b58e8f',data:calldata},'latest'])]]];
+  const providers=[['PublicNode · bisheriger Pfad',base+'/'+token],['PublicNode · ohne Pfad',base],['dRPC','https://polygon.drpc.org']];
+  // Pro Anbieter sequenziell; zwischen Anbietern parallel. Keine Wiederholung.
+  return Promise.all(providers.map(async([label,url])=>{
+    const out={provider:label,tests:[]};
+    for(const [test,body] of tests){const result=await request(url,body);out.tests.push({test,...result});onResult(label,test,result);}
+    return out;
+  }));
+}
+$('start').addEventListener('click',async()=>{
+  const wallet=$('wallet').value.trim();
+  if(!/^0x[0-9a-f]{40}$/i.test(wallet)){$('status').textContent='Bitte eine gültige EVM-Wallet-Adresse eingeben.';return;}
+  $('start').disabled=true;$('rows').replaceChildren();$('summary').textContent='';$('report').hidden=true;
+  try{
+    $('status').textContent='Bisherigen Zugang aus der installierten app.js lesen …';
+    const token=await previousToken();$('status').textContent='Vergleich läuft …';
+    const results=await runComparison(wallet,token,renderRow);
+    $('status').textContent='Vergleich abgeschlossen.';
+    const [old,plain,alt]=results,healthy=r=>r.tests.every(x=>x.ok);
+    let summary='Kein eindeutiger Anbieterwechsel belegt. Ergebnisse anhand der einzelnen Abfragen prüfen.';
+    if(!healthy(old)&&healthy(plain))summary='PublicNode ohne Zusatzpfad funktioniert in diesem Test vollständig; der bisherige Zugang nicht. Ein Problem des bisherigen Pfads ist damit möglich.';
+    else if(!healthy(old)&&healthy(alt))summary='dRPC funktioniert in diesem Test vollständig; der bisherige PublicNode-Zugang nicht. dRPC ist damit ein möglicher Ersatz für diese aktuellen Leseabfragen.';
+    else if(healthy(old))summary='Der bisherige PublicNode-Zugang funktioniert in diesem Test. Das schliesst zeitweilige Ausfälle oder Probleme bei grösseren Batches nicht aus.';
+    $('summary').textContent=summary;
+    $('report').textContent=JSON.stringify({at:new Date().toISOString(),wallet,results},null,2);$('report').hidden=false;
+  }catch(e){$('status').textContent='Test konnte nicht gestartet werden. Bitte diese Datei neben index.html auf der Website öffnen. '+(e.name==='AbortError'?'app.js: Timeout':e.message);}
+  finally{$('start').disabled=false;}
+});
+</script></main></body></html>
