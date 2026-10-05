@@ -1,3 +1,4 @@
+// Phase 7.35 · 05.10.2026 04:13:47 CEST: RPC-Retry, Cache-Erhalt bei Fehlern, korrekte Tagesmarker und Abschluss nach gesamtem Lauf. Build 20261005-041347.
 // Phase 7.34 · 05.10.2026 03:12:13 CEST: Mining-Bot-Upgrade on-chain verknuepft; urspruenglicher Kaufpreis/Datum/Tx uebernommen, Summen dedupliziert. Build 20261005-031213.
 // Phase 7.29 · 04.10.2026 03:53:51 CEST: UI/Admin-Refresh-Audit finalisiert; zentrale Datenaktualisierung/15-Minuten-Preisjob unverändert, technische Force-/Retry-Aktionen klar Admin-only dokumentiert. Build 20261004-035351.
 // Phase 7.28 · 04.10.2026 03:28:40 CEST: 31.12.-Steueraudit: ESTV-Direktkurse nur fuer native bzw. explizit sichere Token; Polygon-Native nutzt fuer historische ESTV-Stammdaten den Assetcode MATIC trotz heutiger POL-Anzeige. Build 20261004-032840.
@@ -3084,7 +3085,7 @@ const ADMIN_SYSTEM_TREE = [
     ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Projektwert wird zusätzlich in frei verfügbar / aktuell gebunden / gesamt aufgesplittet. LP-Staking wird nur einmal gezählt, auch wenn walletData und lp_position_cache dieselbe Position enthalten. Kursliste automatisch bei Bestand > USD 1; „immer anzeigen“ erlaubt Bestand 0; Projekt-Token nur bei belegter Projektbeteiligung. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
-    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Der zentrale Ladebalken bleibt bis zum Abschluss von Beständen, Projekt-/NFT-/Reward-Daten, Summaries und erfolgreichem Snapshot sichtbar. DAO1/APTMDAO baut für relevante Wallets die ERC-20 Asset-Flows inkrementell mit auf. Historische NFT-Ownership wird aus Wallet-Transferhistorien reproduziert; bei nur belegtem Abgang bleibt der Erwerbsbeginn bewusst unbekannt statt geschätzt. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
+    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Phase 7.35: EVM-RPC-Reads wiederholen Timeouts, Netzwerkfehler, HTTP 408/429/5xx höchstens zweimal (500/1500 ms Pause, neuer Timeout je Versuch). Fehlerhinweise enthalten Wallet/Chain/Abrufart. Bestandsfehler erhalten den gültigen RAM-Bestand als veraltet; wallet_refresh_state last_result=failed erhält Erfolgsdatum, Datenversion und Cursor, verbraucht kein Tageslimit und wird beim nächsten Lauf ohne Activity-Abkürzung erneut versucht. Erst nach DAO1/APTMDAO-Delta und Summary-Laden wird bei vollständigem Erfolg ein Snapshot gespeichert; der alte Snapshot bleibt bis zum erfolgreichen Schreiben des neuen erhalten und der Gesamtstatus abgeschlossen. Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Der zentrale Ladebalken bleibt bis zum Abschluss von Beständen, Projekt-/NFT-/Reward-Daten, Summaries und erfolgreichem Snapshot sichtbar. DAO1/APTMDAO baut für relevante Wallets die ERC-20 Asset-Flows inkrementell mit auf. Historische NFT-Ownership wird aus Wallet-Transferhistorien reproduziert; bei nur belegtem Abgang bleibt der Erwerbsbeginn bewusst unbekannt statt geschätzt. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
     ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"in_progress",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","year_end_positions / year_end_coverage","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung USD","Cache + persistenter Stichtags-/DEX-Pair-State-Cache","historische Markt-/DEX-/LP-Preise + historical_tax_chain_context_cache + historical_dex_pair_state_cache","Archive RPC/API nur bei Cache-Miss bzw. inkrementellem Blockintervall","Stichtagsberechnung"],["Schweiz / ESTV CHF","globaler Stammdatencache","tax_asset_prices + tax_fx_rates","keine externe API im User-Flow","Direkter ESTV-CHF-Wert je Symbol; sonst USD-Stichtagspreis × offizieller ESTV USD/CHF-Kurs. Pflege nur im Admin-Tab Steuerkurse."]]},
@@ -6192,26 +6193,45 @@ function escapeAttr(s) {
 // Kein Etherscan/Moralis/Alchemy wird für das normale Wallet-Tracking benötigt.
 
 // Generische EVM-RPC-Hilfsfunktionen (für gezielte Balance-Abfrage bekannter Token-Adressen)
-async function evmRpcCall(rpcUrl, method, params) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal: controller.signal
-    });
-    if (!res.ok) throw new Error("RPC HTTP " + res.status);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.result;
-  } catch (e) {
-    if (e && e.name === "AbortError") throw new Error("RPC Timeout");
-    throw e;
-  } finally {
-    clearTimeout(timeout);
+// Nur vorübergehende Transportfehler wiederholen: maximal drei Versuche pro Read.
+async function withEvmRpcRetry(read) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await read(); }
+    catch (e) {
+      const status = Number(e?.rpcHttpStatus || 0);
+      const temporary = e?.name === "AbortError" || e instanceof TypeError ||
+        status === 408 || status === 429 || (status >= 500 && status <= 599);
+      if (!temporary || attempt >= 2) {
+        if (e?.name === "AbortError") throw new Error("RPC Timeout (3 Versuche)");
+        throw e;
+      }
+      await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1500));
+    }
   }
+}
+function evmRpcHttpError(status) {
+  const e = new Error("RPC HTTP " + status); e.rpcHttpStatus = status; return e;
+}
+
+async function evmRpcCall(rpcUrl, method, params) {
+  return withEvmRpcRetry(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal: controller.signal
+      });
+      if (!res.ok) throw evmRpcHttpError(res.status);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      return data.result;
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
 }
 
 function decodeAbiString(hex) {
@@ -6260,31 +6280,30 @@ async function evmRpcBatch(rpcUrl, calls) {
     method: "eth_call",
     params: [{ to: c.to, data: c.data }, "latest"]
   }));
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  try {
-    const res = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    if (!res.ok) throw new Error("RPC HTTP " + res.status);
-    const data = await res.json();
-    const arr = Array.isArray(data) ? data : [data];
-    const byId = {};
-    arr.forEach(d => { byId[d.id] = d; });
-    return calls.map((c, i) => {
-      const d = byId[i];
-      if (!d || d.error) return null;
-      return d.result;
-    });
-  } catch (e) {
-    if (e && e.name === "AbortError") throw new Error("RPC Timeout");
-    throw e;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return withEvmRpcRetry(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      if (!res.ok) throw evmRpcHttpError(res.status);
+      const data = await res.json();
+      const arr = Array.isArray(data) ? data : [data];
+      const byId = {};
+      arr.forEach(d => { byId[d.id] = d; });
+      return calls.map((c, i) => {
+        const d = byId[i];
+        if (!d || d.error) return null;
+        return d.result;
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
 }
 
 // Cache für Dezimalstellen/Symbol pro Chain+Adresse - diese ändern sich nie,
@@ -6616,7 +6635,7 @@ function walletAddressForChain(wallet, chain) {
   return field ? wallet?.[field] : null;
 }
 
-async function loadWalletChain(wallet, chain, preserveCachedOnError = false) {
+async function loadWalletChain(wallet, chain) {
   walletData[wallet.id] = walletData[wallet.id] || {};
   const previous = walletData[wallet.id][chain];
   const cfg = CHAIN_CONFIG[chain] || {};
@@ -6672,12 +6691,12 @@ async function loadWalletChain(wallet, chain, preserveCachedOnError = false) {
     };
     return { ok:true };
   } catch (err) {
-    if (preserveCachedOnError && previous && !previous.error) {
-      walletData[wallet.id][chain] = previous;
+    if (previous && !previous.error) {
+      walletData[wallet.id][chain] = {...previous, stale:true, refreshError:err.message};
     } else {
       walletData[wallet.id][chain] = { error:err.message };
     }
-    return { ok:false, error:err.message };
+    return { ok:false, error:`${wallet.label || wallet.id} · ${CHAIN_META[chain]?.label || chain} · Bestände: ${err.message}` };
   }
 }
 
@@ -6795,7 +6814,7 @@ function refreshStateCurrent(w,chain,dataType){
 function needsDataRebuild(w,chain,dataType){ return !refreshStateCurrent(w,chain,dataType); }
 function walletDbId(w){return String(w?.dbId||w?.id||'');}
 function localDayKey(v){const d=v instanceof Date?v:new Date(v);if(isNaN(d.getTime()))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function refreshedToday(w,chain,dataType){const r=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,dataType));return refreshStateCurrent(w,chain,dataType)&&!!r?.last_checked_at&&localDayKey(r.last_checked_at)===localDayKey(new Date());}
+function refreshedToday(w,chain,dataType){const r=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,dataType));return r?.last_result!=='failed'&&refreshStateCurrent(w,chain,dataType)&&!!r?.last_checked_at&&localDayKey(r.last_checked_at)===localDayKey(new Date());}
 async function loadWalletRefreshStates(){
   walletRefreshStates=new Map();if(!currentUser)return;
   const {data,error}=await sb.from('wallet_refresh_state').select('*').eq('user_id',currentUser.id);
@@ -6807,6 +6826,15 @@ async function saveWalletRefreshState(w,chain,dataType,patch={}){
   const {data,error}=await sb.from('wallet_refresh_state').upsert(payload,{onConflict:'user_id,wallet_id,chain_key,data_type'}).select().single();
   if(error){console.warn('Refresh-Status speichern:',error);return null;}
   walletRefreshStates.set(refreshStateKey(payload.wallet_id,payload.chain_key,payload.data_type),data);return data;
+}
+async function markWalletRefreshFailed(w,chain,dataType) {
+  const previous=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,dataType));
+  return saveWalletRefreshState(w,chain,dataType,{
+    last_checked_at:new Date().toISOString(), last_result:'failed',
+    last_refreshed_at:previous?.last_refreshed_at||null,
+    last_checked_block:previous?.last_checked_block??null,
+    data_version:previous?.data_version||0
+  });
 }
 function confirmedSpamAddressesForWallet(w,chain){
   const cache=discoveryCaches.get(walletDbId(w));const out=new Set();
@@ -6841,12 +6869,11 @@ async function evmRelevantActivitySince(w,chain,state){
   return {changed:true,latestBlock,reason:'kein sicherer Activity-Indexer'};
 }
 function walletDataFreshnessMarkup(){
-  const fmtState=(r,required=1)=>{if(!r?.last_checked_at)return 'noch nie geprüft';if(Number(r.data_version||0)<Number(required||1))return `Neuaufbau erforderlich · Cache v${Number(r.data_version||0)}, Soll v${required}`;const checked=new Date(r.last_checked_at).toLocaleString('de-CH');if(r.last_result==='no_relevant_activity')return `geprüft ${checked} · keine relevante Aktivität`;if(r.last_result==='no_nfts')return `geprüft ${checked} · keine NFTs gefunden`;const refreshed=r.last_refreshed_at?new Date(r.last_refreshed_at).toLocaleString('de-CH'):checked;return `aktualisiert ${refreshed}`;};
+  const fmtState=(r,required=1)=>{if(!r?.last_checked_at)return 'noch nie geprüft';if(r.last_result!=='failed'&&Number(r.data_version||0)<Number(required||1))return `Neuaufbau erforderlich · Cache v${Number(r.data_version||0)}, Soll v${required}`;const checked=new Date(r.last_checked_at).toLocaleString('de-CH');if(r.last_result==='failed')return `Abruf fehlgeschlagen ${checked} · ${r.last_refreshed_at?'veralteter Stand vom '+new Date(r.last_refreshed_at).toLocaleString('de-CH'):'kein bestätigter Datenstand'}`;if(r.last_result==='no_relevant_activity')return `geprüft ${checked} · keine relevante Aktivität`;if(r.last_result==='no_nfts')return `geprüft ${checked} · keine NFTs gefunden`;const refreshed=r.last_refreshed_at?new Date(r.last_refreshed_at).toLocaleString('de-CH'):checked;return `aktualisiert ${refreshed}`;};
   const body=wallets.map(w=>{
-    const balanceStates=Object.keys(CHAIN_CONFIG).filter(c=>walletAddressForChain(w,c)&&CHAIN_CONFIG[c]?.balanceProvider).map(c=>walletRefreshStates.get(refreshStateKey(walletDbId(w),c,'balances'))).filter(Boolean);
-    const newest=balanceStates.sort((a,b)=>new Date(b.last_checked_at||0)-new Date(a.last_checked_at||0))[0];
+    const balances=Object.keys(CHAIN_CONFIG).filter(c=>walletAddressForChain(w,c)&&CHAIN_CONFIG[c]?.balanceProvider).map(c=>`${escapeAttr(CHAIN_META[c]?.label||c)}: ${escapeAttr(fmtState(walletRefreshStates.get(refreshStateKey(walletDbId(w),c,'balances'))))}`).join('<br>');
     const proj=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow')),nft=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
-    return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${escapeAttr(fmtState(newest))}</td><td>${w.evm?escapeAttr(fmtState(proj,requiredDataVersion('bsc','project:tln_vow'))):'–'}</td><td>${escapeAttr(fmtState(nft,requiredDataVersion('','nft')))}</td></tr>`;
+    return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${balances||'–'}</td><td>${w.evm?escapeAttr(fmtState(proj,requiredDataVersion('bsc','project:tln_vow'))):'–'}</td><td>${escapeAttr(fmtState(nft,requiredDataVersion('','nft')))}</td></tr>`;
   }).join('');
   return `<details class="wt-wallet-freshness"><summary>Datenstand pro Wallet</summary><div class="note" style="margin:9px 0 8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></details>`;
 }
@@ -6963,28 +6990,30 @@ async function loadAllCore(options = {}) {
       const state=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,'balances'));
       if(automatic&&refreshedToday(w,chain,'balances'))continue;
       let shouldRefresh=true,activity={changed:true,latestBlock:null,reason:'manuell'};
-      if(automatic&&CHAIN_CONFIG[chain]?.walletType==='evm'){
+      if(automatic&&state?.last_result!=='failed'&&CHAIN_CONFIG[chain]?.walletType==='evm'){
         try{activity=await evmRelevantActivitySince(w,chain,state);shouldRefresh=activity.changed;}catch(e){activity={changed:true,reason:'Activity-Check fehlgeschlagen'};}
       }
+      let balanceOk=true;
       if(shouldRefresh){
         progress.push(`  ${CHAIN_META[chain]?.label||chain}: Bestände laden`);renderCentralRefreshProgress(progress);
-        const r=await loadWalletChain(w,chain,automatic);if(r?.ok===false)failures.push(r);else {walletChanged=true;changedChains.add(chain);}
+        const r=await loadWalletChain(w,chain,automatic);if(r?.ok===false){balanceOk=false;failures.push(r);}else {walletChanged=true;changedChains.add(chain);}
       }
-      await saveWalletRefreshState(w,chain,'balances',{last_checked_at:new Date().toISOString(),last_refreshed_at:shouldRefresh?new Date().toISOString():(state?.last_refreshed_at||null),last_checked_block:activity.latestBlock??state?.last_checked_block??null,last_result:shouldRefresh?'refreshed':'no_relevant_activity'});
+      if(!balanceOk)await markWalletRefreshFailed(w,chain,'balances');
+      else await saveWalletRefreshState(w,chain,'balances',{last_checked_at:new Date().toISOString(),last_refreshed_at:shouldRefresh?new Date().toISOString():(state?.last_refreshed_at||null),last_checked_block:activity.latestBlock??state?.last_checked_block??null,last_result:shouldRefresh?'refreshed':'no_relevant_activity'});
     }
     // Projektpositionen gehören wirtschaftlich zur Token-Übersicht und werden deshalb im Full-Refresh mitgeführt.
     if(w.evm&&(!automatic||needsDataRebuild(w,'bsc','project:tln_vow')||!refreshedToday(w,'bsc','project:tln_vow'))){
       const ps=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow'));
       const forceProjectRebuild=needsDataRebuild(w,'bsc','project:tln_vow');
-      if(!automatic||forceProjectRebuild||changedChains.has('bsc')||!ps?.last_checked_at){
-        try{progress.push('  TLN/VOW: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'tln_vow','bsc');walletChanged=true;}catch(e){failures.push({ok:false,error:`${w.label} TLN/VOW: ${e.message}`});}
+      if(!automatic||forceProjectRebuild||changedChains.has('bsc')||ps?.last_result==='failed'||!ps?.last_checked_at){
+        try{progress.push('  TLN/VOW: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'tln_vow','bsc');walletChanged=true;}catch(e){await markWalletRefreshFailed(w,'bsc','project:tln_vow');failures.push({ok:false,error:`${w.label} · BSC · TLN/VOW LP & Staking: ${e.message}`});}
       }else await saveWalletRefreshState(w,'bsc','project:tln_vow',{last_checked_at:new Date().toISOString(),last_refreshed_at:ps?.last_refreshed_at||null,last_result:'no_relevant_activity'});
     }
     if(walletAddressForChain(w,'apertum')&&(!automatic||needsDataRebuild(w,'apertum','project:dao1')||!refreshedToday(w,'apertum','project:dao1'))){
       const ps=walletRefreshStates.get(refreshStateKey(walletDbId(w),'apertum','project:dao1'));
       const forceProjectRebuild=needsDataRebuild(w,'apertum','project:dao1');
-      if(!automatic||forceProjectRebuild||changedChains.has('apertum')||!ps?.last_checked_at){
-        try{progress.push('  DAO1: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'dao1','apertum');walletChanged=true;}catch(e){failures.push({ok:false,error:`${w.label} DAO1 LP/Staking: ${e.message}`});}
+      if(!automatic||forceProjectRebuild||changedChains.has('apertum')||ps?.last_result==='failed'||!ps?.last_checked_at){
+        try{progress.push('  DAO1: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'dao1','apertum');walletChanged=true;}catch(e){await markWalletRefreshFailed(w,'apertum','project:dao1');failures.push({ok:false,error:`${w.label} · Apertum · DAO1 LP & Staking: ${e.message}`});}
       }else await saveWalletRefreshState(w,'apertum','project:dao1',{last_checked_at:new Date().toISOString(),last_refreshed_at:ps?.last_refreshed_at||null,last_result:'no_relevant_activity'});
     }
     // Projektübergreifende LP-/Staking-Bridge: verifizierte LP-Pairs aus der globalen
@@ -7006,8 +7035,8 @@ async function loadAllCore(options = {}) {
     // NFTs als letzter zentraler Current-State-Prozess pro Wallet. Die allgemeine Token-Discovery läuft nur bei neu erfassten Wallets einmal automatisch; Gebühren bleiben bewusst manuell.
     if(!automatic||!refreshedToday(w,'','nft')){
       const ns=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
-      if(!automatic||changedChains.size>0||!ns?.last_checked_at){
-        try{progress.push('  NFTs laden');renderCentralRefreshProgress(progress);const nr=await refreshNftsForWallet(w);if(nr?.errors?.length)throw new Error(nr.errors.join(' · '));await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:Number(nr?.count||0)===0?'no_nfts':'refreshed'});}catch(e){failures.push({ok:false,error:`${w.label} NFTs: ${e.message}`});}
+      if(!automatic||changedChains.size>0||ns?.last_result==='failed'||!ns?.last_checked_at){
+        try{progress.push('  NFTs laden');renderCentralRefreshProgress(progress);const nr=await refreshNftsForWallet(w);if(nr?.errors?.length)throw new Error(nr.errors.join(' · '));await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:Number(nr?.count||0)===0?'no_nfts':'refreshed'});}catch(e){await markWalletRefreshFailed(w,'','nft');failures.push({ok:false,error:`${w.label} · NFTs (Chain laut Detail): ${e.message}`});}
       }else await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:ns?.last_refreshed_at||null,last_result:'no_relevant_activity'});
     }
   }
@@ -7018,8 +7047,14 @@ async function loadAllCore(options = {}) {
   for(const chain of configuredChains.filter(c=>CHAIN_CONFIG[c]?.evmChainId))await mergeProjectStakingCacheIntoWalletData(GENERIC_LP_PROJECT_KEY,chain).catch(()=>{});
   await loadDashboardLpPositionCache().catch(e=>console.warn("Dashboard LP-Positionscache nach Refresh",e));
   renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();
+  progress.push(automatic?'Projekt-Summaries abschließen …':'DAO1/APTMDAO: Transaktionen, Claims und Team prüfen …');
+  renderCentralRefreshProgress(progress,{finished:false});
+  return {failures,progress};
+}
+
+async function finishAllRefresh({failures,progress},automatic){
+  const btn=document.getElementById('loadBtn');
   if(failures.length===0){
-    await createSnapshot(true);
     renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');
     progress.push('✓ Fertig');
   }else{
@@ -7031,7 +7066,7 @@ async function loadAllCore(options = {}) {
     }
     progress.push(`⚠ Fertig mit ${failures.length} Hinweis${failures.length===1?'':'en'}`);
   }
-  renderCentralRefreshProgress(progress,{collapsed:true,finished:true});renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
+  renderCentralRefreshProgress(progress,{collapsed:true,finished:true});renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures,progress};
 }
 
 let dashboardProjectSummaryPromise=null;
@@ -7052,22 +7087,28 @@ window.refreshDashboardProjectSummaries=refreshDashboardProjectSummaries;
 async function loadAll(options = {}) {
   const automatic=!!options.automatic;
   markRequestAudit(automatic?"refresh:auto:start":"refresh:manual:start");
-  try{
-    const result=await runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",async()=>{
-      const core=await loadAllCore(options);
-      // Der bewusste Dashboard-Refresh ist die zentrale manuelle User-Aktion.
-      // Deshalb zieht er auch DAO1/APTMDAO inkrementell nach (Transaktionen/Flows/Claims/Referral,
-      // NFT-Ownership bei Änderungen und Teamgraph). Der vorherige NFT-Current-State aus loadAllCore
-      // wird wiederverwendet, damit Apertum-NFTs nicht doppelt live geladen werden.
-      let dao1=null;
-      if(!automatic&&window.DAO1Project?.runDailyDeltaRefresh){
-        dao1=await window.DAO1Project.runDailyDeltaRefresh({force:true,useCachedCurrentNfts:true});
-      }
-      return dao1?{...core,dao1}:core;
+  let core={failures:[],progress:[]},dao1=null;
+  try {
+    return await runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",async()=>{
+      try {
+        core=await loadAllCore(options);
+        if(!automatic&&window.DAO1Project?.runDailyDeltaRefresh){
+          try {
+            dao1=await window.DAO1Project.runDailyDeltaRefresh({force:true,useCachedCurrentNfts:true});
+            if(dao1?.transactions?.ok===false)core.failures.push({error:'Apertum · DAO1/APTMDAO · Transaktionen/Claims: Aktualisierung unvollständig'});
+            if(dao1?.team?.ok===false)core.failures.push({error:'Apertum · DAO1/APTMDAO · Team: Aktualisierung unvollständig'});
+          }catch(e){core.failures.push({error:`Apertum · DAO1/APTMDAO · Transaktionen/Claims/Team: ${e.message}`});}
+        }
+        await refreshDashboardProjectSummaries();
+        if(!core.failures.length)await createSnapshot(true);
+      }catch(e){core.failures.push({error:`Zentrale Datenaktualisierung: ${e.message}`});}
+      await finishAllRefresh(core,automatic);
+      return {...core,dao1};
     });
-    refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries",e));
-    return result;
-  }finally{markRequestAudit(automatic?"refresh:auto:end":"refresh:manual:end");}
+  }finally{
+    const btn=document.getElementById('loadBtn');if(btn)btn.disabled=false;
+    markRequestAudit(automatic?"refresh:auto:end":"refresh:manual:end");
+  }
 }
 
 // ---- Rendering ----
@@ -7775,17 +7816,23 @@ async function createSnapshot(isAutomated) {
     return;
   }
 
-  if (isAutomated) {
-    // alten Cache-Snapshot ersetzen statt anzuhäufen
-    await sb.from("snapshots").delete().eq("user_id", currentUser.id).eq("is_automated", true);
-  }
-
+  // Erst den neuen Snapshot vollständig schreiben, dann den alten Cache ersetzen.
   const { data: snap, error: snapErr } = await sb.from("snapshots").insert({ user_id: currentUser.id, is_automated: isAutomated }).select().single();
-  if (snapErr) { if (!isAutomated) alert("Fehler beim Erstellen des Snapshots: " + snapErr.message); return; }
-
+  if (snapErr) {
+    if(isAutomated)throw new Error("Snapshot erstellen: " + snapErr.message);
+    alert("Fehler beim Erstellen des Snapshots: " + snapErr.message);return;
+  }
   const rows = items.map(it => ({ ...it, snapshot_id: snap.id }));
   const { error: itemsErr } = await sb.from("snapshot_items").insert(rows);
-  if (itemsErr) { if (!isAutomated) alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message); return; }
+  if (itemsErr) {
+    await sb.from("snapshots").delete().eq("user_id",currentUser.id).eq("id",snap.id);
+    if(isAutomated)throw new Error("Snapshot-Daten speichern: " + itemsErr.message);
+    alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message);return;
+  }
+  if(isAutomated){
+    const {error}=await sb.from("snapshots").delete().eq("user_id",currentUser.id).eq("is_automated",true).neq("id",snap.id);
+    if(error)throw new Error("Alten Snapshot ersetzen: " + error.message);
+  }
 
   if (!isAutomated) {
     await loadSnapshotsFromDb();
@@ -8408,10 +8455,11 @@ function renderResults() {
 
         let body;
         if (result.error) {
-          body = `<div class="error">Fehler beim Laden: ${result.error}</div>`;
+          body = `<div class="error">Fehler beim Laden: ${escapeAttr(result.error)}</div>`;
         } else {
           body = renderTable(attachSnapshotColumns(result.rows, chain, w), true) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
         }
+        if(data[chain]?.stale)body=`<div class="note">Veralteter Bestand · letzter Abruf fehlgeschlagen: ${escapeAttr(data[chain].refreshError||'RPC-Fehler')}</div>`+body;
         const explorerUrl = explorerUrlForWallet(chain, w);
         const explorerLink = explorerUrl ? ` <a href="${explorerUrl}" target="_blank" rel="noopener" style="font-size:0.72rem;color:var(--accent);font-weight:400;margin-left:6px">Auf Explorer ansehen ↗</a>` : "";
         return `<div class="chain-card">
