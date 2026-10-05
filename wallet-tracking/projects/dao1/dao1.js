@@ -1,3 +1,4 @@
+// Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
 // Phase 7.39 · 05.10.2026 17:43:04 CEST: Privater Datenbank-Backup-Helper inkl. Auth; Kauf-/Upgrade-Datum sichtbar. Build 20261005-174304.
 // Phase 7.38 · 05.10.2026 16:38:37 CEST: Prelaunch-Claims getrennt von fehlenden USD-Preisen; Claim-Prüfpunkt niedrige Priorität; Backup-Dokumentation. Build 20261005-163837.
 // Phase 7.36 · 05.10.2026 14:08:37 CEST: DAO-Teamjobs im zentralen Lauf ohne Queue-Deadlock; kritische Chain-Spalten wieder orange in Hell/Dunkel/Sticky/Hover. Build 20261005-140837.
@@ -6469,7 +6470,7 @@ window.DAO1Project = (() => {
     const selector=String(txDetail?.raw_input||txDetail?.input||txDetail?.data||txDetail?.method||"").slice(0,10).toLowerCase();
     return to===MINER_UPGRADE_CONTRACT&&selector===MINER_UPGRADE_SELECTOR;
   }
-  function nftPurchaseResolverVersion(contract){return lower(contract)===UPGRADED_MINER_NFT_CONTRACT?4:3;}
+  function nftPurchaseResolverVersion(contract){return lower(contract)===UPGRADED_MINER_NFT_CONTRACT?5:3;}
   function dao1MinerUpgradeFromTx(transfers,txDetail,txHash){
     const hash=lower(txHash||""),zero="0x0000000000000000000000000000000000000000";
     const to=lower(H(txDetail?.to)||txDetail?.to_address_hash||txDetail?.to_address||"");
@@ -6537,15 +6538,53 @@ window.DAO1Project = (() => {
     }
     return null;
   }
+  async function dao1OriginalMinerAcquisition(link){
+    const stored=dao1CachedNftPurchaseEvidence(link.oldContract,link.oldId);
+    const successor=dao1CachedNftPurchaseEvidence(link.newContract,link.newId);
+    const saved=successor?.originalAcquisition;
+    if(saved?.originConfirmed && Number(saved.block)>0 && Number(saved.block)<link.block && /^0x[0-9a-f]{64}$/.test(lower(saved.txHash)) && lower(saved.txHash)!==link.txHash && Number.isFinite(Date.parse(saved.at||"")))return saved;
+    // A price is not required for a confirmed NFT mint/transfer timestamp.
+    let rows=[],historyError=null;
+    try{const map=await fetchCachedNftHistories(link.oldContract,[String(link.oldId)]);rows=map.get(String(link.oldId))||[];}
+    catch(e){historyError=e;console.warn("DAO1 ursprünglicher Miner-Erwerb",link.oldId,e);window.reportWalletTrackingAsyncIssue?.("partial","DAO1 ursprünglicher Miner-Erwerb",e,{nftId:String(link.oldId),contract:link.oldContract,upgradeTx:link.txHash});}
+    const zero="0x0000000000000000000000000000000000000000";
+    const candidates=rows.filter(t=>lower(tokenTransferAddress(t))===lower(link.oldContract)&&transferTokenIds(t).includes(String(link.oldId))).map(t=>({
+      txHash:lower(t.transaction_hash||t.tx_hash||H(t.transaction)||""),
+      block:Number(t.block_number||0),at:t.timestamp||t.block_timestamp||null,
+      from:transferFromAddress(t),wallet:transferToAddress(t),
+      logIndex:Number(t.log_index??t.index??0)
+    })).filter(x=>/^0x[0-9a-f]{64}$/.test(x.txHash)&&/^0x[0-9a-f]{40}$/.test(x.wallet)&&x.wallet!==zero&&x.block>0&&x.block<link.block&&x.txHash!==link.txHash)
+      .sort((a,b)=>a.block-b.block||a.logIndex-b.logIndex);
+    const c=candidates.find(x=>x.from===zero)||candidates[0];
+    if(c){
+      if(!Number.isFinite(Date.parse(c.at||""))){
+        // One targeted, cached transaction lookup, no broad wallet scan.
+        try{const ev=await dao1PaymentEvidenceForTx(c.txHash,c.wallet,{fallbackBlock:c.block});c.at=ev?.at||null;}catch(e){console.warn("DAO1 Erwerbs-TX-Datum",c.txHash,e);}
+      }
+      return {txHash:c.txHash,at:Number.isFinite(Date.parse(c.at||""))?c.at:null,block:c.block,wallet:c.wallet,kind:c.from===zero?"mint":"transfer",source:"nft_transfer_history",originConfirmed:c.from===zero};
+    }
+    const block=Number(stored?.acquiredBlock||0),txHash=lower(stored?.acquisitionTxHash||"");
+    if(block>0&&block<link.block&&/^0x[0-9a-f]{64}$/.test(txHash)&&txHash!==link.txHash){
+      return {txHash,at:stored.acquiredAt||null,block,wallet:stored.purchaseWallet||null,kind:stored.acquisitionKind||"unknown",source:"cached_acquisition",originConfirmed:stored.acquisitionKind==="mint",historyUnavailable:!!historyError};
+    }
+    return historyError?{historyUnavailable:true,at:null,txHash:null,originConfirmed:false}:null;
+  }
+
   async function dao1InheritedMinerPurchase(link){
     const stored=dao1CachedNftPurchaseEvidence(link.oldContract,link.oldId);
+    const originalAcquisition=await dao1OriginalMinerAcquisition(link);
     if(stored?.purchase?.amount>0&&Number.isFinite(Number(stored.purchase.amount))&&Number(stored.purchaseBlock||stored.purchase.block||0)<link.block){
       const p=stored.purchase;
-      return {purchase:{...p,costBasisNftKey:p.costBasisNftKey||`${link.oldContract}|${link.oldId}`},purchaseTxHash:stored.purchaseTxHash||stored.acquisitionTxHash||null,purchaseWallet:stored.purchaseWallet||null,purchaseAt:stored.purchaseAt||p.timestamp||stored.acquiredAt||null,purchaseBlock:Number(stored.purchaseBlock||p.block||stored.acquiredBlock||0)||null};
+      return {originalAcquisition,purchase:{...p,costBasisNftKey:p.costBasisNftKey||`${link.oldContract}|${link.oldId}`},purchaseTxHash:stored.purchaseTxHash||stored.acquisitionTxHash||null,purchaseWallet:stored.purchaseWallet||null,purchaseAt:stored.purchaseAt||p.timestamp||stored.acquiredAt||null,purchaseBlock:Number(stored.purchaseBlock||p.block||stored.acquiredBlock||0)||null};
     }
+    const successor=dao1CachedNftPurchaseEvidence(link.newContract,link.newId);
+    if(successor?.status==="upgrade_price_inherited" && successor?.upgrade?.txHash===link.txHash && Number(successor?.purchase?.amount)>0 && Number(successor.purchaseBlock||successor.purchase.block||0)>0 && Number(successor.purchaseBlock||successor.purchase.block)<link.block){
+      return {originalAcquisition,purchase:successor.purchase,purchaseTxHash:successor.purchaseTxHash||null,purchaseWallet:successor.purchaseWallet||null,purchaseAt:successor.purchaseAt||successor.purchase.timestamp||null,purchaseBlock:successor.purchaseBlock||successor.purchase.block||null};
+    }
+    if(originalAcquisition?.historyUnavailable)return {originalAcquisition,purchase:null};
     const hist=await dao1HistoricalPurchaseForNft({contract:link.oldContract,id:link.oldId},{beforeBlock:Math.max(0,link.block-1),excludeTx:link.txHash});
-    if(!hist?.purchase)return null;
-    return {purchase:{...hist.purchase,costBasisNftKey:`${link.oldContract}|${link.oldId}`},purchaseTxHash:hist.txHash,purchaseWallet:hist.acquisitionWallet||null,purchaseAt:hist.purchase.timestamp||hist.at||null,purchaseBlock:Number(hist.purchase.block||hist.block||0)||null};
+    if(!hist?.purchase)return {originalAcquisition,purchase:null};
+    return {originalAcquisition,purchase:{...hist.purchase,costBasisNftKey:`${link.oldContract}|${link.oldId}`},purchaseTxHash:hist.txHash,purchaseWallet:hist.acquisitionWallet||null,purchaseAt:hist.purchase.timestamp||hist.at||null,purchaseBlock:Number(hist.purchase.block||hist.block||0)||null};
   }
   function dao1ApplyStoredPurchaseEvidence(n){
     const ev=dao1CachedNftPurchaseEvidence(n.contract,n.id);
@@ -6557,6 +6596,7 @@ window.DAO1Project = (() => {
   }
   function dao1ApplyAcquisitionEvidence(n,acq){
     if(acq?.upgrade)n.upgrade=acq.upgrade;
+    if(acq?.originalAcquisition)n.original_acquisition=acq.originalAcquisition;
     if(acq?.purchaseAt)n.purchase_at=acq.purchaseAt;
     if(acq?.purchaseTxHash)n.purchase_tx_hash=acq.purchaseTxHash;
     if(acq?.purchaseBlock)n.purchase_block=acq.purchaseBlock;
@@ -6570,12 +6610,17 @@ window.DAO1Project = (() => {
     const link=dao1MinerUpgradeForNft(n);if(!link)return "";
     const label=link.direction==="out"?`migriert zu #${link.newId}`:`Upgrade von #${link.oldId}`;
     const previous=link.direction==="in"?dao1CachedNftPurchaseEvidence(link.oldContract,link.oldId):null;
-    const date=n.purchase_at||n.purchase?.timestamp||previous?.purchaseAt||previous?.purchase?.timestamp;
-    return `<div class="meta">${escapeHtml(label)} · <a href="${EXPLORER}/tx/${escapeHtml(link.txHash)}" target="_blank" rel="noopener">Upgrade-Tx</a></div><div class="meta">Ursprünglicher Kauf: ${date?dao1TeamDate(date):"Datum nicht ermittelt"}</div><div class="meta">Upgrade: ${link.at?dao1TeamDate(link.at):"Datum nicht ermittelt"}</div>${n.purchase_tx_hash?`<div class="meta"><a href="${EXPLORER}/tx/${escapeHtml(n.purchase_tx_hash)}" target="_blank" rel="noopener">Kauf-Tx</a></div>`:""}`;
+    const purchaseDate=n.purchase_at||n.purchase?.timestamp||previous?.purchaseAt||previous?.purchase?.timestamp;
+    const evidence=dao1CachedNftPurchaseEvidence(link.newContract,link.newId);
+    const original=n.original_acquisition||evidence?.originalAcquisition;
+    const date=purchaseDate||original?.at;
+    const originLabel=purchaseDate?"Ursprünglicher Kauf":(original?.originConfirmed?"Ursprünglicher Erwerb":"Frühester belegter Erwerb");
+    const kind=original?.kind==="mint"?"Mint":original?.kind==="transfer"?"Transfer":original?.kind==="gift"?"Geschenk":null;
+    return `<div class="meta">${escapeHtml(label)} · <a href="${EXPLORER}/tx/${escapeHtml(link.txHash)}" target="_blank" rel="noopener">Upgrade-Tx</a></div><div class="meta">${originLabel}: ${date?dao1TeamDate(date):(original?.historyUnavailable?"Historie nicht verfügbar":"Datum nicht ermittelt")}${!purchaseDate&&kind?` · ${kind}`:""}</div><div class="meta">Upgrade: ${link.at?dao1TeamDate(link.at):"Datum nicht ermittelt"}</div>${!purchaseDate&&original?.txHash?`<div class="meta"><a href="${EXPLORER}/tx/${escapeHtml(original.txHash)}" target="_blank" rel="noopener">Erwerbs-Tx</a></div>`:""}${n.purchase_tx_hash?`<div class="meta"><a href="${EXPLORER}/tx/${escapeHtml(n.purchase_tx_hash)}" target="_blank" rel="noopener">Kauf-Tx</a></div>`:""}`;
   }
 
   async function dao1TeamAcquisitionForNft(nft,wallet){
-    const a=lower(wallet),cacheKey=`acq:v4:${getContext?.()?.currentUser?.id||""}:${lower(nft.contract)}:${nft.id}:${a}`;
+    const a=lower(wallet),cacheKey=`acq:v5:${getContext?.()?.currentUser?.id||""}:${lower(nft.contract)}:${nft.id}:${a}`;
     const cached=dao1TeamPartnerDetailsCache.get(cacheKey);
     if(cached){
       const original=cached.upgrade&&!cached.purchase?dao1CachedNftPurchaseEvidence(cached.upgrade.oldContract,cached.upgrade.oldId):null;
@@ -6597,7 +6642,7 @@ window.DAO1Project = (() => {
       }catch(e){console.warn("DAO1 Team Partner-NFT Erwerb",nft,wallet,e);}
     }
 
-    let purchase=null,paymentCandidates=[],purchaseTxHash=null,purchaseWallet=null,purchaseAt=null,purchaseBlock=null,upgrade=null,upgradePayments=[],currentEvidence=null,upgradeMappingPending=false;
+    let purchase=null,paymentCandidates=[],purchaseTxHash=null,purchaseWallet=null,purchaseAt=null,purchaseBlock=null,upgrade=null,upgradePayments=[],originalAcquisition=null,currentEvidence=null,upgradeMappingPending=false;
     let systemEvidence=null,systemEvidenceType=null,purchaseDid=0,purchaseParentDid=0;
     if(txHash){
       try{
@@ -6619,6 +6664,7 @@ window.DAO1Project = (() => {
         acquisitionKind="miner_upgrade";
         upgradePayments=(lower(txHash)===upgrade.txHash?currentEvidence?.paymentCandidates:[])||[];
         const inherited=await dao1InheritedMinerPurchase(upgrade);
+        originalAcquisition=inherited?.originalAcquisition||null;
         purchase=inherited?.purchase||null;purchaseTxHash=inherited?.purchaseTxHash||null;purchaseWallet=inherited?.purchaseWallet||null;
         purchaseAt=inherited?.purchaseAt||null;purchaseBlock=inherited?.purchaseBlock||null;
       }
@@ -6640,7 +6686,7 @@ window.DAO1Project = (() => {
     }
 
     if(purchase&&!purchase.costBasisNftKey)purchase={...purchase,costBasisNftKey:`${lower(nft.contract)}|${nft.id}`};
-    const result={txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid,purchaseParentDid,paymentCandidates,purchaseTxHash,purchaseWallet,purchaseAt,purchaseBlock,upgrade,upgradePayments};
+    const result={txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid,purchaseParentDid,paymentCandidates,purchaseTxHash,purchaseWallet,purchaseAt,purchaseBlock,upgrade,upgradePayments,originalAcquisition};
     if(["38483","40938"].includes(String(nft.id))){
       console.info("DAO1 NFT Kaufpreis-Diagnose",{
         nft:`${lower(nft.contract)}#${String(nft.id)}`,
@@ -8445,12 +8491,13 @@ window.DAO1Project = (() => {
       purchaseBlock:acq?.purchaseBlock||null,
       costBasisNftKey:acq?.purchase?.costBasisNftKey||null,
       upgrade:acq?.upgrade||null,
+      originalAcquisition:acq?.originalAcquisition||null,
       upgradePayments:acq?.upgradePayments||[],
       acquiredAt:acq?.at||nft.owned_from_at||null,
       acquiredBlock:Number(acq?.block||nft.owned_from_block||0)||null,
       sourceWallet:acq?.sourceWallet||null,
       checked:fullyChecked,
-      resolverVersion:4,
+      resolverVersion:nftPurchaseResolverVersion(nft.contract),
       status:acq?.acquisitionKind==="miner_upgrade"?(acq?.purchase?"upgrade_price_inherited":"upgrade_original_price_unresolved"):(acq?.purchase?"price_verified":"incomplete_no_deterministic_payment"),
       checkedAt:fullyChecked?new Date().toISOString():null
     };

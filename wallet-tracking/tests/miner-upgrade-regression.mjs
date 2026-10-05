@@ -12,10 +12,10 @@ const transfers=[tr(OLD,'90270',WALLET,SINK),tr(NEW,'46489',ZERO,WALLET)];
 let caches=[],user='A',history=new Map(),evidence=new Map();
 const sandbox={window:{getCachedNftsForWalletId:()=>caches,getAllCachedNfts:()=>caches},ethers:{id:()=> '0x'+'0'.repeat(64)},console,TextEncoder,TextDecoder,URL,Map,Set,Date,Intl,setTimeout,clearTimeout,performance};
 let source=readFileSync(new URL('../projects/dao1/dao1.js',import.meta.url),'utf8');
-source=source.replace('return { nftPurchaseResolverVersion,','return { __test:{parse:dao1MinerUpgradeFromTx,link:dao1MinerUpgradeForNft,inherit:dao1InheritedMinerPurchase,basis:dao1PurchaseBasisKey,overview:dao1BotOverviewTableHtml,totals:dao1TeamPurchaseTotalsHtml,kind:dao1TeamAcquisitionText,status:dao1TeamBotStatus,setup:(context,ev,hist)=>{getContext=()=>context;ensureLoaded=async()=>{};dao1PaymentEvidenceForTx=async hash=>ev.get(hash)||{txHash:hash,purchase:null,transfers:[],paymentCandidates:[]};fetchCachedNftHistories=async(contract,ids)=>new Map(ids.map(id=>[id,hist.get(contract+"|"+id)||[]]));loadWalletNftTransferHistory=async()=>[];dao1TeamPartnerDetailsCache.clear();}}, nftPurchaseResolverVersion,');
+source=source.replace('return { nftPurchaseResolverVersion,','return { __test:{original:dao1OriginalMinerAcquisition,inheritOriginal:dao1InheritedMinerPurchase,parse:dao1MinerUpgradeFromTx,link:dao1MinerUpgradeForNft,inherit:dao1InheritedMinerPurchase,basis:dao1PurchaseBasisKey,overview:dao1BotOverviewTableHtml,totals:dao1TeamPurchaseTotalsHtml,kind:dao1TeamAcquisitionText,status:dao1TeamBotStatus,setup:(context,ev,hist)=>{getContext=()=>context;ensureLoaded=async()=>{};dao1PaymentEvidenceForTx=async hash=>ev.get(hash)||{txHash:hash,purchase:null,transfers:[],paymentCandidates:[]};fetchCachedNftHistories=async(contract,ids)=>{if(context.failHistory)throw Error("Synthetic history HTTP 500");return new Map(ids.map(id=>[id,hist.get(contract+"|"+id)||[]]));};loadWalletNftTransferHistory=async()=>[];dao1TeamPartnerDetailsCache.clear();}}, nftPurchaseResolverVersion,');
 vm.runInNewContext(source,sandbox);
 const api=sandbox.window.DAO1Project,t=api.__test;
-function setup(){t.setup({currentUser:{id:user},wallets:[{id:'wallet'}]},evidence,history);}
+function setup(failHistory=false){t.setup({currentUser:{id:user},wallets:[{id:'wallet'}],failHistory},evidence,history);}
 function ev(hash,tx,flows,purchase=null){return {txHash:hash,txDetail:tx,transfers:flows,purchase,paymentCandidates:purchase?[purchase]:[],at:tx?.timestamp,block:tx?.block_number};}
 const purchase={amount:1000,symbol:'wUSDT',contract:'0x'+'d'.repeat(40),timestamp:'2025-03-01T12:00:00Z',block:100000};
 const oldStored={purchase,checked:true,resolverVersion:3,acquiredAt:purchase.timestamp,acquiredBlock:purchase.block,acquisitionTxHash:BUY,purchaseTxHash:BUY,purchaseWallet:WALLET};
@@ -30,7 +30,7 @@ assert.equal(t.parse([transfers[0],{...transfers[1],transaction_hash:BUY}],detai
 assert.equal(t.parse([transfers[0],{...transfers[1],token:{...transfers[1].token,type:'ERC-20'}}],detail,HASH),null);
 assert.ok(t.parse([...transfers,transfers[0]],detail,HASH),'Duplicate transfer items are deduplicated by NFT id');
 let resolved=await api.resolveNftPurchaseEvidence({contract:NEW,tokenId:'46489',acquisitionWallet:WALLET,acquisitionTxHash:HASH,acquiredBlock:14772428});
-assert.equal(resolved.status,'upgrade_price_inherited');assert.equal(resolved.resolverVersion,4);
+assert.equal(resolved.status,'upgrade_price_inherited');assert.equal(resolved.resolverVersion,5);
 assert.equal(resolved.purchase.amount,1000);assert.equal(resolved.purchaseTxHash,BUY);assert.equal(resolved.purchaseAt,purchase.timestamp);assert.equal(resolved.purchaseBlock,purchase.block);
 assert.equal(resolved.acquisitionTxHash,HASH);assert.equal(resolved.acquiredAt,detail.timestamp);assert.equal(resolved.upgradePayments[0].amount,9,'Upgrade payments stay separate');
 assert.equal(resolved.purchase.costBasisNftKey,OLD+'|90270');
@@ -73,10 +73,10 @@ const ui={window:{DAO1Project:api,getAllCachedNfts:()=>caches},console,normalize
 vm.runInNewContext(appSource.slice(appSource.indexOf('function nftPurchaseText('),appSource.indexOf('function centralNftPurchaseEvidenceNeedsRefresh(')),ui);
 const item={chain:'apertum',tokenAddress:NEW,tokenId:'46489',purchaseEvidence:{resolverVersion:3,status:'price_verified',purchase}};
 item.purchaseEvidence.inputEvidenceKey=ui.centralNftPurchaseEvidenceKey(item);assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),false);
-item.purchaseEvidence={resolverVersion:4,status:'upgrade_original_price_unresolved',upgrade:parsed,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
+item.purchaseEvidence={resolverVersion:5,status:'upgrade_original_price_unresolved',upgrade:parsed,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
 caches=[];assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),true,'Unchanged unresolved evidence remains cacheable');
 caches=[oldNft];assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),false,'Newly resolved old price triggers one new inheritance pass');
-item.purchaseEvidence={resolverVersion:4,status:'upgrade_price_inherited',upgrade:parsed,purchase,purchaseAt:purchase.timestamp,purchaseTxHash:BUY,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
+item.purchaseEvidence={resolverVersion:5,status:'upgrade_price_inherited',upgrade:parsed,purchase,purchaseAt:purchase.timestamp,purchaseTxHash:BUY,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
 assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),true);
 assert.equal(ui.nftPurchaseText(item).replaceAll("'",'’'),"1’000 wUSDT");
 const provenance=ui.nftPurchaseProvenanceHtml(item);assert.ok(provenance.includes('Upgrade von #90270'));assert.ok(provenance.includes(BUY));assert.ok(provenance.includes(HASH));assert.ok(provenance.includes(purchase.timestamp));
@@ -90,6 +90,35 @@ const recoveredDate=ui.nftPurchaseProvenanceHtml(noDate);
 assert.ok(recoveredDate.includes(purchase.timestamp));assert.ok(recoveredDate.includes('Upgrade:'));
 caches=[];
 const missingDate=ui.nftPurchaseProvenanceHtml(noDate);
-assert.ok(missingDate.includes('Ursprünglicher Kauf: Datum nicht ermittelt'));
+assert.ok(missingDate.includes('Frühester belegter Erwerb: Datum nicht ermittelt'));
 assert.ok(!missingDate.includes('Ursprünglicher Kauf: '+detail.timestamp));
 console.log('PASS: cached original purchase date fallback, explicit missing date and separate upgrade date.');
+
+// Original mint exists without any payment: date/tx are preserved independently.
+caches=[];history.clear();evidence.clear();setup();
+const mintAt='2025-02-05T12:00:00Z';
+const mint=tr(OLD,'90270',ZERO,WALLET,BUY,50000);mint.timestamp=mintAt;
+const later=tr(OLD,'90270',WALLET,OTHER,MOVED,100000);later.timestamp='2026-08-24T00:00:00Z';
+history.set(OLD+'|90270',[later,mint]);
+let origin=await t.original(parsed);
+assert.equal(origin.at,mintAt);assert.equal(origin.txHash,BUY);assert.equal(origin.kind,'mint');assert.equal(origin.originConfirmed,true);
+evidence.set(HASH,ev(HASH,detail,transfers));evidence.set(BUY,ev(BUY,{timestamp:mintAt,block_number:50000},[]));evidence.set(MOVED,ev(MOVED,{timestamp:later.timestamp,block_number:100000},[]));
+resolved=await api.resolveNftPurchaseEvidence({contract:NEW,tokenId:'46489',acquisitionWallet:WALLET,acquisitionTxHash:HASH});
+assert.equal(resolved.purchase,null);assert.equal(resolved.purchaseAt,null);assert.equal(resolved.originalAcquisition.at,mintAt);assert.equal(resolved.originalAcquisition.txHash,BUY);assert.equal(resolved.checked,false);
+const unpricedItem={chain:'apertum',tokenAddress:NEW,tokenId:'46489',purchaseEvidence:resolved};
+caches=[unpricedItem];
+const unpricedHtml=ui.nftPurchaseProvenanceHtml(unpricedItem);
+assert.ok(unpricedHtml.includes('Ursprünglicher Erwerb: '+mintAt));assert.ok(unpricedHtml.includes('Mint'));assert.ok(unpricedHtml.includes('Erwerbs-Tx'));assert.ok(unpricedHtml.includes(BUY));assert.ok(!unpricedHtml.includes('Ursprünglicher Kauf:'));
+caches=[];history.set(OLD+'|90270',[later]);origin=await t.original(parsed);assert.equal(origin.originConfirmed,false);assert.equal(origin.kind,'transfer');assert.equal(origin.at,later.timestamp);
+const partialHtml=ui.nftPurchaseProvenanceHtml({...unpricedItem,purchaseEvidence:{...resolved,originalAcquisition:origin}});assert.ok(partialHtml.includes('Frühester belegter Erwerb'));
+history.set(OLD+'|90270',[{...mint,block_number:parsed.block},tr(NEW,'90270',ZERO,WALLET,BUY,50000)]);assert.equal(await t.original(parsed),null,'future/same-block and other-contract history rejected');
+history.set(OLD+'|90270',[{...mint,timestamp:null}]);origin=await t.original(parsed);assert.equal(origin.at,mintAt,'targeted tx timestamp fills missing transfer timestamp');
+const failedHtml=ui.nftPurchaseProvenanceHtml({...unpricedItem,purchaseEvidence:{...resolved,originalAcquisition:{historyUnavailable:true}}});assert.ok(failedHtml.includes('Historie nicht verfügbar'));
+assert.equal(ui.centralNftPurchaseEvidenceIsCurrent({...item,purchaseEvidence:{...item.purchaseEvidence,resolverVersion:4}}),false,'old upgraded v4 evidence invalidates once');
+console.log('PASS: original mint/date/tx without price, persisted evidence, transfer-only partial history, timestamp hydration, contract/block guards, honest labels and old-cache invalidation.');
+
+// Server failure is not an empty history, and never discards an already verified inherited price.
+caches=[];setup(true);origin=await t.original(parsed);assert.equal(origin.historyUnavailable,true);assert.equal(origin.at,null);
+caches=[{chain:'apertum',tokenAddress:NEW,tokenId:'46489',purchaseEvidence:{status:'upgrade_price_inherited',upgrade:parsed,purchase,purchaseBlock:100000,purchaseAt:purchase.timestamp,purchaseTxHash:BUY}}];
+const preserved=await t.inheritOriginal(parsed);assert.equal(preserved.purchase.amount,1000);assert.equal(preserved.purchaseTxHash,BUY);assert.equal(preserved.originalAcquisition.historyUnavailable,true);
+console.log('PASS: HTTP 500 remains unavailable, verified inherited price survives, no false original date.');
