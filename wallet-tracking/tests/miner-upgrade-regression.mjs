@@ -82,3 +82,14 @@ assert.equal(ui.nftPurchaseText(item).replaceAll("'",'’'),"1’000 wUSDT");
 const provenance=ui.nftPurchaseProvenanceHtml(item);assert.ok(provenance.includes('Upgrade von #90270'));assert.ok(provenance.includes(BUY));assert.ok(provenance.includes(HASH));assert.ok(provenance.includes(purchase.timestamp));
 caches=[oldNft,item];assert.equal(ui.nftMinerUpgradeInfo(oldNft).direction,'out');
 console.log('PASS: central NFT targeted resolver invalidation, stable unresolved cache, source-price retry, persisted reverse link and original purchase provenance.');
+
+// Missing date on inherited evidence: use an existing old purchase date, never upgrade time.
+const noDate={...item,purchaseEvidence:{...item.purchaseEvidence,purchase:{...purchase,timestamp:null},purchaseAt:null}};
+caches=[oldNft];
+const recoveredDate=ui.nftPurchaseProvenanceHtml(noDate);
+assert.ok(recoveredDate.includes(purchase.timestamp));assert.ok(recoveredDate.includes('Upgrade:'));
+caches=[];
+const missingDate=ui.nftPurchaseProvenanceHtml(noDate);
+assert.ok(missingDate.includes('Ursprünglicher Kauf: Datum nicht ermittelt'));
+assert.ok(!missingDate.includes('Ursprünglicher Kauf: '+detail.timestamp));
+console.log('PASS: cached original purchase date fallback, explicit missing date and separate upgrade date.');

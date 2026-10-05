@@ -1,3 +1,4 @@
+// Phase 7.39 · 05.10.2026 17:43:04 CEST: Privater Datenbank-Backup-Helper inkl. Auth; Kauf-/Upgrade-Datum sichtbar. Build 20261005-174304.
 // Phase 7.38 · 05.10.2026 16:38:37 CEST: Prelaunch-Claims getrennt von fehlenden USD-Preisen; Claim-Prüfpunkt niedrige Priorität; Backup-Dokumentation. Build 20261005-163837.
 // Phase 7.36 · 05.10.2026 14:08:37 CEST: DAO-Teamjobs im zentralen Lauf ohne Queue-Deadlock; kritische Chain-Spalten wieder orange in Hell/Dunkel/Sticky/Hover. Build 20261005-140837.
 // Phase 7.34 · 05.10.2026 03:12:13 CEST: Mining-Bot-Upgrade on-chain verknuepft; urspruenglicher Kaufpreis/Datum/Tx uebernommen, Summen dedupliziert. Build 20261005-031213.
@@ -6568,8 +6569,9 @@ window.DAO1Project = (() => {
   function dao1MinerUpgradeHtml(n){
     const link=dao1MinerUpgradeForNft(n);if(!link)return "";
     const label=link.direction==="out"?`migriert zu #${link.newId}`:`Upgrade von #${link.oldId}`;
-    const date=n.purchase_at||n.purchase?.timestamp;
-    return `<div class="meta">${escapeHtml(label)} · <a href="${EXPLORER}/tx/${escapeHtml(link.txHash)}" target="_blank" rel="noopener">Upgrade-Tx</a></div>${date?`<div class="meta">Ursprünglicher Kauf: ${dao1TeamDate(date)}</div>`:""}${n.purchase_tx_hash?`<div class="meta"><a href="${EXPLORER}/tx/${escapeHtml(n.purchase_tx_hash)}" target="_blank" rel="noopener">Kauf-Tx</a></div>`:""}`;
+    const previous=link.direction==="in"?dao1CachedNftPurchaseEvidence(link.oldContract,link.oldId):null;
+    const date=n.purchase_at||n.purchase?.timestamp||previous?.purchaseAt||previous?.purchase?.timestamp;
+    return `<div class="meta">${escapeHtml(label)} · <a href="${EXPLORER}/tx/${escapeHtml(link.txHash)}" target="_blank" rel="noopener">Upgrade-Tx</a></div><div class="meta">Ursprünglicher Kauf: ${date?dao1TeamDate(date):"Datum nicht ermittelt"}</div><div class="meta">Upgrade: ${link.at?dao1TeamDate(link.at):"Datum nicht ermittelt"}</div>${n.purchase_tx_hash?`<div class="meta"><a href="${EXPLORER}/tx/${escapeHtml(n.purchase_tx_hash)}" target="_blank" rel="noopener">Kauf-Tx</a></div>`:""}`;
   }
 
   async function dao1TeamAcquisitionForNft(nft,wallet){
