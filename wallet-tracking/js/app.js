@@ -1,3 +1,4 @@
+// Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449.
 // Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261005-225448.
 // Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
 // Phase 7.39 · 05.10.2026 17:43:04 CEST: Privater Datenbank-Backup-Helper inkl. Auth; Kauf-/Upgrade-Datum sichtbar. Build 20261005-174304.
@@ -369,6 +370,7 @@ async function checkIsAdmin() {
 }
 
 function applyAdminDebugMode(){
+  renderAccountDeletionState();
   const enabled=!!(isAdmin&&adminDebugMode);
   document.body.classList.toggle("admin-user",!!isAdmin);
   document.body.classList.toggle("admin-debug-mode",enabled);
@@ -419,7 +421,7 @@ async function signUpWithPassword(){
   const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:REDIRECT_URL}});
   if(error){authStatus("Registrierung fehlgeschlagen: "+error.message,true);return;}
   if(data?.session) authStatus("Konto erstellt und angemeldet.");
-  else authStatus("Konto erstellt. Bitte die einmalige Bestätigungs-Mail öffnen.");
+  else authStatus("Registrierungsanfrage verarbeitet. Falls die Adresse neu ist, prüfe dein Postfach auf die Bestätigungs-Mail. Bei einem bestehenden Konto bitte Anmelden oder Passwort vergessen verwenden.");
 }
 async function sendPasswordReset(){
   const {email}=authCredentials();
@@ -539,7 +541,15 @@ async function setCurrentUserPassword(){
     if(a)a.value="";if(b)b.value="";
   },1200);
 }
+function renderAccountDeletionState(){
+  const btn=document.getElementById("deleteAccountBtn");
+  const notice=document.getElementById("deleteAccountAdminNotice");
+  if(btn){btn.hidden=!!isAdmin;btn.disabled=!!isAdmin||!currentUser?.id||accountDeletionRunning;}
+  if(notice)notice.hidden=!isAdmin;
+}
+let accountDeletionRunning=false;
 function renderAuthSecurityState(){
+  renderAccountDeletionState();
   const el=document.getElementById("authSecurityState");if(!el||!currentUser)return;
   const providers=[...new Set((currentUser.identities||[]).map(x=>x?.provider).filter(Boolean))];
   const labels=providers.map(p=>p==="email"?"E-Mail":p==="google"?"Google":p).join(", ");
@@ -3073,7 +3083,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"chat",level:1,label:"Chat",status:"planning",start:"DB + Realtime",daily:"–",open:"DB",manual:"DB",details:[
     ["Nachrichten","–","Supabase · Chat-Tabellen","–","Login/Tab öffnen/Realtime"],["Ungelesen-Zähler","–","Supabase","–","App-Start"]]},
   {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
-  {id:"support-data",level:1,label:"🗑️ Daten & Konto",status:"done",idea:"Vollständige userbezogene Datenlöschung",start:"–",daily:"–",open:"cache-only",manual:"User bestätigt Löschung",details:[["Alle WalletTracking-Daten löschen","–","wallettracking_delete_all_user_data() + wallet-private","keine externe API","Phase 5.97: löscht transaktional alle public-Tabellenzeilen mit user_id des angemeldeten Users, anonymisiert created_by/updated_by in globalen Caches und leert lokale Browserdaten. Normale User werden danach abgemeldet; Admin-User behalten für wiederholte Lifecycle-Tests ausschließlich ihre Supabase-Auth-Session und starten leer neu. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten und das Auth-Login bleiben erhalten."]]},
+  {id:"support-data",level:1,label:"🗑️ Daten & Konto",status:"done",idea:"Vollständige userbezogene Datenlöschung",start:"–",daily:"–",open:"cache-only",manual:"User bestätigt Datenreset oder Kontolöschung",details:[["Konto endgültig löschen","–","wallettracking_delete_own_account(text) + wallet-private/account_delete","keine externe API","Phase 7.42: nur eigene auth.uid(); Admin-Sperre (UUID und E-Mail) vor Mutationen; Daten + Auth in einer Transaktion. Lokale Daten erst nach Serverbestätigung löschen. Keine Start-/Tab-Öffnungsjobs. Persönliche Storage-Dateien blockieren; Backups bleiben separat."],["Alle WalletTracking-Daten löschen","–","wallettracking_delete_all_user_data() + wallet-private","keine externe API","Phase 7.42: löscht transaktional persönliche public-Tabellenzeilen mit user_id des angemeldeten Users, erhält admins-Zeilen, anonymisiert created_by/updated_by in globalen Caches und leert lokale Browserdaten. Normale User werden danach abgemeldet; Admin-User behalten für wiederholte Lifecycle-Tests ausschließlich ihre Supabase-Auth-Session und starten leer neu. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten und das Auth-Login bleiben erhalten."]]},
 
   {id:"walletsgrp",level:0,label:"👛 Meine Wallets",status:"done",start:"DB",daily:"–",open:"Cache/DB",manual:"gezielt speichern / löschen",details:[]},
   {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 6.69: Speichern startet kein breites loadAll() über alle Wallets. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie gezielt. Bei einer neuen Wallet läuft anschließend genau einmal die allgemeine Token-Discovery für die verfügbaren Discovery-Chains; offene Klassifizierungen erscheinen im Dashboard."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
@@ -3253,7 +3263,7 @@ function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
   ${window.WTAdminExports.render()}
-  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.80</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Abschlussmessung:</strong> TLN/VOW-Haupttab wurde von 143 auf 42 und danach auf ca. 16 Requests reduziert. DAO-Team sank im Warm-Run von ca. 130 auf 16 Requests; Bot-Claims → Referral-Rewards verursacht in derselben Session keine zusätzlichen History-Reads. Weitere Optimierungen erfolgen nur noch bei konkretem Messbeleg.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
+  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.80</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Abschlussmessung:</strong> TLN/VOW-Haupttab wurde von 143 auf 42 und danach auf ca. 16 Requests reduziert. DAO-Team sank im Warm-Run von ca. 130 auf 16 Requests; Bot-Claims → Referral-Rewards verursacht in derselben Session keine zusätzlichen History-Reads. Weitere Optimierungen erfolgen nur noch bei konkretem Messbeleg.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Michaela 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
   <p><strong>Supabase als Konfigurationsquelle:</strong> Chain-, Provider-, Projekt- und Token-Konfiguration möglichst datenbankgesteuert; keine neue fachliche Chain-Hardcodierung.</p>
@@ -5758,6 +5768,38 @@ async function deleteAllWalletTrackingUserData() {
   }
 }
 window.deleteAllWalletTrackingUserData=deleteAllWalletTrackingUserData;
+
+async function deleteWalletTrackingAccount(){
+  if(!currentUser?.id){alert("Bitte zuerst anmelden.");return;}
+  if(isAdmin){alert("Admin-Konten können nicht gelöscht werden.");return;}
+  if(accountDeletionRunning)return;
+  const userId=currentUser.id;
+  if(prompt("Dein Konto und alle persönlichen WalletTracking-Daten werden unwiderruflich gelöscht.\n\nTippe KONTO LÖSCHEN, um fortzufahren:")!=="KONTO LÖSCHEN")return;
+  if(!confirm(`Konto ${currentUser.email||""} endgültig löschen?\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`))return;
+  const status=document.getElementById("deleteAccountStatus");
+  accountDeletionRunning=true;renderAccountDeletionState();
+  if(status)status.textContent="Konto wird gelöscht…";
+  try{
+    await runDataJob("Konto wird gelöscht …",async()=>{
+      if(currentUser?.id!==userId||isAdmin)throw new Error("Konto oder Berechtigung hat sich geändert. Bitte erneut prüfen.");
+      const data=await invokeWalletPrivate("account_delete",{confirmation:"KONTO LÖSCHEN",expected_user_id:userId});
+      if(data?.result?.auth_account_deleted!==true)throw new Error("Kontolöschung wurde nicht bestätigt.");
+      // Erst nach bestätigtem Serverabschluss lokale Daten und Sitzung entfernen.
+      try{await sb.auth.signOut({scope:"local"});}catch(e){console.warn("Lokales Abmelden nach Kontolöschung",e);}
+      await clearWalletTrackingLocalUserData({preserveAuthSession:false});
+      currentUser=null;isAdmin=false;
+      if(status)status.textContent="Konto vollständig gelöscht.";
+      alert("Dein Konto und deine persönlichen WalletTracking-Daten wurden gelöscht.");
+      location.replace(REDIRECT_URL);
+    });
+  }catch(e){
+    console.error("Konto löschen",e);
+    if(status)status.textContent="Kein erfolgreicher Abschluss bestätigt. "+(e?.message||e);
+    alert("Die Kontolöschung wurde nicht bestätigt.\n\n"+(e?.message||e));
+  }finally{accountDeletionRunning=false;renderAccountDeletionState();}
+}
+window.deleteWalletTrackingAccount=deleteWalletTrackingAccount;
+
 
 function clearWalletRelatedMemory(w) {
   const walletId = String(w?.dbId || w?.id || "");

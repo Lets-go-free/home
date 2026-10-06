@@ -1,3 +1,4 @@
+// Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449.
 // Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261005-225448.
 // Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
 // Phase 7.39 · 05.10.2026 17:43:04 CEST: Privater Datenbank-Backup-Helper inkl. Auth; Kauf-/Upgrade-Datum sichtbar. Build 20261005-174304.
@@ -195,7 +196,7 @@ else renderDAO1Help();
 */
 
 /* Phase 5.71 · 21.09.2026 11:39:58 CEST
-   Normaler DAO-Team-Start ist weiterhin Cache-first, fuehrt bei vorhandenen Roots aber automatisch einen inkrementellen Chain-Freshness-Check fuer DAO1-alt und APTMDAO aus. Ist die Chain unveraendert, endet der Lauf ohne Delta-Scan; bei neuen Bloecken wird nur ab letztem bestaetigten Block mit Overlap nachgezogen. Ein manueller Team-Neulauf ist damit keine Voraussetzung mehr; „Team-Refresh erzwingen“ bleibt ausschließlich für Admins als Retry-/Diagnoseaktion sichtbar. Referenzwallet Monica 0x568281…fe4940: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots; Trading-Bot-Zuordnung bleibt separat offen.
+   Normaler DAO-Team-Start ist weiterhin Cache-first, fuehrt bei vorhandenen Roots aber automatisch einen inkrementellen Chain-Freshness-Check fuer DAO1-alt und APTMDAO aus. Ist die Chain unveraendert, endet der Lauf ohne Delta-Scan; bei neuen Bloecken wird nur ab letztem bestaetigten Block mit Overlap nachgezogen. Ein manueller Team-Neulauf ist damit keine Voraussetzung mehr; „Team-Refresh erzwingen“ bleibt ausschließlich für Admins als Retry-/Diagnoseaktion sichtbar. Referenzwallet Michaela 0x568281…fe4940: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots; Trading-Bot-Zuordnung bleibt separat offen.
    Build 20260921-113958.
 */
 
@@ -205,7 +206,7 @@ else renderDAO1Help();
 */
 
 /* Phase 5.72 · 21.09.2026 11:57:19 CEST
-   Aktuelle Mining-/Trading-Bot-Zahlen im DAO-Team verwenden die zentrale aktuelle NFT-/Ownership-Klassifikation. Kaufpreis, historische DID-Zuordnung und ownerOf@Block beeinflussen den heutigen Bestand nicht. Referenz Monica: 9 Mining-Bots + 1 Trading-Bot.
+   Aktuelle Mining-/Trading-Bot-Zahlen im DAO-Team verwenden die zentrale aktuelle NFT-/Ownership-Klassifikation. Kaufpreis, historische DID-Zuordnung und ownerOf@Block beeinflussen den heutigen Bestand nicht. Referenz Michaela: 9 Mining-Bots + 1 Trading-Bot.
    Build 20260921-115719.
 */
 
@@ -213,7 +214,7 @@ else renderDAO1Help();
    DAO-Team/NFT: aktueller Bot-Bestand nutzt denselben zentralen nft_cache wie der NFT-Tab.
    Trading-Bot-Contracts werden nur bei eindeutiger Bot-Typ-Evidenz aus dem zentralen Cache übernommen;
    Kaufpreis-/DID-Historie entscheidet nicht über den Bestand. Summen trennen Bot-Anzahl und Kaufpreis-Abdeckung.
-   Referenz Monica: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots + 1 Trading-Bot.
+   Referenz Michaela: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots + 1 Trading-Bot.
    Build 20260921-122250. */
 
 
@@ -224,7 +225,7 @@ else renderDAO1Help();
    - Neue Partner: relevanten Bot-/NFT-Verlauf einmal vollständig aufbauen; danach inkrementell ab persistiertem Scan-Cursor mit Overlap.
    - DAO1-/APTMDAO-Tree-Caches beim normalen Start nur inkrementell gegen DATA_VERSIONS/Graph-State/letzten Block prüfen; große Graphen innerhalb eines Laufs wiederverwenden.
    - Historisches ownerOf@Block benötigt einen gezielten erlaubten eth_call-Pfad bzw. geeigneten Archive-RPC und persistenten Ergebnis-Cache; kein Einfluss auf Current State.
-   Regression: Monica 0x568281…fe4940 = DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   Regression: Michaela 0x568281…fe4940 = DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
    Build 20260921-134840. */
 
-/* Phase 5.75 · 21.09.2026 14:13:07 CEST: DAO Dashboard/Initialload teilt zentrale NFT-/Ownership-RAM-Daten; Tx-/Flow-Historie untertab-lazy; historische Metadaten nachgelagert; identische Tree-Scans in-flight dedupliziert. Fachlogik unverändert. Regression nach Deployment: Monica 0x568281…fe4940 = DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot. Build 20260921-170817. */
+/* Phase 5.75 · 21.09.2026 14:13:07 CEST: DAO Dashboard/Initialload teilt zentrale NFT-/Ownership-RAM-Daten; Tx-/Flow-Historie untertab-lazy; historische Metadaten nachgelagert; identische Tree-Scans in-flight dedupliziert. Fachlogik unverändert. Regression nach Deployment: Michaela 0x568281…fe4940 = DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot. Build 20260921-170817. */

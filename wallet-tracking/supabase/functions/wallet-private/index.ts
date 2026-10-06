@@ -1,3 +1,4 @@
+// Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449.
 // Phase 7.33 · 05.10.2026 02:00:33 CEST: Partnernamen DAO1/APTMDAO/TLN-VOW mit nutzerbegrenztem Service-Zugriff; TLN-Sammelspeicherung bewahrt DAO-Aliase. Build 20261005-020033.
 // Phase 6.54 · 28.09.2026 03:44:15 CEST: TLN Fresh-User Detail-Backfill robust gegen fehlende/inkompatible Step-6-Valuation-Caches: Bewertungs-Lookup ist optional und darf den bereits verifizierten Staking/Reward/Referral/Bonus-Detailbackfill nicht mehr komplett abbrechen. Build 20260928-034415.
 // Phase 6.53 · 28.09.2026 02:44:40 CEST: TLN globaler Detailcache v2. Beim sanitisierten Fresh-User-Backfill werden vorhandene Step-6-USD-Bewertungen aus dem privaten technischen snapshot-valuation-Cache derselben Source-Wallet in die öffentlichen On-Chain-Lots übernommen. Build 20260928-024440.
@@ -1250,6 +1251,36 @@ export default {
       typeof body.action === 'string' ? body.action : 'self_test'
 
     try {
+      // Eigene Kontolöschung benötigt keinen Entschlüsselungsschlüssel.
+      if (action === 'account_delete') {
+        if (body.expected_user_id !== undefined && body.expected_user_id !== userId) {
+          return json({ ok: false, error: 'Angemeldetes Konto hat sich geändert.' }, 409)
+        }
+        if (body.confirmation !== 'KONTO LÖSCHEN') {
+          return json({ ok: false, error: 'Bitte KONTO LÖSCHEN bestätigen.' }, 400)
+        }
+        const { data: identity, error: identityError } = await ctx.supabase.auth.getUser()
+        if (identityError || identity?.user?.id !== userId) {
+          return json({ ok: false, error: 'Bitte erneut anmelden.' }, 401)
+        }
+        const { data: admin, error: adminError } = await ctx.supabase.rpc('wallettracking_is_admin')
+        if (adminError || typeof admin !== 'boolean') {
+          throw new Error('Admin-Berechtigung konnte nicht sicher geprüft werden.')
+        }
+        if (admin) {
+          return json({ ok: false, error: 'Admin-Konten können nicht gelöscht werden.' }, 403)
+        }
+        // Kein Ziel-User aus dem Request: die DB verwendet ausschliesslich auth.uid().
+        // Die SQL-Funktion prüft Adminstatus nochmals und löscht atomar Daten + Auth.
+        const { data: result, error } = await ctx.supabase.rpc('wallettracking_delete_own_account', {
+          p_confirmation: body.confirmation,
+        })
+        if (error) throw new Error(`Kontolöschung fehlgeschlagen: ${error.message}`)
+        if (result?.ok !== true || result?.auth_account_deleted !== true) {
+          throw new Error('Vollständige Kontolöschung wurde nicht bestätigt.')
+        }
+        return json({ ok: true, action, result })
+      }
       const key = await deriveUserKey(userId)
 
       if (action === 'self_test') {

@@ -1,3 +1,4 @@
+// Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449.
 // Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261005-225448.
 // Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
 // Phase 7.39 · 05.10.2026 17:43:04 CEST: Privater Datenbank-Backup-Helper inkl. Auth; Kauf-/Upgrade-Datum sichtbar. Build 20261005-174304.
@@ -177,7 +178,10 @@ const ADMIN_IDEAS_MODULE_TIMESTAMP = "23.09.2026 01:44:44 CEST";
 // Aenderung vom 30.10.2026 umgebaut. DB-Reset/Preview-Branch-Faehigkeit ist bei Migrationen mitzupruefen.
 
 const ADMIN_IDEAS = [
-  {status:"done",category:"DAO1 / Anzeige",priority:"medium",title:"Bot-Preise nach Datenaktualisierung sofort anzeigen",desc:"Phase 7.41: User reproduzierte zweimal: nach Daten aktualisieren keine Preise, nach Seiten-Refresh vorhanden. Zentraler Lauf ergänzt fehlende/veraltete Kaufnachweise nach dem Ownership-Abgleich und baut NFT-/Botansicht vor dem Abschluss neu auf. Persistierte Kaufpreise haben Vorrang vor älteren Erwerbsergebnissen im Sitzungscache. Abschliessender Bot-Anzeigeaufbau ohne zusätzliche API-Aufrufe. Lokale Regression bestanden; produktiver Doppeltest noch offen."},
+  {status:"done",category:"Security & Privacy",priority:"high",title:"Konto endgültig löschen · Admin-Sperre",desc:"Phase 7.42: eigene Daten und Auth-Konto in einer DB-Transaktion löschen. Explizite Bestätigung KONTO LÖSCHEN; Admin-Konten in UI, Edge und SQL geschützt, inklusive älterer Admin-E-Mail-Zuordnung. Datenreset erhält admins-Zeilen. SQL 090 und wallet-private deployen; produktiver Test mit normalem Testkonto und Admin-Negativtest noch offen. Storage-Dateien blockieren vor Datenänderung; vorhandene Backups bleiben getrennt."},
+  {status:"done",category:"Login",priority:"medium",title:"Registrierungsmeldung bei bestehender Adresse",desc:"Phase 7.42: bestätigt nur die Verarbeitung der Registrierungsanfrage. Behauptet bei fehlender Sitzung weder ein neues Konto noch eine versandte Mail; verweist auf Anmelden/Passwort vergessen."},
+  {status:"open",category:"DAO1 / Kontrolle",priority:"low",title:"Michaela · Trading-Bot separat zuordnen",desc:"Referenzwallet 0x5682810a3f03593bc94480df70fe036a8cfe4940 gehört Michaela. APTMDAO #7803 zeigt 9 Mining-Bots; Trading-Bot nach aktuellem Besitz und DAO1-/APTMDAO-Zweig separat prüfen. Keine fehlende Bot-Zuordnung allein aus diesem Tree-Screenshot ableiten."},
+  {status:"done",category:"DAO1 / Anzeige",priority:"medium",title:"Bot-Preise nach Datenaktualisierung sofort anzeigen",desc:"Phase 7.41: User reproduzierte zweimal: nach Daten aktualisieren keine Preise, nach Seiten-Refresh vorhanden. Zentraler Lauf ergänzt fehlende/veraltete Kaufnachweise nach dem Ownership-Abgleich und baut NFT-/Botansicht vor dem Abschluss neu auf. Persistierte Kaufpreise haben Vorrang vor älteren Erwerbsergebnissen im Sitzungscache. Abschliessender Bot-Anzeigeaufbau ohne zusätzliche API-Aufrufe. Lokale Regression bestanden; User bestätigt Preise nach Aktualisierung ohne Seiten-Refresh."},
   {status:"done",category:"DAO1 / Team",priority:"low",title:"APTMDAO (neu) als Standardtab",desc:"Phase 7.41: Frischer DAO1-Team-Aufruf startet mit APTMDAO (neu). DAO1 (alt) bleibt auswählbar; die explizite Auswahl bleibt während der Sitzung erhalten."},
   {status:"done",category:"DAO1 / Mining-Bots",priority:"medium",title:"Ursprünglicher Erwerb ohne Kaufpreis",desc:"Phase 7.40: Original-Mint/Erwerbsdatum und Erwerbs-Tx werden unabhängig von einer Zahlung aus der alten NFT-Historie vor dem Upgrade gelesen und als originalAcquisition im bestehenden privaten NFT-Nachweis gespeichert. Neue Miner übernehmen diese Evidenz; Upgrade bleibt separat. Unvollständige Historie und HTTP-Fehler werden offen bezeichnet. Resolver v5 invalidiert vorhandene Upgrade-Evidenz einmal; keine Schemaänderung. Lokale Tests bestanden; produktive Datumsanzeige noch zu prüfen."},
   {status:"open",category:"DAO1 / NFT-Historie",priority:"medium",title:"apertum-nft-history HTTP 500",desc:"Screenshot vom 05.10.2026 zeigt HTTP 500 beim Abruf alter Bot-Historien aus dao1HistoricalPurchaseForNft → dao1InheritedMinerPurchase. Das kann Datums-/Preisergänzung blockieren. Aktueller User-Test 05.10.2026: kein Netzwerkfehler vorhanden; derzeit nicht reproduziert. Bei erneutem Auftreten Response-Body der fehlgeschlagenen Anfrage und Edge-Logs prüfen. Edge-Quellcode nicht im gelieferten Stand enthalten; keine Ursachenbehauptung und kein ungeprüftes Edge-Deployment. 7.40 kennzeichnet nicht verfügbare Erwerbshistorie und bewahrt vorhandene Nachweise."},
@@ -797,7 +801,7 @@ OFFEN: Bot-Target/Aktivstatus belastbar on-chain beweisen; Referral-Reward→Par
     category: "Security & Privacy",
     priority: "high",
     title: "Alle Userdaten vollständig löschen",
-    desc: "Phase 5.94 umgesetzt: Unter „Support & Info → Daten & Konto“ kann ein User sämtliche WalletTracking-Daten vollständig und transaktional löschen. Die DB-Funktion bereinigt alle public-Basistabellen mit user_id, anonymisiert created_by/updated_by-Provenienz in globalen Caches, ohne globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten zu löschen. Anschließend werden WalletTracking-IndexedDB, localStorage/sessionStorage entfernt und der User abgemeldet. Das Supabase-Auth-Login bleibt bewusst bestehen."
+    desc: "Phase 5.94 umgesetzt: Unter „Support & Info → Daten & Konto“ kann ein User sämtliche WalletTracking-Daten vollständig und transaktional löschen. Die DB-Funktion bereinigt persönliche public-Basistabellen mit user_id (admins bleibt ab 7.42 erhalten), anonymisiert created_by/updated_by-Provenienz in globalen Caches, ohne globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten zu löschen. Anschließend werden WalletTracking-IndexedDB, localStorage/sessionStorage entfernt und der User abgemeldet. Das Supabase-Auth-Login bleibt bewusst bestehen."
   },
   {
     status: "done",
@@ -1210,7 +1214,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 */
 
 /* Phase 5.71 · 21.09.2026 11:39:58 CEST
-   Korrigiert: DAO-Team-Caches werden beim automatischen Erstladen inkrementell gegen die Chain geprueft; der manuelle Button „Beide Trees on-chain aktualisieren“ ist nicht mehr Voraussetzung fuer neue Partner-/DID-Kanten. Referenzname korrigiert: 0x568281…fe4940 = Monica. Offen: 1 Trading-Bot bei Monica fachlich/contractseitig eindeutig zuordnen.
+   Korrigiert: DAO-Team-Caches werden beim automatischen Erstladen inkrementell gegen die Chain geprueft; der manuelle Button „Beide Trees on-chain aktualisieren“ ist nicht mehr Voraussetzung fuer neue Partner-/DID-Kanten. Referenzname korrigiert: 0x568281…fe4940 = Michaela. Offen: 1 Trading-Bot bei Michaela fachlich/contractseitig eindeutig zuordnen.
    Build 20260921-113958.
 */
 
@@ -1220,7 +1224,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 */
 
 /* Phase 5.72 · 21.09.2026 11:57:19 CEST
-   Aktuelle Mining-/Trading-Bot-Zahlen im DAO-Team verwenden die zentrale aktuelle NFT-/Ownership-Klassifikation. Kaufpreis, historische DID-Zuordnung und ownerOf@Block beeinflussen den heutigen Bestand nicht. Referenz Monica: 9 Mining-Bots + 1 Trading-Bot.
+   Aktuelle Mining-/Trading-Bot-Zahlen im DAO-Team verwenden die zentrale aktuelle NFT-/Ownership-Klassifikation. Kaufpreis, historische DID-Zuordnung und ownerOf@Block beeinflussen den heutigen Bestand nicht. Referenz Michaela: 9 Mining-Bots + 1 Trading-Bot.
    Build 20260921-115719.
 */
 
@@ -1228,7 +1232,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    DAO-Team/NFT: aktueller Bot-Bestand nutzt denselben zentralen nft_cache wie der NFT-Tab.
    Trading-Bot-Contracts werden nur bei eindeutiger Bot-Typ-Evidenz aus dem zentralen Cache übernommen;
    Kaufpreis-/DID-Historie entscheidet nicht über den Bestand. Summen trennen Bot-Anzahl und Kaufpreis-Abdeckung.
-   Referenz Monica: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots + 1 Trading-Bot.
+   Referenz Michaela: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots + 1 Trading-Bot.
    Build 20260921-122250. */
 
 
@@ -1268,7 +1272,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - gleiche DB-/RPC-Abfrage mit gleichem Scope/Filter pro Lauf nicht mehrfach parallel.
    - neue Chain-Daten werden inkrementell nachgezogen; kein manueller "Beide Trees on-chain aktualisieren"-Schritt nötig.
    - aktuelle Bestandsanzeigen bleiben unabhängig von historischen Preis-/Lifecycle-/DID-Auflösungen.
-   - Regressionstest DAO: Monica 0x568281…fe4940 => DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   - Regressionstest DAO: Michaela 0x568281…fe4940 => DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
    - bestehende fachliche Discovery-Regeln nicht ändern, solange das Audit keinen konkreten Fehler beweist.
 
    Offene fachfremde TODOs bleiben separat: projektbezogen Partner als inaktiv markieren;
@@ -1306,7 +1310,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - Einen echten Warm-Start sowie Wechsel Dashboard -> NFT -> DAO1 -> TLN/VOW -> Dashboard messen und
      Audit exportieren. Danach verbleibende Mehrfachsignaturen anhand echter Dauer/Scope priorisieren.
    - DAO-Reward-Summary-Aggregation und weitere globale Shared-Loads erst nach Messbeleg umbauen.
-   - Regression DAO nach Deployment prüfen: Monica 0x568281…fe4940 => DAO1 #21044, APTMDAO #7803,
+   - Regression DAO nach Deployment prüfen: Michaela 0x568281…fe4940 => DAO1 #21044, APTMDAO #7803,
      9 Mining-Bots, 1 Trading-Bot. Die Bestands-/Klassifikationslogik wurde in diesem Release nicht verändert.
 
    Build 20260921-141307. */
@@ -1328,7 +1332,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - DAO Team: dao_partner_bot_scan_state wird für Partner gebündelt vorgeladen; identische laufende Partner-Refreshs werden pro Wallet dedupliziert. Fachliche Bot-/DID-Regeln unverändert.
    - TLN/VOW: aktuelle Token-Prüfung über Multicall3 (Fallback auf bisherige Einzelcalls); Team-Persistent-Cache erst beim Team-Tab; 31.12.-Snapshotbewertung nicht beim normalen Projekt-Einstieg; kein automatisches LP-History-Rendering beim Haupttab.
    - Current State und History bleiben getrennt.
-   Regression: Monica 0x568281…fe4940 weiterhin DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   Regression: Michaela 0x568281…fe4940 weiterhin DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
    Nächster Schritt: Messlauf gegen 5.76-Baseline; keine weiteren fachlichen Umbauten vor Messergebnis. Build 20260921-170817. */
 
 /* Phase 5.78 · 21.09.2026 17:29:35 CEST
@@ -1338,7 +1342,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - TLN/VOW: Referral-Token-Decmals werden zuerst aus vorhandenen DB-Metadaten gelesen; RPC nur noch bei fehlender DB-Angabe. Der normale TLN-Haupttab lädt nur den gespeicherten Preis-Snapshot; DEX-Konfiguration/Provider/Live-Preislogik starten erst beim Untertab „Kurse und Pools“. Provider verwenden bekannte statische Chain-IDs statt zusätzlicher Netzwerk-Erkennung.
    - DAO Team: aktueller Partner-NFT-/Bot-Bestand je Wallet+Contract wird als öffentlicher abgeleiteter Current-State-Cache 24h in IndexedDB wiederverwendet. Historische Erwerbs-/DID-/Kaufpreisprüfung bleibt davon getrennt und blockgenau.
    - Navigation: ein Benutzerklick ist für den sichtbaren Active-State der jeweiligen Haupt-/Kontext-/Projekt-/Admin-Button-Gruppe autoritativ; genau der gewählte Tab bleibt markiert.
-   - Keine Fachregel zu Staking, Rewards, Referral oder DAO1/APTMDAO-Zuordnung geändert. Regression Monica bleibt verpflichtend: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   - Keine Fachregel zu Staking, Rewards, Referral oder DAO1/APTMDAO-Zuordnung geändert. Regression Michaela bleibt verpflichtend: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
    Nächster Schritt: Messlauf TLN/VOW Haupttab sowie DAO-Team Warm-Reload; danach verbleibende Requests bewerten. Build 20260921-172935. */
 
 
