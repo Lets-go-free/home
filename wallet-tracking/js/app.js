@@ -1,4 +1,5 @@
-// Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-005211.
+// Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-011121.
+// Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-011121.
 // Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449.
 // Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261005-225448.
 // Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
@@ -10536,11 +10537,28 @@ function nftOwnershipInfo(n){
     firstOwnedBlock:Number(first?.owned_from_block||0)||null,
     firstOwnedWalletId:String(first?.wallet_id||""),
     firstOwnedWalletAddress:first?.wallet_address||globalFirst?.wallet_address||null,
+    walletEntryTxHash:current?.entry_tx_hash||null,
     walletSinceAt:current?.owned_from_at||null,
     walletSinceBlock:Number(current?.owned_from_block||0)||null,
     currentWalletId:String(current?.wallet_id||walletId||""),
     currentInWallet:!!current?.is_current
   };
+}
+
+function nftTransactionLinkHtml(chain,hash,label="Erwerbs-TX"){
+  const cfg=CHAIN_CONFIG[chain];
+  const tx=String(hash||"").trim();
+  if(cfg?.walletType!=="evm"||!/^0x[0-9a-f]{64}$/i.test(tx))return "";
+  const template=String(cfg.explorerUrlTemplate||"");
+  if(!template.includes("/address/{address}"))return "";
+  const url=template.replace("/address/{address}","/tx/"+tx);
+  if(!/^https?:\/\//i.test(url))return "";
+  return `<div class="meta"><a href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeAttr(label)}</a></div>`;
+}
+function nftWalletTransferLinkHtml(n,own){
+  const hash=own?.walletEntryTxHash;
+  if(!hash||String(hash).toLowerCase()===String(own?.acquisitionTxHash||"").toLowerCase())return "";
+  return nftTransactionLinkHtml(n.chain,hash,"Wallet-Transfer-TX");
 }
 
 function nftOwnershipDate(value){
@@ -11518,9 +11536,9 @@ function renderNftResults(nfts, errors = []) {
             <td>${n.image?`<img class="nft-table-thumb" src="${escapeAttr(n.image)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="nft-table-placeholder">Kein Bild</div>`}</td>
             <td><strong>${escapeAttr(n.name)}</strong><div class="meta">${n.collectionName?escapeAttr(n.collectionName)+" · ":""}#${escapeAttr(String(n.tokenId))}</div><div class="meta"><code>${escapeAttr(String(n.tokenAddress||""))}</code></div></td>
             <td><div style="display:flex;align-items:center;gap:5px"><span class="dot ${meta.dot}" style="width:7px;height:7px"></span><strong>${escapeAttr(meta.label||n.chain)}</strong></div><div class="meta">${escapeAttr(n.walletLabel||"")}</div></td>
-            <td><strong>${firstOwned}</strong>${nftWalletAddressHtml(firstWalletAddress,"Kauf/Mint-Wallet")}${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${own?.known?(own?.acquisitionVerified?`<div class="meta">${own.acquisitionKind==="purchase_same_tx"?"✓ Kauf on-chain belegt":"✓ Mint/Erwerb on-chain belegt"}</div>`:`<div class="meta">Nur Wallet-Eingang on-chain belegt</div>`):`<div class="meta">Transfer-/Ownership-Historie wird noch aufgebaut</div>`}${own?.acquisitionTxHash&&CHAIN_META[n.chain]?.explorer?`<div class="meta"><a href="${CHAIN_META[n.chain].explorer}/tx/${escapeAttr(own.acquisitionTxHash)}" target="_blank" rel="noopener">Erwerbs-TX</a></div>`:""}</td>
+            <td><strong>${firstOwned}</strong>${nftWalletAddressHtml(firstWalletAddress,"Kauf/Mint-Wallet")}${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${own?.known?(own?.acquisitionVerified?`<div class="meta">${own.acquisitionKind==="purchase_same_tx"?"✓ Kauf on-chain belegt":"✓ Mint/Erwerb on-chain belegt"}</div>`:`<div class="meta">Nur Wallet-Eingang on-chain belegt</div>`):`<div class="meta">Transfer-/Ownership-Historie wird noch aufgebaut</div>`}${nftTransactionLinkHtml(n.chain,own?.acquisitionTxHash)}</td>
             <td><strong>${nftPurchaseText(n)}</strong>${n?.purchaseEvidence?.purchase?`<div class="meta">${n?.purchaseEvidence?.status==="upgrade_price_inherited"?"Kaufpreis übernommen":"on-chain Zahlung"}</div>`:(n?.purchaseEvidence?.checked?`<div class="meta">geprüft · keine eindeutige Zahlung</div>`:"")}${nftPurchaseProvenanceHtml(n)}</td>
-            <td><strong>${walletSince}</strong>${nftWalletAddressHtml(currentWalletAddress,"Aktuelles Wallet")}${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}</td>
+            <td><strong>${walletSince}</strong>${nftWalletAddressHtml(currentWalletAddress,"Aktuelles Wallet")}${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}${nftWalletTransferLinkHtml(n,own)}</td>
             <td>${statusParts.join("<br>")}</td>
             <td><div style="display:flex;gap:6px;flex-wrap:wrap">
               ${!n.userMarkedSafe ? `<button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem" onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">${n.userMarkedSpam ? "Spam entfernen" : "Als Spam markieren"}</button>` : ""}

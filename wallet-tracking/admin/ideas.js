@@ -1,4 +1,5 @@
-// Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-005211.
+// Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-011121.
+// Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-011121.
 // Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449.
 // Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261005-225448.
 // Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
@@ -179,6 +180,7 @@ const ADMIN_IDEAS_MODULE_TIMESTAMP = "23.09.2026 01:44:44 CEST";
 // Aenderung vom 30.10.2026 umgebaut. DB-Reset/Preview-Branch-Faehigkeit ist bei Migrationen mitzupruefen.
 
 const ADMIN_IDEAS = [
+  {status:"done",category:"NFT / Transaktionen",priority:"medium",title:"Erwerbs-TX und Wallet-Transfer sichtbar",desc:"Phase 7.44: Erwerbs-/Mint-TX wird unter NFT beim Ersterwerb und bei Bots im DAO-Baum direkt beim Datum verlinkt, auch ohne Kaufpreis. Ein davon abweichender Wallet-Eingang erscheint unter „In diesem Wallet seit“ als Wallet-Transfer-TX. Identische TX werden dort nicht doppelt angezeigt; fehlende TX-Hashes werden nicht ergänzt oder geraten. Explorerlinks verwenden die konfigurierte Chain-URL. Lokale Regression bestanden; produktiver Retest offen."},
   {status:"done",category:"NFT / Fehlerbehandlung",priority:"medium",title:"DAO1-Metadaten-404 ohne falschen 502",desc:"Phase 7.43: NFT #120469 meldet reproduzierbar DAO1-Metadaten HTTP 404. Der alte Proxy wandelte dies in 502 um. Abruf jetzt über wallet-private mit strikter Allowlist; 404 als found:false, technische Fehler bleiben Fehler. Doppelte Abrufe zusammengeführt; bestätigte 404 fünf Minuten im RAM gemerkt. Besitz-/Kaufdaten bleiben erhalten. Externe Metadatenquelle nicht repariert; produktiver Retest nach Edge-Deployment offen."},
   {status:"done",category:"Login",priority:"medium",title:"Recovery erstellt keine Konten",desc:"Phase 7.43: signInWithOtp verwendet shouldCreateUser:false. Übergang/Recovery ist damit auf bestehende Konten beschränkt. Versandmeldung bestätigt die Anforderung statt Zustellung."},
   {status:"done",category:"Security & Privacy",priority:"high",title:"Konto endgültig löschen · Admin-Sperre",desc:"Phase 7.42: eigene Daten und Auth-Konto in einer DB-Transaktion löschen. Explizite Bestätigung KONTO LÖSCHEN; Admin-Konten in UI, Edge und SQL geschützt, inklusive älterer Admin-E-Mail-Zuordnung. Datenreset erhält admins-Zeilen. SQL 090 und wallet-private deployen; produktiver Test mit normalem Testkonto und Admin-Negativtest noch offen. Storage-Dateien blockieren vor Datenänderung; vorhandene Backups bleiben getrennt."},
@@ -898,6 +900,7 @@ PHASE 5.89 – BASIS UMGESETZT:
 • der weiter unten beschriebene Module-Loader/eigenständige Modul-Build-IDs bleiben als separater Ausbauschritt offen
 
 PHASE 5.92 – MIGRATIONS-/NFT-FEHLERSTATUS GEHÄRTET:
+• NFT-TX-Anzeige: Erwerbslink aus acquisition_tx_hash/entry_tx_hash; separater aktueller Wallet-Eingang aus entry_tx_hash der aktuellen Besitzperiode. Keine zusätzlichen Netzwerkabfragen.
 • bekannte CORS-gesperrte APTMDAO-Metadatenquelle api.aptmdao.io wird nicht mehr direkt aus dem Browser geladen, sondern serverseitig über wallet-private mit enger Domain-/Pfad-Allowlist
 • Migrationsjobs können complete / partial / failed zurückgeben; partial erhöht die Datenversion ausdrücklich nicht und wird beim nächsten Start erneut versucht
 • Release-Popup meldet partial/failed ehrlich statt „abgeschlossen“
