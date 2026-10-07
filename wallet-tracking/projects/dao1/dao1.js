@@ -1,4 +1,5 @@
-// Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-011121.
+// Phase 7.45 · 08.10.2026 01:35:12 CEST: Mint ohne Zahlung in dieser TX bei vollständig geprüfter TX; Kaufpreis bleibt unbekannt. Build 20261008-013512.
+// Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-013512.
 // Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261005-225448.
 // Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrades separat. Build 20261005-192308.
 // Phase 7.39 · 05.10.2026 17:43:04 CEST: Privater Datenbank-Backup-Helper inkl. Auth; Kauf-/Upgrade-Datum sichtbar. Build 20261005-174304.
@@ -1149,14 +1150,16 @@ window.DAO1Project = (() => {
       ${message?`<div class="status" style="margin-top:8px">${message}</div>`:""}`;
   }
 
-  async function fetchPagedUrl(initialUrl, maxPages=500) {
+  async function fetchPagedUrl(initialUrl, maxPages=500, strict=false) {
     let url=initialUrl, out=[], pages=0;
     while(url && pages<maxPages){
       pages++;
       const j=await fetchJson(url,"Apertum Explorer · Wallet-Transaktionen");
+      if(strict&&!Array.isArray(j?.items))throw new Error("Unvollständige TX-Transferantwort");
       out.push(...(j.items || []));
       url=nextUrl(initialUrl, j.next_page_params);
     }
+    if(strict&&url)throw new Error("TX-Transferpagination nicht vollständig");
     return out;
   }
 
@@ -1793,9 +1796,18 @@ window.DAO1Project = (() => {
 
   const dao1TxTokenTransfersCache=new Map();
   const dao1TxTokenTransfersInflight=new Map();
-  async function fetchTransactionTokenTransfers(txHash){
+  async function fetchTransactionTokenTransfers(txHash,{strict=false}={}){
     const hash=String(txHash||"").toLowerCase();
     if(!/^0x[0-9a-f]{64}$/.test(hash))return [];
+    if(strict){
+      const key=hash+"|complete";
+      if(dao1TxTokenTransfersCache.has(key))return dao1TxTokenTransfersCache.get(key);
+      if(dao1TxTokenTransfersInflight.has(key))return dao1TxTokenTransfersInflight.get(key);
+      const job=fetchPagedUrl(`${EXPLORER_API}/transactions/${hash}/token-transfers`,100,true);
+      dao1TxTokenTransfersInflight.set(key,job);
+      try{const rows=await job;dao1TxTokenTransfersCache.set(key,rows);return rows;}
+      finally{dao1TxTokenTransfersInflight.delete(key);}
+    }
     if(dao1TxTokenTransfersCache.has(hash))return dao1TxTokenTransfersCache.get(hash);
     if(dao1TxTokenTransfersInflight.has(hash))return dao1TxTokenTransfersInflight.get(hash);
     const job=(async()=>{
@@ -6384,7 +6396,8 @@ window.DAO1Project = (() => {
     const hash=lower(txHash||""),a=lower(payer||"");
     if(!/^0x[0-9a-f]{64}$/.test(hash)||!/^0x[0-9a-f]{40}$/.test(a))return {txHash:hash||null,payer:a||null,purchase:null,paymentCandidates:[],txDetail:null,block:Number(fallbackBlock||0)||0,at:fallbackAt||null,purchaseDid:0,purchaseParentDid:0,systemEvidence:null,systemEvidenceType:null};
     let txDetail=null,block=Number(fallbackBlock||0)||0,at=fallbackAt||null;
-    const transfers=await fetchTransactionTokenTransfers(hash);
+    const transfers=await fetchTransactionTokenTransfers(hash,{strict:true});
+    let internals=null;
     try{
       txDetail=await fetchJson(`${EXPLORER_API}/transactions/${hash}`,"DAO1 · NFT-Kauf-Tx");
       if(!(block>0))block=Number(txDetail?.block_number||txDetail?.block||0)||0;
@@ -6411,7 +6424,7 @@ window.DAO1Project = (() => {
       if(txFrom===a&&nativeAmount>0)pays.push({amount:nativeAmount,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"tx_value"});
     }catch(_){}
     try{
-      const internals=await fetchAll(`/transactions/${hash}/internal-transactions`);
+      internals=await fetchPagedUrl(`${EXPLORER_API}/transactions/${hash}/internal-transactions`,100,true);
       let nativeInternal=0;
       for(const r of internals||[]){
         const from=lower(H(r?.from)||r?.from_address||r?.from_address_hash||"");
@@ -6437,7 +6450,34 @@ window.DAO1Project = (() => {
 
     const parsedPurchaseDid=dao1PurchaseDidFromInput(txDetail?.raw_input||txDetail?.input||txDetail?.data||"");
     const purchaseParentDid=parsedPurchaseDid?await dao1AptmdaoParentDid(parsedPurchaseDid):0;
-    return {txHash:hash,payer:a,purchase,paymentCandidates,transfers,txDetail,block,at,purchaseDid:parsedPurchaseDid||0,purchaseParentDid,systemEvidence:evidence.system,systemEvidenceType:evidence.type};
+    return {txHash:hash,payer:a,purchase,paymentCandidates,transfers,txDetail,internals,block,at,purchaseDid:parsedPurchaseDid||0,purchaseParentDid,systemEvidence:evidence.system,systemEvidenceType:evidence.type};
+  }
+
+  function dao1MintPaymentCheck(nft,ev,wallet){
+    const zero="0x0000000000000000000000000000000000000000";
+    const status=String(ev?.txDetail?.status||ev?.txDetail?.result||"").toLowerCase();
+    if(!["ok","success"].includes(status)||!Array.isArray(ev?.transfers)||!Array.isArray(ev?.internals))return {complete:false,mintWithoutPayment:false};
+    const amount=value=>{
+      const raw=value?.value??value;
+      if(raw==null)throw Error("Missing payment value");
+      const n=BigInt(String(raw));if(n<0n)throw Error("Invalid payment value");return n;
+    };
+    try{
+      let payment=amount(ev.txDetail.value)>0n;
+      for(const r of ev.internals){
+        if(r?.error||r?.success===false||String(r?.status||"").toLowerCase()==="error")continue;
+        if(amount(r.value)>0n)payment=true;
+      }
+      let mint=false;
+      for(const t of ev.transfers){
+        const type=String(t?.token?.type||t.token_type||t.type||"").toUpperCase();
+        if(type==="ERC-20"){
+          if(amount(t?.total?.value??t?.value??t?.amount??t?.token?.value)>0n)payment=true;
+        }else if(!["ERC-721","ERC-1155"].includes(type))return {complete:false,mintWithoutPayment:false};
+        if(type==="ERC-721"&&lower(tokenTransferAddress(t))===lower(nft.contract)&&transferTokenIds(t).includes(String(nft.id))&&transferFromAddress(t)===zero&&transferToAddress(t)===lower(wallet))mint=true;
+      }
+      return {complete:true,mintWithoutPayment:mint&&!payment};
+    }catch(_){return {complete:false,mintWithoutPayment:false};}
   }
 
   async function dao1HistoricalPurchaseForNft(nft,{beforeBlock=0,excludeTx=""}={}){
@@ -6472,7 +6512,7 @@ window.DAO1Project = (() => {
     const selector=String(txDetail?.raw_input||txDetail?.input||txDetail?.data||txDetail?.method||"").slice(0,10).toLowerCase();
     return to===MINER_UPGRADE_CONTRACT&&selector===MINER_UPGRADE_SELECTOR;
   }
-  function nftPurchaseResolverVersion(contract){return lower(contract)===UPGRADED_MINER_NFT_CONTRACT?5:3;}
+  function nftPurchaseResolverVersion(contract){return lower(contract)===UPGRADED_MINER_NFT_CONTRACT?6:4;}
   function dao1MinerUpgradeFromTx(transfers,txDetail,txHash){
     const hash=lower(txHash||""),zero="0x0000000000000000000000000000000000000000";
     const to=lower(H(txDetail?.to)||txDetail?.to_address_hash||txDetail?.to_address||"");
@@ -6597,6 +6637,7 @@ window.DAO1Project = (() => {
     return n;
   }
   function dao1ApplyAcquisitionEvidence(n,acq){
+    if(acq){n.mint_without_same_tx_payment=acq.mintWithoutPayment===true;n.same_tx_payment_check_complete=acq.sameTxPaymentCheckComplete===true;}
     if(acq?.upgrade)n.upgrade=acq.upgrade;
     if(acq?.originalAcquisition)n.original_acquisition=acq.originalAcquisition;
     if(acq?.purchaseAt)n.purchase_at=acq.purchaseAt;
@@ -6710,7 +6751,10 @@ window.DAO1Project = (() => {
     }
 
     if(purchase&&!purchase.costBasisNftKey)purchase={...purchase,costBasisNftKey:`${lower(nft.contract)}|${nft.id}`};
-    const result={txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid,purchaseParentDid,paymentCandidates,purchaseTxHash,purchaseWallet,purchaseAt,purchaseBlock,upgrade,upgradePayments,originalAcquisition};
+    const mintCheck=dao1MintPaymentCheck(nft,currentEvidence,a);
+    const mintWithoutPayment=mintCheck.mintWithoutPayment&&!upgrade&&!upgradeMappingPending;
+    if(mintWithoutPayment&&!purchase)acquisitionKind="mint";
+    const result={mintWithoutPayment,sameTxPaymentCheckComplete:mintCheck.complete,txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid,purchaseParentDid,paymentCandidates,purchaseTxHash,purchaseWallet,purchaseAt,purchaseBlock,upgrade,upgradePayments,originalAcquisition};
     if(["38483","40938"].includes(String(nft.id))){
       console.info("DAO1 NFT Kaufpreis-Diagnose",{
         nft:`${lower(nft.contract)}#${String(nft.id)}`,
@@ -6727,6 +6771,7 @@ window.DAO1Project = (() => {
     if(n?.subtype==="DID")return "–";
     if(n?.purchase?.amount>0)return `${tokenAmount(n.purchase.amount,{address:n.purchase.contract,symbol:n.purchase.symbol})} ${escapeHtml(n.purchase.symbol)}`;
     if(n?.acquisition_kind==="miner_upgrade")return "Kaufpreis des alten Bots offen";
+    if(n?.mint_without_same_tx_payment)return "nicht ermittelt";
     if(n?.acquisition_kind==="transfer"||n?.acquisition_kind==="own_transfer"||n?.acquisition_kind==="mint")return "–";
     return n?.acquisition_verified?"Zahlung nicht ermittelt":"nicht ermittelt";
   }
@@ -6735,6 +6780,7 @@ window.DAO1Project = (() => {
     if(n?.acquisition_kind==="miner_upgrade")return "Mining-Bot Upgrade";
     if(n?.acquisition_kind==="miner_upgrade_mapping_unresolved")return "Upgrade-Zuordnung offen";
     if(n?.purchase?.amount>0||n?.acquisition_kind==="purchase"||n?.acquisition_kind==="purchase_same_tx")return "Kauf";
+    if(n?.mint_without_same_tx_payment&&!(n?.purchase?.amount>0))return "Mint ohne Zahlung in dieser TX";
     if(n?.acquisition_kind==="mint"||n?.acquisition_kind==="mint_to_own_wallet")return "Mint / Kaufprüfung offen";
     if(n?.acquisition_kind==="own_transfer")return "Transfer eigene Wallets";
     if(n?.acquisition_kind==="transfer")return "NFT-Transfer";
@@ -8516,6 +8562,8 @@ window.DAO1Project = (() => {
     // Nur eine tatsächlich gefundene Zahlung gilt hier als final geprüft.
     const fullyChecked=!!acq?.purchase;
     return {
+      mintWithoutPayment:acq?.mintWithoutPayment===true,
+      sameTxPaymentCheckComplete:acq?.sameTxPaymentCheckComplete===true,
       purchase:acq?.purchase||null,
       acquisitionKind:acq?.acquisitionKind||null,
       acquisitionTxHash:txHash,
@@ -8532,7 +8580,7 @@ window.DAO1Project = (() => {
       sourceWallet:acq?.sourceWallet||null,
       checked:fullyChecked,
       resolverVersion:nftPurchaseResolverVersion(nft.contract),
-      status:acq?.acquisitionKind==="miner_upgrade"?(acq?.purchase?"upgrade_price_inherited":"upgrade_original_price_unresolved"):(acq?.purchase?"price_verified":"incomplete_no_deterministic_payment"),
+      status:acq?.acquisitionKind==="miner_upgrade"?(acq?.purchase?"upgrade_price_inherited":"upgrade_original_price_unresolved"):(acq?.purchase?"price_verified":acq?.mintWithoutPayment?"mint_without_same_tx_payment":"incomplete_no_deterministic_payment"),
       checkedAt:fullyChecked?new Date().toISOString():null
     };
   }

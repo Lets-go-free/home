@@ -30,7 +30,7 @@ assert.equal(t.parse([transfers[0],{...transfers[1],transaction_hash:BUY}],detai
 assert.equal(t.parse([transfers[0],{...transfers[1],token:{...transfers[1].token,type:'ERC-20'}}],detail,HASH),null);
 assert.ok(t.parse([...transfers,transfers[0]],detail,HASH),'Duplicate transfer items are deduplicated by NFT id');
 let resolved=await api.resolveNftPurchaseEvidence({contract:NEW,tokenId:'46489',acquisitionWallet:WALLET,acquisitionTxHash:HASH,acquiredBlock:14772428});
-assert.equal(resolved.status,'upgrade_price_inherited');assert.equal(resolved.resolverVersion,5);
+assert.equal(resolved.status,'upgrade_price_inherited');assert.equal(resolved.resolverVersion,6);
 assert.equal(resolved.purchase.amount,1000);assert.equal(resolved.purchaseTxHash,BUY);assert.equal(resolved.purchaseAt,purchase.timestamp);assert.equal(resolved.purchaseBlock,purchase.block);
 assert.equal(resolved.acquisitionTxHash,HASH);assert.equal(resolved.acquiredAt,detail.timestamp);assert.equal(resolved.upgradePayments[0].amount,9,'Upgrade payments stay separate');
 assert.equal(resolved.purchase.costBasisNftKey,OLD+'|90270');
@@ -73,10 +73,10 @@ const ui={window:{DAO1Project:api,getAllCachedNfts:()=>caches},console,normalize
 vm.runInNewContext(appSource.slice(appSource.indexOf('function nftPurchaseText('),appSource.indexOf('function centralNftPurchaseEvidenceNeedsRefresh(')),ui);
 const item={chain:'apertum',tokenAddress:NEW,tokenId:'46489',purchaseEvidence:{resolverVersion:3,status:'price_verified',purchase}};
 item.purchaseEvidence.inputEvidenceKey=ui.centralNftPurchaseEvidenceKey(item);assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),false);
-item.purchaseEvidence={resolverVersion:5,status:'upgrade_original_price_unresolved',upgrade:parsed,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
+item.purchaseEvidence={resolverVersion:6,status:'upgrade_original_price_unresolved',upgrade:parsed,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
 caches=[];assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),true,'Unchanged unresolved evidence remains cacheable');
 caches=[oldNft];assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),false,'Newly resolved old price triggers one new inheritance pass');
-item.purchaseEvidence={resolverVersion:5,status:'upgrade_price_inherited',upgrade:parsed,purchase,purchaseAt:purchase.timestamp,purchaseTxHash:BUY,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
+item.purchaseEvidence={resolverVersion:6,status:'upgrade_price_inherited',upgrade:parsed,purchase,purchaseAt:purchase.timestamp,purchaseTxHash:BUY,inputEvidenceKey:ui.centralNftPurchaseEvidenceKey(item)};
 assert.equal(ui.centralNftPurchaseEvidenceIsCurrent(item),true);
 assert.equal(ui.nftPurchaseText(item).replaceAll("'",'’'),"1’000 wUSDT");
 const provenance=ui.nftPurchaseProvenanceHtml(item);assert.ok(provenance.includes('Upgrade von #90270'));assert.ok(provenance.includes(BUY));assert.ok(provenance.includes(HASH));assert.ok(provenance.includes(purchase.timestamp));
