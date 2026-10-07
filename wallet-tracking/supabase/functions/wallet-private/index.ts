@@ -1,3 +1,4 @@
+// Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-005211.
 // Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449.
 // Phase 7.33 · 05.10.2026 02:00:33 CEST: Partnernamen DAO1/APTMDAO/TLN-VOW mit nutzerbegrenztem Service-Zugriff; TLN-Sammelspeicherung bewahrt DAO-Aliase. Build 20261005-020033.
 // Phase 6.54 · 28.09.2026 03:44:15 CEST: TLN Fresh-User Detail-Backfill robust gegen fehlende/inkompatible Step-6-Valuation-Caches: Bewertungs-Lookup ist optional und darf den bereits verifizierten Staking/Reward/Referral/Bonus-Detailbackfill nicht mehr komplett abbrechen. Build 20260928-034415.
@@ -234,7 +235,10 @@ async function fetchAllowedNftMetadata(rawUrl: unknown): Promise<{found: boolean
   }
 
   const host = url.hostname.toLowerCase()
-  const allowed = host === 'api.aptmdao.io' && /^\/nft\/\d+\/?$/.test(url.pathname)
+  const allowed = !url.username && !url.password && !url.port && !url.search && !url.hash && (
+    (host === 'api.aptmdao.io' && /^\/nft\/\d+\/?$/.test(url.pathname)) ||
+    (host === 'api.dao1.ai' && /^\/miner\/\d+\/?$/.test(url.pathname))
+  )
   if (!allowed) {
     throw new Error('NFT-Metadaten-Domain oder Pfad ist nicht freigegeben.')
   }

@@ -1,6 +1,7 @@
-<!-- Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261006-135449. -->
-<!-- Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261006-135449. -->
-<!-- Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrade separat. Build 20261006-135449. -->
+<!-- Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-005211. -->
+<!-- Phase 7.42 · 06.10.2026 13:54:49 CEST: Endgültige Kontolöschung mit serverseitiger Admin-Sperre; Datenreset erhält Adminrechte; neutrale Registrierungsmeldung. Build 20261008-005211. -->
+<!-- Phase 7.41 · 05.10.2026 22:54:48 CEST: Bot-Kaufpreise nach Datenaktualisierung sofort aus Cache anzeigen; APTMDAO als Standard-Teamtab. Build 20261008-005211. -->
+<!-- Phase 7.40 · 05.10.2026 19:23:08 CEST: Ursprünglicher Miner-Erwerb mit Datum/Tx unabhängig vom Kaufpreis; Upgrade separat. Build 20261008-005211. -->
 <!-- Phase 7.28 · 04.10.2026 03:28:40 CEST: 31.12.-Steueraudit: ESTV-Direktkurse gegen Symbol-Imitationen gehaertet; Polygon/POL wird fuer vorhandene historische ESTV-Direktwerte als MATIC aufgeloest. Build 20261004-032840. -->
 <!-- Phase 7.25 · 04.10.2026 01:54:16 CEST: Supabase-Härtung D1 – backendvermittelte Tabellen service-role-only; Cache-/Jobklassifizierung ohne riskanten Schema-Umzug. Build 20261004-015416. -->
 <!-- Phase 7.25 · 04.10.2026 01:54:16 CEST: User-/Wallet-Grants auf Least Privilege vorbereitet (Migration 086); Admin-Chains zeigt technisch kritische Spalten wieder orange. Build 20261004-015416. -->
@@ -60,7 +61,7 @@
 </script>
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css?v=20261006-135449">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20261008-005211">
 <link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260928-042301">
 <style>
   /* Phase 7.06: Login bleibt auch mit Browser-/iCloud-/1Password-Popups bedienbar.
@@ -1268,7 +1269,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 06.10.2026 13:54:49 CEST · Phase 7.42 · Build 20261006-135449</span><br>
+    <span id="footerVersionLine">Version: 08.10.2026 00:52:11 CEST · Phase 7.43 · Build 20261008-005211</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1283,16 +1284,16 @@
 <script src="./js/staking-engine.js?v=20260929-174845"></script>
 <script src="./projects/tln-vow/tln-vow-loans.js?v=20261004-233115"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20261002-121802"></script>
-<script src="./projects/dao1/dao1.js?v=20261006-135449"></script>
+<script src="./projects/dao1/dao1.js?v=20261008-005211"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20261006-135449"></script>
-<script src="./help/help-general.js?v=20261006-135449"></script>
+<script src="./admin/ideas.js?v=20261008-005211"></script>
+<script src="./help/help-general.js?v=20261008-005211"></script>
 <script src="./projects/tln-vow/help.js?v=20261005-020033"></script>
-<script src="./projects/dao1/help.js?v=20261006-135449"></script>
-<script src="./admin/exports.js?v=20261006-135449"></script>
-<script src="./js/app.js?v=20261006-135449"></script>
+<script src="./projects/dao1/help.js?v=20261008-005211"></script>
+<script src="./admin/exports.js?v=20261008-005211"></script>
+<script src="./js/app.js?v=20261008-005211"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261005-020033"></script>
 
 
@@ -1311,6 +1312,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 06.10.2026 13:54:49 CEST · Phase 7.42 · Build 20261006-135449</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 08.10.2026 00:52:11 CEST · Phase 7.43 · Build 20261008-005211</div>
 </body>
 </html>
