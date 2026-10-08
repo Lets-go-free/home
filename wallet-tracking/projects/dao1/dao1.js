@@ -1,3 +1,4 @@
+// Phase 7.49 · 08.10.2026 16:51:54 CEST: Aufgaben mit zusätzlichen Besitzer-/Partnernamen bei unveränderten IDs; Legacy-LPT ohne unbelegten aktuellen Kurs, fehlende Bewertung erklärt. Build 20261008-165154.
 // Phase 7.48 · 08.10.2026 16:09:06 CEST: Separate wAPTM-Miner-Nachzahlungen je Wallet bestätigen/ignorieren; Nicht zugeordnet, Dashboard-Aufgabe und dauerhafte User-Entscheidung (SQL 091). Build 20261008-160906.
 // Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
 // Phase 7.45 · 08.10.2026 01:35:12 CEST: Mint ohne Zahlung in dieser TX bei vollständig geprüfter TX; Kaufpreis bleibt unbekannt. Build 20261008-013512.
@@ -5639,6 +5640,7 @@ window.DAO1Project = (() => {
       // Übernahme über Wallet oder gleichlautende IDs zwischen den beiden Trees.
       await dao1WalletPrivate("team_alias_save",{reference,alias});
       if(alias)dao1TeamAliases[reference]=alias;else delete dao1TeamAliases[reference];
+      window.refreshDashboardTaskAliases?.();
       if(input){input.dataset.savedValue=alias;input.title=`${mode==="aptmdao"?"APTMDAO":"DAO1"}-Name verschlüsselt gespeichert`;}
       renderDAO1TeamTreePanel();return true;
     }catch(e){
@@ -9043,7 +9045,10 @@ window.DAO1Project = (() => {
     }catch(e){console.warn("DAO1 Dashboard-Summary Cache",e);}
   }
 
-  return { nftPurchaseResolverVersion, refreshCachedViews, switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, runDailyDeltaRefresh, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  function getTaskDids(address){
+    const a=lower(address);return dao1AllOwnedDidRoots().filter(r=>lower(r.wallet_address)===a).map(r=>({id:r.did,system:r.system==="aptmdao"?"aptmdao":"dao1"}));
+  }
+  return { nftPurchaseResolverVersion, getTaskDids, refreshCachedViews, switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, runDailyDeltaRefresh, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     decideBotClaimReview, openBotClaimReview, refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,

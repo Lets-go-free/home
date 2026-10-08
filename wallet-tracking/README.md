@@ -1,4 +1,14 @@
-# WalletTracking · Phase 7.48
+# WalletTracking · Phase 7.49
+
+
+## Update 7.49
+Namen in „Was muss ich tun?“ sind ausschließlich zusätzliche Angaben: TLN-IDs und andere Kennungen bleiben erhalten. Besitzer und gespeicherter Partneralias werden dedupliziert ergänzt, einschließlich Token-/Bestandschecks, Miner-Nachzahlungen und Partner-Stakings. Userbezogener Alias-RAM lazy beim ersten Dashboard mit Aufgaben, ein deduplizierter wallet-private-Read; nach Alias-Save erneuert. Keine RPC-/Team-Discovery für Namen; TLN/DAO/APTMDAO-Namensräume bleiben getrennt.
+
+Legacy-LPT auf BSC: vorhandene deaktivierte historical_only-Stammdaten werden zur Klassifikation gelesen, nicht für neue Balance-/Discovery-Scans aktiviert. Die vorhandene Cross-Chain-Formel ist historisch. Aktueller verifizierter Projektpreis wird weitergegeben; ohne diesen bleibt der Preis offen mit Erklärung. Historische Bewertung und BSC-Dust-DEX-Kurs werden nicht als aktueller Wert übernommen. Aktueller Rücktausch-/Bewertungsnachweis bleibt offen.
+
+Installation: geänderte Webdateien übernehmen, veröffentlichen und neu laden. Kein zusätzliches SQL/Edge-Deployment. SQL 091 aus 7.48 bleibt Voraussetzung für die Bot-Claim-Entscheidungen.
+
+Zu testen: zusätzliche Namen bei erhaltenen TLN-IDs 17265/11674/11283; Besitzer+Partner zugleich; fehlende Namen/Sonderzeichen; gleiche TLN-/DAO-ID; Walletfilter, Aliasänderung und Userwechsel. LPT-Hinweis nach Preisrefresh, keine historische/Dust-Preisübernahme. Wallet hinzufügen/löschen, sämtliche Daten löschen und Account-/Admin-Negativtest; Restore zurückgestellt. Lokale Regressionen bestanden, produktiver Retest offen.
 
 
 Separate wAPTM-Nachzahlungen: positiver Eingang nur vom Sender `0x6d0539de11b95e18cb202a55098e3854b0313022` und Tokencontract `0x110ac02ba3384bc055c13a87766049a74517beda`. Je Wallet bestätigen/ignorieren, nur aktuell angezeigte TXs. Offen unter „Was muss ich tun?“ und Bot-Claims mit Datum/Betrag/TX. Bestätigt unter NFT „Nicht zugeordnet“ und in Claim-/Dashboard-Summen; ignorierte und offene Zahlungen zählen nicht. Keine vermutete Einzelbot-ID.

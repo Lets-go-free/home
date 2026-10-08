@@ -1,3 +1,4 @@
+// Phase 7.49 · 08.10.2026 16:51:54 CEST: Aufgaben mit zusätzlichen Besitzer-/Partnernamen bei unveränderten IDs; Legacy-LPT ohne unbelegten aktuellen Kurs, fehlende Bewertung erklärt. Build 20261008-165154.
 // Phase 7.33 · 05.10.2026 02:00:33 CEST: Partnernamen DAO1/APTMDAO/TLN-VOW mit nutzerbegrenztem Service-Zugriff; TLN-Sammelspeicherung bewahrt DAO-Aliase. Build 20261005-020033.
 // Phase 6.74 · 29.09.2026 15:25:57 CEST: TLN/VOW-Staking-Principal bleibt Vermögen bis zum tatsächlichen Unstake – Vertragsende allein beendet Eigentum nicht. Cache-only Bridge liefert offene PCLP/LPT-Positionen für Wallet-Bestand/Dashboard und historischen 31.12.-Stichtag; persistente Projekt-Navigation ergänzt. Build 20260929-152557.
 // Phase 6.61 · 28.09.2026 12:16:20 CEST: Team-Leerzustand trennt User- und Admin-Sicht. Normale User sehen bei fehlendem Slice keine internen Cache-/Step-7-/Fullscan-Hinweise, sondern einen fachlichen Hinweis auf den vorhandenen Team-Datenstand; Admins sehen die technische Diagnose weiterhin. Build 20260928-121620.
@@ -24,7 +25,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20261005-020033';
+const BUILD_ID='20261008-165154';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -14096,6 +14097,7 @@ async function saveTeamAlias(key,value){
     if(error)throw error;
     if(!data?.ok)throw new Error(data?.error||'team_alias_save fehlgeschlagen');
     if(value)TEAM_ALIAS_CACHE[key]=value;else delete TEAM_ALIAS_CACHE[key];
+    window.refreshDashboardTaskAliases?.();
     log(`Partner-Name ${value?'verschlüsselt gespeichert':'gelöscht'} · nur für diesen User.`,'ok');
     return true;
   }catch(e){log(`Partner-Name konnte nicht gespeichert werden: ${e.message||e}`,'warn');return false}
@@ -19096,6 +19098,7 @@ async function loadDashboardTeamSummaryCacheOnly(){
 }
 
 window.TLNVOWDiscovery={
+  getTaskTlnId:wallet=>currentUserId===dashboardContextGetter?.()?.currentUser?.id?String(TEAM_IDENTITY_CACHE.get(norm(wallet))?.nodeId||''):'',
   configure,
   ensureInitialized,
   refreshWalletAfterSave,

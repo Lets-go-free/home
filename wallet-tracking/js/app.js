@@ -1,3 +1,4 @@
+// Phase 7.49 · 08.10.2026 16:51:54 CEST: Aufgaben mit zusätzlichen Besitzer-/Partnernamen bei unveränderten IDs; Legacy-LPT ohne unbelegten aktuellen Kurs, fehlende Bewertung erklärt. Build 20261008-165154.
 // Phase 7.48 · 08.10.2026 16:09:06 CEST: Separate wAPTM-Miner-Nachzahlungen je Wallet bestätigen/ignorieren; Nicht zugeordnet, Dashboard-Aufgabe und dauerhafte User-Entscheidung (SQL 091). Build 20261008-160906.
 // Phase 7.47 · 08.10.2026 15:32:02 CEST: Entdecken: alle offenen Tokens als Spam markieren statt sicher hinzufügen; sichere Tokens geschützt, walletbezogene Speicherung. Build 20261008-153202.
 // Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
@@ -302,6 +303,7 @@ function initUiDisplay(){initUiFontScale();initUiTheme();}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initUiDisplay,{once:true});else initUiDisplay();
 let defiProjectsCache = [];
 let predefinedTokenProject = {};
+let predefinedHistoricalAssets = {};
 let predefinedTokenDashboardVisible = {};
 
 // ---- Zentraler Datenjob-Manager (Phase 4.69) ----
@@ -3095,11 +3097,12 @@ const ADMIN_SYSTEM_TREE = [
   {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 6.69: Speichern startet kein breites loadAll() über alle Wallets. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie gezielt. Bei einer neuen Wallet läuft anschließend genau einmal die allgemeine Token-Discovery für die verfügbaren Discovery-Chains; offene Klassifizierungen erscheinen im Dashboard."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
   {id:"tokensgrp",level:0,label:"🪙 Meine Token",status:"done",start:"DB",daily:"–",open:"Cache/DB",manual:"Entdecken & prüfen",details:[]},
   {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","gezielt nur betroffene Chain bei neuem Token","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin. Token-/Stammdatenänderungen starten keinen globalen loadAll(); neue sichere/vordefinierte Token aktualisieren höchstens die betroffene Chain."]]},
-  {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
+  {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token + historische Asset-Klassifikation aus predefined_tokens","–","7.49: Legacy-LPT Klassifikation auch aus deaktivierten Stammdaten; aktuelle Preise nur aus Projektbewertung, sonst Erklärung. Kein historischer Wert/Dust-Kurs als heutiger Preis."]]},
   {id:"discovery",level:1,label:"🔍 Entdecken & prüfen",status:"done",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Phase 7.46: Alle Wallets als Standard; Ergebnisse aus walletbezogenen DB-Caches. Manuell sequenzieller Scan der ausgewählten Chains, 30-Tage-Sperre je Wallet; gesperrte Wallets werden übersprungen. 7.47: Alle entdeckten Tokens als Spam markieren zählt Chain+Adresse einmal, berücksichtigt auch Tokens ohne Verdacht und schließt bereits sichere Tokens aus. Markierungen bleiben walletbezogen; keine Chain-/Bestandsaktualisierung. Kein neuer Scan beim Tab-Öffnen."]]},
 
   {id:"analysis",level:0,label:"📊 Dashboard & Analyse / Berichte",status:"in_progress",start:"Dashboard sofort + Caches",daily:"kontrollierter Delta-Refresh",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","1× täglich Delta-Prüfung nach Cache-Render","Phase 6.62: Login zeigt zuerst persistierte Current-State-Caches; danach startet höchstens einmal pro Kalendertag eine kontrollierte Delta-Prüfung. Wallet-Bestände nutzen Activity-Checks, Projekt/NFT-Daten werden nur bei Bedarf nachgezogen. Spezialhistorien bleiben getrennt."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
+    ["Aufgabennamen","User-RAM; in-flight dedupliziert","entschlüsselte Walletbesitzer + wallet-private/team_alias_list","kein RPC/Discovery","7.49: lazy beim ersten Dashboard mit Aufgaben pro User/Session; nach Alias-Save erneuern. IDs unverändert. Namespace-getrennte TLN-/DAO-DIDs nur aus geladenen Identitäten; bei Fehler IDs erhalten, Retry ab 60 Sekunden."],
     ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","kein allgemeiner Start-RPC","Dashboard sofort aus Cache. Phase 5.75: Ein normaler Seitenreload startet keinen allgemeinen Grunddatenlauf; Aktualisierung erfolgt gezielt manuell, beim Erstaufbau einer neuen Wallet oder über projektspezifische Tab-Logik."],
     ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; Phase 6.49: TLN Dashboard lädt bei Fresh-Usern Partnerzahlen cache-only aus globaler TLN-ID + SmartNode-Slice; Reward-Summaries bevorzugen private UUID-wallet_id-Snapshots, danach userfreie globale Summaries/Chain-Caches und können bei einer eigenen Wallet fehlende Summaries über wallet-private serverseitig aus einem vorhandenen verifizierten privaten Snapshot derselben On-Chain-Adresse sanitisiert backfillen. Reward-Mengen werden dabei kanonisch in Human-Units normalisiert; der globale Summary-Cache v2 akzeptiert keine alten v1-Raw-Unit-Summaries mehr. Phase 6.51 nutzt diese Summary v2 auch direkt in den TLN/VOW-Tabs Staking/Rewards, Referral und Bonus; fehlende private Detail-Snapshots werden als noch nicht aufgebaut gekennzeichnet und lösen keinen automatischen History-Scan aus. Phase 6.52 ergänzt einen separaten globalen On-Chain-Detailcache: wallet-private darf für eine beim aktuellen User als eigene Wallet gespeicherte Adresse einen bereits verifizierten fremden privaten Discovery-Snapshot serverseitig auf die rein öffentlichen Staking-/Reward-/Referral-/Bonus-Fakten reduzieren, userbezogene/private Felder entfernen und das Ergebnis global persistieren. Die Projekttabs laden diesen Detailcache vor einem Backfill und zeigen dadurch Fresh-Usern Positions-/Claim-Details ohne historischen Browser-Scan. Erstmals überhaupt unbekannte Wallets bleiben als kontrollierte serverseitige Erst-Discovery offen. Phase 6.53 hebt diesen globalen Detailcache auf v2 an und übernimmt zusätzlich vorhandene Step-6-USD-Bewertungen (Stake/Vertragsende/Unstake) aus dem privaten technischen Snapshot derselben Wallet. Der separate Rewards-Summary-Tab entfällt; die Staking-Reward-Summary ist direkt in Staking/Rewards integriert. Phase 6.54 behebt die dabei entstandene Fresh-User-Regression: Staking/Referral/Bonus synchronisieren Summary und Detailcache vor dem Rendern, parallele Summary-Ladevorgänge werden awaited und v1-Detailcache bleibt als Fallback gültig, falls v2/Valuation noch nicht bereitsteht. Transiente Client-IDs wie local1 werden weiterhin nie als DB-wallet_id verwendet. TLN Team nutzt im geöffneten Projekt weiterhin denselben Forest/Lifecycle. TLN Staking-/Referral-/Bonus-Rewards und DAO Rewards/Referral Rewards sind in Originaltoken angeschlossen; DAO1/APTMDAO-Bezüge stammen aus getrennten Tree-Caches; die übergreifende Partnerzahl wird wallet-zentriert dedupliziert (1 Wallet = 1 Partner), während die beiden Einzelzahlen separat sichtbar bleiben. DAO-Aktivstatus bleibt bis zum Bot-Target-Proof offen."],
     ["Erststart ohne Wallet","lokale UI","–","–","Dashboard bleibt Startseite und erklärt den Ablauf; Ein-Klick-Aktion legt eine neue Wallet-Zeile an. Nach Speichern startet automatisch der Grunddaten-Erstaufbau."],
@@ -3270,7 +3273,7 @@ function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
   ${window.WTAdminExports.render()}
-  <div class="custom-token-card"><h3>Miner-Nachzahlungen prüfen · 7.48</h3><p>Positive wAPTM-Eingänge (Contract 0x110ac02ba3384bc055c13a87766049a74517beda) ausschließlich vom Sender 0x6d0539de11b95e18cb202a55098e3854b0313022 erscheinen als „Vermutliche Miner-Nachzahlung in wAPTM – Bot nicht zugeordnet“. Das ist ein Prüfhinweis, kein automatischer Claim-Nachweis. Bot-Claims zeigt je Wallet Betrag, Datum und TX-Link sowie „Als Bot-Claims bestätigen“ und „Ignorieren, kein Bot-Claim“. Die Aktion gilt nur für die aktuell angezeigten offenen TXs; spätere Zahlungen bleiben prüfbar.</p><p>Offene Kandidaten erscheinen auch im Dashboard unter „Was muss ich tun?“, gemäß dem Wallet-/Personenfilter. Bestätigte Zahlungen werden im Tab Bot-Claims unter NFT „Nicht zugeordnet“ aufgeführt und in die Claim-/Dashboard-Summen aufgenommen. Unbestätigte oder ignorierte Zahlungen zählen dort nicht. Bestehende Selector-Claims und Referral-Rewards bleiben erhalten. Es wird keine einzelne Bot-ID geraten.</p><p>Die Entscheidung ist je User, Wallet und TX in dao_bot_claim_reviews gespeichert; Blockchain-Transaktionen und kanonische Asset-Flows werden nicht verändert. Laden erfolgt beim ersten History-Read je User-/Wallet-Scope, erneut beim Claims-/Referral-Öffnen und beim Dashboard-Summary-Read. Alle Reads sind cache-only ohne zusätzlichen Explorer-/RPC-Scan. Migration SQL 091 zuerst ausführen: 13 Statements in Reihenfolge, transaktional; keine SELECT-Resultsets. Authenticated-Zugriff mit RLS auth.uid(), kein anon-Zugriff und keine Klartext-Walletadresse/-namen. Bestehende Wallet-/Daten-/Kontolöschung entfernt Entscheidungen per FK-Cascade.</p><p><strong>Zu testen:</strong> Kandidaten nach Datenaktualisierung; je Wallet bestätigen oder ignorieren; Abbrechen und DB-Fehler; Reload erhält Entscheidung; neue Zahlung bleibt offen; NFT-Filter Nicht zugeordnet; Summen ohne doppelte Zählung; eigener/fremder Walletfilter; Wallet hinzufügen/löschen, sämtliche Daten löschen und Account-/Admin-Negativtest. Restore-Test bleibt zurückgestellt. Lokale Regression bestanden; Live-Supabase/RLS-Roundtrip noch offen.</p><h3>Vorheriger Stand · 7.47</h3><p>Entdecken startet mit Alle Wallets; Scans bleiben je Wallet gespeichert und gesperrt. Alle entdeckten Tokens als Spam markieren erfasst sämtliche offenen Treffer der ausgewählten Wallets und Chains, auch ohne Spam-Verdacht. Bereits sichere Tokens bleiben ausgeschlossen. Bestätigung mit Anzahl unterschiedlicher Tokens; Speicherung im jeweiligen Wallet-Cache. Die Einzelaktion Als sicher hinzufügen bleibt erhalten. Die sichere Sammelaktion aus 7.46 wurde entsprechend der korrigierten Anforderung entfernt.</p><p>DAO1/APTMDAO: Mint-Kanten und heutiger DID-Besitzer sind getrennt. Aktuelle Partnerbesitzer werden gezielt über ownerOf geprüft, fünf Minuten im RAM gehalten und bei Datenaktualisierung invalidiert. Alte Kanten-/IndexedDB-Caches bleiben als historische Fakten gültig; ihre Wallet-Adresse wird nicht mehr als aktueller Partnerbesitzer verwendet. Keine SQL-Bereinigung oder Wallet-Neuanlage nötig. Edge apertum-rpc-proxy aus 7.46 bleibt Voraussetzung; 7.47 benötigt kein zusätzliches Deployment.</p><p>7.42–7.45: endgültige Kontolöschung mit Admin-Sperre; Recovery nur für bestehende Konten; Metadaten-404 ohne falschen 502; Erwerbs-TX und abweichender Wallet-Transfer verlinkt; Mint ohne Zahlung in dieser TX setzt keinen Kaufpreis auf 0. NFT-Anzeige vom User bestätigt, externe Metadaten #120469 bleiben fehlend.</p><h3>Zu testen</h3><p>Wallet hinzufügen; Wallet vollständig löschen; sämtliche Daten löschen; normales Konto endgültig löschen und Admin-Negativtest. Monica: DAO1 #21044 unter Carmen #18438 auf 0x568281…fe4940; APTMDAO #7803 unter Chris #7315; aktueller Bestand 9 Mining-Bots und 1 Trading-Bot, Zuordnung getrennt prüfen. Besitzerwechsel und RPC-Fehler testen; Entdecken Alle/Einzelwallet, gemischte Sperren, Chainfilter und beide Sammelaktionen prüfen. Restore-Test bleibt zurückgestellt.</p><p>7.48 löst die separate wAPTM-Auszahlung durch eine ausdrückliche User-Entscheidung; automatische Company-/Bot-Zuordnung und NFT-ID bleiben unbewiesen.</p></div>
+  <div class="custom-token-card"><h3>Aktueller Stand · 7.49</h3><p>Alle Wallet-/Partner-To-dos behalten ihre bestehenden Kennungen. Besitzername und gespeicherter Partneralias werden zusätzlich gezeigt und identische Namen dedupliziert. TLN-ID bleibt immer sichtbar. Token-/Bestandsprüfungen nennen die betroffenen Wallets, Miner-Nachzahlungen Label/Adresse/Besitzer und belegte DAO-DID-Aliase. TLN-Partneraufgaben verwenden TLN-Aliase und Walletbesitzer getrennt.</p><p>Datenquelle: Walletbesitzer aus bereits entschlüsseltem User-Kontext, Partnernamen über wallet-private/team_alias_list. Lazy ein Read beim ersten Dashboard mit Aufgaben pro User/Session, in-flight dedupliziert; Namen ausschließlich im RAM. Alias-Save aktualisiert den Cache. Fehler lassen IDs/Tasks sichtbar, erneuter Versuch frühestens nach einer Minute. Kein Team-Discovery-/RPC-Lauf für Namen; DID-/TLN-ID-Auflösung nur aus bereits geladenen Identitäten und eigenen Root-DIDs. Keine projektübergreifende Namenszuordnung bei gleichen IDs.</p><p>Legacy-LPT 0x30812dbe89b40b5b7ac1bc9134e82ebbc0b57995 auf BSC ist in vorhandenen Stammdaten deaktiviert und historical_only/legacy_staking_token (Ursprung ETH). Diese Klassifikation wird jetzt auch für deaktivierte Datensätze gelesen, ohne sie für Bestands-/Discovery-Scans zu aktivieren. Die Cross-Chain-Formel ist historisch, nicht aktuell. Ein bereits vorhandener aktueller Projektpreis wird weitergereicht; sonst bleibt aktueller Wert offen mit Erklärung. CoinGecko/GeckoTerminal bzw. ein BSC-Dust-Pool dürfen diese historische Repräsentation nicht als aktuellen LP-Wert ersetzen. Aktueller Rücktausch-/Bewertungsnachweis bleibt offen.</p><h3>Zu testen · 7.49</h3><p>TLN-IDs 17265/11674/11283 mit und ohne Partnername; Besitzer+Partner zugleich, Sonderzeichen, gleiche TLN-/DAO-ID; Token-/Bestandschecks und Miner-To-dos; Aliasänderung und Userwechsel. LPT-Hinweis nach Reload/Preisrefresh, keine Übernahme historischer oder Dust-Werte. Wallet hinzufügen/löschen, sämtliche Daten löschen und Account-/Admin-Negativtest bleiben zu prüfen; Restore zurückgestellt. Lokale Regressionen bestanden, produktiver Retest offen. Kein neues SQL/Edge-Deployment; für 7.48-Claims SQL 091 weiterhin erforderlich.</p><h3>Vorheriger Stand · 7.48</h3><h3>Miner-Nachzahlungen prüfen · 7.48</h3><p>Positive wAPTM-Eingänge (Contract 0x110ac02ba3384bc055c13a87766049a74517beda) ausschließlich vom Sender 0x6d0539de11b95e18cb202a55098e3854b0313022 erscheinen als „Vermutliche Miner-Nachzahlung in wAPTM – Bot nicht zugeordnet“. Das ist ein Prüfhinweis, kein automatischer Claim-Nachweis. Bot-Claims zeigt je Wallet Betrag, Datum und TX-Link sowie „Als Bot-Claims bestätigen“ und „Ignorieren, kein Bot-Claim“. Die Aktion gilt nur für die aktuell angezeigten offenen TXs; spätere Zahlungen bleiben prüfbar.</p><p>Offene Kandidaten erscheinen auch im Dashboard unter „Was muss ich tun?“, gemäß dem Wallet-/Personenfilter. Bestätigte Zahlungen werden im Tab Bot-Claims unter NFT „Nicht zugeordnet“ aufgeführt und in die Claim-/Dashboard-Summen aufgenommen. Unbestätigte oder ignorierte Zahlungen zählen dort nicht. Bestehende Selector-Claims und Referral-Rewards bleiben erhalten. Es wird keine einzelne Bot-ID geraten.</p><p>Die Entscheidung ist je User, Wallet und TX in dao_bot_claim_reviews gespeichert; Blockchain-Transaktionen und kanonische Asset-Flows werden nicht verändert. Laden erfolgt beim ersten History-Read je User-/Wallet-Scope, erneut beim Claims-/Referral-Öffnen und beim Dashboard-Summary-Read. Alle Reads sind cache-only ohne zusätzlichen Explorer-/RPC-Scan. Migration SQL 091 zuerst ausführen: 13 Statements in Reihenfolge, transaktional; keine SELECT-Resultsets. Authenticated-Zugriff mit RLS auth.uid(), kein anon-Zugriff und keine Klartext-Walletadresse/-namen. Bestehende Wallet-/Daten-/Kontolöschung entfernt Entscheidungen per FK-Cascade.</p><p><strong>Zu testen:</strong> Kandidaten nach Datenaktualisierung; je Wallet bestätigen oder ignorieren; Abbrechen und DB-Fehler; Reload erhält Entscheidung; neue Zahlung bleibt offen; NFT-Filter Nicht zugeordnet; Summen ohne doppelte Zählung; eigener/fremder Walletfilter; Wallet hinzufügen/löschen, sämtliche Daten löschen und Account-/Admin-Negativtest. Restore-Test bleibt zurückgestellt. Lokale Regression bestanden; Live-Supabase/RLS-Roundtrip noch offen.</p><h3>Vorheriger Stand · 7.47</h3><p>Entdecken startet mit Alle Wallets; Scans bleiben je Wallet gespeichert und gesperrt. Alle entdeckten Tokens als Spam markieren erfasst sämtliche offenen Treffer der ausgewählten Wallets und Chains, auch ohne Spam-Verdacht. Bereits sichere Tokens bleiben ausgeschlossen. Bestätigung mit Anzahl unterschiedlicher Tokens; Speicherung im jeweiligen Wallet-Cache. Die Einzelaktion Als sicher hinzufügen bleibt erhalten. Die sichere Sammelaktion aus 7.46 wurde entsprechend der korrigierten Anforderung entfernt.</p><p>DAO1/APTMDAO: Mint-Kanten und heutiger DID-Besitzer sind getrennt. Aktuelle Partnerbesitzer werden gezielt über ownerOf geprüft, fünf Minuten im RAM gehalten und bei Datenaktualisierung invalidiert. Alte Kanten-/IndexedDB-Caches bleiben als historische Fakten gültig; ihre Wallet-Adresse wird nicht mehr als aktueller Partnerbesitzer verwendet. Keine SQL-Bereinigung oder Wallet-Neuanlage nötig. Edge apertum-rpc-proxy aus 7.46 bleibt Voraussetzung; 7.47 benötigt kein zusätzliches Deployment.</p><p>7.42–7.45: endgültige Kontolöschung mit Admin-Sperre; Recovery nur für bestehende Konten; Metadaten-404 ohne falschen 502; Erwerbs-TX und abweichender Wallet-Transfer verlinkt; Mint ohne Zahlung in dieser TX setzt keinen Kaufpreis auf 0. NFT-Anzeige vom User bestätigt, externe Metadaten #120469 bleiben fehlend.</p><h3>Zu testen</h3><p>Wallet hinzufügen; Wallet vollständig löschen; sämtliche Daten löschen; normales Konto endgültig löschen und Admin-Negativtest. Monica: DAO1 #21044 unter Carmen #18438 auf 0x568281…fe4940; APTMDAO #7803 unter Chris #7315; aktueller Bestand 9 Mining-Bots und 1 Trading-Bot, Zuordnung getrennt prüfen. Besitzerwechsel und RPC-Fehler testen; Entdecken Alle/Einzelwallet, gemischte Sperren, Chainfilter und beide Sammelaktionen prüfen. Restore-Test bleibt zurückgestellt.</p><p>7.48 löst die separate wAPTM-Auszahlung durch eine ausdrückliche User-Entscheidung; automatische Company-/Bot-Zuordnung und NFT-ID bleiben unbewiesen.</p></div>
   <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.80</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Abschlussmessung:</strong> TLN/VOW-Haupttab wurde von 143 auf 42 und danach auf ca. 16 Requests reduziert. DAO-Team sank im Warm-Run von ca. 130 auf 16 Requests; Bot-Claims → Referral-Rewards verursacht in derselben Session keine zusätzlichen History-Reads. Weitere Optimierungen erfolgen nur noch bei konkretem Messbeleg.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Michaela 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
@@ -3550,6 +3553,7 @@ const HARDCODING_AUDIT_ITEMS = [
 
 const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"R1",workStatus:"in Arbeit",severity:"high",area:"DID / aktueller Besitzer",finding:"Gleiche DAO1 DID #21044 erschien beim eigenen Owner auf 0x568281…fe4940, als Partner auf historischer Mint-Adresse 0xd907b2…e5e6da. Beziehung zu #18438 vorhanden.",action:"7.46: Besitzer unabhängig von Kanten-Cache über ownerOf prüfen; Fehler offen halten. Keine Überschreibung historischer Mint-Kanten; kein SQL nötig. Lokale Besitzer-/Fehler-/Cachetests; produktiver Retest beider Bäume nach Proxy-Deployment offen."},
+  {priority:"R3",workStatus:"in Arbeit",severity:"medium",area:"Aufgabennamen und Legacy-LPT",finding:"Partner-To-dos zeigten nur IDs; historische BSC-LPT-Repräsentation hat keinen belegten aktuellen Kurs.",action:"7.49: IDs immer erhalten, Besitzer-/Partnernamen zusätzlich für alle Wallet-/Partner-To-dos; userbezogener lazy Alias-RAM, keine RPC-Scans. Legacy-Klassifikation auch bei deaktiviertem Stammdatensatz, historische/Dust-Preise nicht als aktuelle Werte. Erklärung bei fehlendem Preis. Lokale Tests bestanden; produktiver Namenstest und belastbarer aktueller LPT-Bewertungsnachweis offen."},
   {priority:"R2",workStatus:"in Arbeit",severity:"medium",area:"Entdecken / mehrere Wallets",finding:"Mehrwallet-Ergebnisse dürfen nicht vermischt gespeichert werden. User korrigiert Sammelaktion von sicher hinzufügen auf alle als Spam markieren.",action:"7.47: Alle Wallets default; Sperren einzeln, Scan sequenziell. Alle offenen Tokens der ausgewählten Chains als Spam markieren, auch ohne Verdacht; sichere Tokens ausgeschlossen. Anzahl nach Chain+Adresse dedupliziert; Cache-Updates je ursprünglicher Wallet. Fehler erhalten erfolgreich gespeicherte Teilmarkierungen und lassen übrige Treffer offen. Produktiver Retest offen."},
   {priority:"R3",workStatus:"in Arbeit",severity:"medium",area:"Separate Bot-Auszahlung wAPTM",finding:"Transfer enthält keine NFT-ID und ist kein automatischer Claim-Nachweis. 16 Eingänge nach 16 Migrationen stützen Nachzahlung, beweisen keine Einzelbot-Zuordnung.",action:"7.48: exakter Sender+wAPTM-Contract als Kandidatenfilter; je Wallet aktuell offene TXs bestätigen/ignorieren, dauerhaft User+Wallet+TX in SQL 091. Erst bestätigt in Bot-Claims unter Nicht zugeordnet und kanonischen Summen. Dashboard zeigt Prüfaufgabe. Lokale Regression bestanden; produktiver Persistenz-/RLS-/Löschtest offen."},
   {priority:"R4",workStatus:"in Arbeit",severity:"medium",area:"NFT / Dokumentation 7.42–7.46",finding:"Audit, tatsächliche Systemübersicht, Admin-Dokumentation und Changelog hinkten den letzten Änderungen hinterher.",action:"7.46 aktualisiert alle Dokumentationsstellen. User bestätigt NFT-Anzeige; das schließt Account-Löschungs-/Admin-Negativtest und Restore nicht ab. Alte P1–P9-Abschlüsse bleiben historische Testbefunde."},
@@ -4489,9 +4493,16 @@ async function loadPredefinedTokensFromDb() {
   const dashboardVisible = {};
   const byChainSymbol = {};
   const nativeAssets = {};
+  const historicalAssets = {};
   const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
                            // Gross-/Kleinschreibung mehrfach in der DB steht (case-sensitiver PK)
   data.forEach(row => {
+    // Historical classification remains available even for disabled master rows.
+    // It does not enable balances/discovery or turn historical valuations into live prices.
+    if(row.historical_only===true && row.address){
+      const key=row.chain+"|"+normalizeAddress(row.address,row.chain);
+      historicalAssets[key]={project:row.defi_project_key||null,kind:row.staking_asset_kind||null,originChain:row.origin_chain||null,label:row.label||row.symbol||"Historisches Asset"};
+    }
     if (row.enabled === false) return;
     const chain = row.chain;
     const isNative = row.is_native === true || String(row.address||"").toLowerCase() === "native";
@@ -4527,6 +4538,7 @@ async function loadPredefinedTokensFromDb() {
     const symbolKey=String(row.symbol||row.label||"").trim().toUpperCase();
     if(symbolKey) byChainSymbol[`${chain}|${symbolKey}`]={display,summary:summaryDecimals[dedupeKey]};
   });
+  predefinedHistoricalAssets = historicalAssets;
   SAFE_ADDRESSES = addresses;
   predefinedTokenLabels = labels;
   predefinedTokenCategory = categories;
@@ -4689,7 +4701,7 @@ function renderCustomTokenList() {
     const p = priceForToken(t.chain, t.address);
     const priceHtml = p
       ? `<div style="margin-top:4px">${fmtPrice(p.price)}<span class="price-source">${p.source}</span></div>`
-      : `<div style="margin-top:4px;color:var(--muted);font-size:0.78rem">Kein Kurs gefunden</div>`;
+      : `<div style="margin-top:4px;color:var(--muted);font-size:0.78rem">${escapeAttr(currentTokenPriceMissingReason(t.chain,t.address))}</div>`;
     return `
     <div class="custom-token-row" data-token-key="${escapeAttr(t.chain+'|'+normalizeAddress(t.address,t.chain))}">
       <div>
@@ -7223,7 +7235,7 @@ const DUST_THRESHOLD = 1e-25;
 function isTlnVowManagedToken(chain,address){
   if(!address || address === "native") return false;
   const key=chain+"|"+normalizeAddress(address,chain);
-  return String(predefinedTokenProject[key]||"").toLowerCase().replace(/[\s\/-]+/g,"_")==="tln_vow";
+  return isLegacyTlnLpt(chain,address) || String(predefinedTokenProject[key]||"").toLowerCase().replace(/[\s\/-]+/g,"_")==="tln_vow";
 }
 
 const liveTlnVowEthPriceMemo=new Map();
@@ -7342,10 +7354,23 @@ async function loadTlnVowEthereumCurrentPrices(){
   }catch(e){console.warn("TLN/VOW Ethereum Live-Preise",e);return {ok:false,error:String(e?.message||e),updated:0};}
 }
 
+function isLegacyTlnLpt(chain,address){
+  const m=predefinedHistoricalAssets[chain+"|"+normalizeAddress(address,chain)];
+  return m?.project==="tln_vow" && m?.kind==="legacy_staking_token";
+}
+function currentTokenPriceMissingReason(chain,address){
+  if(isLegacyTlnLpt(chain,address))return "Historischer TLN-LPT · kein verifizierter aktueller Preis. Die historische LP-Bewertung ist kein heutiger Handelskurs.";
+  return "Kein Kurs gefunden";
+}
 function priceForToken(chain, address) {
   if (!address) return null;
   const normalized = normalizeAddress(address, chain);
 
+  if(isLegacyTlnLpt(chain,normalized)){
+    // Only a current project valuation may be used. Never a tiny BSC DEX pool or historical value.
+    const p=window.TLNVOWProject?.getPrice(chain,normalized);
+    return p&&Number(p.price)>0?p:null;
+  }
   // TLN/VOW hat genau eine autoritative aktuelle Preisquelle: die zentrale
   // Projekt-PriceEngine (BSC: PancakeSwap, ETH: Uniswap). Für diese Contracts
   // darf niemals auf den allgemeinen CoinGecko-/GeckoTerminal-Cache gefallen werden.
@@ -7673,6 +7698,62 @@ function dashboardBalanceCheckSummary(targetWallets){
   return {pendingWallets,staleWallets,total:pendingWallets+staleWallets};
 }
 
+let dashboardTaskAliasUser="",dashboardTaskAliases={},dashboardTaskAliasLoaded=false,dashboardTaskAliasInflight=null,dashboardTaskAliasRetryAt=0;
+async function loadDashboardTaskAliases({force=false}={}){
+  const uid=currentUser?.id;if(!uid)return;
+  if(dashboardTaskAliasUser!==uid){dashboardTaskAliasUser=uid;dashboardTaskAliases={};dashboardTaskAliasLoaded=false;dashboardTaskAliasInflight=null;dashboardTaskAliasRetryAt=0;}
+  if(!force&&(dashboardTaskAliasLoaded||Date.now()<dashboardTaskAliasRetryAt))return;
+  if(dashboardTaskAliasInflight)return dashboardTaskAliasInflight;
+  const job=(async()=>{
+    try{
+      const data=await invokeWalletPrivate("team_alias_list");
+      if(!data?.ok)throw new Error(data?.error||"Partnernamen nicht geladen");
+      if(currentUser?.id!==uid)return;
+      dashboardTaskAliases=data.aliases||{};dashboardTaskAliasLoaded=true;
+      renderDashboard();
+    }catch(e){if(currentUser?.id===uid)dashboardTaskAliasRetryAt=Date.now()+60000;console.warn("Dashboard-Aufgabennamen",e);}
+  })();
+  dashboardTaskAliasInflight=job;
+  try{await job;}finally{if(dashboardTaskAliasInflight===job)dashboardTaskAliasInflight=null;}
+}
+window.refreshDashboardTaskAliases=()=>loadDashboardTaskAliases({force:true});
+function dashboardTaskNames(row={},project=""){
+  const address=String(row.wallet||row.wallet_address||"").toLowerCase();
+  const w=wallets.find(w=>String(walletDbId(w))===String(row.walletId||row.wallet_id||"") || (address&&String(w.evm||"").toLowerCase()===address));
+  const names=[w?.ownerName||row.ownerName||""];
+  const aliases=dashboardTaskAliasUser===currentUser?.id?dashboardTaskAliases:{};
+  if(project==="tln_vow"){
+    const id=String(row.tlnId||"");
+    const keys=[id?`id:${id}`:"",id?`tln-id:${id}`:"",id?`tln:${id}`:"",id,address?`wallet:${address}`:"",address].filter(Boolean);
+    const alias=keys.map(k=>String(aliases[k]||"").trim()).find(Boolean);
+    names.push(alias||row.partnerName||(/^TLN-ID\s/.test(String(row.name||""))?"":row.name)||"");
+  }else if(project==="dao1"){
+    for(const did of window.DAO1Project?.getTaskDids?.(w?.evm||address)||[]){
+      names.push(aliases[`${did.system}:did:${did.id}`]||"");
+    }
+    names.push(row.partnerName||"");
+  }else{
+    // Wallet-only tasks may show saved wallet aliases; IDs are resolved only in their project namespace.
+    const a=String(w?.evm||address).toLowerCase();names.push(aliases[`wallet:${a}`]||aliases[a]||"");
+    names.push(...dashboardTaskNames({...row,wallet:a,walletId:w?walletDbId(w):row.walletId},"dao1"));
+    const tlnId=window.TLNVOWDiscovery?.getTaskTlnId?.(a);
+    if(tlnId)names.push(...dashboardTaskNames({...row,wallet:a,tlnId},"tln_vow"));
+  }
+  const seen=new Set();return names.map(n=>String(n||"").trim()).filter(n=>{const k=n.toLowerCase();if(!n||seen.has(k))return false;seen.add(k);return true;});
+}
+function dashboardWalletTaskLabel(w,project=""){
+  const base=w.label||w.name||"Wallet",address=String(w.evm||"");
+  const names=dashboardTaskNames({walletId:walletDbId(w),wallet:address},project).filter(n=>n!==base);
+  return [base,address?dashboardShortAddress(address):"",...names].filter(Boolean).map(escapeAttr).join(" · ");
+}
+function dashboardPartnerTaskLabel(row){
+  // The ID is always primary and preserved, including when an alias is present.
+  const id=row.tlnId?`TLN-ID ${row.tlnId}`:"TLN-ID ?";
+  const names=dashboardTaskNames(row,"tln_vow");
+  const w=wallets.find(w=>String(w.evm||"").toLowerCase()===String(row.wallet||"").toLowerCase());
+  if(w?.label&&!names.includes(w.label))names.push(w.label);
+  return [id,...names].map(escapeAttr).join(" · ");
+}
 function dashboardActionItems(targetWallets,involvedProjects,balanceCheck){
   const items=[];
   const d=discoveryReviewSummary(targetWallets);
@@ -7682,7 +7763,7 @@ function dashboardActionItems(targetWallets,involvedProjects,balanceCheck){
     if(d.suspects)parts.push(`${d.suspects} Spam-Verdacht`);
     if(d.needsReview)parts.push(`${d.needsReview} ohne Warnung`);
     if(d.unscanned)parts.push(`${d.unscanned} Wallet(s) noch nicht geprüft`);
-    items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Token prüfen</strong><small style="display:block;margin-top:2px">${parts.join(" · ")}</small><button class="secondary" style="margin-top:8px" onclick="openDiscoveryReview('${escapeAttr(d.firstWalletId||"")}')">Jetzt prüfen</button></div></div>`);
+    items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Token prüfen</strong><small style="display:block;margin-top:2px">${parts.join(" · ")}</small><small style="display:block">${(targetWallets||[]).filter(w=>{const x=discoveryReviewSummary([w]);return x.unresolved||x.unscanned;}).map(w=>dashboardWalletTaskLabel(w)).join("<br>")}</small><button class="secondary" style="margin-top:8px" onclick="openDiscoveryReview('${escapeAttr(d.firstWalletId||"")}')">Jetzt prüfen</button></div></div>`);
   }
   if(balanceCheck?.total){
     const pending=Number(balanceCheck.pendingWallets||0),stale=Number(balanceCheck.staleWallets||0),total=Number(balanceCheck.total||0);
@@ -7697,19 +7778,19 @@ function dashboardActionItems(targetWallets,involvedProjects,balanceCheck){
       title=`${stale} Wallet(s) mit veraltetem Bestandsstand`;
       detail="Der letzte vollständige Bestandscheck ist älter als heute.";
     }
-    items.push(`<div><span class="dashboard-action-icon warning">!</span><p><strong>${title}</strong><small>${detail}</small></p></div>`);
+    items.push(`<div><span class="dashboard-action-icon warning">!</span><p><strong>${title}</strong><small>${detail}</small><small>${(targetWallets||[]).filter(w=>dashboardBalanceCheckSummary([w]).total).map(w=>dashboardWalletTaskLabel(w)).join("<br>")}</small></p></div>`);
   }
   const reviewWallets=dashboardProjectCacheStats.dao1?.pendingBotClaimWallets||[];
   for(const review of reviewWallets){
     const w=(targetWallets||[]).find(w=>String(walletDbId(w))===String(review.walletId));
     if(!w||!review.count)continue;
-    items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Miner-Nachzahlungen prüfen</strong><small style="display:block;margin-top:2px">${escapeAttr(w.name||w.label||"Wallet")} · ${Number(review.count)} wAPTM-Zahlung(en), Bot nicht zugeordnet.</small><button class="secondary" style="margin-top:8px" onclick="DAO1Project.openBotClaimReview('${escapeAttr(String(review.walletId))}')">Bot-Claims prüfen</button></div></div>`);
+    items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>Miner-Nachzahlungen prüfen</strong><small style="display:block;margin-top:2px">${dashboardWalletTaskLabel(w,"dao1")} · ${Number(review.count)} wAPTM-Zahlung(en), Bot nicht zugeordnet.</small><button class="secondary" style="margin-top:8px" onclick="DAO1Project.openBotClaimReview('${escapeAttr(String(review.walletId))}')">Bot-Claims prüfen</button></div></div>`);
   }
   if(involvedProjects.has("tln_vow")){
     const tlnStats=dashboardProjectCacheStats.tln_vow||{};
     const rows=Array.isArray(tlnStats.expiredPartnerStakings)?tlnStats.expiredPartnerStakings:[];
     if(rows.length){
-      items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>TLN / VOW</strong><details style="margin-top:5px"><summary style="cursor:pointer;font-weight:700">${rows.length} abgelaufene Partner-Staking${rows.length===1?'':'s'} noch zu unstaken</summary><div class="meta" style="margin-top:6px">${rows.map(r=>`${escapeAttr(r.name||r.tlnId||'Partner')} · ${escapeAttr(r.asset||'Staking')} · abgelaufen ${escapeAttr(r.expiry||'')}`).join('<br>')}</div></details></div></div>`);
+      items.push(`<div class="dashboard-action-project"><span class="dashboard-action-icon warning">!</span><div style="min-width:0;flex:1"><strong>TLN / VOW</strong><details style="margin-top:5px"><summary style="cursor:pointer;font-weight:700">${rows.length} abgelaufene Partner-Staking${rows.length===1?'':'s'} noch zu unstaken</summary><div class="meta" style="margin-top:6px">${rows.map(r=>`${dashboardPartnerTaskLabel(r)} · ${escapeAttr(r.asset||'Staking')} · abgelaufen ${escapeAttr(r.expiry||'')}`).join('<br>')}</div></details></div></div>`);
     }
   }
   return items;
@@ -7749,6 +7830,7 @@ function renderDashboard(){
   const balanceCheck=dashboardBalanceCheckSummary(targetWallets);
   const actionItems=dashboardActionItems(targetWallets,involvedProjects,balanceCheck);
   const actionCount=actionItems.length;
+  if(actionCount)loadDashboardTaskAliases().catch(e=>console.warn("Aufgabennamen",e));
   const actionPanel=`<details class="dashboard-card dashboard-action-card" ${actionCount?"open":""}><summary class="dashboard-action-summary"><span><strong>Was muss ich tun?</strong>${actionCount?`<small>${actionCount} offene Aufgabe${actionCount===1?"":"n"}</small>`:`<span class="dashboard-action-all-ok" title="Keine offenen Aufgaben">✓</span><small>Keine offenen Aufgaben</small>`}</span><span class="dashboard-action-chevron" aria-hidden="true">⌄</span></summary>${actionCount?`<div class="dashboard-action-list dashboard-action-grid">${actionItems.join("")}</div>`:`<div class="dashboard-action-empty">Aktuell ist keine Aktion nötig.</div>`}</details>`;
   root.innerHTML=`
     <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>

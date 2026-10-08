@@ -1,0 +1,13 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const src=fs.readFileSync('js/app.js','utf8'),between=(a,b)=>src.slice(src.indexOf(a),src.indexOf(b,src.indexOf(a)));
+const w={id:'w1',label:'Monica wallet',evm:'0x1234567890123456789012345678901234567890',ownerName:'Monica'};let uid='u1',reads=0,renders=0;
+const c=vm.createContext({Map,Set,String,Date,console,currentUser:{id:uid},wallets:[w],window:{DAO1Project:{getTaskDids:()=>[{system:'dao1',id:'17265'}]},TLNVOWDiscovery:{getTaskTlnId:()=>17265}},walletDbId:w=>w.id,escapeAttr:s=>String(s).replaceAll('<','&lt;').replaceAll('>','&gt;'),dashboardShortAddress:a=>a.slice(0,6)+'…'+a.slice(-4),renderDashboard:()=>renders++,invokeWalletPrivate:async()=>{reads++;return {ok:true,aliases:{'id:17265':'Carmen <Partner>','dao1:did:17265':'DAO Name'}};}});
+vm.runInContext(between('let dashboardTaskAliasUser=','function dashboardActionItems('),c);
+await Promise.all([c.loadDashboardTaskAliases(),c.loadDashboardTaskAliases()]);assert.equal(reads,1);
+const row={wallet:w.evm,tlnId:'17265',name:'TLN-ID 17265'};
+const label=c.dashboardPartnerTaskLabel(row);assert.match(label,/^TLN-ID 17265/);assert.match(label,/Monica/);assert.match(label,/Carmen &lt;Partner&gt;/);assert.doesNotMatch(label,/DAO Name/);
+assert.match(c.dashboardWalletTaskLabel(w,'dao1'),/DAO Name/);assert.doesNotMatch(c.dashboardWalletTaskLabel(w,'dao1'),/Carmen/);
+assert.match(c.dashboardWalletTaskLabel(w),/Carmen/);assert.match(c.dashboardWalletTaskLabel(w),/DAO Name/);
+assert.equal(c.dashboardPartnerTaskLabel({tlnId:'999'}),'TLN-ID 999');
+c.currentUser={id:'u2'};assert.doesNotMatch(c.dashboardPartnerTaskLabel(row),/Carmen/,'never use another user alias');
+console.log('PASS names are additive; TLN IDs preserved; owner+partner; escaped names; TLN/DAO namespaces; all wallet tasks; missing names; deduplicated read; user isolation');
