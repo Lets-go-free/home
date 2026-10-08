@@ -1216,6 +1216,7 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 .dashboard-kpi-gold{background:linear-gradient(135deg,#fff 2%,#ffe6b4);border-color:#e7c274}
 .dashboard-data-warning{margin-top:10px;padding:9px 12px;border-radius:10px;background:#fff4dd;color:#704d0d;font-size:.76rem;border:1px solid #eed29a}
 .dashboard-main-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,.75fr);gap:12px;margin-top:12px}
+.dashboard-main-grid-single{grid-template-columns:minmax(0,1fr)}
 .dashboard-card,.dashboard-project-card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-soft);padding:16px;min-width:0}
 .dashboard-card-head,.dashboard-project-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
 .dashboard-card-head h3,.dashboard-project-head h3,.dashboard-section-title h3{margin:0;color:var(--text);font-size:.95rem;text-transform:none;letter-spacing:0}
@@ -1568,8 +1569,8 @@ body.wt-modal-open{overflow:hidden}
 @media(max-width:720px){.dashboard-wealth-lines{grid-template-columns:1fr}}
 
 /* Phase 5.40 · 19.09.2026 19:21:00 CEST · Dashboard-Audit / stale-while-refresh */
-.dashboard-price-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
-.dashboard-price-table-compact{min-width:0;width:100%;font-size:.72rem}
+.dashboard-price-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,680px),1fr));gap:10px;align-items:start}
+.dashboard-price-table-compact{min-width:680px;width:100%;font-size:.72rem}
 .dashboard-price-table-compact th,.dashboard-price-table-compact td{padding:5px 7px;vertical-align:middle}
 .dashboard-price-table-compact td .meta{font-size:.62rem;line-height:1.15}
 .dashboard-price-table-compact td:first-child .meta{display:none}
@@ -1579,7 +1580,7 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-activity-list{display:grid;gap:0}
 .dashboard-activity-list>div{display:grid;grid-template-columns:95px 110px minmax(120px,.8fr) minmax(180px,1.4fr);gap:10px;padding:8px 4px;border-top:1px solid var(--border);align-items:center;font-size:.78rem}
 .dashboard-activity-list time{color:var(--muted);font-variant-numeric:tabular-nums}.dashboard-activity-list strong{color:var(--text)}
-@media(max-width:1180px){.dashboard-price-columns{grid-template-columns:1fr}.dashboard-price-table-compact{font-size:.78rem}}
+@media(max-width:1180px){.dashboard-price-table-compact{font-size:.78rem}}
 @media(max-width:720px){.dashboard-activity-list>div{grid-template-columns:1fr 1fr}.dashboard-activity-list>div span:last-child{grid-column:1/-1}}
 
 /* Phase 5.42: Chain-Kennung in der kompakten Kursliste nutzt das Native-Symbol; Token-Spalte bleibt iconfrei. */

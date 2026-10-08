@@ -1,5 +1,8 @@
-# WalletTracking · Phase 7.49
+# WalletTracking · Phase 7.50
 
+
+## Update 7.50
+Aktuelle Kurse über volle Dashboard-Breite; Tabellenaufteilung nach verfügbarer Breite, horizontaler Scroll bei schmalen Ansichten. Preislogik und Datenabrufe unverändert. Kein neues SQL/Edge-Deployment. Zu testen: Safari/Brave, schmale/breite Fenster, Navigation ein-/ausgeklappt, Hell/Dunkel.
 
 ## Update 7.49
 Namen in „Was muss ich tun?“ sind ausschließlich zusätzliche Angaben: TLN-IDs und andere Kennungen bleiben erhalten. Besitzer und gespeicherter Partneralias werden dedupliziert ergänzt, einschließlich Token-/Bestandschecks, Miner-Nachzahlungen und Partner-Stakings. Userbezogener Alias-RAM lazy beim ersten Dashboard mit Aufgaben, ein deduplizierter wallet-private-Read; nach Alias-Save erneuert. Keine RPC-/Team-Discovery für Namen; TLN/DAO/APTMDAO-Namensräume bleiben getrennt.
