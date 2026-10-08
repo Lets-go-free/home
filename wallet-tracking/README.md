@@ -1,7 +1,16 @@
-# WalletTracking 7.45 · 08.10.2026 01:35:12 CEST
+# WalletTracking · Phase 7.46
 
-## Update installieren
-Gelieferte Dateien im Verzeichnis wallet-tracking ersetzen/veröffentlichen und Seite neu laden. Kein Edge-Deployment, kein SQL und keine neuen Secrets für 7.45. Daten aktualisieren führt die einmalige Prüfung alter NFT-Zahlungsnachweise durch. Bestehende SQL-/Edge-Voraussetzungen aus früheren Releases bleiben erforderlich.
+Entdecken startet mit Alle Wallets. Scans und Sperren bleiben walletbezogen. Die sichere Sammelaktion schließt Spam aus und dedupliziert je Chain/Adresse.
+
+DAO1/APTMDAO: aktuelle DID-Partnerbesitzer getrennt über ownerOf(latest), maximal vier parallele Aufrufe pro System und fünf Minuten RAM-Cache. Mint-Wallet und Parent bleiben unverändert im historischen Graph-Cache. Aktuelle Details, Bots und Partnerzahlen verwenden den aktuellen Owner; bei Fehlern bleibt dieser offen.
+
+Installation: geänderte Dateien übernehmen, **supabase/functions/apertum-rpc-proxy/index.ts deployen**. Keine SQL-Migration, keine Wallet löschen/neu hinzufügen, keine historischen Graph-Caches leeren. Danach Seite neu laden und Daten aktualisieren. Ohne neuen Proxy kann die Legacy-Besitzerprüfung nicht laufen.
+
+Zu testen: Entdecken Alle/Einzelwallet, gemischte Scan-Sperren, Chainfilter, sichere und Spam-Sammelaktion; Monica DAO1 #21044 → Carmen #18438 auf 0x568281…fe4940, APTMDAO #7803 → Chris #7315; 9 Mining-Bots und 1 Trading-Bot getrennt zugeordnet; Besitzerwechsel/RPC-Fehler. Wallet hinzufügen/löschen, sämtliche Daten löschen, normale Kontolöschung und Admin-Negativtest bleiben Teil des End-to-End-Audits. Restore-Test zurückgestellt.
+
+Offen: separate wAPTM-Auszahlung 08.10.2026, Quelle 0x6d0539de11b95e18cb202a55098e3854b0313022 noch als DAO1-Bot-Auszahlungsquelle bestätigen. Kein ungeprüftes Reward-Zählen gewöhnlicher Token-Transfers.
+
+Dokumentation: Admin → Systemübersicht, Audit, Dokumentation, Ideen/Umbau; allgemeine und DAO1-Hilfe; docs/releases/CHANGELOG.md. Historische SQL-Migrationen erhalten.
 
 ## Erwerb ohne Zahlung
 „Mint ohne Zahlung in dieser TX“ bedeutet: erfolgreicher ERC-721-Mint dieses Bots an die Erwerbswallet, vollständige Token-/Internal-Transferlisten und TX-Details, kein positiver ERC-20- oder nativer Zahlungsfluss in dieser TX. Gas ist kein Kaufpreis. Frühere oder externe Zahlungen bleiben möglich; Kaufpreis bleibt nicht ermittelt, niemals automatisch 0. Bei Abruffehlern oder unvollständigen Daten bleibt die Prüfung offen.
@@ -19,7 +28,7 @@ Produktiver Test: nach Veröffentlichung neu laden, Daten aktualisieren, die vie
 - Übrige ungeklärte Bot-Kaufpreise anhand eigener Erwerbs-TX prüfen; separate Zahlung nicht heuristisch zuordnen.
 - Externe Metadaten #120469 fehlen (404 produktiv bestätigt, technische Behandlung funktioniert).
 - Vollständiger Konto-Löschtest samt Admin-Negativtest und Neu-/Alt-Wallet-Importvergleich noch nicht abschließend belegt.
-- Michaela: Trading-Bot im alten DAO1-Zweig separat kontrollieren.
+- Monica: Trading-Bot im alten DAO1-Zweig separat kontrollieren.
 - Legacy-Claim #10294 ohne Auszahlung: niedrige Priorität.
 - Restore-Test weiter zurückgestellt; Backup und Master-Key gesichert.
 

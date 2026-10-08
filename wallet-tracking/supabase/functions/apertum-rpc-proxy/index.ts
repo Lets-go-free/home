@@ -1,8 +1,10 @@
+// Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: authentifizierter Apertum-RPC-Proxy mit gezielt freigegebenem eth_call für APTMDAO DID ownerOf/Parent. Build 20260922-121522.
 import { withSupabase } from 'npm:@supabase/server@^1'
 
 const RPC_URL = 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc'
 const APTMDAO_NFT_CONTRACT = '0x0e1d3df5ce689df2c429216fb44caec064acbbaa'
+const DAO1_DID_CONTRACT = '0xde72695e54bb44beb1844c35cd3ea50f4f785f2d'
 const ETH_CALL_SELECTORS = new Set(['0x6352211e', '0x414533de']) // ownerOf(uint256), parent getter
 const ALLOWED_METHODS = new Set(['eth_blockNumber', 'eth_getLogs', 'eth_getBlockByNumber', 'eth_call'])
 
@@ -57,8 +59,9 @@ function validateRequest(method: string, params: unknown[]): void {
     const call = params[0] as Record<string, unknown>
     const to = String(call.to ?? '').toLowerCase()
     const data = String(call.data ?? '').toLowerCase()
-    if (to !== APTMDAO_NFT_CONTRACT) throw new Error('eth_call Contract nicht erlaubt.')
-    if (!/^0x[0-9a-f]+$/.test(data) || data.length < 10 || !ETH_CALL_SELECTORS.has(data.slice(0, 10))) {
+    if (to !== APTMDAO_NFT_CONTRACT && to !== DAO1_DID_CONTRACT) throw new Error('eth_call Contract nicht erlaubt.')
+    if (to === DAO1_DID_CONTRACT && data.slice(0, 10) !== '0x6352211e') throw new Error('DAO1 DID: nur ownerOf erlaubt.')
+    if (!/^0x[0-9a-f]+$/.test(data) || data.length !== 74 || !ETH_CALL_SELECTORS.has(data.slice(0, 10))) {
       throw new Error('eth_call Funktionsselector nicht erlaubt.')
     }
     if (!isHexBlockTag(params[1])) throw new Error('Ungueltiger eth_call Block-Tag.')

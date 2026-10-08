@@ -1,3 +1,4 @@
+// Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
 // Phase 7.45 · 08.10.2026 01:35:12 CEST: Mint ohne Zahlung in dieser TX bei vollständig geprüfter TX; Kaufpreis bleibt unbekannt. Build 20261008-013512.
 // Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-013512.
 // Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-013512.
@@ -111,12 +112,13 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20261005-152110";
-const HELP_MODULE_TIMESTAMP="05.10.2026 15:21:10 CEST";
+const HELP_MODULE_BUILD="20261008-143804";
+const HELP_MODULE_TIMESTAMP="08.10.2026 14:38:04 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
   el.innerHTML=`<div class="section-title">❓ Hilfe / Handbuch</div>
+<div class="custom-token-card"><h3>Entdecken für alle Wallets</h3><p>Standardmäßig werden die gespeicherten Ergebnisse aller Wallets angezeigt. Du kannst eine einzelne Wallet und die zu prüfenden Chains auswählen. Ein Scan prüft freigegebene Wallets nacheinander; die 30-Tage-Sperre gilt je Wallet. Gesperrte Wallets behalten ihre bisherigen Ergebnisse. „Alle entdeckten Tokens als sicher hinzufügen“ übernimmt unterschiedliche Tokens der ausgewählten Chains ohne Spam-Verdacht oder eigene Spam-Markierung. Du bestätigst die Anzahl; deine sichere Liste gilt für alle deine Wallets. Die Freigabe ist deine Entscheidung, kein Sicherheitsnachweis.</p></div>
 
       <div class="custom-token-card"><h3>Sicherung und Wiederherstellung</h3><p class="note">Admins finden unter Admin → Dokumentation die Stammdatenexporte als JSON und SQL sowie die Anleitung zur Datenbankstruktur-Sicherung. Diese Exporte enthalten globale Konfigurationen, keine persönlichen Walletdaten. Eine vollständige Wiederherstellung braucht zusätzlich Schema, spätere Migrationen, Edge-/Auth-/Storage-Konfiguration und gegebenenfalls private Datensicherungen. Der Restore-Test in einer frischen Umgebung ist noch offen.</p></div>
       <div class="custom-token-card"><h3>Datenaktualisierung bei Verbindungsfehlern</h3><p class="note">Vorübergehende EVM-RPC-Fehler werden begrenzt erneut versucht. Scheitert der Abruf weiterhin, bleibt ein vorhandener gültiger Bestand erhalten und wird als veraltet gekennzeichnet. Im Datenstand pro Wallet erscheinen die Bestände einzeln nach Chain. Fehlgeschlagene Abrufe bleiben für eine erneute Aktualisierung fällig; das letzte Erfolgsdatum bleibt erhalten. Die Hinweise nennen Wallet, Chain und Abrufart. Der gesamte Lauf ist erst nach den anschliessenden DAO1/APTMDAO-Schritten abgeschlossen. Vor dem Abschluss werden die gespeicherten NFT-Kaufnachweise übernommen und die NFT-/Bot-Ansichten aktualisiert; vorhandene Kaufpreise sollen ohne Seiten-Refresh sichtbar sein. Deren Team-Aktualisierung gehört zum selben laufenden Job; separate Admin-Aktionen warten weiterhin auf einen freien Job. Im Admin-Bereich Chains sind technisch kritische Spalten mit orangefarbenem Hintergrund und orangefarbener Überschrift markiert, auch beim Scrollen, bei Hover und im Dunkelmodus. Bei Teilfehlern wird kein neuer vollständiger Snapshot gespeichert. Auch bei einem Speicherfehler bleibt der bisherige Snapshot erhalten. Später erneut „Daten aktualisieren“ ausführen; anhaltende Fehler anhand der konkreten Hinweise prüfen.</p></div>

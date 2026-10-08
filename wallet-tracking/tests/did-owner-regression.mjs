@@ -1,0 +1,37 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync('projects/dao1/dao1.js','utf8');
+const block=source.slice(source.indexOf('  const dao1DidOwners='),source.indexOf('  async function loadDAO1TeamAliases'));
+let calls=0,fail=false,owner='0x5682810a3f03593bc94480df70fe036a8cfe4940',uid='a',release;
+const roots=[{did:18438,wallet_address:'0xf334eb9255c700b42bc349c048d3f50343064a64'}];
+const edges=[{child_id:21044,parent_id:18438,wallet:'0x'+'d'.repeat(40)},{child_id:18438,parent_id:14757,wallet:'0x'+'c'.repeat(40)},{child_id:99999,parent_id:99998,wallet:'0x'+'e'.repeat(40)}];
+const c=vm.createContext({Map,Set,Date,BigInt,Promise,console:{warn(){}},lower:x=>String(x).toLowerCase(),getContext:()=>({currentUser:{id:uid}}),dao1OwnedDidRoots:roots,aptmdaoOwnedDidRoots:[],DAO1_TEAM_MAX_LEVELS:20,APTMDAO_NFT_CONTRACT:'new',DAO1_OLD_DID_CONTRACT:'old',dao1TeamDiscovery:{legacy:{edges},aptmdao:{edges:[]}},teamDiscoveryState:()=>c.dao1TeamDiscovery.legacy,renderDAO1TeamTreePanel(){},async dao1ApertumRpc(method,params){calls++;assert.equal(method,'eth_call');assert.equal(params[1],'latest');if(release)await new Promise(r=>{release=r;});if(fail)throw Error('offline');return '0x'+'0'.repeat(24)+owner.slice(2);}});
+vm.runInContext(block,c);
+assert.equal(c.dao1TeamWalletForDid(21044),'','historical mint address must not count as current owner');
+assert.deepEqual(Array.from(c.dao1RelevantDidIds('legacy',edges)).sort((a,b)=>a-b),[14757,18438,21044]);
+await Promise.all([c.dao1ResolveDidOwner('legacy',21044),c.dao1ResolveDidOwner('legacy',21044)]);
+assert.equal(calls,1);assert.equal(c.dao1TeamWalletForDid(21044),owner);assert.equal(edges[0].wallet,'0x'+'d'.repeat(40));assert.equal(edges[0].parent_id,18438);
+await c.dao1ResolveDidOwner('legacy',21044);assert.equal(calls,1);
+c.dao1InvalidateDidOwners();owner='0x'+'b'.repeat(40);await c.dao1ResolveDidOwner('legacy',21044);assert.equal(c.dao1TeamWalletForDid(21044),owner);
+c.dao1InvalidateDidOwners();fail=true;await c.dao1ResolveDidOwner('legacy',21044);assert.equal(c.dao1TeamWalletForDid(21044),'');const failedCalls=calls;await c.dao1ResolveDidOwner('legacy',21044);assert.equal(calls,failedCalls,'negative retry cooldown');
+uid='b';assert.equal(c.dao1TeamWalletForDid(21044),'','different user cannot reuse owner cache');
+fail=false;owner='0x'+'0'.repeat(40);await c.dao1ResolveDidOwner('legacy',21044);assert.equal(c.dao1TeamWalletForDid(21044),'','burned/zero owner must remain unassigned');
+// Every read surface must use current ownership, including combined wallet relations.
+const extract=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
+vm.runInContext(extract('  function dao1DidWalletMap(system)','  function dao1KnownParentDid')+extract('  function dao1ReachableRelations(system)','  function dao1BuildWalletGraph'),c);
+uid='a';owner='0x5682810a3f03593bc94480df70fe036a8cfe4940';c.dao1InvalidateDidOwners();await c.dao1ResolveDidOwner('legacy',21044);
+assert.equal(c.dao1DidWalletMap('legacy').get(21044),owner);
+assert.equal(c.dao1ReachableRelations('legacy')[0].childWallet,owner);
+assert.equal(c.dao1ReachableRelations('legacy')[0].parentWallet,roots[0].wallet_address);
+// Server allowlist: only ownerOf on legacy; no arbitrary contracts/selectors/data.
+const proxy=fs.readFileSync('supabase/functions/apertum-rpc-proxy/index.ts','utf8');
+let validators=proxy.slice(proxy.indexOf('const APTMDAO_NFT_CONTRACT'),proxy.indexOf('export default'));
+validators=validators.replace(/: unknown\[\]/g,'').replace(/: unknown/g,'').replace(/: string/g,'').replace(/: number/g,'').replace(/: Response/g,'').replace(/: boolean/g,'').replace(/: void/g,'').replace(/ as Record<string, unknown>/g,'');
+const pc=vm.createContext({Set,Response});vm.runInContext(validators,pc);
+const data='0x6352211e'+'0'.repeat(60)+'5234';
+pc.validateRequest('eth_call',[{to:'0xde72695e54bb44beb1844c35cd3ea50f4f785f2d',data},'latest']);
+assert.throws(()=>pc.validateRequest('eth_call',[{to:'0xde72695e54bb44beb1844c35cd3ea50f4f785f2d',data:data.replace('6352211e','414533de')},'latest']));
+assert.throws(()=>pc.validateRequest('eth_call',[{to:owner,data},'latest']));
+assert.throws(()=>pc.validateRequest('eth_call',[{to:'0xde72695e54bb44beb1844c35cd3ea50f4f785f2d',data:data+'00'},'latest']));
+console.log('PASS DID current owner, historical preservation, cache/dedup, failures, user isolation, subtree scope and RPC allowlist');

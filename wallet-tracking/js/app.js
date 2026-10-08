@@ -1,3 +1,4 @@
+// Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
 // Phase 7.45 · 08.10.2026 01:35:12 CEST: Mint ohne Zahlung in dieser TX bei vollständig geprüfter TX; Kaufpreis bleibt unbekannt. Build 20261008-013512.
 // Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-013512.
 // Phase 7.43 · 08.10.2026 00:52:11 CEST: DAO1-Metadaten-404 sauber behandeln und Abrufe deduplizieren; Recovery nur für bestehende Konten. Build 20261008-013512.
@@ -3093,7 +3094,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"tokensgrp",level:0,label:"🪙 Meine Token",status:"done",start:"DB",daily:"–",open:"Cache/DB",manual:"Entdecken & prüfen",details:[]},
   {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","gezielt nur betroffene Chain bei neuem Token","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin. Token-/Stammdatenänderungen starten keinen globalen loadAll(); neue sichere/vordefinierte Token aktualisieren höchstens die betroffene Chain."]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
-  {id:"discovery",level:1,label:"🔍 Entdecken & prüfen",status:"done",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Neue Wallet: einmalige automatische Erstprüfung; danach manuell bei Bedarf. Dashboard zeigt offene Klassifizierungen unter „Was muss ich tun?“."]]},
+  {id:"discovery",level:1,label:"🔍 Entdecken & prüfen",status:"done",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Phase 7.46: Alle Wallets als Standard; Ergebnisse aus walletbezogenen DB-Caches. Manuell sequenzieller Scan der ausgewählten Chains, 30-Tage-Sperre je Wallet; gesperrte Wallets werden übersprungen. Sichere Sammelaktion dedupliziert Chain+Adresse, schließt Spam aus und aktualisiert jede betroffene Chain einmal. Kein neuer Scan beim Tab-Öffnen."]]},
 
   {id:"analysis",level:0,label:"📊 Dashboard & Analyse / Berichte",status:"in_progress",start:"Dashboard sofort + Caches",daily:"kontrollierter Delta-Refresh",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","1× täglich Delta-Prüfung nach Cache-Render","Phase 6.62: Login zeigt zuerst persistierte Current-State-Caches; danach startet höchstens einmal pro Kalendertag eine kontrollierte Delta-Prüfung. Wallet-Bestände nutzen Activity-Checks, Projekt/NFT-Daten werden nur bei Bedarf nachgezogen. Spezialhistorien bleiben getrennt."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
@@ -3131,9 +3132,10 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"inkrementeller Delta-Sync",open:"DB-Cache",manual:"Admin-Retry",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Cache beim Öffnen; Phase 6.62 synchronisiert neue Apertum-Transaktionen/Flows/Claims/Referral-Daten höchstens 1× täglich automatisch inkrementell; manueller Force-Refresh nur Admin"]]},
   {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","P5: zentrale asset-flow-first Payout-Leseschicht; Claim→NFT-Marker aus Transaktion/Claim-Cache","Supabase project_transaction_asset_flows (Asset/Menge/USD kanonisch) + project_transactions/project_nft_claims nur Claim-/NFT-Zuordnung und Kompatibilitätsdaten","Apertum nur bei manueller Aktualisierung","Phase 6.20 persistiert auch native APTM-Claims als Asset-Flows. Phase 6.21 entfernt den Legacy-Read-Fallback aus sichtbaren Claim-/Transaktions-/Exportpfaden; Asset-Flows sind dort alleinige Quelle für Asset, Menge und USD-Wert. Phase 6.22 ergänzt die historische APTM/USD-Bewertung direkt auf den nativen Claim-Flows; vorhandene TX-Preise werden wiederverwendet, nur offene Blöcke gehen über exact-v13 Price-Anchors. Der erste 6.22-Realtest scheiterte korrekt offen mit PGRST204, weil loadAssetFlowRows das private Runtime-Feld wallet_address hydratisiert und der Preis-Backfill diese Zeilen unverändert zurückschreiben wollte. Phase 6.23 entfernt dieses Nicht-Schemafeld zentral vor jedem Asset-Flow-Upsert; die fehlgeschlagene v1-Migration wird ohne SQL/Wallet-Neuaufbau erneut ausgeführt. Der 6.23-Realtest bewertete 257 von 267 nativen APTM-Flows und zeigte $1’452.40 historischen Gesamtwert; Phase 6.24 führt zusätzlich die sichtbare Spalte „APTM-Preis USD historisch“ direkt aus dem kanonischen Flow-Preis statt aus dem Legacy-Feld aptm_usd. Phase 6.25 diagnostiziert die offenen Preisfälle mit exaktem Anchor-Cache, nächstem gültigem Zielanker davor/danach und Legacy-Predecessor. Phase 6.26 verschiebt Repricing und Diagnose aus dem Claim-Tab in den App-Start-/DAO1-Aktualisierungspfad: nur offene Nicht-Prelaunch-Flows werden erneut geprüft; echte Prelaunch-Fälle werden dauerhaft markiert. Der 6.26-Realtest reduzierte 10 offene Flows auf 4 echte Prelaunch-Fälle und 6 Post-Launch-Missing-Fälle; die Diagnose blieb jedoch wegen noch nicht hydriertem Adminstatus beim App-Start bei 0. Phase 6.27 lässt die Diagnose deshalb im eigenen User-Kontext bereits mit aktiver Session laufen. Phase 6.28 behebt die Ursache der sechs verbleibenden Post-Launch-Lücken: Admin-Läufe synchronisieren die globale APTM-Poolhistorie bis zum höchsten offenen Claim-Block; alle User dürfen fehlende Exact-Zielblöcke read-only lokal aus Pool-State/Sync-Logs auflösen, ohne globale Cache-Schreibrechte. Phase 7.40: Original-Erwerbsdatum/-Tx werden unabhängig vom Kaufpreis im privaten NFT-Evidenzcache gespeichert; v5 ergänzt Upgrade-Nachweise gezielt aus alter NFT-Historie. Fehlende/fehlerhafte Historie bleibt ausdrücklich offen. Phase 7.39: Kaufdatum und Upgrade-Datum getrennt dargestellt; fehlendes ursprüngliches Datum bleibt offen. Phase 7.38: Die Claim-Summary und Detailzeilen unterscheiden Prelaunch von offenen historischen USD-Preisen; Tokenmengen bleiben erhalten, kein zusätzlicher RPC-Abruf. Prelaunch ist global und wallet-unabhängig als Block < 88356 (erster verlässlicher wAPTM/wUSDT-Marktpreis) definiert."]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
-  {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
-    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → Root + Downline + Upline der aktuell eigenen DIDs lokal lesen, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
-    ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
+  {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"IDB + Version; Besitzerprüfung",manual:"On-chain Update",details:[
+    ["Aktuelle DID-Besitzer · 7.46","User/System/DID-getrennter RAM-Cache, 5 Min.; Fehler 60 Sek. erneuter Versuch","Historische Mint-Wallet bleibt unverändert in beiden Graph-Caches; keine SQL-Migration","ownerOf(latest) über authentifizierten apertum-rpc-proxy für DAO1/APTMDAO","Partneranzeige, Details, Bot-Zuordnung und Partnerzahlen verwenden denselben aktuellen Besitzer. Fehler ergeben Besitzer nicht ermittelt, niemals Mint-Wallet als aktuellen Owner; Partnerzahlen bleiben bei offenen Besitzern offen statt 0. Eigene DIDs nutzen aktuellen Ownership-Bestand; Daten aktualisieren invalidiert Owner-RAM."],
+    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Kanten: IDB + DATA_VERSIONS → Root + Downline + Upline lokal, keine Kanten-RPC bei HIT. Besitzer: separat ownerOf(latest) für geladene Partner-DIDs; 5 Minuten RAM-Cache, maximal 4 parallele Aufrufe je System. Kein globaler Besitzscan. Manueller Update-Pfad inkrementell mit 24-Block-Overlap; erneute Besitzerprüfung."],
+    ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Kanten-Cache-HIT ohne Kanten-RPC, Update mit 24-Block-Overlap; aktueller Besitzer unabhängig über ownerOf, wie im Legacy-Baum."],
     ["DAO Wallet-Team + Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao1_old_tree_* + aptmdao_tree_* + dao_partner_bot_lifecycle_cache","Apertum RPC/Explorer nur bei Tree-Update bzw. gezielten Partnerdetails","Phase 5.62: Partner-Bots fremder Team-Wallets werden nach Entdeckung zentral in kleinen Batches aktualisiert, per userbezogenem SHA-256-Scan-State max. täglich erneut geprüft und in den bestehenden Lifecycle für Dashboard/Team persistiert. Direkte Uplines bleiben reine Upline-Knoten und werden weder als Downline noch als Partner gezählt. Phase 5.55: DAO1-alt und APTMDAO werden als getrennte vollständige Graphquellen in einen Walletgraph überführt; zentrale aktuelle NFT-/Ownership-Zuordnung hat bei DID→Wallet Vorrang vor historischen Tree-Event-Adressen. Mehrere externe Uplines eines eigenen Wallets werden getrennt nach DAO1/APTMDAO parallel oberhalb des Einstiegsknotens gezeigt. Belegte Upline-Ketten oberhalb eigener DIDs werden als echte Knoten gezeigt; eigene Wallets folgen ihrer DID-Parent-Kante (z. B. #25924 unter #21043) und zählen nicht als Partner. DAO1-only-Partner benötigen keine APTMDAO-DID. Für eigene Wallets ist der zentrale NFT-/Ownership-Bestand die Single Source of Truth; der Team-Baum startet keine parallele NFT-Discovery. Phase 5.93: Der Apertum-RPC-Proxy erlaubt ausschließlich die benötigten APTMDAO-DID eth_call-Selectoren; DATA_MIGRATIONS kann partial persistent speichern (SQL 072), und NFT-Migration v4 läuft automatisch erneut. Phase 7.43: DAO1 api.dao1.ai/miner/<ID> und APTMDAO api.aptmdao.io/nft/<ID> verwenden wallet-private/nft_metadata_fetch. 404 bedeutet optionale Metadaten fehlen; fünf Minuten nur im RAM zwischengespeichert, parallele Abrufe je URL dedupliziert. Server-/Transportfehler bleiben technische Hinweise; kein Ersatzendpunkt wird geraten. Phase 5.92: CORS-gesperrte APTMDAO-Metadaten (api.aptmdao.io/nft/<ID>) werden serverseitig über wallet-private mit enger Allowlist geladen; Migrationsjobs unterscheiden complete/partial/failed und partial erhöht die Datenversion nicht. APTMDAO-DID ownerOf/Parent darf eth_call über den bestehenden RPC-Proxy nutzen. Phase 5.91: NFT-Metadatenabrufe verwenden nur echte Metadata-/Token-URIs; Explorer-Webseiten und external_url-UI-Links werden CORS-sicher übersprungen. Die Migration wird per Datenversion einmalig erneut ausgeführt. Phase 5.90: Apertum-Botnamen werden zusätzlich aus Store-/Metadata-Attributen sowie vorhandenen project_nfts-Bezeichnungen aufgelöst; generische MineBot-#-Namen bleiben letzter Fallback. Die automatische Datenmigration prüft bestehende Apertum-NFT-Caches einmalig erneut. Phase 5.88: Der NFT-Tab bietet einen Typfilter (DID, MineBot, Hearts NFT, TradeBot); Apertum-Bots bevorzugen echte Store-/Metadata-Namen vor generischen MineBot-Fallbacks und vervollständigen Bild + Name + ID. Ein manueller NFT-Refresh repariert anschließend nur offene/invollständige DAO-Ownership-Historien. APTMDAO-Identitäts-NFTs werden fachlich als DID gezählt. Phase 5.87 gleicht vor 5.82 hinzugefügte Wallets gegen den zentralen Current-State ab und rekonstruiert fehlende/invollständige Ownership-Historien; bekannte DAO1-DID-Contracts benötigen keine manuelle Typklassifikation. Aktueller Owner und historische Erwerbs-/Kaufdaten bleiben getrennte Eigenschaften desselben NFT-Datensatzes. Root-Erkennung bleibt von aktuellen Projekt-Balances entkoppelt; Ownership wird vor Dashboard-/Tree-Cache geladen. User-Oberfläche: ausschließlich ein wallet-zentrierter DAO-Team-Baum (1 Wallet = 1 Knoten/Partner); separate DAO1-alt/APTMDAO-neu Ansichten sind aus der normalen Navigation entfernt und bleiben nur intern/DEV als getrennte Nachweisgraphen. Standardansicht ist wallet-zentriert. Eigene Wallets werden anhand ihrer belegten DAO1-/APTMDAO-Upline ebenfalls in denselben Baum eingehängt statt künstlich als separate Roots dargestellt; sie zählen nicht als Partner. DAO1-/APTMDAO-DIDs desselben Wallets bleiben on-chain getrennt und werden im Knoten visuell getrennt gezeigt. APTMDAO bestimmt bei zwei belegten Downline-Beziehungen die grafische Position. Bot-Details trennen aktuellen Owner-Bestand von früher auf diesem Wallet gekauften/übertragenen Bots; historische Kaufdaten bleiben am Bot. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315, Parent #23); historische Ownership bleibt Fallback. Eigene Wallets sind aus Letzte Partneraktivitäten ausgeschlossen. Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM + 24h IndexedDB Current-State","Supabase NFT/Ownership/Lifecycle Caches","Apertum nur bei abgelaufenem/fehlendem Current-State-Cache","Phase 5.78: fremde Partner-Wallet+Contract-Holdings werden 24h browserseitig wiederverwendet; historische Erwerbs-/DID-/Kaufpreislogik bleibt separat und blockgenau"]]},
@@ -3266,6 +3268,7 @@ function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
   ${window.WTAdminExports.render()}
+  <div class="custom-token-card"><h3>Aktueller Stand · 7.46</h3><p>Entdecken startet mit Alle Wallets; Scans bleiben je Wallet gespeichert und gesperrt. Alle entdeckten Tokens als sicher hinzufügen übernimmt unterschiedliche Tokens der ausgewählten Chains ohne Spam-Verdacht oder manuelle Spam-Markierung. Das ist eine persönliche Freigabe, kein technischer Sicherheitsnachweis.</p><p>DAO1/APTMDAO: Mint-Kanten und heutiger DID-Besitzer sind getrennt. Aktuelle Partnerbesitzer werden gezielt über ownerOf geprüft, fünf Minuten im RAM gehalten und bei Datenaktualisierung invalidiert. Alte Kanten-/IndexedDB-Caches bleiben als historische Fakten gültig; ihre Wallet-Adresse wird nicht mehr als aktueller Partnerbesitzer verwendet. Keine SQL-Bereinigung oder Wallet-Neuanlage nötig. Edge apertum-rpc-proxy muss aus diesem Release deployt werden.</p><p>7.42–7.45: endgültige Kontolöschung mit Admin-Sperre; Recovery nur für bestehende Konten; Metadaten-404 ohne falschen 502; Erwerbs-TX und abweichender Wallet-Transfer verlinkt; Mint ohne Zahlung in dieser TX setzt keinen Kaufpreis auf 0. NFT-Anzeige vom User bestätigt, externe Metadaten #120469 bleiben fehlend.</p><h3>Zu testen</h3><p>Wallet hinzufügen; Wallet vollständig löschen; sämtliche Daten löschen; normales Konto endgültig löschen und Admin-Negativtest. Monica: DAO1 #21044 unter Carmen #18438 auf 0x568281…fe4940; APTMDAO #7803 unter Chris #7315; aktueller Bestand 9 Mining-Bots und 1 Trading-Bot, Zuordnung getrennt prüfen. Besitzerwechsel und RPC-Fehler testen; Entdecken Alle/Einzelwallet, gemischte Sperren, Chainfilter und beide Sammelaktionen prüfen. Restore-Test bleibt zurückgestellt.</p><p>Offen: separate wAPTM-Auszahlung vom 08.10.2026. Transfer allein enthält keinen NFT-/Claim-Nachweis; Sender 0x6d0539de11b95e18cb202a55098e3854b0313022 muss als Bot-Auszahlungsquelle bestätigt werden, bevor normale Transfers als Rewards zählen dürfen.</p></div>
   <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.80</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Abschlussmessung:</strong> TLN/VOW-Haupttab wurde von 143 auf 42 und danach auf ca. 16 Requests reduziert. DAO-Team sank im Warm-Run von ca. 130 auf 16 Requests; Bot-Claims → Referral-Rewards verursacht in derselben Session keine zusätzlichen History-Reads. Weitere Optimierungen erfolgen nur noch bei konkretem Messbeleg.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Michaela 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
@@ -3544,6 +3547,10 @@ const HARDCODING_AUDIT_ITEMS = [
 ];
 
 const LIFECYCLE_ARCH_AUDIT_ITEMS = [
+  {priority:"R1",workStatus:"in Arbeit",severity:"high",area:"DID / aktueller Besitzer",finding:"Gleiche DAO1 DID #21044 erschien beim eigenen Owner auf 0x568281…fe4940, als Partner auf historischer Mint-Adresse 0xd907b2…e5e6da. Beziehung zu #18438 vorhanden.",action:"7.46: Besitzer unabhängig von Kanten-Cache über ownerOf prüfen; Fehler offen halten. Keine Überschreibung historischer Mint-Kanten; kein SQL nötig. Lokale Besitzer-/Fehler-/Cachetests; produktiver Retest beider Bäume nach Proxy-Deployment offen."},
+  {priority:"R2",workStatus:"in Arbeit",severity:"medium",area:"Entdecken / mehrere Wallets",finding:"Bisher nur Einzelwallet und keine sichere Sammelaktion. Walletbezogene Ergebnisse dürfen nicht vermischt gespeichert werden.",action:"7.46: Alle Wallets default; Sperren einzeln, Scan sequenziell, sichere Tokens Chain+Adresse dedupliziert, Spam ausgeschlossen. Cache-Updates nur je ursprünglicher Wallet; produktiver Retest offen."},
+  {priority:"R3",workStatus:"offen",severity:"medium",area:"Separate Bot-Auszahlung wAPTM",finding:"08.10.2026: 232.13969071 wAPTM von 0x6d0539…13022 an 0x239c58…228B47. Gewöhnlicher ERC20-Transfer, keine NFT-ID; in Bot-Claims nicht erkannt.",action:"Bestätigung der DAO1-Auszahlungsquelle fehlt. Keine pauschale Klassifikation aller wAPTM-Eingänge. Danach kanonische Asset-Flows und doppelfreie Reward-Summary ergänzen; Bot-Zuordnung offen lassen, wenn kein Nachweis vorhanden."},
+  {priority:"R4",workStatus:"in Arbeit",severity:"medium",area:"NFT / Dokumentation 7.42–7.46",finding:"Audit, tatsächliche Systemübersicht, Admin-Dokumentation und Changelog hinkten den letzten Änderungen hinterher.",action:"7.46 aktualisiert alle Dokumentationsstellen. User bestätigt NFT-Anzeige; das schließt Account-Löschungs-/Admin-Negativtest und Restore nicht ab. Alte P1–P9-Abschlüsse bleiben historische Testbefunde."},
   {priority:"P1", workStatus:"erledigt", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade konnten intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erschien.", action:"Phase 6.02: Einheitlicher Statusvertrag complete / partial / failed / deferred ist in DAO1 eingeführt und wird bis zum zentralen Wallet-Abschlussstatus propagiert; apertureHandled ist davon getrennt."},
   {priority:"P2", workStatus:"erledigt", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Phase 6.03: Automatischer Fresh-Build-Snapshot ist an den Lifecycle-Statusvertrag gekoppelt; nur complete ist zugelassen, partial/deferred/failed blockieren den finalen Snapshot und werden im Snapshot-Gate protokolliert."},
   {priority:"P3", workStatus:"erledigt", severity:"critical", area:"Fresh-Build-Parität", finding:"6.11-Realtest: Fresh-Build reproduziert den bekannten Entwicklungs-Testuser einschließlich Ownership/Erwerbsdaten und historischer Kaufpreise. Kontrollfall #38483 findet wieder exakt 10’000 wUSDT in Tx 0x31cd…1de2; weitere bekannte Preise (u. a. #31722, #90227, #90289, #37174) sind deckungsgleich. Bewusst nicht deterministisch verknüpfbare Käufe bleiben offen statt geraten zu werden.", action:"Phase 6.12 schließt P3 ab und macht den finalen Resolver-v3-Stand cache-first: auch bewusst offene Ergebnisse werden mit ihrer Erwerbs-Evidenz persistiert und beim ersten NFT-Tab-Öffnen nicht nochmals neu gerechnet, solange sich die zugrunde liegende Ownership-/Erwerbs-Evidenz nicht geändert hat."},
@@ -9152,7 +9159,7 @@ function renderFeesWalletSelect() {
   const el = document.getElementById("feesWalletSelect");
   if (!el) return;
   const current = el.value;
-  el.innerHTML = `<option value="">– Wallet wählen –</option>` + wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  el.innerHTML = `<option value="__all">Alle Wallets</option>` + wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
   if (wallets.some(w => String(w.id) === String(current))) el.value = current;
 }
 
@@ -9623,9 +9630,9 @@ function renderApprovalsWalletSelect() {
   const el = document.getElementById("approvalsWalletSelect");
   if (!el) return;
   const current = el.value;
-  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
+  el.innerHTML = `<option value="__all">Alle Wallets</option>` +
     wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
-  if (wallets.some(w => w.id === current)) el.value = current;
+  el.value = current === "__all" || wallets.some(w => String(w.id) === current) ? current : "__all";
 }
 
 // "Unlimitiert" ist bei ERC20-Freigaben keine feste Zahl, sondern Konvention - Wallets/Dapps
@@ -11836,9 +11843,9 @@ function renderDiscoveryWalletSelect() {
   const el = document.getElementById("discoveryWalletSelect");
   if (!el) return;
   const current = el.value;
-  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
+  el.innerHTML = `<option value="__all">Alle Wallets</option>` +
     wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
-  if (wallets.some(w => w.id === current)) el.value = current;
+  el.value = current === "__all" || wallets.some(w => String(w.id) === current) ? current : "__all";
 }
 
 // Erkennt typische Phishing-/Airdrop-Scam-Muster im Token-Namen oder -Symbol
@@ -12017,7 +12024,8 @@ function currentDiscoveryWalletId() {
 
 function getDiscoveryCacheForWallet(walletId) {
   if (!walletId) return null;
-  return discoveryCaches.get(String(walletId)) || null;
+  const w=wallets.find(w=>String(w.id)===String(walletId));
+  return discoveryCaches.get(String(w?.dbId||walletId)) || null;
 }
 
 function discoveryNextAllowedDate(cache = discoveryCache) {
@@ -12067,20 +12075,21 @@ async function loadDiscoveryCacheFromDb() {
   return discoveryCaches;
 }
 
+function selectedDiscoveryWallets(){
+  const id=currentDiscoveryWalletId();
+  return id==="__all" ? wallets : wallets.filter(w=>String(w.id)===id);
+}
+function selectedDiscoveryFindings(){
+  return selectedDiscoveryWallets().flatMap(w=>{
+    const cache=getDiscoveryCacheForWallet(w.id);
+    return (cache?.findings||[]).map(f=>({...f,walletLabel:w.label,_walletId:String(w.dbId||w.id)}));
+  });
+}
 function onDiscoveryWalletChange() {
-  const walletId = currentDiscoveryWalletId();
-  discoveryCache = getDiscoveryCacheForWallet(walletId);
-
-  if (discoveryCache) {
-    lastDiscoveryFindings = Array.isArray(discoveryCache.findings) ? discoveryCache.findings : [];
-    // Chain-Auswahl ist eine Scan-Einstellung, kein Bestandteil des gespeicherten Ergebnisses.
-    // Jeder neue Seiten-/Wallet-Aufruf startet mit allen aktuell aktivierten Discovery-Chains.
-    activeDiscoveryChains = new Set(discoveryChains());
-    renderDiscoveryChainFilter();
-  } else {
-    lastDiscoveryFindings = [];
-  }
-
+  discoveryCache = getDiscoveryCacheForWallet(currentDiscoveryWalletId());
+  lastDiscoveryFindings=selectedDiscoveryFindings();
+  activeDiscoveryChains=new Set(discoveryChains());
+  renderDiscoveryChainFilter();
   renderDiscoveryCacheState();
   renderDiscoveryResults(lastDiscoveryFindings);
 }
@@ -12089,6 +12098,7 @@ function renderDiscoveryCacheState(extraMessage) {
   const btn = document.getElementById("discoveryBtn");
   const info = document.getElementById("discoveryCacheInfo");
   if (!btn || !info) return;
+  if(discoveryScanRunning){btn.disabled=true;return;}
 
   const walletId = currentDiscoveryWalletId();
   if (!walletId) {
@@ -12098,6 +12108,13 @@ function renderDiscoveryCacheState(extraMessage) {
     return;
   }
 
+  if(walletId==="__all"){
+    const eligible=wallets.filter(w=>discoveryScanAllowed(getDiscoveryCacheForWallet(w.id)));
+    btn.disabled=!eligible.length;
+    btn.textContent=eligible.length?"Alle Wallets durchsuchen":"Scans noch gesperrt";
+    info.textContent=extraMessage||`${wallets.length} Wallets · ${eligible.length} für einen Scan freigegeben. Gesperrte Wallets behalten ihre gespeicherten Ergebnisse; die 30-Tage-Sperre gilt je Wallet.`;
+    return;
+  }
   discoveryCache = getDiscoveryCacheForWallet(walletId);
   if (!discoveryCache) {
     btn.disabled = false;
@@ -12284,9 +12301,9 @@ async function runInitialDiscoveryForWallet(w){
   const chains=discoveryChains().filter(chain=>walletAddressForChain(w,chain));
   if(!chains.length)return {skipped:true,reason:"no-discovery-chain"};
   const result=await scanDiscoveryForWallet(w,{chains});
-  if(String(currentDiscoveryWalletId())===walletId){
+  if(currentDiscoveryWalletId()==="__all"||String(currentDiscoveryWalletId())===walletId){
     discoveryCache=getDiscoveryCacheForWallet(walletId);
-    lastDiscoveryFindings=Array.isArray(discoveryCache?.findings)?discoveryCache.findings:[];
+    lastDiscoveryFindings=selectedDiscoveryFindings();
     renderDiscoveryCacheState();
     renderDiscoveryResults(lastDiscoveryFindings);
   }
@@ -12295,44 +12312,29 @@ async function runInitialDiscoveryForWallet(w){
 }
 window.runInitialDiscoveryForWallet=runInitialDiscoveryForWallet;
 
+let discoveryScanRunning=false;
 async function runDiscoveryScan() {
-  const btn = document.getElementById("discoveryBtn");
-  const status = document.getElementById("discoveryStatus");
-  const resultsEl = document.getElementById("discoveryResults");
-  const walletId = document.getElementById("discoveryWalletSelect").value;
-
-  if (!walletId) {
-    status.textContent = "Bitte zuerst eine Wallet auswählen.";
-    return;
-  }
-  if (activeDiscoveryChains.size === 0) {
-    status.textContent = "Bitte mindestens eine Chain auswählen.";
-    return;
-  }
-
-  const w = wallets.find(x => x.id === walletId);
-  if (!w) { status.textContent = "Wallet nicht gefunden."; return; }
-
-  btn.disabled = true;
-  resultsEl.innerHTML = "";
-  status.textContent = `Durchsuche ${w.label} …`;
-
+  if(discoveryScanRunning)return;
+  const btn=document.getElementById("discoveryBtn"),status=document.getElementById("discoveryStatus");
+  if(!activeDiscoveryChains.size){status.textContent="Bitte mindestens eine Chain auswählen.";return;}
+  discoveryScanRunning=true;btn.disabled=true;
+  const chains=[...activeDiscoveryChains],errors=[],notes=[];
+  let scanned=0,skipped=0;
   try{
-    const {findings,scanNotes}=await scanDiscoveryForWallet(w,{chains:[...activeDiscoveryChains]});
-    lastDiscoveryFindings=findings;
-    renderDiscoveryResults(findings);
-    const scamCount = findings.filter(f => isFindingScam(f)).length;
-    let statusText = `Fertig. ${findings.length} unbekannte(r) Token gefunden` + (scamCount > 0 ? `, davon ${scamCount} als möglicher Scam markiert.` : ".");
-    if (scanNotes.length > 0) statusText += " Hinweis: " + scanNotes.join(" ");
-    statusText += " Ergebnis in Supabase gespeichert.";
-    status.textContent=statusText;
-  }catch(e){
-    console.error(e);
-    status.textContent="Discovery fehlgeschlagen: "+(e?.message||e);
-  }finally{
-    renderDiscoveryCacheState();
-    renderDashboard();
-  }
+    await ensureDiscoveryCacheLoaded();
+    const targets=selectedDiscoveryWallets();
+    for(const w of targets){
+      if(!discoveryScanAllowed(getDiscoveryCacheForWallet(w.id))){skipped++;continue;}
+      if(!chains.some(c=>walletAddressForChain(w,c))){skipped++;continue;}
+      status.textContent=`Durchsuche ${w.label} · ${scanned+skipped+1}/${targets.length} …`;
+      try{const result=await scanDiscoveryForWallet(w,{chains});scanned++;notes.push(...result.scanNotes.map(n=>`${w.label}: ${n}`));}
+      catch(e){errors.push(`${w.label}: ${e?.message||e}`);}
+      btn.disabled=true;
+    }
+    lastDiscoveryFindings=selectedDiscoveryFindings();
+    renderDiscoveryResults(lastDiscoveryFindings);
+    status.textContent=`${scanned} Wallets aktualisiert, ${skipped} übersprungen. ${errors.length?"Fehler: "+errors.join("; "):"Ergebnisse gespeichert."}${notes.length?" Hinweise: "+notes.join(" "):""}`;
+  }finally{discoveryScanRunning=false;renderDiscoveryCacheState();renderDashboard();}
 }
 
 function discoveryReviewSummary(targetWallets=wallets){
@@ -12382,6 +12384,45 @@ let lastDiscoveryFindings = [];
 let discoveryHideSuspect = false;
 let discoveryHideMarkedScam = true;
 
+function discoverySafeBulkCandidates(){
+  const grouped=new Map();
+  for(const f of lastDiscoveryFindings){
+    if(!activeDiscoveryChains.has(f.chain)||isSafeTokenAddress(f.address,f.chain))continue;
+    const key=f.chain+"|"+normalizeAddress(f.address,f.chain),entry=grouped.get(key)||{finding:f,blocked:false};
+    entry.blocked ||= !!f.userMarkedScam||isFindingScamSuspect(f);
+    grouped.set(key,entry);
+  }
+  return [...grouped.values()].filter(x=>!x.blocked).map(x=>x.finding);
+}
+let discoveryBulkSaving=false;
+async function addAllDiscoveredTokensAsSafe(){
+  if(discoveryBulkSaving)return;
+  const candidates=discoverySafeBulkCandidates();
+  if(!candidates.length||!confirm(`${candidates.length} unterschiedliche Tokens der ausgewählten Chains als sicher hinzufügen? Spam-Verdachte und Spam-Markierungen sind ausgeschlossen. „Sicher“ ist deine persönliche Freigabe.`))return;
+  discoveryBulkSaving=true;
+  try{
+    const rows=candidates.map(f=>({user_id:currentUser.id,chain:f.chain,address:normalizeAddress(f.address,f.chain),label:f.symbol||f.address}));
+    const {data,error}=await sb.from("safe_tokens").insert(rows).select();
+    if(error)throw error;
+    for(const t of data||[])customSafeTokens.push({dbId:t.id,chain:t.chain,address:t.address,label:t.label});
+    renderCustomTokenList();renderSafeTokenTable();renderDiscoveryResults(lastDiscoveryFindings);
+    for(const chain of new Set(rows.map(r=>r.chain)))await refreshTokenChainTargeted(chain,{reason:"Entdeckte Tokens als sicher hinzugefügt"});
+    renderDashboard();
+  }catch(e){alert("Sammelaktion: "+(e?.message||e));}
+  finally{discoveryBulkSaving=false;}
+}
+// Persist only findings of each original wallet; never copy an aggregated result into one wallet.
+async function updateDiscoverySpamMarks(predicate,marked){
+  for(const w of selectedDiscoveryWallets()){
+    const cache=getDiscoveryCacheForWallet(w.id);if(!cache)continue;
+    const findings=(cache.findings||[]).map(f=>predicate(f)?{...f,userMarkedScam:marked}:f);
+    if(JSON.stringify(findings)===JSON.stringify(cache.findings))continue;
+    const {data,error}=await sb.from("discovery_cache").update({findings}).eq("user_id",currentUser.id).eq("wallet_id",String(cache.wallet_id)).select().single();
+    if(error)throw error;
+    discoveryCaches.set(String(cache.wallet_id),data||{...cache,findings});
+  }
+}
+
 function renderDiscoveryResults(findings) {
   const el = document.getElementById("discoveryResults");
   // Alte Discovery-Caches duerfen einen inzwischen manuell als sicher hinterlegten Token
@@ -12403,6 +12444,7 @@ function renderDiscoveryResults(findings) {
   const visible = actionableFindings.filter(f => !(discoveryHideMarkedScam && f.userMarkedScam) && !(discoveryHideSuspect && isFindingScamSuspect(f)));
   const suspectCount=actionableFindings.filter(f=>isFindingScamSuspect(f)).length, markedCount=actionableFindings.filter(f=>f.userMarkedScam).length;
   const filterBar = `<div class="custom-token-card" style="margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;align-items:center">
+    ${discoverySafeBulkCandidates().length?`<button onclick="addAllDiscoveredTokensAsSafe()">Alle entdeckten Tokens als sicher hinzufügen (${discoverySafeBulkCandidates().length})</button>`:""}
     ${suspectCount?`<button class="remove" onclick="markAllDiscoverySuspectsAsSpam()">Alle Spam-Verdachte als Spam markieren</button>`:""}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideScamSuspectToggle" style="width:auto" onchange="discoveryHideSuspect=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideSuspect ? "checked" : ""} />
@@ -12462,62 +12504,16 @@ function renderDiscoveryResults(findings) {
 
 async function markAllDiscoverySuspectsAsSpam(){
   const suspects=lastDiscoveryFindings.filter(f=>activeDiscoveryChains.has(f.chain)&&isFindingScamSuspect(f)&&!f.userMarkedScam&&!isSafeTokenAddress(f.address,f.chain));
-  if(!suspects.length)return;
-  if(!confirm(`${suspects.length} Spam-Verdacht(e) dieser Wallet wirklich als Spam markieren?`))return;
-  lastDiscoveryFindings=lastDiscoveryFindings.map(f=>(activeDiscoveryChains.has(f.chain)&&isFindingScamSuspect(f)&&!isSafeTokenAddress(f.address,f.chain))?{...f,userMarkedScam:true}:f);
-  renderDiscoveryResults(lastDiscoveryFindings);
-  const walletId=currentDiscoveryWalletId(),cache=getDiscoveryCacheForWallet(walletId);if(!cache)return;
-  const {data,error}=await sb.from('discovery_cache').update({findings:lastDiscoveryFindings}).eq('user_id',currentUser.id).eq('wallet_id',String(walletId)).select().single();
-  if(error){alert('Spam-Markierungen konnten nicht gespeichert werden: '+error.message);return;}
-  discoveryCaches.set(String(walletId),data);discoveryCache=data;renderDiscoveryCacheState();renderDashboard();
+  if(!suspects.length||!confirm(`${suspects.length} Spam-Verdachte der ausgewählten Wallets wirklich als Spam markieren?`))return;
+  try{await updateDiscoverySpamMarks(f=>activeDiscoveryChains.has(f.chain)&&isFindingScamSuspect(f)&&!isSafeTokenAddress(f.address,f.chain),true);}
+  catch(e){alert("Spam-Markierungen: "+e.message);}
+  lastDiscoveryFindings=selectedDiscoveryFindings();renderDiscoveryResults(lastDiscoveryFindings);renderDashboard();
 }
-
-async function setDiscoveryUserScam(chain, address, marked) {
-  if(marked && isSafeTokenAddress(address,chain)) return;
-  const normAddr = normalizeAddress(address, chain);
-  let changed = false;
-
-  lastDiscoveryFindings = lastDiscoveryFindings.map(f => {
-    if (f.chain === chain && normalizeAddress(f.address, chain) === normAddr) {
-      changed = true;
-      return { ...f, userMarkedScam: !!marked };
-    }
-    return f;
-  });
-
-  if (!changed) return;
-
-  renderDiscoveryResults(lastDiscoveryFindings);
-
-  // Den aktuellen wallet-spezifischen Discovery-Cache aktualisieren.
-  // Dies ist KEIN neuer Scan und darf deshalb den 30-Tage-Cooldown nicht neu starten.
-  const walletId = currentDiscoveryWalletId();
-  const cache = getDiscoveryCacheForWallet(walletId);
-  if (!cache) return;
-
-  const updatedCache = {
-    ...cache,
-    findings: lastDiscoveryFindings
-  };
-
-  const { data, error } = await sb
-    .from("discovery_cache")
-    .update({ findings: lastDiscoveryFindings })
-    .eq("user_id", currentUser.id)
-    .eq("wallet_id", String(walletId))
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Spam-Markierung speichern:", error);
-    alert("Die Spam-Markierung konnte nicht gespeichert werden: " + error.message);
-    return;
-  }
-
-  discoveryCaches.set(String(walletId), data || updatedCache);
-  discoveryCache = data || updatedCache;
-  renderDiscoveryCacheState();
-  renderDashboard();
+async function setDiscoveryUserScam(chain,address,marked){
+  if(marked&&isSafeTokenAddress(address,chain))return;
+  try{await updateDiscoverySpamMarks(f=>f.chain===chain&&normalizeAddress(f.address,chain)===normalizeAddress(address,chain),!!marked);}
+  catch(e){alert("Spam-Markierung: "+e.message);}
+  lastDiscoveryFindings=selectedDiscoveryFindings();renderDiscoveryResults(lastDiscoveryFindings);renderDashboard();
 }
 
 async function addDiscoveredToken(chain, address, symbol) {
