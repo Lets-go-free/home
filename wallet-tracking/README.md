@@ -1,5 +1,8 @@
-# WalletTracking · Phase 7.50
+# WalletTracking · Phase 7.51
 
+
+## Update 7.51
+Aktuelle Kurse in einer gemeinsamen Tabelle mit einem Tabellenkopf und durchgehend ausgerichteten Spalten. Volle Breite und horizontaler Scroll bleiben. Sortierung nach zentraler Chain-Reihenfolge, innerhalb der Chain nach Tokenname. Filter, Kursquellen und Datenabrufe unverändert. Kein neues SQL/Edge-Deployment. Zu testen: Safari/Brave, breite/schmale Fenster, Navigation ein-/ausgeklappt, Hell/Dunkel.
 
 ## Update 7.50
 Aktuelle Kurse über volle Dashboard-Breite; Tabellenaufteilung nach verfügbarer Breite, horizontaler Scroll bei schmalen Ansichten. Preislogik und Datenabrufe unverändert. Kein neues SQL/Edge-Deployment. Zu testen: Safari/Brave, schmale/breite Fenster, Navigation ein-/ausgeklappt, Hell/Dunkel.

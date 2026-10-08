@@ -1569,7 +1569,6 @@ body.wt-modal-open{overflow:hidden}
 @media(max-width:720px){.dashboard-wealth-lines{grid-template-columns:1fr}}
 
 /* Phase 5.40 · 19.09.2026 19:21:00 CEST · Dashboard-Audit / stale-while-refresh */
-.dashboard-price-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,680px),1fr));gap:10px;align-items:start}
 .dashboard-price-table-compact{min-width:680px;width:100%;font-size:.72rem}
 .dashboard-price-table-compact th,.dashboard-price-table-compact td{padding:5px 7px;vertical-align:middle}
 .dashboard-price-table-compact td .meta{font-size:.62rem;line-height:1.15}
