@@ -78,3 +78,8 @@ Die Projekthistorie erwähnt mindestens die Migrationen/SQL-Stände 057, 058, 05
 ## Separater Härtungspunkt
 
 Der Live-Snapshot enthält ältere breite Grants auf mehreren Tabellen und historisch interne Cache-/Jobobjekte in `public`. Beides wird separat auditiert und gehärtet, ohne den verifizierten Baseline-Snapshot rückwirkend umzuschreiben.
+
+
+## Ergänzung 7.48 nach Baseline
+
+Migration 091 erzeugt `public.dao_bot_claim_reviews` für notwendige Browser-Userentscheidungen. Kein globaler/Backend-Cache. SELECT/INSERT/UPDATE/DELETE nur authenticated unter RLS `auth.uid() = user_id`; anon/public ohne Grants. PK User+Projekt+Chain+Wallet+TX, FK auf private Transaktionszeile und auth.users mit ON DELETE CASCADE. Keine Walletadresse oder Name im Klartext. Die Baseline vom 04.10. bleibt unverändert; Restore muss spätere Migrationen einschließlich 091 anwenden. Live-Schema-/RLS-/Cascade-Verifikation offen.

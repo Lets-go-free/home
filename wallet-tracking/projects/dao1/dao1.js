@@ -1,3 +1,4 @@
+// Phase 7.48 · 08.10.2026 16:09:06 CEST: Separate wAPTM-Miner-Nachzahlungen je Wallet bestätigen/ignorieren; Nicht zugeordnet, Dashboard-Aufgabe und dauerhafte User-Entscheidung (SQL 091). Build 20261008-160906.
 // Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
 // Phase 7.45 · 08.10.2026 01:35:12 CEST: Mint ohne Zahlung in dieser TX bei vollständig geprüfter TX; Kaufpreis bleibt unbekannt. Build 20261008-013512.
 // Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-013512.
@@ -70,10 +71,104 @@ window.DAO1Project = (() => {
     return String(value||"").toLowerCase()===NEW_MINER_CLAIM_SELECTOR;
   }
   function isClaimTxRow(r){
-    return r?.claim_nft_id!=null
+    return isConfirmedSeparateBotClaim(r)
+      || r?.claim_nft_id!=null
       || !!r?.claim_nft_name
       || isKnownClaimSelector(r?.selector);
   }
+  // Separate payouts are candidates, not proof of a claim. Only user decisions count.
+  const BOT_PAYOUT_SENDER="0x6d0539de11b95e18cb202a55098e3854b0313022";
+  const BOT_PAYOUT_TOKEN="0x110ac02ba3384bc055c13a87766049a74517beda";
+  let botClaimReviewRevision=0,botClaimReviewScope="",botClaimReviewUser="",botClaimReviews=new Map(),botClaimReviewsLoaded=false,botClaimReviewInflight=null;
+  const botClaimReviewSnapshots=new Map(),botClaimReviewBusy=new Set();
+  function botReviewShort(value){const s=String(value||"");return s.length>12?`${s.slice(0,6)}…${s.slice(-4)}`:s;}
+  function botClaimReviewKey(row){return `${String(row?.wallet_id||"")}::${lower(row?.tx_hash||"")}`;}
+  function separateBotPayoutFlows(row,flows=transactionAssetFlows){
+    return (flows||[]).filter(f=>String(f.wallet_id||"")===String(row?.wallet_id||"")
+      && lower(f.tx_hash)===lower(row?.tx_hash) && f.direction==="eingang"
+      && lower(f.token_address)===BOT_PAYOUT_TOKEN && lower(f.counterparty_address)===BOT_PAYOUT_SENDER
+      && Number.isFinite(Number(f.amount)) && Number(f.amount)>0);
+  }
+  function botClaimReviewStatus(row){
+    return botClaimReviewUser===getContext?.()?.currentUser?.id?botClaimReviews.get(botClaimReviewKey(row)):null;
+  }
+  function isConfirmedSeparateBotClaim(row,flows=transactionAssetFlows){
+    return botClaimReviewStatus(row)==="confirmed" && separateBotPayoutFlows(row,flows).length>0;
+  }
+  function pendingBotClaimRows(rows,flows=transactionAssetFlows){
+    const seen=new Set();
+    return (rows||[]).filter(r=>{
+      const key=botClaimReviewKey(r);
+      if(seen.has(key)||botClaimReviewStatus(r)||r.claim_nft_id!=null||r.claim_nft_name||isKnownClaimSelector(r.selector)||!separateBotPayoutFlows(r,flows).length)return false;
+      seen.add(key);return true;
+    });
+  }
+  async function loadBotClaimReviews({force=false}={}){
+    const uid=getContext?.()?.currentUser?.id;
+    if(!uid)return;
+    const scope=(getContext?.()?.wallets||[]).map(w=>String(w.dbId||w.id)).sort().join("|");
+    if(botClaimReviewUser!==uid||botClaimReviewScope!==scope){botClaimReviewRevision++;botClaimReviewScope=scope;botClaimReviewUser=uid;botClaimReviews=new Map();botClaimReviewsLoaded=false;botClaimReviewInflight=null;botClaimReviewSnapshots.clear();botClaimReviewBusy.clear();}
+    if(!force&&botClaimReviewsLoaded)return;
+    if(botClaimReviewInflight)return botClaimReviewInflight;
+    const job=(async()=>{
+      const revision=botClaimReviewRevision,reviews=new Map();let offset=0;
+      while(true){
+        const {data,error}=await sb.from("dao_bot_claim_reviews").select("wallet_id,tx_hash,decision")
+          .eq("user_id",uid).order("wallet_id").order("tx_hash").range(offset,offset+DB_PAGE_SIZE-1);
+        if(error)throw new Error(`Bot-Claim-Prüfungen konnten nicht geladen werden. SQL 091 installieren. ${error.message||error}`);
+        for(const r of data||[])reviews.set(botClaimReviewKey(r),r.decision);
+        if((data||[]).length<DB_PAGE_SIZE)break;offset+=DB_PAGE_SIZE;
+      }
+      if(getContext?.()?.currentUser?.id===uid&&botClaimReviewUser===uid&&botClaimReviewScope===scope&&revision===botClaimReviewRevision){botClaimReviews=reviews;botClaimReviewsLoaded=true;}
+    })();
+    botClaimReviewInflight=job;
+    try{await job;}finally{if(botClaimReviewInflight===job)botClaimReviewInflight=null;}
+  }
+  function pendingBotClaimWallets(rows,flows){
+    const groups=new Map();
+    for(const r of pendingBotClaimRows(rows,flows)){
+      const id=String(r.wallet_id),g=groups.get(id)||{walletId:id,count:0};g.count++;groups.set(id,g);
+    }
+    return [...groups.values()];
+  }
+  function botClaimReviewHtml(rows){
+    botClaimReviewSnapshots.clear();
+    const groups=new Map();
+    for(const r of pendingBotClaimRows(rows)){
+      const id=String(r.wallet_id);if(!groups.has(id))groups.set(id,[]);groups.get(id).push(r);
+    }
+    return [...groups].map(([id,items])=>{
+      botClaimReviewSnapshots.set(id,items.map(r=>botClaimReviewKey(r)));
+      const w=claimWalletDisplay(items[0]);
+      return `<div class="custom-token-card"><h3>Vermutliche Miner-Nachzahlung in wAPTM – Bot nicht zugeordnet</h3><p><strong>${escapeHtml(w.name)}</strong> · ${escapeHtml(botReviewShort(w.address))}</p><p class="note">${items.length} offene Zahlung(en) vom Sender ${escapeHtml(botReviewShort(BOT_PAYOUT_SENDER))}. Der Transfer enthält keine Bot-ID. Erst deine Bestätigung nimmt diese Zahlungen in die Bot-Claim-Summen auf.</p><div class="chain-table-wrap"><table><thead><tr><th>Datum</th><th class="num">wAPTM</th><th>TX</th></tr></thead><tbody>${items.map(r=>`<tr><td>${escapeHtml(r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH"):"–")}</td><td class="num">${tokenAmount(separateBotPayoutFlows(r).reduce((a,f)=>a+Number(f.amount),0),{address:BOT_PAYOUT_TOKEN,symbol:"wAPTM"})}</td><td><a href="${EXPLORER}/tx/${encodeURIComponent(r.tx_hash)}" target="_blank" rel="noopener">${escapeHtml(botReviewShort(r.tx_hash))}</a></td></tr>`).join("")}</tbody></table></div><button ${botClaimReviewBusy.has(id)?"disabled":""} onclick="DAO1Project.decideBotClaimReview('${escapeHtml(id)}','confirmed')">Als Bot-Claims bestätigen</button> <button class="secondary" ${botClaimReviewBusy.has(id)?"disabled":""} onclick="DAO1Project.decideBotClaimReview('${escapeHtml(id)}','ignored')">Ignorieren, kein Bot-Claim</button></div>`;
+    }).join("");
+  }
+  async function decideBotClaimReview(walletId,decision){
+    if(!["confirmed","ignored"].includes(decision)||botClaimReviewBusy.has(walletId))return;
+    const uid=getContext?.()?.currentUser?.id;
+    const keys=new Set(botClaimReviewSnapshots.get(walletId)||[]);
+    const rows=pendingBotClaimRows(transactionRows).filter(r=>String(r.wallet_id)===walletId&&keys.has(botClaimReviewKey(r)));
+    if(!uid||!rows.length)return;
+    const label=decision==="confirmed"?"als Bot-Claims bestätigen":"ignorieren (kein Bot-Claim)";
+    if(!confirm(`${rows.length} aktuell angezeigte Zahlung(en) für ${claimWalletDisplay(rows[0]).name} ${label}? Spätere Zahlungen bleiben separat zu prüfen.`))return;
+    botClaimReviewBusy.add(walletId);renderClaimsTab();
+    try{
+      const payload=rows.map(r=>({user_id:uid,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,wallet_id:r.wallet_id,tx_hash:r.tx_hash,decision,updated_at:new Date().toISOString()}));
+      const {data,error}=await sb.from("dao_bot_claim_reviews").upsert(payload,{onConflict:"user_id,project_key,chain_key,wallet_id,tx_hash"}).select("wallet_id,tx_hash,decision");
+      if(error)throw error;
+      if(getContext?.()?.currentUser?.id!==uid||botClaimReviewUser!==uid)return;
+      if((data||[]).length!==payload.length)throw new Error("Die Speicherung wurde nicht vollständig bestätigt. Bitte erneut laden.");
+      botClaimReviewRevision++;
+      for(const r of data)botClaimReviews.set(botClaimReviewKey(r),r.decision);
+      renderTransactionHistory();renderClaimsTab();
+      await loadDashboardSummary();
+    }catch(e){alert(`Bot-Claim-Entscheidung nicht gespeichert: ${e.message||e}`);}
+    finally{botClaimReviewBusy.delete(walletId);if(getContext?.()?.currentUser?.id===uid)renderClaimsTab();}
+  }
+  async function openBotClaimReview(walletId="__all"){
+    window.showTab?.("dao1");await ensureLoaded();await switchSubtab("claims",document.getElementById("dao1BotClaimsTabBtn"));setResultWalletFilter("claims",walletId);
+  }
+
   // Verifizierter DAO1-Referral-Kontrollfall vom 24.02.2025:
   // Nur dieses DAO1-Wallet hatte Referral-Partner. Ein Referral Reward ist ein
   // withdraw/Contract-Call an den Referral-Contract mit tatsächlichem wUSDT-
@@ -360,7 +455,7 @@ window.DAO1Project = (() => {
       panel.className = "tab-panel";
       panel.innerHTML = `
         <div class="project-context-switch" aria-label="Projekt auswählen"><span class="field-label">Projekt</span><button type="button" class="tab-btn" id="tlnVowProjectSwitchBtnDao" onclick="showTab('tlnvow')">TLN / VOW</button><button type="button" class="tab-btn active" id="dao1ProjectSwitchBtnDao" onclick="showTab('dao1')">DAO1</button></div>
-        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('team',this)">Team</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); window.maybeAutoRefreshProject?window.maybeAutoRefreshProject('dao1','apertum','dao1LpContent'):renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button id="dao1BotClaimsTabBtn" class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('team',this)">Team</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); window.maybeAutoRefreshProject?window.maybeAutoRefreshProject('dao1','apertum','dao1LpContent'):renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
         <div id="dao1-subtab-claims" class="project-subtab-panel" style="display:none"><div id="dao1ClaimsContent"></div></div>
         <div id="dao1-subtab-referrals" class="project-subtab-panel" style="display:none"><div id="dao1ReferralContent"></div></div>
@@ -401,6 +496,7 @@ window.DAO1Project = (() => {
     }else if(name==="team"){
       renderDAO1TeamTab();
     }else if(name==="claims" || name==="referrals"){
+      await loadBotClaimReviews({force:true});
       const wallets=allProjectWalletOptions();
       transactionRows=await loadAllApertumTransactionRows(wallets,null);
       transactionAssetFlows=await loadAllAssetFlowRows(wallets);
@@ -3495,6 +3591,7 @@ window.DAO1Project = (() => {
   }
 
   async function loadAssetFlowRows(address=null,{force=false}={}){
+    await loadBotClaimReviews();
     const cacheKey=address?`wallet:${walletIdForAddress(address)}`:"all";
     if(!force&&daoHistoryFlowCache.has(cacheKey))return daoHistoryFlowCache.get(cacheKey);
     if(!force&&daoHistoryFlowInflight.has(cacheKey))return daoHistoryFlowInflight.get(cacheKey);
@@ -3552,7 +3649,7 @@ window.DAO1Project = (() => {
   // claim_reward_aptm / claim_reward_usd bleiben nur noch Schreib-/Altbestand und
   // duerfen keinen sichtbaren Wert mehr fuehren.
   function claimPayoutEntriesForTx(row){
-    return incomingAssetFlowsForTx(row).map(f=>({
+    return (isConfirmedSeparateBotClaim(row)?separateBotPayoutFlows(row):incomingAssetFlowsForTx(row)).map(f=>({
       source:"asset_flow",
       token_address:f.token_address||null,token_symbol:f.token_symbol||f.token_name||"TOKEN",token_name:f.token_name||null,
       token_decimals:Number(f.token_decimals??18),amount:Number(f.amount||0),
@@ -5033,6 +5130,7 @@ window.DAO1Project = (() => {
 
   function transactionClaimDescriptor(r){
     if(r.claim_nft_id==null){
+      if(isConfirmedSeparateBotClaim(r))return {id:null,subtype:"Mining-Bot",name:"Nicht zugeordnet"};
       if(isNewMinerClaimSelector(r?.selector) || r?.claim_nft_name){
         return {id:null,subtype:r?.claim_nft_subtype||"Mining-Bot",name:r?.claim_nft_name||"Apertum Miner"};
       }
@@ -5412,15 +5510,16 @@ window.DAO1Project = (() => {
 
   function renderClaimsTab(){
     const el=document.getElementById("dao1ClaimsContent");if(!el)return;
+    const reviewHtml=botClaimReviewHtml(tabWalletFilteredRows(transactionRows,claimFilterWallet));
     const walletRows=tabWalletFilteredRows(transactionRows.filter(r=>isClaimTxRow(r) && !isDidReferralRow(r)),claimFilterWallet);
     let rows=[...walletRows];
     if(claimFilterNft==="__unassigned")rows=rows.filter(r=>r.claim_nft_id==null);
     else if(claimFilterNft!=="__all")rows=rows.filter(r=>String(r.claim_nft_id??"")===claimFilterNft);
     const payoutSummary=botClaimPayoutSummary(rows);
     const unresolvedText=payoutSummary.unresolvedClaims?`<div class="meta" style="margin-top:5px">${payoutSummary.unresolvedClaims.toLocaleString("de-DE")} Claim(s) noch ohne ermittelte Auszahlung.</div>`:"";
-    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot-Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst eine tatsächliche Auszahlung den Claim.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
-      <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText,"Bot-Claims",rows.length)}</div>
-      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const payouts=claimPayoutEntriesForTx(r);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=payouts.length?payouts.map(f=>{const isWrapped=isWrappedAptmSymbol(f.token_symbol,f.token_name);const amount=isWrapped?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"TOKEN"})} ${escapeHtml(f.token_symbol||"TOKEN")}`;return `<strong>${amount}</strong><div class="meta">${claimPayoutHistoricalUsdHtml(f,r)}</div>`;}).join(""):"–";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${(()=>{const p=payouts.find(f=>((String(f.token_address||"").toLowerCase()==="native"&&String(f.token_symbol||"").toUpperCase()==="APTM")||isWrappedAptmSymbol(f.token_symbol,f.token_name))&&f.price_usd!=null&&Number.isFinite(Number(f.price_usd)));return p?usd(Number(p.price_usd)):(payouts.some(f=>isPrelaunchClaimPayout(f,r))?`<span class="meta">Prelaunch</span>`:"–");})()}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
+    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot-Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst eine tatsächliche Auszahlung den Claim. Separate wAPTM-Nachzahlungen vom festgelegten Sender zählen erst nach deiner Bestätigung und bleiben unter NFT „Nicht zugeordnet“.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
+      ${reviewHtml}<div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText,"Bot-Claims",rows.length)}</div>
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const payouts=claimPayoutEntriesForTx(r);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=payouts.length?payouts.map(f=>{const isWrapped=isWrappedAptmSymbol(f.token_symbol,f.token_name);const amount=isWrapped?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"TOKEN"})} ${escapeHtml(f.token_symbol||"TOKEN")}`;return `<strong>${amount}</strong><div class="meta">${claimPayoutHistoricalUsdHtml(f,r)}</div>`;}).join(""):"–";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>${isConfirmedSeparateBotClaim(r)?"Miner-Nachzahlung (bestätigt)":"Claim (Bot)"}</td><td><strong>${d?.name||"Nicht zugeordnet"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${(()=>{const p=payouts.find(f=>((String(f.token_address||"").toLowerCase()==="native"&&String(f.token_symbol||"").toUpperCase()==="APTM")||isWrappedAptmSymbol(f.token_symbol,f.token_name))&&f.price_usd!=null&&Number.isFinite(Number(f.price_usd)));return p?usd(Number(p.price_usd)):(payouts.some(f=>isPrelaunchClaimPayout(f,r))?`<span class="meta">Prelaunch</span>`:"–");})()}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
   }
 
   let dao1TeamTreeMode="aptmdao";
@@ -8886,10 +8985,11 @@ window.DAO1Project = (() => {
       const isVerifiedReferral=wallet===REFERRAL_WALLET&&lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT&&incoming.some(isVerifiedReferralFlow);
       if(isDid){for(const f of incoming)addAsset(referral,keys,f);continue;}
       if(isVerifiedReferral&&!isClaimTxRow(r)){for(const f of incoming.filter(isVerifiedReferralFlow))addAsset(referral,keys,f);continue;}
-      if(isClaimTxRow(r)){for(const f of claimPayoutEntriesForTx(r))addAsset(bot,keys,f);}
+      if(isConfirmedSeparateBotClaim(r,flows)){for(const f of separateBotPayoutFlows(r,flows))addAsset(bot,keys,f);}
+      else if(r.claim_nft_id!=null||r.claim_nft_name||isKnownClaimSelector(r.selector)){for(const f of incoming)addAsset(bot,keys,f);}
     }
     const finish=b=>Object.fromEntries(Object.entries(b).map(([k,map])=>[k,[...map.values()].filter(x=>x.amount!==0)]));
-    return {rewards:finish(bot),referralRewards:finish(referral)};
+    return {rewards:finish(bot),referralRewards:finish(referral),pendingBotClaimWallets:pendingBotClaimWallets(rows,flows)};
   }
 
   async function loadDashboardRewardCache(){
@@ -8902,6 +9002,7 @@ window.DAO1Project = (() => {
       }
       return out.map(hydratePrivateWalletAddress);
     };
+    await loadBotClaimReviews({force:true});
     const [rows,flows]=await Promise.all([loadPaged("project_transactions"),loadPaged("project_transaction_asset_flows")]);
     return dashboardRewardPeriods(rows,flows);
   }
@@ -8934,7 +9035,7 @@ window.DAO1Project = (() => {
         patch.teamPartners=patch.dao1Partners!=null&&patch.aptmdaoPartners!=null?new Set([...dao1PartnerWallets,...aptmPartnerWallets]).size:null;
         patch.updatedAt=cached.registryUpdatedAt||cached.state?.updated_at||patch.updatedAt;
       }
-      if(rewards){patch.rewards=rewards.rewards;patch.referralRewards=rewards.referralRewards;}
+      if(rewards){patch.rewards=rewards.rewards;patch.referralRewards=rewards.referralRewards;patch.pendingBotClaimWallets=rewards.pendingBotClaimWallets;}
       patch.recentPartnerActivities=recentPartnerActivities;
       // "davon aktiv" bleibt bewusst offen: Im aktuellen DAO1-Code existiert noch kein
       // belastbarer Contract-/Target-Proof, der "Bot läuft" vs. "Target erreicht" trennt.
@@ -8943,7 +9044,7 @@ window.DAO1Project = (() => {
   }
 
   return { nftPurchaseResolverVersion, refreshCachedViews, switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, runDailyDeltaRefresh, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
-    refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
+    decideBotClaimReview, openBotClaimReview, refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
     historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, backfillNativeClaimAssetFlows, backfillNativeClaimAssetFlowPrices, refreshMissingNativeClaimPrices, runNftReadModelAudit:dao1NftReadModelAudit, classifyNftType };

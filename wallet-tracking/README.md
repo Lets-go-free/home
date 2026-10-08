@@ -1,4 +1,13 @@
-# WalletTracking · Phase 7.47
+# WalletTracking · Phase 7.48
+
+
+Separate wAPTM-Nachzahlungen: positiver Eingang nur vom Sender `0x6d0539de11b95e18cb202a55098e3854b0313022` und Tokencontract `0x110ac02ba3384bc055c13a87766049a74517beda`. Je Wallet bestätigen/ignorieren, nur aktuell angezeigte TXs. Offen unter „Was muss ich tun?“ und Bot-Claims mit Datum/Betrag/TX. Bestätigt unter NFT „Nicht zugeordnet“ und in Claim-/Dashboard-Summen; ignorierte und offene Zahlungen zählen nicht. Keine vermutete Einzelbot-ID.
+
+**Installation 7.48:** Zuerst `sql/091-dao-bot-claim-reviews.sql` im Supabase SQL Editor komplett ausführen (**13 Statements in Reihenfolge**, BEGIN/COMMIT, keine SELECT-Resultsets). Danach geänderte Webdateien veröffentlichen, Seite neu laden und Daten aktualisieren. Kein neues Edge-Deployment. `apertum-rpc-proxy` aus 7.46 bleibt Voraussetzung für die DID-Korrektur.
+
+Entscheidungen gespeichert in `dao_bot_claim_reviews`, je User/Wallet/TX, FK auf vorhandene Transaktion, RLS auth.uid(), kein anon-Zugriff, keine Klartext-Walletadresse/-namen. Löschung via bestehende Transaktions-/Auth-Cascades; Blockchain-Daten bleiben unverändert. Erstread je User-/Wallet-Scope, erneuter cache-only Read beim Claims-/Referral-Öffnen und Dashboard-Summary. Kein zusätzlicher Explorer-/RPC-Scan; neue Zahlungen über vorhandenen Tages-/manuellen Delta-Sync.
+
+**Zu testen 7.48:** Bestätigen/ignorieren je Wallet, Abbrechen, neue TX nach Bestätigung, Reload, Nicht zugeordnet, Claim-/Dashboard-Summen und Personenfilter; Wallet hinzufügen/löschen, sämtliche Daten löschen, Kontolöschung und Admin-Sperre. Lokale Regressionen bestanden; produktiver Supabase-/RLS-/Cascade-Test offen. Restore-Test zurückgestellt.
 
 Entdecken startet mit Alle Wallets. Scans und Sperren bleiben walletbezogen. Die Sammelaktion markiert alle offenen entdeckten Tokens als Spam, auch ohne Verdacht; bereits sichere Tokens bleiben ausgeschlossen. Anzahl dedupliziert je Chain/Adresse, Speicherung je Wallet. Einzelaktion Als sicher hinzufügen bleibt erhalten. 7.47 ersetzt die sichere Sammelaktion aus 7.46.
 
@@ -8,7 +17,7 @@ Installation 7.47: geänderte Dateien übernehmen und veröffentlichen, Seite ne
 
 Zu testen: Entdecken Alle/Einzelwallet, gemischte Scan-Sperren, Chainfilter, Spam-Sammelaktionen und einzelne sichere Freigabe; Monica DAO1 #21044 → Carmen #18438 auf 0x568281…fe4940, APTMDAO #7803 → Chris #7315; 9 Mining-Bots und 1 Trading-Bot getrennt zugeordnet; Besitzerwechsel/RPC-Fehler. Wallet hinzufügen/löschen, sämtliche Daten löschen, normale Kontolöschung und Admin-Negativtest bleiben Teil des End-to-End-Audits. Restore-Test zurückgestellt.
 
-Offen: separate wAPTM-Auszahlung 08.10.2026, Quelle 0x6d0539de11b95e18cb202a55098e3854b0313022 noch als DAO1-Bot-Auszahlungsquelle bestätigen. Kein ungeprüftes Reward-Zählen gewöhnlicher Token-Transfers.
+7.48: Separate wAPTM-Auszahlungen werden manuell bestätigt. Company-Absender und einzelne Bot-Zuordnung bleiben extern unbestätigt; gewöhnliche Token-Transfers werden nicht ungeprüft gezählt.
 
 Dokumentation: Admin → Systemübersicht, Audit, Dokumentation, Ideen/Umbau; allgemeine und DAO1-Hilfe; docs/releases/CHANGELOG.md. Historische SQL-Migrationen erhalten.
 
