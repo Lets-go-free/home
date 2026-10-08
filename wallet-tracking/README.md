@@ -1,5 +1,14 @@
-# WalletTracking · Phase 7.52
+# WalletTracking · Phase 7.53
 
+
+## Update 7.53
+Bestehende historische Preisermittlung wiederverwendet: taxEvmBlockByTime (ohne neue userbezogene Zeitcache-Schreibvorgänge), taxDirectV2Price (optionaler exakter Pool) und taxV2LpHistoricalPrice (optionaler Routenresolver). Apertum verwendet weiterhin seine bestehenden Sync-/Transfer-Event-Nachweise; V3-slot0 ergänzt nur die fehlende historische Poolabfrage. Bisherige Aufrufer und Bewertungsformeln bleiben unverändert.
+
+24-Stunden-Vergleich für DEX-Kurse über dieselbe aktuelle Bewertungsroute; globaler Cache, ehrliche Lücken und Referenzkennzeichnung. CoinGecko-Änderungen unverändert. V2/V3-Routen und LP-Reserve-/Supply-Bewertung werden am Block vor 24h nachgerechnet; kein Anbieter-/Marktwechsel. Nur im zentralen Preisjob, nicht beim Dashboard-Öffnen. Temporärer globaler Vergleichscache im bestehenden Snapshot (v5), keine neue Tabelle oder langfristige Preisreihe. Fehlende Route/Archive-/frische Kursdaten bleiben – mit Tooltip; aktuelle Preise erhalten. Konstante USD-Referenz gesondert erklärt.
+
+Installation: Webdateien übernehmen, veröffentlichen, neu laden. Kein neues SQL/Edge-Deployment.
+
+Zu testen: Preis-Refresh, BSC-Voucher/VOW/TLNGOLD, ETH-V2/V3, APTM/wAPTM, LP, Reload und zweiter Nutzer, Archive-Fehler, CoinGecko unverändert. Lokale Regressionen bestanden; Live-RPC-Proben aus dieser Umgebung HTTP-abgewiesen, produktive Abdeckung offen. Wallet hinzufügen/löschen, sämtliche Daten löschen und Account-/Admin-Negativtest bleiben Teil des Audits; Restore zurückgestellt.
 
 ## Update 7.52
 Kurse: zwei Tabellen bei ausreichender Bereichsbreite, sonst eine gemeinsame Tabelle; Contract-Adressen kleiner auf zweiter Zeile. Container-Query ab 1400 px Innenbreite; bei weniger Platz gleiche Spalten in einer gemeinsamen Tabelle. Adressen gekürzt und kopierbar. Chain-/Tokensortierung, Preisquellen, Filter und Ladezeitpunkte bleiben. Kein neues SQL/Edge-Deployment. Zu testen: Safari/Brave, breite/schmale Fenster, Navigation ein-/ausgeklappt, Hell/Dunkel, Adresskopieren. Browser-Retest offen.

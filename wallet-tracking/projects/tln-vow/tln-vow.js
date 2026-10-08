@@ -1,3 +1,4 @@
+// Phase 7.53 · 08.10.2026 18:29:47 CEST: 24-Stunden-Vergleich für DEX-Kurse über dieselbe aktuelle Bewertungsroute; globaler Cache, ehrliche Lücken und Referenzkennzeichnung. Build 20261008-182947.
 // Phase 7.03 · 02.10.2026 04:52:42 CEST: BSC-Voucher-Prefetch an die unveraenderte Fachroute angepasst: auf BSC werden nur Voucher/VOW + VOW/USDT vorab gesucht; ETH behaelt direkte Stablecoin-Kandidaten. Build 20261002-045242.
 // Phase 7.02 · 02.10.2026 04:37:13 CEST: Referenzassets werden cache-/stammdaten-first aufgelöst; der bisherige LP-On-Chain-Scan bleibt nur als Fallback. Preisrouten und Preisformeln unverändert. Build 20261002-043713.
 // Phase 7.01 · 02.10.2026 04:18:28 CEST: TLN/VOW-Preisrefresh wird ohne Preislogikänderung nach BSC/ETH und Refresh-Stufen diagnostiziert; RPC- und HTTP-Anteile sind je Stufe sichtbar. Build 20261002-041828.
@@ -190,7 +191,11 @@ function exportProjectPrice(chain,address,result,kind="token"){
     change24h:undefined,
     source:chain === "bsc" ? "PancakeSwap" : (chain === "eth" ? "Uniswap" : ("DEX · " + PROJECT_NAME)),
     route:result.route || null,
-    kind
+    kind,
+    valuationBasis: result.source==="stable-self" || result.hops===0 ? {type:"fixed",price:Number(result.price)} : {
+      type:"path",base:norm(address),quote:norm(references[chain]?.[String(result.stable||"USDT").toLowerCase()]),
+      pools:(result.edges || (result.pools|| (result.pool?[result.pool]:[])).map(pool=>({pool,type:result.source==="direct-v3"?"v3":"v2"}))).map(x=>({address:norm(x.pool),type:x.type||"v2"}))
+    }
   });
 }
 const v3PoolCache = new Map();
@@ -2060,7 +2065,7 @@ async function renderV2Pool(chain,dbPool,wallet){
       change24h:undefined,
       source:"Projekt TLN/VOW · LP",
       route:`TVL / LP-Supply`,
-      kind:"lp"
+      kind:"lp",valuationBasis:{type:"lp",pool:norm(dbPool.address),token0:norm(pool.token0.address),token1:norm(pool.token1.address),price0:exportedPrices.get(chain+"|"+norm(pool.token0.address))?.valuationBasis,price1:exportedPrices.get(chain+"|"+norm(pool.token1.address))?.valuationBasis}
     });
   }
 
@@ -2294,7 +2299,7 @@ async function buildCurrentProjectPrices(chain){
         const tvl=pool.r0*p0.price + pool.r1*p1.price;
         const lpPrice=tvl/pool.lpSupply;
         if(Number.isFinite(lpPrice)) exportedPrices.set(chain+"|"+norm(dbPool.address),{
-          price:lpPrice,change24h:undefined,source:"Projekt TLN/VOW · LP",route:"TVL / LP-Supply",kind:"lp"
+          price:lpPrice,change24h:undefined,source:"Projekt TLN/VOW · LP",route:"TVL / LP-Supply",kind:"lp",valuationBasis:{type:"lp",pool:norm(dbPool.address),token0:norm(pool.token0.address),token1:norm(pool.token1.address),price0:exportedPrices.get(chain+"|"+norm(pool.token0.address))?.valuationBasis,price1:exportedPrices.get(chain+"|"+norm(pool.token1.address))?.valuationBasis}
         });
       }
     }catch(e){ console.warn("TLN/VOW Preisaufbau Pool",chain,dbPool.address,e); }

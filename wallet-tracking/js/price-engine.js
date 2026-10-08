@@ -1,3 +1,4 @@
+// Phase 7.53 · 08.10.2026 18:29:47 CEST: 24-Stunden-Vergleich für DEX-Kurse über dieselbe aktuelle Bewertungsroute; globaler Cache, ehrliche Lücken und Referenzkennzeichnung. Build 20261008-182947.
 // Phase 7.03 · 02.10.2026 04:52:42 CEST: TLN/VOW Voucher-Routing wieder explizit chain-spezifisch: BSC bleibt strikt Voucher → VOW → USDT; Ethereum behaelt reale direkte Stablecoin-Routen plus VOW-Route. Build 20261002-045242.
 // Phase 6.99 · 01.10.2026 20:12:06 CEST: Preis-Pairs laden nur token0/token1/getReserves; LP-Zusatzdaten nur für echte LP-Bewertung. Pool-Factory wird aus Typprüfung wiederverwendet. Build 20261001-201206.
 // Phase 6.98 · 01.10.2026 18:19:31 CEST: Pair-State-Reads werden chainweit vorab gebatcht; exakt dieselben 6 V2-Felder und dieselbe Preisdekodierung bleiben erhalten. Build 20261001-181931.
@@ -655,7 +656,7 @@ window.WalletPriceEngine = (() => {
       return a.hops-b.hops;
     });
     const best=paths[0];
-    return {price:best.price,route:best.route,hops:best.hops,stable:best.stable,pathLiquidityUSD:best.pathLiquidityUSD,source:"ecosystem-graph",alternatives:paths.slice(1,4).map(p=>({price:p.price,route:p.route,stable:p.stable,hops:p.hops,pathLiquidityUSD:p.pathLiquidityUSD}))};
+    return {price:best.price,route:best.route,hops:best.hops,stable:best.stable,pathLiquidityUSD:best.pathLiquidityUSD,source:"ecosystem-graph",edges:best.edges.map(e=>({pool:e.pool,type:e.type})),alternatives:paths.slice(1,4).map(p=>({price:p.price,route:p.route,stable:p.stable,hops:p.hops,pathLiquidityUSD:p.pathLiquidityUSD}))};
   }
 
   async function getTokenPrice({projectKey="default",chain,token,address,block="latest"}){
