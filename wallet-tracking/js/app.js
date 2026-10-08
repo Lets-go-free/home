@@ -1,3 +1,4 @@
+// Phase 7.47 · 08.10.2026 15:32:02 CEST: Entdecken: alle offenen Tokens als Spam markieren statt sicher hinzufügen; sichere Tokens geschützt, walletbezogene Speicherung. Build 20261008-153202.
 // Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
 // Phase 7.45 · 08.10.2026 01:35:12 CEST: Mint ohne Zahlung in dieser TX bei vollständig geprüfter TX; Kaufpreis bleibt unbekannt. Build 20261008-013512.
 // Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-013512.
@@ -3094,7 +3095,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"tokensgrp",level:0,label:"🪙 Meine Token",status:"done",start:"DB",daily:"–",open:"Cache/DB",manual:"Entdecken & prüfen",details:[]},
   {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","gezielt nur betroffene Chain bei neuem Token","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin. Token-/Stammdatenänderungen starten keinen globalen loadAll(); neue sichere/vordefinierte Token aktualisieren höchstens die betroffene Chain."]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
-  {id:"discovery",level:1,label:"🔍 Entdecken & prüfen",status:"done",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Phase 7.46: Alle Wallets als Standard; Ergebnisse aus walletbezogenen DB-Caches. Manuell sequenzieller Scan der ausgewählten Chains, 30-Tage-Sperre je Wallet; gesperrte Wallets werden übersprungen. Sichere Sammelaktion dedupliziert Chain+Adresse, schließt Spam aus und aktualisiert jede betroffene Chain einmal. Kein neuer Scan beim Tab-Öffnen."]]},
+  {id:"discovery",level:1,label:"🔍 Entdecken & prüfen",status:"done",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Phase 7.46: Alle Wallets als Standard; Ergebnisse aus walletbezogenen DB-Caches. Manuell sequenzieller Scan der ausgewählten Chains, 30-Tage-Sperre je Wallet; gesperrte Wallets werden übersprungen. 7.47: Alle entdeckten Tokens als Spam markieren zählt Chain+Adresse einmal, berücksichtigt auch Tokens ohne Verdacht und schließt bereits sichere Tokens aus. Markierungen bleiben walletbezogen; keine Chain-/Bestandsaktualisierung. Kein neuer Scan beim Tab-Öffnen."]]},
 
   {id:"analysis",level:0,label:"📊 Dashboard & Analyse / Berichte",status:"in_progress",start:"Dashboard sofort + Caches",daily:"kontrollierter Delta-Refresh",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","1× täglich Delta-Prüfung nach Cache-Render","Phase 6.62: Login zeigt zuerst persistierte Current-State-Caches; danach startet höchstens einmal pro Kalendertag eine kontrollierte Delta-Prüfung. Wallet-Bestände nutzen Activity-Checks, Projekt/NFT-Daten werden nur bei Bedarf nachgezogen. Spezialhistorien bleiben getrennt."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
@@ -3268,7 +3269,7 @@ function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
   ${window.WTAdminExports.render()}
-  <div class="custom-token-card"><h3>Aktueller Stand · 7.46</h3><p>Entdecken startet mit Alle Wallets; Scans bleiben je Wallet gespeichert und gesperrt. Alle entdeckten Tokens als sicher hinzufügen übernimmt unterschiedliche Tokens der ausgewählten Chains ohne Spam-Verdacht oder manuelle Spam-Markierung. Das ist eine persönliche Freigabe, kein technischer Sicherheitsnachweis.</p><p>DAO1/APTMDAO: Mint-Kanten und heutiger DID-Besitzer sind getrennt. Aktuelle Partnerbesitzer werden gezielt über ownerOf geprüft, fünf Minuten im RAM gehalten und bei Datenaktualisierung invalidiert. Alte Kanten-/IndexedDB-Caches bleiben als historische Fakten gültig; ihre Wallet-Adresse wird nicht mehr als aktueller Partnerbesitzer verwendet. Keine SQL-Bereinigung oder Wallet-Neuanlage nötig. Edge apertum-rpc-proxy muss aus diesem Release deployt werden.</p><p>7.42–7.45: endgültige Kontolöschung mit Admin-Sperre; Recovery nur für bestehende Konten; Metadaten-404 ohne falschen 502; Erwerbs-TX und abweichender Wallet-Transfer verlinkt; Mint ohne Zahlung in dieser TX setzt keinen Kaufpreis auf 0. NFT-Anzeige vom User bestätigt, externe Metadaten #120469 bleiben fehlend.</p><h3>Zu testen</h3><p>Wallet hinzufügen; Wallet vollständig löschen; sämtliche Daten löschen; normales Konto endgültig löschen und Admin-Negativtest. Monica: DAO1 #21044 unter Carmen #18438 auf 0x568281…fe4940; APTMDAO #7803 unter Chris #7315; aktueller Bestand 9 Mining-Bots und 1 Trading-Bot, Zuordnung getrennt prüfen. Besitzerwechsel und RPC-Fehler testen; Entdecken Alle/Einzelwallet, gemischte Sperren, Chainfilter und beide Sammelaktionen prüfen. Restore-Test bleibt zurückgestellt.</p><p>Offen: separate wAPTM-Auszahlung vom 08.10.2026. Transfer allein enthält keinen NFT-/Claim-Nachweis; Sender 0x6d0539de11b95e18cb202a55098e3854b0313022 muss als Bot-Auszahlungsquelle bestätigt werden, bevor normale Transfers als Rewards zählen dürfen.</p></div>
+  <div class="custom-token-card"><h3>Aktueller Stand · 7.47</h3><p>Entdecken startet mit Alle Wallets; Scans bleiben je Wallet gespeichert und gesperrt. Alle entdeckten Tokens als Spam markieren erfasst sämtliche offenen Treffer der ausgewählten Wallets und Chains, auch ohne Spam-Verdacht. Bereits sichere Tokens bleiben ausgeschlossen. Bestätigung mit Anzahl unterschiedlicher Tokens; Speicherung im jeweiligen Wallet-Cache. Die Einzelaktion Als sicher hinzufügen bleibt erhalten. Die sichere Sammelaktion aus 7.46 wurde entsprechend der korrigierten Anforderung entfernt.</p><p>DAO1/APTMDAO: Mint-Kanten und heutiger DID-Besitzer sind getrennt. Aktuelle Partnerbesitzer werden gezielt über ownerOf geprüft, fünf Minuten im RAM gehalten und bei Datenaktualisierung invalidiert. Alte Kanten-/IndexedDB-Caches bleiben als historische Fakten gültig; ihre Wallet-Adresse wird nicht mehr als aktueller Partnerbesitzer verwendet. Keine SQL-Bereinigung oder Wallet-Neuanlage nötig. Edge apertum-rpc-proxy aus 7.46 bleibt Voraussetzung; 7.47 benötigt kein zusätzliches Deployment.</p><p>7.42–7.45: endgültige Kontolöschung mit Admin-Sperre; Recovery nur für bestehende Konten; Metadaten-404 ohne falschen 502; Erwerbs-TX und abweichender Wallet-Transfer verlinkt; Mint ohne Zahlung in dieser TX setzt keinen Kaufpreis auf 0. NFT-Anzeige vom User bestätigt, externe Metadaten #120469 bleiben fehlend.</p><h3>Zu testen</h3><p>Wallet hinzufügen; Wallet vollständig löschen; sämtliche Daten löschen; normales Konto endgültig löschen und Admin-Negativtest. Monica: DAO1 #21044 unter Carmen #18438 auf 0x568281…fe4940; APTMDAO #7803 unter Chris #7315; aktueller Bestand 9 Mining-Bots und 1 Trading-Bot, Zuordnung getrennt prüfen. Besitzerwechsel und RPC-Fehler testen; Entdecken Alle/Einzelwallet, gemischte Sperren, Chainfilter und beide Sammelaktionen prüfen. Restore-Test bleibt zurückgestellt.</p><p>Offen: separate wAPTM-Auszahlung vom 08.10.2026. Transfer allein enthält keinen NFT-/Claim-Nachweis; Sender 0x6d0539de11b95e18cb202a55098e3854b0313022 muss als Bot-Auszahlungsquelle bestätigt werden, bevor normale Transfers als Rewards zählen dürfen.</p></div>
   <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.80</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Abschlussmessung:</strong> TLN/VOW-Haupttab wurde von 143 auf 42 und danach auf ca. 16 Requests reduziert. DAO-Team sank im Warm-Run von ca. 130 auf 16 Requests; Bot-Claims → Referral-Rewards verursacht in derselben Session keine zusätzlichen History-Reads. Weitere Optimierungen erfolgen nur noch bei konkretem Messbeleg.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Michaela 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
@@ -3548,7 +3549,7 @@ const HARDCODING_AUDIT_ITEMS = [
 
 const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"R1",workStatus:"in Arbeit",severity:"high",area:"DID / aktueller Besitzer",finding:"Gleiche DAO1 DID #21044 erschien beim eigenen Owner auf 0x568281…fe4940, als Partner auf historischer Mint-Adresse 0xd907b2…e5e6da. Beziehung zu #18438 vorhanden.",action:"7.46: Besitzer unabhängig von Kanten-Cache über ownerOf prüfen; Fehler offen halten. Keine Überschreibung historischer Mint-Kanten; kein SQL nötig. Lokale Besitzer-/Fehler-/Cachetests; produktiver Retest beider Bäume nach Proxy-Deployment offen."},
-  {priority:"R2",workStatus:"in Arbeit",severity:"medium",area:"Entdecken / mehrere Wallets",finding:"Bisher nur Einzelwallet und keine sichere Sammelaktion. Walletbezogene Ergebnisse dürfen nicht vermischt gespeichert werden.",action:"7.46: Alle Wallets default; Sperren einzeln, Scan sequenziell, sichere Tokens Chain+Adresse dedupliziert, Spam ausgeschlossen. Cache-Updates nur je ursprünglicher Wallet; produktiver Retest offen."},
+  {priority:"R2",workStatus:"in Arbeit",severity:"medium",area:"Entdecken / mehrere Wallets",finding:"Mehrwallet-Ergebnisse dürfen nicht vermischt gespeichert werden. User korrigiert Sammelaktion von sicher hinzufügen auf alle als Spam markieren.",action:"7.47: Alle Wallets default; Sperren einzeln, Scan sequenziell. Alle offenen Tokens der ausgewählten Chains als Spam markieren, auch ohne Verdacht; sichere Tokens ausgeschlossen. Anzahl nach Chain+Adresse dedupliziert; Cache-Updates je ursprünglicher Wallet. Fehler erhalten erfolgreich gespeicherte Teilmarkierungen und lassen übrige Treffer offen. Produktiver Retest offen."},
   {priority:"R3",workStatus:"offen",severity:"medium",area:"Separate Bot-Auszahlung wAPTM",finding:"08.10.2026: 232.13969071 wAPTM von 0x6d0539…13022 an 0x239c58…228B47. Gewöhnlicher ERC20-Transfer, keine NFT-ID; in Bot-Claims nicht erkannt.",action:"Bestätigung der DAO1-Auszahlungsquelle fehlt. Keine pauschale Klassifikation aller wAPTM-Eingänge. Danach kanonische Asset-Flows und doppelfreie Reward-Summary ergänzen; Bot-Zuordnung offen lassen, wenn kein Nachweis vorhanden."},
   {priority:"R4",workStatus:"in Arbeit",severity:"medium",area:"NFT / Dokumentation 7.42–7.46",finding:"Audit, tatsächliche Systemübersicht, Admin-Dokumentation und Changelog hinkten den letzten Änderungen hinterher.",action:"7.46 aktualisiert alle Dokumentationsstellen. User bestätigt NFT-Anzeige; das schließt Account-Löschungs-/Admin-Negativtest und Restore nicht ab. Alte P1–P9-Abschlüsse bleiben historische Testbefunde."},
   {priority:"P1", workStatus:"erledigt", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade konnten intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erschien.", action:"Phase 6.02: Einheitlicher Statusvertrag complete / partial / failed / deferred ist in DAO1 eingeführt und wird bis zum zentralen Wallet-Abschlussstatus propagiert; apertureHandled ist davon getrennt."},
@@ -12384,32 +12385,28 @@ let lastDiscoveryFindings = [];
 let discoveryHideSuspect = false;
 let discoveryHideMarkedScam = true;
 
-function discoverySafeBulkCandidates(){
-  const grouped=new Map();
+function discoverySpamBulkCandidates(){
+  const tokens=new Map();
   for(const f of lastDiscoveryFindings){
-    if(!activeDiscoveryChains.has(f.chain)||isSafeTokenAddress(f.address,f.chain))continue;
-    const key=f.chain+"|"+normalizeAddress(f.address,f.chain),entry=grouped.get(key)||{finding:f,blocked:false};
-    entry.blocked ||= !!f.userMarkedScam||isFindingScamSuspect(f);
-    grouped.set(key,entry);
+    if(!activeDiscoveryChains.has(f.chain)||f.userMarkedScam||isSafeTokenAddress(f.address,f.chain))continue;
+    tokens.set(f.chain+"|"+normalizeAddress(f.address,f.chain),f);
   }
-  return [...grouped.values()].filter(x=>!x.blocked).map(x=>x.finding);
+  return [...tokens.values()];
 }
 let discoveryBulkSaving=false;
-async function addAllDiscoveredTokensAsSafe(){
+async function markAllDiscoveredTokensAsSpam(){
   if(discoveryBulkSaving)return;
-  const candidates=discoverySafeBulkCandidates();
-  if(!candidates.length||!confirm(`${candidates.length} unterschiedliche Tokens der ausgewählten Chains als sicher hinzufügen? Spam-Verdachte und Spam-Markierungen sind ausgeschlossen. „Sicher“ ist deine persönliche Freigabe.`))return;
+  const candidates=discoverySpamBulkCandidates();
+  if(!candidates.length||!confirm(`${candidates.length} unterschiedliche entdeckte Tokens der ausgewählten Wallets und Chains als Spam markieren? Auch Tokens ohne Spam-Verdacht werden markiert. Bereits sichere Tokens bleiben erhalten.`))return;
   discoveryBulkSaving=true;
   try{
-    const rows=candidates.map(f=>({user_id:currentUser.id,chain:f.chain,address:normalizeAddress(f.address,f.chain),label:f.symbol||f.address}));
-    const {data,error}=await sb.from("safe_tokens").insert(rows).select();
-    if(error)throw error;
-    for(const t of data||[])customSafeTokens.push({dbId:t.id,chain:t.chain,address:t.address,label:t.label});
-    renderCustomTokenList();renderSafeTokenTable();renderDiscoveryResults(lastDiscoveryFindings);
-    for(const chain of new Set(rows.map(r=>r.chain)))await refreshTokenChainTargeted(chain,{reason:"Entdeckte Tokens als sicher hinzugefügt"});
-    renderDashboard();
-  }catch(e){alert("Sammelaktion: "+(e?.message||e));}
-  finally{discoveryBulkSaving=false;}
+    await updateDiscoverySpamMarks(f=>activeDiscoveryChains.has(f.chain)&&!f.userMarkedScam&&!isSafeTokenAddress(f.address,f.chain),true);
+  }catch(e){alert("Spam-Sammelaktion konnte nicht vollständig gespeichert werden: "+(e?.message||e)+". Bereits gespeicherte Markierungen bleiben erhalten; die übrigen Treffer bleiben offen.");}
+  finally{
+    discoveryBulkSaving=false;
+    lastDiscoveryFindings=selectedDiscoveryFindings();
+    renderDiscoveryResults(lastDiscoveryFindings);renderDiscoveryCacheState();renderDashboard();
+  }
 }
 // Persist only findings of each original wallet; never copy an aggregated result into one wallet.
 async function updateDiscoverySpamMarks(predicate,marked){
@@ -12444,7 +12441,7 @@ function renderDiscoveryResults(findings) {
   const visible = actionableFindings.filter(f => !(discoveryHideMarkedScam && f.userMarkedScam) && !(discoveryHideSuspect && isFindingScamSuspect(f)));
   const suspectCount=actionableFindings.filter(f=>isFindingScamSuspect(f)).length, markedCount=actionableFindings.filter(f=>f.userMarkedScam).length;
   const filterBar = `<div class="custom-token-card" style="margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;align-items:center">
-    ${discoverySafeBulkCandidates().length?`<button onclick="addAllDiscoveredTokensAsSafe()">Alle entdeckten Tokens als sicher hinzufügen (${discoverySafeBulkCandidates().length})</button>`:""}
+    ${discoverySpamBulkCandidates().length?`<button class="remove" onclick="markAllDiscoveredTokensAsSpam()">Alle entdeckten Tokens als Spam markieren (${discoverySpamBulkCandidates().length})</button>`:""}
     ${suspectCount?`<button class="remove" onclick="markAllDiscoverySuspectsAsSpam()">Alle Spam-Verdachte als Spam markieren</button>`:""}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideScamSuspectToggle" style="width:auto" onchange="discoveryHideSuspect=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideSuspect ? "checked" : ""} />

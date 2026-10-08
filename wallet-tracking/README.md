@@ -1,12 +1,12 @@
-# WalletTracking · Phase 7.46
+# WalletTracking · Phase 7.47
 
-Entdecken startet mit Alle Wallets. Scans und Sperren bleiben walletbezogen. Die sichere Sammelaktion schließt Spam aus und dedupliziert je Chain/Adresse.
+Entdecken startet mit Alle Wallets. Scans und Sperren bleiben walletbezogen. Die Sammelaktion markiert alle offenen entdeckten Tokens als Spam, auch ohne Verdacht; bereits sichere Tokens bleiben ausgeschlossen. Anzahl dedupliziert je Chain/Adresse, Speicherung je Wallet. Einzelaktion Als sicher hinzufügen bleibt erhalten. 7.47 ersetzt die sichere Sammelaktion aus 7.46.
 
 DAO1/APTMDAO: aktuelle DID-Partnerbesitzer getrennt über ownerOf(latest), maximal vier parallele Aufrufe pro System und fünf Minuten RAM-Cache. Mint-Wallet und Parent bleiben unverändert im historischen Graph-Cache. Aktuelle Details, Bots und Partnerzahlen verwenden den aktuellen Owner; bei Fehlern bleibt dieser offen.
 
-Installation: geänderte Dateien übernehmen, **supabase/functions/apertum-rpc-proxy/index.ts deployen**. Keine SQL-Migration, keine Wallet löschen/neu hinzufügen, keine historischen Graph-Caches leeren. Danach Seite neu laden und Daten aktualisieren. Ohne neuen Proxy kann die Legacy-Besitzerprüfung nicht laufen.
+Installation 7.47: geänderte Dateien übernehmen und veröffentlichen, Seite neu laden. Kein zusätzliches Edge-Deployment. Voraussetzung aus 7.46: **supabase/functions/apertum-rpc-proxy/index.ts deployen**, falls noch nicht erledigt. Keine SQL-Migration, keine Wallet löschen/neu hinzufügen, keine historischen Graph-Caches leeren. Danach Seite neu laden und Daten aktualisieren. Ohne neuen Proxy kann die Legacy-Besitzerprüfung nicht laufen.
 
-Zu testen: Entdecken Alle/Einzelwallet, gemischte Scan-Sperren, Chainfilter, sichere und Spam-Sammelaktion; Monica DAO1 #21044 → Carmen #18438 auf 0x568281…fe4940, APTMDAO #7803 → Chris #7315; 9 Mining-Bots und 1 Trading-Bot getrennt zugeordnet; Besitzerwechsel/RPC-Fehler. Wallet hinzufügen/löschen, sämtliche Daten löschen, normale Kontolöschung und Admin-Negativtest bleiben Teil des End-to-End-Audits. Restore-Test zurückgestellt.
+Zu testen: Entdecken Alle/Einzelwallet, gemischte Scan-Sperren, Chainfilter, Spam-Sammelaktionen und einzelne sichere Freigabe; Monica DAO1 #21044 → Carmen #18438 auf 0x568281…fe4940, APTMDAO #7803 → Chris #7315; 9 Mining-Bots und 1 Trading-Bot getrennt zugeordnet; Besitzerwechsel/RPC-Fehler. Wallet hinzufügen/löschen, sämtliche Daten löschen, normale Kontolöschung und Admin-Negativtest bleiben Teil des End-to-End-Audits. Restore-Test zurückgestellt.
 
 Offen: separate wAPTM-Auszahlung 08.10.2026, Quelle 0x6d0539de11b95e18cb202a55098e3854b0313022 noch als DAO1-Bot-Auszahlungsquelle bestätigen. Kein ungeprüftes Reward-Zählen gewöhnlicher Token-Transfers.
 
