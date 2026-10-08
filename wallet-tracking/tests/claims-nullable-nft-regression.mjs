@@ -1,0 +1,12 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const src=fs.readFileSync('projects/dao1/dao1.js','utf8');
+const between=(a,b)=>src.slice(src.indexOf(a),src.indexOf(b,src.indexOf(a)));
+let saved;const c=vm.createContext({Object,String,Number,Set,isConfirmedSeparateBotClaim:r=>r.confirmed===true,isNewMinerClaimSelector:s=>s==='0x19da4078',currentSubtypeForClaim:()=> 'Mining-Bot',currentNameForClaim:()=> 'Known Bot',sb:{from:t=>({upsert:async(rows,opts)=>{assert.equal(t,'project_nft_claims');saved=rows;return {error:null};}})}});
+vm.runInContext(between('const CLAIM_DB_FIELDS','  async function fetchWalletTransactionsIncremental')+between('  function transactionClaimDescriptor(','  function isDidReferralRow('),c);
+await c.saveClaimRows([{nft_id:null,tx_hash:'new',wallet_address:'secret'},{nft_id:58801,tx_hash:'known'},{nft_id:' ',tx_hash:'blank'},{nft_id:0,tx_hash:'zero'}]);
+assert.equal(saved.length,4);assert.equal(saved[0].nft_id,null);assert.equal(saved[1].nft_id,58801);assert.equal(saved[2].nft_id,null);assert.equal(saved[3].nft_id,0);assert.equal(saved[0].wallet_address,undefined);
+assert.equal(c.transactionClaimDescriptor({claim_nft_id:null,selector:'0x19da4078',claim_nft_name:'Apertum Miner'}).name,'Nicht zugeordnet');
+assert.equal(c.transactionClaimDescriptor({claim_nft_id:null,confirmed:true}).name,'Nicht zugeordnet');
+assert.equal(c.transactionClaimDescriptor({claim_nft_id:58801}).id,'58801');
+const sql=fs.readFileSync('sql/092-claims-nullable-nft-id.sql','utf8').replace(/--[^\n]*/g,'');const stmts=sql.split(';').map(s=>s.trim()).filter(Boolean);assert.equal(stmts.length,3);assert.match(stmts[1],/^ALTER TABLE public.project_nft_claims ALTER COLUMN nft_id DROP NOT NULL$/);assert.equal(stmts[0],'BEGIN');assert.equal(stmts[2],'COMMIT');
+console.log('PASS mixed known/unknown claim batch, privacy, null/blank/zero distinction, explicit unassigned UI, atomic additive SQL');

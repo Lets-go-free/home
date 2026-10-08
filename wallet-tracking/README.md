@@ -1,5 +1,14 @@
-# WalletTracking · Phase 7.53
+# WalletTracking · Phase 7.54
 
+
+## Update 7.54
+APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten.
+
+Installation: zuerst sql/092-claims-nullable-nft-id.sql ausführen (3 Statements: BEGIN, ALTER TABLE, COMMIT; keine SELECT-Resultsets). Danach Webdateien veröffentlichen, Seite neu laden, Daten aktualisieren und zentralen Preisrefresh ausführen. Kein neues Edge-Deployment. SQL 091 bleibt Voraussetzung für separate wAPTM-Entscheidungen.
+
+User bestätigt am 08.10.2026: DID-/Wallet-Zuordnung, wAPTM-Nachzahlungen, Aufgaben-Namen, Kurslayout und Datenlöschung scheinen OK; TLN/VOW-24h OK. APTM/wAPTM-24h und Claims ohne NFT-ID nach 7.54 erneut testen. Entdecken Alle Wallets/Spam-Sammelaktion, Cross-User/RLS-/Admin-Negativtests weiter offen. Restore zurückgestellt.
+
+Prüfung 7.54: 20 lokale Regressionsdateien bestanden, einschließlich beider Apertum-Preiswege mit label-only Stammdaten sowie gemischter Claims mit/ohne NFT-ID. Syntax und ZIP geprüft. SQL-Installation und produktive APTM/wAPTM-/Claim-Prüfung beim Anwender noch ausstehend.
 
 ## Update 7.53
 Bestehende historische Preisermittlung wiederverwendet: taxEvmBlockByTime (ohne neue userbezogene Zeitcache-Schreibvorgänge), taxDirectV2Price (optionaler exakter Pool) und taxV2LpHistoricalPrice (optionaler Routenresolver). Apertum verwendet weiterhin seine bestehenden Sync-/Transfer-Event-Nachweise; V3-slot0 ergänzt nur die fehlende historische Poolabfrage. Bisherige Aufrufer und Bewertungsformeln bleiben unverändert.

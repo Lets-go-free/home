@@ -1,3 +1,4 @@
+// Phase 7.54 · 08.10.2026 19:30:51 CEST: APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten. Build 20261008-193051.
 // Phase 7.49 · 08.10.2026 16:51:54 CEST: Aufgaben mit zusätzlichen Besitzer-/Partnernamen bei unveränderten IDs; Legacy-LPT ohne unbelegten aktuellen Kurs, fehlende Bewertung erklärt. Build 20261008-165154.
 // Phase 7.48 · 08.10.2026 16:09:06 CEST: Separate wAPTM-Miner-Nachzahlungen je Wallet bestätigen/ignorieren; Nicht zugeordnet, Dashboard-Aufgabe und dauerhafte User-Entscheidung (SQL 091). Build 20261008-160906.
 // Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804.
@@ -5133,7 +5134,7 @@ window.DAO1Project = (() => {
     if(r.claim_nft_id==null){
       if(isConfirmedSeparateBotClaim(r))return {id:null,subtype:"Mining-Bot",name:"Nicht zugeordnet"};
       if(isNewMinerClaimSelector(r?.selector) || r?.claim_nft_name){
-        return {id:null,subtype:r?.claim_nft_subtype||"Mining-Bot",name:r?.claim_nft_name||"Apertum Miner"};
+        return {id:null,subtype:r?.claim_nft_subtype||"Mining-Bot",name:"Nicht zugeordnet"};
       }
       return null;
     }
@@ -8153,6 +8154,7 @@ window.DAO1Project = (() => {
     // Privacy-Schranke: Klartext-Walletadressen werden nur zur Laufzeit hydriert und
     // dürfen niemals zurück in den persistenten Claim-Cache geschrieben werden.
     delete clean.wallet_address;
+    if(clean.nft_id==null || String(clean.nft_id).trim()==="")clean.nft_id=null;
     return clean;
   }
 

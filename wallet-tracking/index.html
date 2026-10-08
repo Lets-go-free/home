@@ -1,8 +1,9 @@
+<!-- Phase 7.54: APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten. -->
 <!-- 24-Stunden-Vergleich für DEX-Kurse über dieselbe aktuelle Bewertungsroute; globaler Cache, ehrliche Lücken und Referenzkennzeichnung. -->
 <!-- Kurse: zwei Tabellen bei ausreichender Bereichsbreite, sonst eine gemeinsame Tabelle; Contract-Adressen kleiner auf zweiter Zeile. -->
 <!-- Aktuelle Kurse in einer gemeinsamen Tabelle mit einem Tabellenkopf und durchgehend ausgerichteten Spalten. -->
 <!-- Aktuelle Kurse über volle Dashboard-Breite; Tabellenaufteilung nach verfügbarer Breite, horizontaler Scroll bei schmalen Ansichten. -->
-<!-- Phase 7.53 · 08.10.2026 18:29:47 CEST: Aufgaben mit zusätzlichen Besitzer-/Partnernamen bei unveränderten IDs; Legacy-LPT ohne unbelegten aktuellen Kurs, fehlende Bewertung erklärt. Build 20261008-182947. -->
+<!-- Phase 7.53 · 08.10.2026 18:29:47 CEST: Aufgaben mit zusätzlichen Besitzer-/Partnernamen bei unveränderten IDs; Legacy-LPT ohne unbelegten aktuellen Kurs, fehlende Bewertung erklärt. Build 20261008-193051. -->
 <!-- Phase 7.46 · 08.10.2026 14:38:04 CEST: Entdecken für alle Wallets, sichere Sammelaktion, aktuelle DID-Besitzer getrennt von Mint-Kanten; vollständige Dokumentation. Build 20261008-143804. -->
 <!-- Phase 7.45 · 08.10.2026 01:35:12 CEST: Mint ohne Zahlung in dieser TX bei vollständig geprüfter TX; Kaufpreis bleibt unbekannt. Build 20261008-013512. -->
 <!-- Phase 7.44 · 08.10.2026 01:11:21 CEST: NFT-Erwerbs-TX und separater Wallet-Eingang; Bot-Erwerbslinks im DAO-Baum. Build 20261008-013512. -->
@@ -69,7 +70,7 @@
 </script>
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css?v=20261008-182947">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20261008-193051">
 <link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260928-042301">
 <style>
   /* Phase 7.06: Login bleibt auch mit Browser-/iCloud-/1Password-Popups bedienbar.
@@ -1277,7 +1278,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 08.10.2026 18:29:47 CEST · Phase 7.53 · Build 20261008-182947</span><br>
+    <span id="footerVersionLine">Version: 08.10.2026 19:30:51 CEST · Phase 7.54 · Build 20261008-193051</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1287,23 +1288,23 @@
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="./js/browser-cache.js?v=20260922-140348"></script>
-<script src="./js/price-engine.js?v=20261008-182947"></script>
+<script src="./js/price-engine.js?v=20261008-193051"></script>
 <script src="./js/lp-engine.js?v=20260930-013813"></script>
 <script src="./js/staking-engine.js?v=20260929-174845"></script>
 <script src="./projects/tln-vow/tln-vow-loans.js?v=20261004-233115"></script>
-<script src="./projects/tln-vow/tln-vow.js?v=20261008-182947"></script>
-<script src="./projects/dao1/dao1.js?v=20261008-182947"></script>
+<script src="./projects/tln-vow/tln-vow.js?v=20261008-193051"></script>
+<script src="./projects/dao1/dao1.js?v=20261008-193051"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20261008-182947"></script>
-<script src="./help/help-general.js?v=20261008-182947"></script>
-<script src="./projects/tln-vow/help.js?v=20261008-182947"></script>
-<script src="./projects/dao1/help.js?v=20261008-182947"></script>
-<script src="./admin/exports.js?v=20261008-182947"></script>
-<script src="./js/current-price-comparison.js?v=20261008-182947"></script>
-<script src="./js/app.js?v=20261008-182947"></script>
-<script src="./projects/tln-vow/tln-vow-discovery.js?v=20261008-182947"></script>
+<script src="./admin/ideas.js?v=20261008-193051"></script>
+<script src="./help/help-general.js?v=20261008-193051"></script>
+<script src="./projects/tln-vow/help.js?v=20261008-193051"></script>
+<script src="./projects/dao1/help.js?v=20261008-193051"></script>
+<script src="./admin/exports.js?v=20261008-193051"></script>
+<script src="./js/current-price-comparison.js?v=20261008-193051"></script>
+<script src="./js/app.js?v=20261008-193051"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20261008-193051"></script>
 
 
 
@@ -1321,6 +1322,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 08.10.2026 18:29:47 CEST · Phase 7.53 · Build 20261008-182947</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 08.10.2026 19:30:51 CEST · Phase 7.54 · Build 20261008-193051</div>
 </body>
 </html>
