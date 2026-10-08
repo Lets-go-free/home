@@ -1,5 +1,19 @@
-# WalletTracking · Phase 7.54
+# WalletTracking · Phase 7.55
 
+
+## Update 7.55
+Admin → Vordefinierte Token: neue Option „In der Dashboard-Kursübersicht anzeigen“ je Projekt-Token, standardmäßig aktiviert. Globale Stammdateneinstellung für alle Nutzer. Projekt muss beim jeweiligen User aus Bestand oder bestätigtem Projekt-Summary vorhanden sein. Ausblenden hat Vorrang vor positivem Bestand und „Im Dashboard immer anzeigen“. Nichtprojekt-Token behalten ihre Regeln; Bestände, Vermögen, historische Bewertung und Kurse im Projekt bzw. in Projekt-Kacheln bleiben erhalten.
+
+Zuerst SQL 093 (sql/093-project-token-dashboard-price-visible.sql) ausführen: 3 Statements in Reihenfolge, BEGIN/ALTER TABLE/COMMIT; keine SELECT-Resultsets. Webdateien übernehmen/veröffentlichen und neu laden. Kein Edge-Deployment. SQL 092 aus 7.54 bleibt Voraussetzung für belegte Claims ohne NFT-ID.
+
+Im lokalen wallet-tracking-Ordner _wt-docs-cleanup.command einmal ausführen, bevor du commitest/veröffentlichst. Der Helfer archiviert ausschließlich die bekannten README-7.33.md bis README-7.44.md unter docs/releases/; identische Root-Duplikate werden entfernt. Abweichende Inhalte bleiben erhalten und werden gemeldet. README.md bleibt der aktuelle Einstieg; CHANGELOG.md bleibt die chronologische Kurzfassung, die archivierten Release-Berichte bleiben historische Detailstände. Ein ZIP entfernt bestehende Dateien nicht von selbst.
+
+User bestätigt am 09.10.2026 APTM-24h und Entdecken als OK. TLN/VOW-24h, DID-/Wallet-Zuordnung, wAPTM-Nachzahlungen, Aufgaben-Namen, Kurslayout und Datenlöschung bereits bestätigt. Claims ohne NFT-ID nach SQL 092 noch nicht ausdrücklich produktiv bestätigt. LPT-Kursermittlung eingestellt, historische Bewertung erhalten. Restore zurückgestellt; Cross-User/RLS-/Admin-Negativtests offen.
+
+Prüfung: 22 lokale Regressionsdateien bestanden, einschließlich Projekt-/Flag-Gates, erfolgreicher/fehlgeschlagener Speicherung und realem Cleanup-Helfer (abweichende Inhalte, Archivkonflikte, Wiederholung). JavaScript-/Shell-Syntax und ZIP geprüft. Produktive SQL-/UI-Prüfung nach Installation ausstehend.
+
+### Zu testen · 7.55
+Zu testen: 1. Admin → Vordefinierte Token → Apertum: wUSDT und wAPTM/wUSDT-LP abwählen. Dashboard-Kursübersicht ohne diese Zeilen, Vermögenszahlen und Projekt-Kurse unverändert. 2. „Im Dashboard immer anzeigen“ aktiviert lassen: ausgeblendete Tokens bleiben aus der Kursübersicht weg. 3. Wieder aktivieren: bisherige Regeln Bestand > 1 USD oder immer anzeigen gelten. 4. Neu laden: Einstellung bleibt erhalten. 5. User ohne DAO1-Projekt: diese Projekt-Token trotz aktivierter Flags nicht anzeigen; Nichtprojekt-Token unverändert. 6. Cleanup-Helfer zweimal ausführen: Root bleibt frei von alten Release-READMEs, Archive vollständig, README.md bleibt; GitHub Desktop zeigt nur diese Verschiebungen plus Updatedateien. Wallet hinzufügen, Wallet löschen, sämtliche Daten löschen bleiben im Regressionskatalog; gezielte Cross-User/RLS-/Admin-Negativtests offen, Restore zurückgestellt.
 
 ## Update 7.54
 APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten.
