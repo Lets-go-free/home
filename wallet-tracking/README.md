@@ -1,5 +1,8 @@
-# WalletTracking · Phase 7.51
+# WalletTracking · Phase 7.52
 
+
+## Update 7.52
+Kurse: zwei Tabellen bei ausreichender Bereichsbreite, sonst eine gemeinsame Tabelle; Contract-Adressen kleiner auf zweiter Zeile. Container-Query ab 1400 px Innenbreite; bei weniger Platz gleiche Spalten in einer gemeinsamen Tabelle. Adressen gekürzt und kopierbar. Chain-/Tokensortierung, Preisquellen, Filter und Ladezeitpunkte bleiben. Kein neues SQL/Edge-Deployment. Zu testen: Safari/Brave, breite/schmale Fenster, Navigation ein-/ausgeklappt, Hell/Dunkel, Adresskopieren. Browser-Retest offen.
 
 ## Update 7.51
 Aktuelle Kurse in einer gemeinsamen Tabelle mit einem Tabellenkopf und durchgehend ausgerichteten Spalten. Volle Breite und horizontaler Scroll bleiben. Sortierung nach zentraler Chain-Reihenfolge, innerhalb der Chain nach Tokenname. Filter, Kursquellen und Datenabrufe unverändert. Kein neues SQL/Edge-Deployment. Zu testen: Safari/Brave, breite/schmale Fenster, Navigation ein-/ausgeklappt, Hell/Dunkel.

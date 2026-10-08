@@ -1670,3 +1670,12 @@ body.wt-modal-open{overflow:hidden}
 .chain-admin-table .sticky-col-1 select,
 .chain-admin-table .sticky-col-2 select,
 .chain-admin-table .sticky-col-3 select { min-width: 0; max-width: 100%; width: 100%; }
+
+/* Phase 7.52: actual card width controls the visible table layout. */
+.dashboard-price-layout{container-type:inline-size}
+.dashboard-price-single{display:block}
+.dashboard-price-dual{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.dashboard-price-table-compact td:first-child .dashboard-token-address,.dashboard-price-table-compact td .dashboard-token-address{display:block;font-size:.62rem;line-height:1.3;margin-top:3px;font-weight:400}
+.dashboard-price-table-compact td:last-child{white-space:normal;overflow-wrap:anywhere}
+.dashboard-price-table-compact .dashboard-token-address code{font-size:inherit}
+@container(min-width:1400px){.dashboard-price-layout:has(.dashboard-price-dual) .dashboard-price-single{display:none}.dashboard-price-dual{display:grid}}
