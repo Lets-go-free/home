@@ -404,32 +404,32 @@
                 </div>
             </div>
             <div class="dash-bereich">
-                <h4>Strategien <span class="dash-hinweis">aus «Alle Trades», alle Accounts, Betrag effektiv</span></h4>
+                <h4>Strategien <span class="dash-hinweis">aus «Trades», alle Accounts, Betrag effektiv · Saldo netto (nach Gebühren und Kommissionen)</span></h4>
                 <div class="trades-summary">
                     <div class="sum-card"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="dStratEin">–</span><span class="sum-sub" id="dStratEinSub"></span></div>
                     <div class="sum-card" title="inkl. Balance Adjust"><span class="sum-label">Auszahlungen</span><span class="sum-wert" id="dStratAus">–</span><span class="sum-sub" id="dStratAusSub"></span></div>
-                    <div class="sum-card"><span class="sum-label">Gewinne/Verluste aus Trades</span><span class="sum-wert" id="dStratGew">–</span><span class="sum-sub" id="dStratGewSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Gewinne/Verluste aus Trades (brutto)</span><span class="sum-wert" id="dStratGew">–</span><span class="sum-sub" id="dStratGewSub"></span></div>
                     <div class="sum-card"><span class="sum-label">Gebühren</span><span class="sum-wert" id="dStratGeb">–</span><span class="sum-sub" id="dStratGebSub"></span></div>
                     <div class="sum-card"><span class="sum-label">Kommissionen</span><span class="sum-wert" id="dStratKomm">–</span><span class="sum-sub" id="dStratKommSub"></span></div>
-                    <div class="sum-card sum-saldo"><span class="sum-label">Saldo</span><span class="sum-wert" id="dStratSaldo">–</span><span class="sum-sub" id="dStratSaldoSub"></span></div>
+                    <div class="sum-card sum-saldo" title="netto: nach Gebühren und Kommissionen"><span class="sum-label">Saldo (netto)</span><span class="sum-wert" id="dStratSaldo">–</span><span class="sum-sub" id="dStratSaldoSub"></span></div>
                 </div>
             </div>
             <div class="dash-bereich">
-                <h4>Effektiver Gewinn/Verlust <span class="dash-hinweis">Saldo Strategien minus Netto-Einzahlungen Konto</span></h4>
+                <h4>Effektiver Gewinn/Verlust (netto) <span class="dash-hinweis">Saldo Strategien minus Netto-Einzahlungen Konto, nach Gebühren und Kommissionen</span></h4>
                 <div class="trades-summary">
                     <div class="sum-card"><span class="sum-label">in USD</span><span class="sum-wert" id="dEffGV">–</span><span class="sum-sub" id="dEffGVSub"></span></div>
                     <div class="sum-card" title="bezogen auf die Netto-Einzahlungen"><span class="sum-label">in %</span><span class="sum-wert" id="dEffGVPct">–</span><span class="sum-sub" id="dEffGVPctSub"></span></div>
                 </div>
             </div>
             <div class="dash-bereich">
-                <h4>Zeitgewichtete Rendite (TWR) <span class="dash-hinweis">wie gut die Strategien gearbeitet haben, unabhängig davon, wann wie viel Geld ein- oder ausbezahlt wurde</span></h4>
+                <h4>Zeitgewichtete Rendite (TWR, netto) <span class="dash-hinweis">wie gut die Strategien gearbeitet haben, unabhängig davon, wann wie viel Geld ein- oder ausbezahlt wurde · nach Gebühren und Kommissionen</span></h4>
                 <div class="trades-summary">
-                    <div class="sum-card" title="Trades minus Gebühren und Kommissionen, pro Abschnitt zwischen Ein-/Auszahlungen gerechnet und verkettet"><span class="sum-label">Zeitgewichtete Rendite</span><span class="sum-wert" id="dTWR">–</span><span class="sum-sub" id="dTWRSub"></span></div>
+                    <div class="sum-card" title="Trades minus Gebühren und Kommissionen, pro Abschnitt zwischen Ein-/Auszahlungen gerechnet und verkettet"><span class="sum-label">Zeitgewichtete Rendite (netto)</span><span class="sum-wert" id="dTWR">–</span><span class="sum-sub" id="dTWRSub"></span></div>
                 </div>
                 <div class="twr-chart" id="twrChart"></div>
             </div>
             <div class="dash-bereich">
-                <h4>Trades</h4>
+                <h4>Trades <span class="dash-hinweis">brutto: Gewinn bzw. Verlust des Trades ohne Gebühren und Kommissionen</span></h4>
                 <div class="trades-summary">
                     <div class="sum-card"><span class="sum-label">Anzahl Trades</span><span class="sum-wert" id="dAnzahl">–</span><span class="sum-sub" id="dAnzahlSub"></span></div>
                     <div class="sum-card"><span class="sum-label">davon mit Gewinn</span><span class="sum-wert" id="dGewinn">–</span><span class="sum-sub" id="dGewinnSub"></span></div>
@@ -437,7 +437,7 @@
                 </div>
             </div>
             <div class="dash-bereich">
-                <h4>Bester und schlechtester Trade <span class="dash-hinweis">Gewinn/Verlust in % vom Saldo des Accounts vor dem Trade</span></h4>
+                <h4>Bester und schlechtester Trade (brutto) <span class="dash-hinweis">Gewinn/Verlust in % vom Saldo des Accounts vor dem Trade, ohne Gebühren und Kommissionen</span></h4>
                 <div class="trades-summary">
                     <div class="sum-card"><span class="sum-label">Bester Trade</span><span class="sum-wert" id="dBester">–</span><span class="sum-sub" id="dBesterSub"></span></div>
                     <div class="sum-card"><span class="sum-label">Schlechtester Trade</span><span class="sum-wert" id="dSchlechtester">–</span><span class="sum-sub" id="dSchlechtesterSub"></span></div>
@@ -452,10 +452,10 @@
             <div class="trades-summary" id="tradesSummary">
                 <div class="sum-card"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="sumEinzahlungen">–</span></div>
                 <div class="sum-card" title="Auszahlungen inkl. Balance Adjust"><span class="sum-label">Auszahlungen</span><span class="sum-wert" id="sumAuszahlungen">–</span></div>
-                <div class="sum-card"><span class="sum-label">Gewinne/Verluste</span><span class="sum-wert" id="sumGewinne">–</span></div>
+                <div class="sum-card" title="Gewinn/Verlust der Trades ohne Gebühren und Kommissionen"><span class="sum-label">Gewinne/Verluste (brutto)</span><span class="sum-wert" id="sumGewinne">–</span></div>
                 <div class="sum-card"><span class="sum-label">Gebühren</span><span class="sum-wert" id="sumGebuehren">–</span></div>
                 <div class="sum-card"><span class="sum-label">Kommissionen</span><span class="sum-wert" id="sumKommissionen">–</span></div>
-                <div class="sum-card sum-saldo"><span class="sum-label">Saldo</span><span class="sum-wert" id="sumSaldo">–</span></div>
+                <div class="sum-card sum-saldo" title="netto: nach Gebühren und Kommissionen"><span class="sum-label">Saldo (netto)</span><span class="sum-wert" id="sumSaldo">–</span></div>
             </div>
             <div class="trades-toolbar">
                 <label>Type
@@ -661,7 +661,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 01.10.2026 17:45:20</div>
+        <div class="version-info">Version: 16.10.2026 11:39:18</div>
     </div>
 </div>
 
