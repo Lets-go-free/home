@@ -133,6 +133,8 @@
         .twr-leg { display: inline-flex; align-items: center; gap: 6px; }
         .twr-punkt { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
         .twr-svg-wrap { position: relative; }
+        .twr-schalter { cursor: pointer; margin-left: auto; user-select: none; }
+        .twr-schalter input { margin: 0 4px 0 0; cursor: pointer; }
         .twr-svg-wrap svg { width: 100%; height: auto; display: block; }
         .twr-tooltip {
             display: none;
@@ -661,7 +663,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 16.10.2026 11:39:18</div>
+        <div class="version-info">Version: 16.10.2026 11:54:21</div>
     </div>
 </div>
 
@@ -2049,7 +2051,9 @@ function bestUndSchlechtest(trades) {
 // - Trades (inkl. Commission) und Gebühren = Ergebnis: Rendite = Ergebnis / Kapital davor
 // Die Einzelrenditen werden verkettet: (1 + r1) x (1 + r2) x ... - 1
 // Rückgabe: { pct, verlauf: [{ tag, pct }], unvollstaendig }
-function berechneTWR(eintraege) {
+// opt.brutto = true: Gebühren zählen als Geldfluss (nicht als Ergebnis) -> Rendite vor Gebühren
+function berechneTWR(eintraege, opt) {
+    opt = opt || {};
     const liste = [...eintraege].sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
     // Inaktive Accounts: am Ende des Tages "inaktiv seit" wird der verbleibende Saldo
     // als Geldfluss herausgenommen. So verwässert totes Kapital die Rendite nicht.
@@ -2065,6 +2069,7 @@ function berechneTWR(eintraege) {
     let faktor = 1;
     let unvollstaendig = false;
     const proTag = new Map();
+    const gebuehrenTag = new Map();   // Tag -> { betrag, faktor } (faktor = Wirkung auf die Rendite)
     liste.forEach(t => {
         if (t.virtuellInaktiv) {
             kapital -= (kapitalAcc[t.account] || 0);
@@ -2076,15 +2081,23 @@ function berechneTWR(eintraege) {
         if (eff === null) { unvollstaendig = true; return; }
         const komm = Number(t.commission) || 0;
         const kat = isAccounting(t) ? getKategorie(t) : '';
-        const istGeldfluss = kat === 'Einzahlung' || kat === 'Auszahlung' || kat === 'Balance Adjust';
+        const istGebuehr = kat === 'Gebühren';
+        const istGeldfluss = kat === 'Einzahlung' || kat === 'Auszahlung' || kat === 'Balance Adjust' || (opt.brutto && istGebuehr);
         const betrag = eff + komm;
+        if (istGebuehr) {
+            const tag = datumKey(t.openTime);
+            const g = gebuehrenTag.get(tag) || { betrag: 0, faktor: 1 };
+            g.betrag += betrag;
+            if (kapital > 0) g.faktor *= (1 + betrag / kapital);
+            gebuehrenTag.set(tag, g);
+        }
         if (!istGeldfluss && kapital > 0) faktor *= (1 + betrag / kapital);
         kapital += betrag;
         kapitalAcc[t.account] = (kapitalAcc[t.account] || 0) + betrag;
         proTag.set(datumKey(t.openTime), (faktor - 1) * 100);
     });
     const verlauf = [...proTag.entries()].map(([tag, pct]) => ({ tag, pct }));
-    return { pct: eintraege.length ? (faktor - 1) * 100 : null, verlauf, unvollstaendig };
+    return { pct: eintraege.length ? (faktor - 1) * 100 : null, verlauf, unvollstaendig, gebuehrenTag };
 }
 
 // Liniengrafik als SVG (ohne externe Bibliothek)
@@ -2131,13 +2144,29 @@ function zeichneLinienChart(cfg) {
         });
         svg += `<path d="${pfad}" fill="none" stroke="${s.farbe}" stroke-width="${s.gesamt ? 3 : 2}" stroke-linejoin="round"/>`;
     });
+    // Markierungen (z.B. Gebühren): kleines Dreieck ▼ über dem Wert der ersten Serie
+    if (cfg.marker && cfg.marker.aktiv) {
+        const s0 = serien[0];
+        keys.forEach((k, i) => {
+            if (!cfg.marker.keys.has(k) || s0.werte[i] === null) return;
+            const mx = x(i), my = y(s0.werte[i]) - 7;
+            svg += `<path d="M${(mx - 5).toFixed(1)} ${(my - 8).toFixed(1)} L${(mx + 5).toFixed(1)} ${(my - 8).toFixed(1)} L${mx.toFixed(1)} ${my.toFixed(1)} Z" fill="${cfg.marker.farbe}" opacity="0.9" pointer-events="none"/>`;
+        });
+    }
     svg += `<line class="chart-linie" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#4a5568" stroke-width="1" stroke-dasharray="4 3" style="display:none"/>`;
     svg += `<rect class="chart-flaeche" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
     svg += '</svg>';
 
-    const legende = serien.length > 1 ? '<div class="twr-legende">' + serien.map(s => `<span class="twr-leg"><span class="twr-punkt" style="background:${s.farbe}"></span>${s.name}</span>`).join('') + '</div>' : '';
+    const legendeTeile = serien.map(s => `<span class="twr-leg"><span class="twr-punkt" style="background:${s.farbe}"></span>${s.name}</span>`);
+    if (cfg.marker) {
+        legendeTeile.push(`<label class="twr-leg twr-schalter"><input type="checkbox" ${cfg.marker.aktiv ? 'checked' : ''}> <span style="color:${cfg.marker.farbe}">▼</span> ${cfg.marker.name}</label>`);
+    }
+    const legende = (serien.length > 1 || cfg.marker) ? '<div class="twr-legende">' + legendeTeile.join('') + '</div>' : '';
     box.innerHTML = `${legende}<div class="twr-svg-wrap">${svg}<div class="twr-tooltip"></div></div>`;
 
+    if (cfg.marker) {
+        box.querySelector('.twr-schalter input').addEventListener('change', ev => cfg.marker.umschalten(ev.target.checked));
+    }
     const svgEl = box.querySelector('svg');
     const flaeche = box.querySelector('.chart-flaeche');
     const linie = box.querySelector('.chart-linie');
@@ -2148,7 +2177,8 @@ function zeichneLinienChart(cfg) {
         const i = Math.max(0, Math.min(keys.length - 1, Math.round((px - L) / (W - L - R) * (keys.length - 1))));
         linie.setAttribute('x1', x(i)); linie.setAttribute('x2', x(i)); linie.style.display = '';
         tip.innerHTML = '<strong>' + cfg.tipTitel(keys[i]) + '</strong><br>' +
-            serien.map(s => `<span style="color:${s.gesamt ? '#ffffff' : s.farbe}">●</span> ${s.name}: ${s.werte[i] === null ? '–' : cfg.tipWert(s.werte[i])}`).join('<br>');
+            serien.map(s => `<span style="color:${s.gesamt ? '#ffffff' : s.farbe}">●</span> ${s.name}: ${s.werte[i] === null ? '–' : cfg.tipWert(s.werte[i])}`).join('<br>') +
+            (cfg.tipExtra ? cfg.tipExtra(keys[i]) : '');
         tip.style.display = 'block';
         const links = x(i) / W * r.width;
         tip.style.left = (links > r.width / 2 ? links - tip.offsetWidth - 12 : links + 12) + 'px';
@@ -2227,7 +2257,11 @@ function zeichneSaeulenChart(cfg) {
 }
 
 // TWR-Verlauf: jeder Tag vom ersten bis zum letzten Eintrag, letzter Wert wird fortgeführt
-function zeichneTWRChart(serien) {
+let gebuehrenMarkieren = true;
+let letzteTWRDaten = null;
+
+function zeichneTWRChart(serien, gebuehren) {
+    letzteTWRDaten = { serien, gebuehren };
     const alleTage = [...new Set(serien.flatMap(s => s.verlauf.map(p => p.tag)))].sort();
     const tage = [];
     if (alleTage.length) {
@@ -2245,19 +2279,46 @@ function zeichneTWRChart(serien) {
         tipTitel: k => WOCHENTAGE[keyToDate(k).getDay()] + ' ' + datumZeit(k),
         yLabel: v => zahl(v, 1) + '%',
         tipWert: v => zahl(v, 2) + '%',
-        serien
+        serien,
+        marker: {
+            name: 'Gebühren markieren',
+            farbe: '#f59e0b',
+            aktiv: gebuehrenMarkieren,
+            keys: new Set(gebuehren ? [...gebuehren.gesamt.keys()] : []),
+            umschalten: an => { gebuehrenMarkieren = an; zeichneTWRChart(letzteTWRDaten.serien, letzteTWRDaten.gebuehren); }
+        },
+        tipExtra: k => {
+            if (!gebuehren || !gebuehren.gesamt.has(k)) return '';
+            const g = gebuehren.gesamt.get(k);
+            let text = '<br><span style="color:#f59e0b">▼</span> Gebühr: ' + zahl(g.betrag, 2) + ' (' + zahl((g.faktor - 1) * 100, 2) + '% Rendite)';
+            gebuehren.strategien.forEach(sg => {
+                if (sg.tage.has(k)) {
+                    const x = sg.tage.get(k);
+                    text += '<br>&nbsp;&nbsp;&nbsp;' + sg.name + ': ' + zahl(x.betrag, 2) + ' (' + zahl((x.faktor - 1) * 100, 2) + '%)';
+                }
+            });
+            return text;
+        }
     });
 }
 
 function renderTWR() {
     const gesamt = berechneTWR(mt5Trades);
-    const gruppen = nachStrategie(mt5Trades).map(g => ({ name: g.name, twr: berechneTWR(g.eintraege) }));
+    const gesamtBrutto = berechneTWR(mt5Trades, { brutto: true });
+    const gruppen = nachStrategie(mt5Trades).map(g => ({ name: g.name, twr: berechneTWR(g.eintraege), brutto: berechneTWR(g.eintraege, { brutto: true }) }));
+    const pkt = (b, n) => (b.pct === null || n.pct === null) ? '–' : zahl(b.pct - n.pct, 2);
     const sub = (gesamt.unvollstaendig ? 'Hebel bei einem Konto fehlt, Wert unvollständig\n' : '') +
-        gruppen.map(g => g.name + ': ' + (g.twr.pct === null ? '–' : zahl(g.twr.pct, 2) + '%')).join('\n');
+        gruppen.map(g => g.name + ': ' + (g.twr.pct === null ? '–' : zahl(g.twr.pct, 2) + '%')).join('\n') +
+        '\nBrutto (vor Gebühren): ' + (gesamtBrutto.pct === null ? '–' : zahl(gesamtBrutto.pct, 2) + '%') +
+        '\nGebühren kosten: ' + pkt(gesamtBrutto, gesamt) + ' %-Punkte' +
+        gruppen.map(g => '\n   ' + g.name + ': brutto ' + (g.brutto.pct === null ? '–' : zahl(g.brutto.pct, 2) + '%') + ', Gebühren ' + pkt(g.brutto, g.twr) + ' %-Pkt.').join('');
     setzeKachel('dTWR', gesamt.pct, { farbig: true, suffix: '%', sub });
     const serien = [{ name: 'Gesamt', farbe: '#2d3748', gesamt: true, verlauf: gesamt.verlauf }]
         .concat(gruppen.map((g, i) => ({ name: g.name, farbe: TWR_FARBEN[i % TWR_FARBEN.length], verlauf: g.twr.verlauf })));
-    zeichneTWRChart(serien);
+    zeichneTWRChart(serien, {
+        gesamt: gesamt.gebuehrenTag,
+        strategien: gruppen.map(g => ({ name: g.name, tage: g.twr.gebuehrenTag }))
+    });
 }
 
 function renderDashboard() {
