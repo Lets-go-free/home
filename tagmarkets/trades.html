@@ -663,7 +663,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 16.10.2026 11:54:21</div>
+        <div class="version-info">Version: 16.10.2026 17:45:29</div>
     </div>
 </div>
 
@@ -1993,16 +1993,29 @@ function tradeSummen(trades) {
 }
 
 // Wallet: Einzahlungen von aussen / Auszahlungen aus dem System (Status Approved)
-function walletSummen() {
+// regeln: { ein, aus } (Standard: Regeln des Tabs Wallet-Transaktionen)
+function walletSummen(regeln) {
+    const rEin = regeln ? regeln.ein : WALLET_EINZAHLUNG;
+    const rAus = regeln ? regeln.aus : WALLET_AUSZAHLUNG;
     let ein = 0, aus = 0;
     walletTx.forEach(w => {
         if (String(w.status || '').trim().toLowerCase() !== 'approved') return;
         const betrag = Math.abs(Number(w.amount) || 0);
-        if (walletRegelPasst(w, WALLET_EINZAHLUNG)) ein += betrag;
-        else if (walletRegelPasst(w, WALLET_AUSZAHLUNG)) aus += betrag;
+        if (walletRegelPasst(w, rEin)) ein += betrag;
+        else if (walletRegelPasst(w, rAus)) aus += betrag;
     });
     return { ein, aus };
 }
+
+// Dashboard "Konto": nur frisches Geld von aussen und Auszahlungen aus dem System
+// - Einzahlungen: Type "Deposit", Method "Crypto"
+// - Auszahlungen: Type "Wallet Withdrawal From USD"
+const DASHBOARD_EINZAHLUNG = [
+    ['Deposit', '*', 'Crypto']
+];
+const DASHBOARD_AUSZAHLUNG = [
+    ['Wallet Withdrawal From USD', '*', '*']
+];
 
 // ---------- Dashboard ----------
 function setzeKachel(id, wert, opt) {
@@ -2323,7 +2336,7 @@ function renderTWR() {
 
 function renderDashboard() {
     // Konto (Wallet)
-    const w = walletSummen();
+    const w = walletSummen({ ein: DASHBOARD_EINZAHLUNG, aus: DASHBOARD_AUSZAHLUNG });
     const netto = w.ein - w.aus;
     setzeKachel('dKontoEin', w.ein);
     setzeKachel('dKontoAus', -w.aus);
