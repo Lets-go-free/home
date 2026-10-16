@@ -417,10 +417,10 @@
                 </div>
             </div>
             <div class="dash-bereich">
-                <h4>Effektiver Gewinn/Verlust (netto) <span class="dash-hinweis">Saldo Strategien minus Netto-Einzahlungen Konto, nach Gebühren und Kommissionen</span></h4>
+                <h4>Effektiver Gewinn/Verlust (netto) <span class="dash-hinweis">USD: Saldo Strategien minus Netto-Einzahlungen Konto · %: Summe der einzelnen Renditen · nach Gebühren und Kommissionen</span></h4>
                 <div class="trades-summary">
                     <div class="sum-card"><span class="sum-label">in USD</span><span class="sum-wert" id="dEffGV">–</span><span class="sum-sub" id="dEffGVSub"></span></div>
-                    <div class="sum-card" title="bezogen auf die Netto-Einzahlungen"><span class="sum-label">in %</span><span class="sum-wert" id="dEffGVPct">–</span><span class="sum-sub" id="dEffGVPctSub"></span></div>
+                    <div class="sum-card" title="Summe der Renditen aller einzelnen Trades, Gebühren und Kommissionen, jeweils bezogen auf das Kapital im Account zu diesem Zeitpunkt (ohne Zinseszins)"><span class="sum-label">in % (Summe der einzelnen Renditen)</span><span class="sum-wert" id="dEffGVPct">–</span><span class="sum-sub" id="dEffGVPctSub"></span></div>
                 </div>
             </div>
             <div class="dash-bereich">
@@ -429,6 +429,23 @@
                     <div class="sum-card" title="Trades minus Gebühren und Kommissionen, pro Abschnitt zwischen Ein-/Auszahlungen gerechnet und verkettet"><span class="sum-label">Zeitgewichtete Rendite (netto)</span><span class="sum-wert" id="dTWR">–</span><span class="sum-sub" id="dTWRSub"></span></div>
                 </div>
                 <div class="twr-chart" id="twrChart"></div>
+            </div>
+            <div class="dash-bereich">
+                <h4>Simulation: täglich reinvestieren <span class="dash-hinweis">mit den effektiven Ergebnissen (netto), seit dem ersten Trade · Gewinne werden täglich reinvestiert (ab 1 USD), Verluste verringern das Kapital</span></h4>
+                <div class="trades-toolbar">
+                    <label>Startbetrag (USD)
+                        <input id="simBetrag" type="number" min="1" step="100" value="1000" class="neo-input" style="width: 160px;" oninput="renderSimulation()">
+                    </label>
+                    <label>Strategie
+                        <select id="simStrategie" class="neo-input" onchange="renderSimulation()"></select>
+                    </label>
+                </div>
+                <div class="trades-summary">
+                    <div class="sum-card sum-saldo"><span class="sum-label">Mit täglichem Reinvest</span><span class="sum-wert" id="simMit">–</span><span class="sum-sub" id="simMitSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Ohne Reinvest (Gewinne ausbezahlt)</span><span class="sum-wert" id="simOhne">–</span><span class="sum-sub" id="simOhneSub"></span></div>
+                    <div class="sum-card" title="Mehrertrag durch das Reinvestieren"><span class="sum-label">Unterschied (Zinseszins)</span><span class="sum-wert" id="simDiff">–</span><span class="sum-sub" id="simDiffSub"></span></div>
+                </div>
+                <div class="twr-chart" id="simChart"></div>
             </div>
             <div class="dash-bereich">
                 <h4>Trades <span class="dash-hinweis">brutto: Gewinn bzw. Verlust des Trades ohne Gebühren und Kommissionen</span></h4>
@@ -663,7 +680,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 16.10.2026 17:45:29</div>
+        <div class="version-info">Version: 16.10.2026 21:18:55</div>
     </div>
 </div>
 
@@ -2125,7 +2142,9 @@ function zeichneLinienChart(cfg) {
     if (!box) return;
     if (keys.length < 2) { box.innerHTML = '<p class="dash-hinweis" style="margin:0;">Noch zu wenig Daten für die Grafik.</p>'; return; }
     const alleWerte = serien.flatMap(s => s.werte).filter(x => x !== null);
-    let min = Math.min(0, ...alleWerte), max = Math.max(0, ...alleWerte);
+    // cfg.ohneNull: Achse nicht bei 0 beginnen lassen (z.B. bei Geldbeträgen)
+    let min = cfg.ohneNull ? Math.min(...alleWerte) : Math.min(0, ...alleWerte);
+    let max = cfg.ohneNull ? Math.max(...alleWerte) : Math.max(0, ...alleWerte);
     if (max - min < 1) { max += 0.5; min -= 0.5; }
     // "schöne" Schritte für die Y-Achse (1, 2, 5, 10 ...)
     const roh = (max - min) / 5;
@@ -2144,7 +2163,7 @@ function zeichneLinienChart(cfg) {
         svg += `<line x1="${L}" x2="${W - R}" y1="${y(val)}" y2="${y(val)}" stroke="#e2e8f0" stroke-width="1"/>`;
         svg += `<text x="${L - 8}" y="${y(val) + 4}" text-anchor="end" font-size="12" fill="#718096">${cfg.yLabel(val)}</text>`;
     }
-    svg += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="#a0aec0" stroke-width="1.5"/>`;
+    if (min <= 0 && max >= 0) svg += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="#a0aec0" stroke-width="1.5"/>`;
     const schritte = Math.max(1, Math.round((keys.length - 1) / 6));
     for (let i = 0; i < keys.length; i += schritte) {
         svg += `<text x="${x(i)}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#718096">${cfg.xLabel(keys[i])}</text>`;
@@ -2315,6 +2334,126 @@ function zeichneTWRChart(serien, gebuehren) {
     });
 }
 
+// ---------- Renditen der einzelnen Ereignisse (für Summe und Simulation) ----------
+// Gleiche Logik wie die TWR: Trades (inkl. Commission) und Gebühren sind Ergebnisse,
+// Ein-/Auszahlungen und Balance Adjust sind Geldflüsse, inaktive Accounts werden herausgenommen.
+// Rendite eines Ereignisses = Ergebnis / Kapital direkt davor.
+// Rückgabe: { summe (in %), tage: Map(Tag -> Summe der Renditen des Tages, als Anteil), erster, letzter }
+function berechneEinzelRenditen(eintraege) {
+    const liste = [...eintraege];
+    [...new Set(liste.map(t => t.account))].forEach(acc => {
+        const tag = inaktivSeit(acc);
+        if (tag) liste.push({ virtuellInaktiv: true, account: acc, openTime: tag + ' 23:59:59', ticket: '0' });
+    });
+    liste.sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
+    let kapital = 0;
+    const kapitalAcc = {};
+    let summe = 0;
+    const tage = new Map();
+    let erster = null, letzter = null;
+    liste.forEach(t => {
+        if (t.virtuellInaktiv) {
+            kapital -= (kapitalAcc[t.account] || 0);
+            kapitalAcc[t.account] = 0;
+            return;
+        }
+        const eff = betragEffektiv(t);
+        if (eff === null) return;
+        const betrag = eff + (Number(t.commission) || 0);
+        const kat = isAccounting(t) ? getKategorie(t) : '';
+        const istGeldfluss = kat === 'Einzahlung' || kat === 'Auszahlung' || kat === 'Balance Adjust';
+        if (!istGeldfluss && kapital > 0) {
+            const r = betrag / kapital;
+            summe += r;
+            const tag = datumKey(t.openTime);
+            tage.set(tag, (tage.get(tag) || 0) + r);
+            if (!isAccounting(t)) { if (!erster) erster = tag; letzter = tag; }
+        }
+        kapital += betrag;
+        kapitalAcc[t.account] = (kapitalAcc[t.account] || 0) + betrag;
+    });
+    return { summe: summe * 100, tage, erster, letzter };
+}
+
+// ---------- Simulation: täglich reinvestieren ----------
+// Startbetrag x Tagesrenditen. Gewinne werden täglich reinvestiert, sobald mind. 1 USD zusammen ist
+// (kleinere Beträge warten bis zum nächsten Tag). Verluste verringern das Kapital.
+// Ohne Reinvest: Kapital bleibt beim Startbetrag, Gewinne werden ausbezahlt (Summe der Renditen).
+function renderSimulation() {
+    const sel = document.getElementById('simStrategie');
+    const input = document.getElementById('simBetrag');
+    if (!sel || !input) return;
+    const gruppen = nachStrategie(mt5Trades);
+    // Wechsel-Szenario: immer in der neuesten Strategie (ab ihrem 1. Trade nur noch diese)
+    const proStrat = gruppen.map(g => ({ name: g.name, r: berechneEinzelRenditen(g.eintraege) }))
+        .filter(x => x.r.erster)
+        .sort((a, b) => a.r.erster.localeCompare(b.r.erster));
+    const wechselText = proStrat.map((x, i) => i === 0 ? x.name : x.name + ' ab ' + datumZeit(x.r.erster)).join(' → ');
+    const vorher = sel.dataset.gesetzt ? sel.value : '__wechsel';
+    sel.innerHTML = (proStrat.length > 1 ? `<option value="__wechsel">Wechsel: ${wechselText}</option>` : '') +
+        '<option value="">Gesamt</option>' + gruppen.map(g => `<option value="${g.name}">${g.name}</option>`).join('');
+    sel.value = [...sel.options].some(o => o.value === vorher) ? vorher : (proStrat.length > 1 ? '__wechsel' : '');
+    sel.dataset.gesetzt = '1';
+
+    const start = Math.max(0, Number(input.value) || 0);
+    let r;
+    if (sel.value === '__wechsel') {
+        // Tagesrendite jeweils aus der zuletzt gestarteten Strategie
+        const tage = new Map();
+        const alleTage = [...new Set(proStrat.flatMap(x => [...x.r.tage.keys()]))].sort();
+        alleTage.forEach(tag => {
+            const aktiv = proStrat.filter(x => x.r.erster <= tag).pop();
+            if (aktiv && aktiv.r.tage.has(tag)) tage.set(tag, aktiv.r.tage.get(tag));
+        });
+        r = { tage, erster: proStrat[0].r.erster };
+    } else {
+        const eintraege = sel.value ? gruppen.find(g => g.name === sel.value).eintraege : mt5Trades;
+        r = berechneEinzelRenditen(eintraege);
+    }
+    if (!r.erster || start <= 0) {
+        ['simMit', 'simOhne', 'simDiff'].forEach(id => setzeKachel(id, null));
+        document.getElementById('simChart').innerHTML = '<p class="dash-hinweis" style="margin:0;">Keine Daten für die Simulation.</p>';
+        return;
+    }
+
+    // alle Tage vom ersten Trade bis zum letzten Eintrag
+    const letzterTag = [...r.tage.keys()].sort().pop();
+    const keys = [];
+    for (let d = keyToDate(r.erster); d <= keyToDate(letzterTag); d.setDate(d.getDate() + 1)) keys.push(formatDate(d));
+
+    let kapital = start, offen = 0, ohne = start;
+    const werteMit = [], werteOhne = [];
+    keys.forEach(tag => {
+        const rt = r.tage.get(tag) || 0;
+        const ergebnis = kapital * rt;
+        if (ergebnis >= 0) offen += ergebnis; else kapital += ergebnis;
+        if (offen >= 1) { kapital += offen; offen = 0; }
+        ohne += start * rt;
+        werteMit.push(kapital + offen);
+        werteOhne.push(ohne);
+    });
+    const mit = kapital + offen;
+    const tageAnz = keys.length;
+    const pct = v => zahl((v / start - 1) * 100, 2) + '%';
+    setzeKachel('simMit', mit, { sub: pct(mit) + ' seit ' + datumZeit(r.erster) + ' (' + tageAnz + ' Tage)' });
+    setzeKachel('simOhne', ohne, { sub: pct(ohne) + ' (Startbetrag + ausbezahlte Gewinne)' });
+    setzeKachel('simDiff', mit - ohne, { farbig: true, sub: 'durch tägliches Reinvestieren' });
+
+    zeichneLinienChart({
+        box: document.getElementById('simChart'),
+        keys,
+        xLabel: k => datumZeit(k).substring(0, 6) + datumZeit(k).substring(8, 10),
+        tipTitel: k => WOCHENTAGE[keyToDate(k).getDay()] + ' ' + datumZeit(k),
+        yLabel: v => zahl(v, 0),
+        tipWert: v => zahl(v, 2) + ' USD',
+        ohneNull: true,
+        serien: [
+            { name: 'Mit täglichem Reinvest', farbe: '#10b981', gesamt: false, werte: werteMit },
+            { name: 'Ohne Reinvest', farbe: '#3b82f6', gesamt: false, werte: werteOhne }
+        ]
+    });
+}
+
 function renderTWR() {
     const gesamt = berechneTWR(mt5Trades);
     const gesamtBrutto = berechneTWR(mt5Trades, { brutto: true });
@@ -2359,7 +2498,10 @@ function renderDashboard() {
     // Effektiver Gewinn/Verlust
     const eff = sum.saldo === null ? null : sum.saldo - netto;
     setzeKachel('dEffGV', eff, { farbig: true });
-    setzeKachel('dEffGVPct', (eff !== null && netto > 0) ? eff / netto * 100 : null, { farbig: true, suffix: '%' });
+    // in %: Summe der einzelnen Renditen (netto), unabhängig von Ein- und Auszahlungen
+    const summeGesamt = berechneEinzelRenditen(mt5Trades);
+    const summeSub = nachStrategie(mt5Trades).map(g => g.name + ': ' + zahl(berechneEinzelRenditen(g.eintraege).summe, 2) + '%').join('\n');
+    setzeKachel('dEffGVPct', summeGesamt.erster ? summeGesamt.summe : null, { farbig: true, suffix: '%', sub: summeSub });
 
     // Anzahl Trades + je Strategie
     const trades = mt5Trades.filter(t => !isAccounting(t));
@@ -2393,6 +2535,7 @@ function renderDashboard() {
 
     // Zeitgewichtete Rendite inkl. Grafik
     renderTWR();
+    renderSimulation();
 }
 
 // ---------- Summary über der Tabelle "Alle Trades" ----------
