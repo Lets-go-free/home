@@ -377,8 +377,10 @@
             <button type="button" class="neo-btn-small guest-only" onclick="toggleLoginForm()">Anmelden</button>
         </div>
         <div id="loginForm" style="display: none; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; margin-bottom: 20px;">
-            <input id="loginEmail" type="email" placeholder="E-Mail" class="neo-input" style="width: 260px;" autocomplete="email" onkeydown="if (event.key === 'Enter') login()">
-            <button type="button" class="neo-btn" onclick="login()">Login-Link senden</button>
+            <input id="loginEmail" type="email" placeholder="E-Mail" class="neo-input" style="width: 260px;" autocomplete="username" onkeydown="if (event.key === 'Enter') loginPasswort()">
+            <input id="loginPasswort" type="password" placeholder="Passwort" class="neo-input" style="width: 200px;" autocomplete="current-password" onkeydown="if (event.key === 'Enter') loginPasswort()">
+            <button type="button" class="neo-btn" onclick="loginPasswort()">Anmelden</button>
+            <button type="button" class="neo-btn-small" onclick="login()" title="Ohne Passwort: Login-Link per E-Mail">Login-Link senden</button>
             <span id="loginMessage" style="font-size: 0.9em; color: #dc2626; width: 100%; text-align: right;"></span>
         </div>
 
@@ -680,7 +682,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 16.10.2026 21:33:12</div>
+        <div class="version-info">Version: 17.10.2026 14:28:31</div>
     </div>
 </div>
 
@@ -874,6 +876,29 @@ async function istAdminEmail(email) {
     const { data, error } = await db.rpc('tm_ist_admin_email', { p_email: email });
     if (error) { console.error('Admin-Prüfung:', error.message); return false; }
     return data === true;
+}
+
+// Anmeldung mit E-Mail und Passwort (gleicher Benutzer wie auf den anderen Seiten von letsgofree.me)
+async function loginPasswort() {
+    const msg = document.getElementById('loginMessage');
+    msg.style.color = '#dc2626';
+    msg.textContent = '';
+    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+    const passwort = document.getElementById('loginPasswort').value;
+    if (!email || !passwort) {
+        msg.textContent = 'Bitte E-Mail und Passwort eingeben.';
+        return;
+    }
+    const { data, error } = await db.auth.signInWithPassword({ email, password: passwort });
+    document.getElementById('loginPasswort').value = '';
+    if (error) {
+        msg.textContent = 'Anmelden hat nicht geklappt: ' + error.message;
+        return;
+    }
+    // Admin-Rechte kommen weiterhin aus der Tabelle admins
+    if (!(await pruefeAdmin(data.session))) {
+        msg.textContent = 'Angemeldet, aber diese E-Mail hat keine Admin-Rechte.';
+    }
 }
 
 async function login() {
