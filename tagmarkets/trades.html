@@ -682,7 +682,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 17.10.2026 14:28:31</div>
+        <div class="version-info">Version: 17.10.2026 14:35:37</div>
     </div>
 </div>
 
@@ -2483,12 +2483,19 @@ function renderTWR() {
     const gesamt = berechneTWR(mt5Trades);
     const gesamtBrutto = berechneTWR(mt5Trades, { brutto: true });
     const gruppen = nachStrategie(mt5Trades).map(g => ({ name: g.name, twr: berechneTWR(g.eintraege), brutto: berechneTWR(g.eintraege, { brutto: true }) }));
-    const pkt = (b, n) => (b.pct === null || n.pct === null) ? '–' : zahl(b.pct - n.pct, 2);
+    // Gebühren in USD und als Anteil der Brutto-Gewinne aus Trades
+    const gebText = eintraege => {
+        const sum = tradeSummen(eintraege);
+        if (sum.fehlt) return '–';
+        const geb = Math.abs(sum.geb);
+        return zahl(geb, 2) + ' USD' + (sum.gew > 0 ? ' = ' + zahl(geb / sum.gew * 100, 1) + '% der Brutto-Gewinne' : '');
+    };
     const sub = (gesamt.unvollstaendig ? 'Hebel bei einem Konto fehlt, Wert unvollständig\n' : '') +
         gruppen.map(g => g.name + ': ' + (g.twr.pct === null ? '–' : zahl(g.twr.pct, 2) + '%')).join('\n') +
         '\nBrutto (vor Gebühren): ' + (gesamtBrutto.pct === null ? '–' : zahl(gesamtBrutto.pct, 2) + '%') +
-        '\nGebühren kosten: ' + pkt(gesamtBrutto, gesamt) + ' %-Punkte' +
-        gruppen.map(g => '\n   ' + g.name + ': brutto ' + (g.brutto.pct === null ? '–' : zahl(g.brutto.pct, 2) + '%') + ', Gebühren ' + pkt(g.brutto, g.twr) + ' %-Pkt.').join('');
+        gruppen.map(g => '\n   ' + g.name + ': brutto ' + (g.brutto.pct === null ? '–' : zahl(g.brutto.pct, 2) + '%')).join('') +
+        '\nGebühren: ' + gebText(mt5Trades) +
+        nachStrategie(mt5Trades).map(g => '\n   ' + g.name + ': ' + gebText(g.eintraege)).join('');
     setzeKachel('dTWR', gesamt.pct, { farbig: true, suffix: '%', sub });
     const serien = [{ name: 'Gesamt', farbe: '#2d3748', gesamt: true, verlauf: gesamt.verlauf }]
         .concat(gruppen.map((g, i) => ({ name: g.name, farbe: TWR_FARBEN[i % TWR_FARBEN.length], verlauf: g.twr.verlauf })));
