@@ -1,3 +1,5 @@
+// Phase 7.57 · 28.10.2026 13:47:01 CET: Neuer Tab VOW/vUSD Handel mit DEX-Swap-Analyse für 24 h, 7 Tage und 30 Tage auf BSC/Ethereum sowie Total; grösste Händler inkl. vorhandener TLN-ID. Build 20261028-134701.
+// Phase 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
 // Phase 7.53 · 08.10.2026 18:29:47 CEST: 24-Stunden-Vergleich für DEX-Kurse über dieselbe aktuelle Bewertungsroute; globaler Cache, ehrliche Lücken und Referenzkennzeichnung. Build 20261008-182947.
 // Phase 7.03 · 02.10.2026 04:52:42 CEST: BSC-Voucher-Prefetch an die unveraenderte Fachroute angepasst: auf BSC werden nur Voucher/VOW + VOW/USDT vorab gesucht; ETH behaelt direkte Stablecoin-Kandidaten. Build 20261002-045242.
 // Phase 7.02 · 02.10.2026 04:37:13 CEST: Referenzassets werden cache-/stammdaten-first aufgelöst; der bisherige LP-On-Chain-Scan bleibt nur als Fallback. Preisrouten und Preisformeln unverändert. Build 20261002-043713.
@@ -2117,7 +2119,7 @@ async function renderV2Pool(chain,dbPool,wallet){
     </td>
     <td>
       <div class="lp">${lpPrice !== null ? usd(lpPrice) : "nicht verfügbar"}</div>
-      <div class="small">Wert von 1 ${pool.lpSymbol}</div>
+      <div class="small" title="Poolwert in USD geteilt durch die gesamte LP-Tokenmenge">USD je 1 LP-Token</div>
       <hr>
       <div class="small">Supply: ${formatTokenAmount(pool.lpSupply,pool.lpSymbol,{kind:"lp"})} ${pool.lpSymbol}</div>
       <div class="small">
@@ -2357,6 +2359,267 @@ async function loadDailyPrices(){
 }
 
 /* =========================================================
+   VOW / vUSD · HANDELSANALYSE
+   - echte Swap-Events der konfigurierten TLN/VOW DEX-Pools
+   - Händler = transaction.from (Router-/Aggregator-Sender wird damit
+     nicht fälschlich als Wallet aus dem Swap-Event übernommen)
+   - TLN-ID nur aus bereits verifiziertem globalem Identity-Cache
+========================================================= */
+const TRADE_V2_SWAP_IFACE = new ethers.Interface([
+  "event Swap(address indexed sender,uint256 amount0In,uint256 amount1In,uint256 amount0Out,uint256 amount1Out,address indexed to)"
+]);
+const TRADE_V3_SWAP_IFACE = new ethers.Interface([
+  "event Swap(address indexed sender,address indexed recipient,int256 amount0,int256 amount1,uint160 sqrtPriceX96,uint128 liquidity,int24 tick)"
+]);
+const TRADE_V2_SWAP_TOPIC = ethers.id("Swap(address,uint256,uint256,uint256,uint256,address)");
+const TRADE_V3_SWAP_TOPIC = ethers.id("Swap(address,address,int256,int256,uint160,uint128,int24)");
+const TRADE_WINDOWS = [
+  {key:"24h",label:"Letzte 24 h",seconds:24*60*60},
+  {key:"7d",label:"Letzte 7 Tage",seconds:7*24*60*60},
+  {key:"30d",label:"Letzte 30 Tage",seconds:30*24*60*60}
+];
+const tradingState={promise:null,data:null,loadedAt:0};
+
+function tradingTargetKey(token){
+  const symbol=String(token?.symbol||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(symbol==="VOW")return "vow";
+  if(symbol==="VUSD")return "vusd";
+  return null;
+}
+function tradingTargetLabel(key){return key==="vow"?"VOW":"vUSD";}
+function tradingShortAddress(address){const a=String(address||"");return a&&a.length>14?`${a.slice(0,8)}…${a.slice(-6)}`:(a||"–");}
+function tradingFormatAmount(value){
+  const n=Number(value||0);
+  if(!Number.isFinite(n))return "–";
+  return n.toLocaleString("de-CH",{maximumFractionDigits:n>=1000?2:n>=1?4:6});
+}
+function tradingSetStatus(text,type=""){
+  const el=document.getElementById("tlnTradingStatus");
+  if(!el)return;
+  el.className=type?`status ${type}`:"status";
+  el.innerHTML=type==="loading"?`<span class="loading">${text}</span>`:text;
+}
+function tradingBlockHex(n){return "0x"+Math.max(0,Number(n)||0).toString(16);}
+async function tradingRpc(chain,method,params=[]){
+  const rpc=CONFIG[chain]?.rpc;
+  if(!rpc)throw new Error(`${chain}: RPC fehlt.`);
+  const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
+  if(!response.ok)throw new Error(`${chain}: RPC HTTP ${response.status}`);
+  const json=await response.json();
+  if(json?.error)throw new Error(`${chain}: ${json.error.message||"RPC-Fehler"}`);
+  return json?.result;
+}
+async function tradingBlockTimestamp(chain,blockNumber){
+  const raw=await tradingRpc(chain,"eth_getBlockByNumber",[tradingBlockHex(blockNumber),false]);
+  if(!raw?.timestamp)throw new Error(`${chain}: Blockzeit nicht lesbar.`);
+  return Number(BigInt(raw.timestamp));
+}
+async function tradingFindBlockAtOrAfter(chain,targetTs,latestBlock,latestTs){
+  if(targetTs>=latestTs)return latestBlock;
+  let lo=0,hi=latestBlock;
+  // Grobe Untergrenze reduziert die Binärsuche und vermeidet unnötig alte Blöcke.
+  const avg=chain==="bsc"?3:12;
+  lo=Math.max(0,latestBlock-Math.ceil((latestTs-targetTs)/avg)-5000);
+  const loTs=await tradingBlockTimestamp(chain,lo).catch(()=>0);
+  if(loTs>targetTs)lo=0;
+  while(lo<hi){
+    const mid=Math.floor((lo+hi)/2);
+    const ts=await tradingBlockTimestamp(chain,mid);
+    if(ts<targetTs)lo=mid+1;else hi=mid;
+  }
+  return lo;
+}
+async function tradingGetLogsRange(chain,address,topic,fromBlock,toBlock){
+  const out=[];
+  let start=fromBlock;
+  let chunk=chain==="bsc"?50000:12000;
+  const minChunk=250;
+  while(start<=toBlock){
+    const end=Math.min(toBlock,start+chunk-1);
+    try{
+      const rows=await tradingRpc(chain,"eth_getLogs",[{address,fromBlock:tradingBlockHex(start),toBlock:tradingBlockHex(end),topics:[topic]}]);
+      if(Array.isArray(rows))out.push(...rows);
+      start=end+1;
+      if(chunk<(chain==="bsc"?50000:12000))chunk=Math.min(chain==="bsc"?50000:12000,Math.floor(chunk*1.5));
+    }catch(e){
+      if(chunk<=minChunk)throw e;
+      chunk=Math.max(minChunk,Math.floor(chunk/2));
+    }
+  }
+  return out;
+}
+async function tradingBatchTransactionSenders(chain,hashes){
+  const unique=[...new Set((hashes||[]).filter(Boolean))];
+  const map=new Map();
+  const rpc=CONFIG[chain]?.rpc;
+  for(let offset=0;offset<unique.length;offset+=80){
+    const slice=unique.slice(offset,offset+80);
+    const payload=slice.map((hash,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_getTransactionByHash",params:[hash]}));
+    const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+    if(!response.ok)throw new Error(`${chain}: Transaktions-Batch HTTP ${response.status}`);
+    const json=await response.json();
+    const rows=Array.isArray(json)?json:[json];
+    const byId=new Map(rows.map(x=>[Number(x.id),x]));
+    slice.forEach((hash,i)=>{
+      const tx=byId.get(i+1)?.result;
+      if(tx?.from&&ethers.isAddress(tx.from))map.set(hash,norm(tx.from));
+    });
+  }
+  return map;
+}
+async function tradingLoadPools(chain){
+  const pools=[];
+  for(const row of configuredLPs(chain)){
+    if(!row?.address||!ethers.isAddress(row.address))continue;
+    try{
+      const type=await detectPoolType(chain,row.address);
+      const pool=type==="v3"?await readV3Pool(chain,row.address):await readV2Pool(chain,row.address);
+      const k0=tradingTargetKey(pool.token0),k1=tradingTargetKey(pool.token1);
+      if(!k0&&!k1)continue;
+      pools.push({chain,address:norm(row.address),type,token0:pool.token0,token1:pool.token1,target0:k0,target1:k1,label:displayPoolLabel(row,pool)});
+    }catch(e){console.warn("TLN/VOW Handelsanalyse Pool übersprungen",chain,row.address,e);}
+  }
+  return pools;
+}
+function tradingDecodeLog(pool,log){
+  try{
+    if(pool.type==="v3"){
+      const parsed=TRADE_V3_SWAP_IFACE.parseLog({topics:log.topics,data:log.data});
+      const amounts=[parsed.args.amount0,parsed.args.amount1];
+      const tokens=[pool.token0,pool.token1],keys=[pool.target0,pool.target1];
+      const out=[];
+      for(let i=0;i<2;i++){
+        if(!keys[i])continue;
+        const raw=amounts[i];
+        const positive=raw>0n;
+        const abs=positive?raw:-raw;
+        if(abs===0n)continue;
+        out.push({token:keys[i],side:positive?"sell":"buy",amount:Number(ethers.formatUnits(abs,tokens[i].decimals))});
+      }
+      return out;
+    }
+    const parsed=TRADE_V2_SWAP_IFACE.parseLog({topics:log.topics,data:log.data});
+    const input=[parsed.args.amount0In,parsed.args.amount1In],output=[parsed.args.amount0Out,parsed.args.amount1Out];
+    const tokens=[pool.token0,pool.token1],keys=[pool.target0,pool.target1],out=[];
+    for(let i=0;i<2;i++){
+      if(!keys[i])continue;
+      const inRaw=input[i],outRaw=output[i];
+      if(inRaw>0n)out.push({token:keys[i],side:"sell",amount:Number(ethers.formatUnits(inRaw,tokens[i].decimals))});
+      if(outRaw>0n)out.push({token:keys[i],side:"buy",amount:Number(ethers.formatUnits(outRaw,tokens[i].decimals))});
+    }
+    return out;
+  }catch(e){console.warn("TLN/VOW Swap-Log nicht dekodierbar",pool.address,log?.transactionHash,e);return [];}
+}
+async function tradingLoadIdentityMap(wallets){
+  const ids=new Map(),list=[...new Set((wallets||[]).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
+  for(let offset=0;offset<list.length;offset+=100){
+    const slice=list.slice(offset,offset+100);
+    const {data,error}=await sb.from("tln_vow_identity_global_cache")
+      .select("wallet_address,node_id,verified_at")
+      .eq("chain_key","bsc")
+      .in("wallet_address",slice);
+    if(error){console.warn("TLN/VOW Händler TLN-ID Cache",error);break;}
+    for(const row of data||[]){
+      const wallet=norm(row.wallet_address);
+      if(wallet&&row.node_id!=null&&!ids.has(wallet))ids.set(wallet,String(row.node_id));
+    }
+  }
+  return ids;
+}
+function tradingAggregate(events,cutoffs){
+  const result={};
+  for(const window of TRADE_WINDOWS){
+    result[window.key]={bsc:{},eth:{},total:{}};
+    for(const chain of ["bsc","eth","total"]){
+      for(const token of ["vow","vusd"])result[window.key][chain][token]={buy:0,sell:0,buyTrades:0,sellTrades:0};
+    }
+  }
+  for(const event of events){
+    for(const window of TRADE_WINDOWS){
+      if(Number(event.blockNumber)<Number(cutoffs[event.chain]?.[window.key]??Infinity))continue;
+      const buckets=[result[window.key][event.chain][event.token],result[window.key].total[event.token]];
+      for(const b of buckets){b[event.side]+=event.amount;b[event.side+"Trades"]++;}
+    }
+  }
+  return result;
+}
+function tradingSummaryCell(bucket,side){
+  return `${tradingFormatAmount(bucket?.[side]||0)} <span class="muted">(${Number(bucket?.[side+"Trades"]||0)} Trades)</span>`;
+}
+function renderTradingSummary(){
+  const body=document.getElementById("tlnTradingSummaryBody"),data=tradingState.data;
+  if(!body||!data)return;
+  const rows=[];
+  for(const w of TRADE_WINDOWS){
+    for(const chain of ["total","bsc","eth"]){
+      const a=data.summary[w.key][chain];
+      rows.push(`<tr><td><strong>${w.label}</strong></td><td>${chain==="total"?"Total":chain==="bsc"?"BSC":"Ethereum"}</td><td class="num">${tradingSummaryCell(a.vow,"buy")}</td><td class="num">${tradingSummaryCell(a.vow,"sell")}</td><td class="num">${tradingSummaryCell(a.vusd,"buy")}</td><td class="num">${tradingSummaryCell(a.vusd,"sell")}</td></tr>`);
+    }
+  }
+  body.innerHTML=rows.join("");
+}
+function tradingTraderRows(){
+  const data=tradingState.data;if(!data)return [];
+  const period=document.getElementById("tlnTradingPeriod")?.value||"30d";
+  const chain=document.getElementById("tlnTradingChain")?.value||"total";
+  const token=document.getElementById("tlnTradingToken")?.value||"vow";
+  const cutoff=data.cutoffs;
+  const map=new Map();
+  for(const e of data.events){
+    if(e.token!==token||!e.wallet)continue;
+    if(chain!=="total"&&e.chain!==chain)continue;
+    if(Number(e.blockNumber)<Number(cutoff[e.chain]?.[period]??Infinity))continue;
+    if(!map.has(e.wallet))map.set(e.wallet,{wallet:e.wallet,buy:0,sell:0,buyTrades:0,sellTrades:0,chains:new Set()});
+    const row=map.get(e.wallet);row[e.side]+=e.amount;row[e.side+"Trades"]++;row.chains.add(e.chain);
+  }
+  return [...map.values()].map(x=>({...x,total:x.buy+x.sell,tradeCount:x.buyTrades+x.sellTrades,tlnId:data.identity.get(x.wallet)||null})).sort((a,b)=>b.total-a.total).slice(0,20);
+}
+function renderTradingTraders(){
+  const body=document.getElementById("tlnTradingTradersBody"),data=tradingState.data;if(!body||!data)return;
+  const token=document.getElementById("tlnTradingToken")?.value||"vow";
+  const rows=tradingTraderRows();
+  body.innerHTML=rows.length?rows.map((r,i)=>`<tr><td>${i+1}</td><td><span class="mono" title="${r.wallet}">${tradingShortAddress(r.wallet)}</span></td><td>${r.tlnId?`<strong>${r.tlnId}</strong>`:"–"}</td><td>${[...r.chains].map(c=>c==="bsc"?"BSC":"ETH").join(" + ")}</td><td class="num">${tradingFormatAmount(r.buy)}</td><td class="num">${tradingFormatAmount(r.sell)}</td><td class="num"><strong>${tradingFormatAmount(r.total)}</strong></td><td class="num">${r.tradeCount}</td></tr>`).join(""):`<tr><td colspan="8">Keine ${tradingTargetLabel(token)}-Trades im gewählten Zeitraum gefunden.</td></tr>`;
+}
+async function loadTradingAnalysis({force=false}={}){
+  if(tradingState.promise)return tradingState.promise;
+  if(!force&&tradingState.data&&(Date.now()-tradingState.loadedAt)<10*60*1000){renderTradingSummary();renderTradingTraders();return tradingState.data;}
+  tradingState.promise=(async()=>{
+    tradingSetStatus("Handelsdaten werden on-chain ausgewertet…","loading");
+    await ensureInfrastructure();
+    const nowTs=Math.floor(Date.now()/1000),cutoffs={},allEvents=[],poolCounts={bsc:0,eth:0};
+    for(const chain of ["bsc","eth"]){
+      if(!projectChains.includes(chain)||!providers[chain])continue;
+      const latestBlock=await providers[chain].getBlockNumber();
+      const latestTs=await tradingBlockTimestamp(chain,latestBlock);
+      cutoffs[chain]={};
+      for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=await tradingFindBlockAtOrAfter(chain,nowTs-w.seconds,latestBlock,latestTs);
+      const pools=await tradingLoadPools(chain);poolCounts[chain]=pools.length;
+      for(const pool of pools){
+        const topic=pool.type==="v3"?TRADE_V3_SWAP_TOPIC:TRADE_V2_SWAP_TOPIC;
+        const logs=await tradingGetLogsRange(chain,pool.address,topic,cutoffs[chain]["30d"],latestBlock);
+        for(const log of logs){
+          const decoded=tradingDecodeLog(pool,log);
+          for(const item of decoded)allEvents.push({...item,chain,pool:pool.address,poolLabel:pool.label,txHash:log.transactionHash,blockNumber:Number(BigInt(log.blockNumber))});
+        }
+      }
+      const senders=await tradingBatchTransactionSenders(chain,allEvents.filter(e=>e.chain===chain).map(e=>e.txHash));
+      for(const e of allEvents)if(e.chain===chain)e.wallet=senders.get(e.txHash)||null;
+    }
+    const identity=await tradingLoadIdentityMap(allEvents.map(e=>e.wallet));
+    tradingState.data={events:allEvents,cutoffs,identity,poolCounts,summary:tradingAggregate(allEvents,cutoffs),capturedAt:new Date()};
+    tradingState.loadedAt=Date.now();
+    renderTradingSummary();renderTradingTraders();
+    const uniqueTx=new Set(allEvents.map(e=>`${e.chain}|${e.txHash}`)).size;
+    tradingSetStatus(`Stand ${tradingState.data.capturedAt.toLocaleString("de-CH")} · ${uniqueTx} Swap-Transaktionen · ${poolCounts.bsc||0} BSC-Pool(s) · ${poolCounts.eth||0} Ethereum-Pool(s).`,"success");
+    return tradingState.data;
+  })().catch(e=>{tradingSetStatus(`Fehler bei der Handelsanalyse: ${String(e?.message||e)}`,"error");throw e;}).finally(()=>{tradingState.promise=null;});
+  return tradingState.promise;
+}
+function ensureTradingLoaded(){return loadTradingAnalysis({force:false});}
+function refreshTrading(){return loadTradingAnalysis({force:true});}
+function onTradingFilterChange(){renderTradingTraders();}
+
+/* =========================================================
    TABS
 ========================================================= */
 function switchChain(chain){
@@ -2404,6 +2667,9 @@ return {
   getPrice:getExportedPrice,
   displayDecimalsFor,
   formatTokenAmount,
+  ensureTradingLoaded,
+  refreshTrading,
+  onTradingFilterChange,
   getPriceState:()=>({capturedAt:currentPriceCapturedAt,source:currentPriceSource,version:CURRENT_PRICE_SNAPSHOT_VERSION})
 };
 
