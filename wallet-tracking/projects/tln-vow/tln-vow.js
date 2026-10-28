@@ -2933,39 +2933,35 @@ async function tradingAlchemyChain(chain,userId,states,nowTs,progress){
   }
   return {pools,total};
 }
+// Read-only Handelsansicht: Chain-Abfragen erfolgen ausschließlich im Supabase-Cron-Job.
 async function loadTradingAnalysis({force=false}={}){
   if(tradingState.promise)return tradingState.promise;
-  if(!force&&tradingState.data&&(Date.now()-tradingState.loadedAt)<TRADING_REFRESH_MS){renderTradingSummary();renderTradingTraders();return tradingState.data;}
+  if(!force&&tradingState.data&&(Date.now()-tradingState.loadedAt)<TRADING_REFRESH_MS){
+    renderTradingSummary();renderTradingTraders();return tradingState.data;
+  }
   tradingState.promise=(async()=>{
     const userId=await tradingAuthUser();
     tradingSetStatus('Lade Handelsdaten aus Supabase…','loading');
-    let cachedEvents=await tradingReadCache(userId);
+    const [events,states]=await Promise.all([tradingReadCache(userId),tradingReadScanState(userId)]);
     const nowTs=Math.floor(Date.now()/1000),cutoffs={};
-    for(const chain of ['bsc','eth']){cutoffs[chain]={};for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=nowTs-w.seconds;}
-    let identity=await tradingLoadIdentityMap(cachedEvents.map(e=>e.wallet));
-    const poolCounts={bsc:0,eth:0};
-    tradingUpdateFromEvents(cachedEvents,cutoffs,identity,poolCounts,new Date());
-    await ensureInfrastructure();
-    const states=await tradingReadScanState(userId),failures=[],completed=[];
     for(const chain of ['bsc','eth']){
-      if(!projectChains.includes(chain)||!providers[chain]){failures.push(`${chain}: RPC nicht konfiguriert`);continue;}
-      try{
-        const r=await tradingAlchemyChain(chain,userId,states,nowTs,msg=>tradingSetStatus(msg,'loading'));
-        poolCounts[chain]=r.pools;
-        completed.push(chain.toUpperCase());
-      }catch(e){failures.push(`${chain.toUpperCase()}: ${String(e?.message||e)}`);console.warn('Alchemy Handelsanalyse',chain,e);}
+      cutoffs[chain]={};
+      for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=nowTs-w.seconds;
     }
-    await tradingPrune(userId);
-    cachedEvents=await tradingReadCache(userId);
-    identity=await tradingLoadIdentityMap(cachedEvents.map(e=>e.wallet));
-    tradingUpdateFromEvents(cachedEvents,cutoffs,identity,poolCounts,new Date());
-    const n=new Set(cachedEvents.map(e=>`${e.chain}:${e.txHash}`)).size;
-    tradingSetStatus(`Alchemy · ${n} gecachte Swap-Transaktionen (max. 30 Tage) · aktuell: ${completed.join(', ')||'keine Chain'}${failures.length?` · NICHT VOLLSTÄNDIG: ${failures.join('; ')}`:''} · ${new Date().toLocaleString('de-CH')}`,failures.length?'error':'success');
+    const identity=await tradingLoadIdentityMap(events.map(e=>e.wallet));
+    tradingUpdateFromEvents(events,cutoffs,identity,{bsc:0,eth:0},new Date());
+    const stamp=(chain)=>states.get(`${chain}|alchemy:transfers-v1`)?.updated_at||null;
+    const times=['bsc','eth'].map(c=>({chain:c,time:stamp(c)}));
+    const details=times.map(({chain,time})=>`${chain.toUpperCase()}: ${time?new Date(time).toLocaleString('de-CH'):'noch kein Checkpoint'}`);
+    const missing=times.some(x=>!x.time);
+    const count=new Set(events.map(e=>`${e.chain}:${e.txHash}`)).size;
+    tradingSetStatus(`Supabase · ${count} gecachte Swap-Transaktionen (max. 30 Tage) · ${details.join(' · ')}${missing?' · Mindestens eine Chain noch ohne Scanstatus':''} · Aktualisierung über Cron alle 30 Minuten`,missing?'error':'success');
     return tradingState.data;
-  })().catch(e=>{tradingSetStatus(`Alchemy-Handelsanalyse: ${String(e?.message||e)}`,'error');throw e;}).finally(()=>{tradingState.promise=null;});
+  })().catch(e=>{tradingSetStatus(`Handels-Cache: ${String(e?.message||e)}`,'error');throw e;}).finally(()=>{tradingState.promise=null;});
   return tradingState.promise;
 }
 function ensureTradingLoaded(){return loadTradingAnalysis({force:false});}
+// Nur für mögliche bestehende externe Aufrufer beibehalten; ebenfalls reiner Cache-Reload.
 function refreshTrading(){return loadTradingAnalysis({force:true});}
 function onTradingFilterChange(){renderTradingTraders();}
 
