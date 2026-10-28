@@ -2383,6 +2383,18 @@ const TRADE_WINDOWS = [
   {key:"30d",label:"Letzte 30 Tage",seconds:30*24*60*60}
 ];
 const tradingState={promise:null,data:null,loadedAt:0};
+// Verifizierte Zielcontracts, nicht Token-Symbol-Heuristik.
+const TRADING_CONTRACTS={
+  bsc:{
+    "0xf585b5b4f22816baf7629aea55b701662630397b":"vow",
+    "0x9c23942ca2c35e06d1d20747f33705983a18d2ab":"vdollar"
+  },
+  eth:{
+    "0x1bbf25e71ec48b84d773809b4ba55b6f4be946fb":"vow",
+    "0xba7fe208e0167e4047a996e1efea830515f433f8":"vdollar",
+    "0x6c559d849f70477723dc94405018a436fa9fdc12":"vdollar"
+  }
+};
 const TRADING_CACHE_TABLE="tln_vow_trade_cache";
 const TRADING_STATE_TABLE="tln_vow_trade_scan_state";
 const TRADING_SCHEMA_VERSION=5;
@@ -2580,27 +2592,19 @@ async function tradingBatchTransactionSenders(chain,hashes){
 // innerhalb des Fensters mit VOW/v$ interagiert haben. Nur verifizierte V2/V3
 // Pools bekannter Factories werden als Handelsplätze aufgenommen.
 async function tradingTokenContracts(chain){
-  const found=new Map();
-  const addresses=new Set();
-  for(const row of configuredTokens(chain))if(ethers.isAddress(row.address))addresses.add(norm(row.address));
-  // Pool-Tokenmetadaten dienen zusätzlich als Quelle, falls die explizite
-  // Projekt-Tokenklassifikation einen der Zielcontracts noch nicht enthält.
-  for(const row of configuredLPs(chain)){
-    try{
-      const type=await detectPoolType(chain,row.address);
-      const pool=type==="v3"?await readV3Pool(chain,row.address):await readV2Pool(chain,row.address);
-      for(const t of [pool.token0,pool.token1])if(tradingTargetKey(t))addresses.add(norm(t.address));
-    }catch(e){console.warn("Handel: Seed-Pool-Metadaten",chain,row.address,e);}
-  }
-  for(const address of addresses){
+  const targets=new Map(Object.entries(TRADING_CONTRACTS[chain]||{}));
+  if(!targets.size)throw new Error(`${chain}: Keine verifizierten Handelscontracts konfiguriert`);
+  for(const [address,key] of targets){
     try{
       const token=await getToken(chain,address);
-      const key=tradingTargetKey(token);
-      if(key)found.set(address,key);
-    }catch(e){console.warn("Handel: Token nicht lesbar",chain,address,e);}
+      if(!token||!ethers.isAddress(token.address))throw new Error("Token-Metadaten fehlen");
+    }catch(e){
+      console.warn("Handel: Zielcontract-Metadaten nicht geladen",chain,address,e);
+    }
   }
-  return found;
+  return targets;
 }
+
 async function tradingVerifyCandidatePool(chain,address,targetTokens){
   if(!ethers.isAddress(address)||targetTokens.has(norm(address)))return null;
   const a=norm(address);
@@ -2706,7 +2710,8 @@ async function tradingLoadPools(chain){
     try{
       const type=await detectPoolType(chain,row.address);
       const pool=type==="v3"?await readV3Pool(chain,row.address):await readV2Pool(chain,row.address);
-      const k0=tradingTargetKey(pool.token0),k1=tradingTargetKey(pool.token1);
+      const allowed=TRADING_CONTRACTS[chain]||{};
+      const k0=allowed[norm(pool.token0.address)]||null,k1=allowed[norm(pool.token1.address)]||null;
       if(!k0&&!k1)continue;
       pools.push({chain,address:norm(row.address),type,token0:pool.token0,token1:pool.token1,target0:k0,target1:k1,label:displayPoolLabel(row,pool)});
     }catch(e){console.warn("TLN/VOW Handelsanalyse Pool übersprungen",chain,row.address,e);}
@@ -2782,14 +2787,17 @@ function renderTradingSummary(){
   const body=document.getElementById("tlnTradingSummaryBody"),data=tradingState.data;
   if(!body||!data)return;
   const rows=[];
+  const chainLabel={bsc:'<span class="tln-trade-chain"><span class="tln-trade-chain-icon tln-trade-bsc">BNB</span> BSC</span>',eth:'<span class="tln-trade-chain"><span class="tln-trade-chain-icon tln-trade-eth">◆</span> Ethereum</span>',total:'<strong>∑ Gesamt BSC + ETH</strong>'};
   for(const w of TRADE_WINDOWS){
-    for(const chain of ["total","bsc","eth"]){
+    rows.push(`<tr class="tln-trade-period-row"><th colspan="6" scope="colgroup">${w.label} <span>VOW / v$ · Handelsvolumen</span></th></tr>`);
+    for(const chain of ["bsc","eth","total"]){
       const a=data.summary[w.key][chain];
-      rows.push(`<tr><td><strong>${w.label}</strong></td><td>${chain==="total"?"Total":chain==="bsc"?"BSC":"Ethereum"}</td><td class="num">${tradingSummaryCell(a.vow,"buy")}</td><td class="num">${tradingSummaryCell(a.vow,"sell")}</td><td class="num">${tradingSummaryCell(a.vdollar,"buy")}</td><td class="num">${tradingSummaryCell(a.vdollar,"sell")}</td></tr>`);
+      rows.push(`<tr class="${chain==='total'?'tln-trade-total-row':'tln-trade-chain-row'}"><td>${chain==='total'?'<strong>SUMME</strong>':'&nbsp;'}</td><td>${chainLabel[chain]}</td><td class="num">${tradingSummaryCell(a.vow,"buy")}</td><td class="num">${tradingSummaryCell(a.vow,"sell")}</td><td class="num">${tradingSummaryCell(a.vdollar,"buy")}</td><td class="num">${tradingSummaryCell(a.vdollar,"sell")}</td></tr>`);
     }
   }
   body.innerHTML=rows.join("");
 }
+
 function tradingTraderRows(){
   const data=tradingState.data;if(!data)return [];
   const period=document.getElementById("tlnTradingPeriod")?.value||"30d";

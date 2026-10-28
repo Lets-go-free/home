@@ -1,4 +1,4 @@
-<!-- Phase 7.62: VOW/v$ Handel mit Alchemy Transfers, Receipt-Swap-Verifizierung und 30-Tage-Cache. Build 20261028-160144. -->
+<!-- Phase 7.63: geprüfte Token-Contracts und Handelsvolumen-Layout. Build 20261028-164101. -->
 <!-- Phase 7.56: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. -->
 <!-- Phase 7.55: Projekt-Token aus der Dashboard-Kursübersicht ausblenden; standardmäßig sichtbar, weiterhin nur bei vorhandenem Projekt. Release-READMEs unter docs/releases archiviert; Usertests APTM-24h und Entdecken bestätigt. -->
 <!-- Phase 7.54: APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten. -->
@@ -926,15 +926,29 @@
       </section>
       </div>
 
+
+<style>
+/* TLN/VOW Handel: separate Perioden und deutliche Chain-/Gesamtzeilen */
+#tlnvow-subtab-trading .tln-trade-period-row th {background:#eaf1ff;color:#244976;text-align:left;padding:15px 13px;font-size:1.04em;border-top:2px solid #bad0f5;border-bottom:1px solid #bad0f5;}
+#tlnvow-subtab-trading .tln-trade-period-row th span {font-size:.78em;font-weight:normal;color:#6580a8;margin-left:12px;}
+#tlnvow-subtab-trading .tln-trade-total-row td {background:#e3edff!important;color:#173e79;font-weight:750;border-top:2px solid #91b4ea;border-bottom:2px solid #91b4ea;}
+#tlnvow-subtab-trading .tln-trade-chain-row td {background:#fff;}
+#tlnvow-subtab-trading .tln-trade-chain {display:inline-flex;align-items:center;gap:8px;white-space:nowrap;}
+#tlnvow-subtab-trading .tln-trade-chain-icon {display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;border-radius:50%;font-size:10px;font-weight:800;}
+#tlnvow-subtab-trading .tln-trade-bsc {background:#f0b90b;color:#202020;}
+#tlnvow-subtab-trading .tln-trade-eth {background:#667bd8;color:#fff;font-size:18px;}
+#tlnvow-subtab-trading #tlnTradingSummaryBody td.num {font-variant-numeric:tabular-nums;}
+#tlnvow-subtab-trading .project-table-wrap {overflow-x:auto;}
+</style>
       <div id="tlnvow-subtab-trading" class="project-subtab-panel" style="display:none">
         <div class="custom-token-card" style="border-color:var(--accent)">
           <h3 style="margin-top:0">VOW / v$ · Käufe &amp; Verkäufe</h3>
-          <div class="note">Ausgewertet werden echte DEX-Swap-Ereignisse der für VOW und v$ entdeckten, unterstützten V2/V3-Liquidity Pools, in denen VOW oder v$ direkt gehandelt wird. «Wallet» ist die Absenderadresse der Transaktion (<code>transaction.from</code>); bei Smart-Contract-/Aggregator-Transaktionen kann deshalb statt einer persönlichen Wallet ein Contract erscheinen. Eine TLN-ID wird nur angezeigt, wenn für die Wallet bereits eine verifizierte Zuordnung im globalen TLN-Identity-Cache vorhanden ist.</div>
+          <div class="note">Ausgewertet werden echte DEX-Swap-Ereignisse anhand der fünf festgelegten Token-Contracts in unterstützten V2/V3-Liquidity Pools, in denen VOW oder v$ direkt gehandelt wird. «Wallet» ist die Absenderadresse der Transaktion (<code>transaction.from</code>); bei Smart-Contract-/Aggregator-Transaktionen kann deshalb statt einer persönlichen Wallet ein Contract erscheinen. Eine TLN-ID wird nur angezeigt, wenn für die Wallet bereits eine verifizierte Zuordnung im globalen TLN-Identity-Cache vorhanden ist.</div>
         </div>
         <div class="custom-token-card" style="margin-top:10px">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button type="button" class="secondary" onclick="TLNVOWProject.refreshTrading()">Jetzt aktualisieren</button>
-            <span class="note">Die Transaktionen werden 30 Tage in Supabase gespeichert; nachfolgende Aktualisierungen laden nur neue Blöcke.</span>
+            <span class="note">Trades werden maximal 30 Tage in Supabase gespeichert. Bei geöffnetem Tab werden neue Daten nachgeladen; ein serverseitiger 30-Minuten-Job erfordert eine separate Einrichtung.</span>
           </div>
           <div id="tlnTradingStatus" class="status" style="margin-top:10px">Noch nicht geladen.</div>
         </div>
