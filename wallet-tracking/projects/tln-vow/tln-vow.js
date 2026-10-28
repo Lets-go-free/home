@@ -1,3 +1,4 @@
+// Phase 7.62 · 28.10.2026 16:01:44 CET: Alchemy Transfers API + Receipt-verifizierte Swaps, statt Token-Pool-Discovery. Build 20261028-160144.
 // Phase 7.61 · 28.10.2026: tokenbasierte VOW/v$-Pool-Discovery, persistente Discovery-/Pool-Cursor, historischer Backfill neu entdeckter Pools.
 // Phase 7.60 · 28.10.2026 14:21:10 CET: VOW/v$ Handel – RPC-Adresse-Limit fix. Build 20261028-142110.
 // Phase 7.58 · 28.10.2026 13:59:53 CET: RPC-Timeouts, Fortschritt und gemeinsamer Multi-Pool-Logscan für VOW/vUSD Handel. Keine Änderung der Preis-/Staking-Engine.
@@ -2384,7 +2385,7 @@ const TRADE_WINDOWS = [
 const tradingState={promise:null,data:null,loadedAt:0};
 const TRADING_CACHE_TABLE="tln_vow_trade_cache";
 const TRADING_STATE_TABLE="tln_vow_trade_scan_state";
-const TRADING_SCHEMA_VERSION=4;
+const TRADING_SCHEMA_VERSION=5;
 const TRADING_TRANSFER_TOPIC=ethers.id("Transfer(address,address,uint256)");
 const TRADING_DISCOVERY_CHUNK={bsc:1200,eth:2000};
 const TRADING_REFRESH_MS=5*60*1000;
@@ -2811,84 +2812,149 @@ function renderTradingTraders(){
   const rows=tradingTraderRows();
   body.innerHTML=rows.length?rows.map((r,i)=>`<tr><td>${i+1}</td><td><span class="mono" title="${r.wallet}">${tradingShortAddress(r.wallet)}</span></td><td>${r.tlnId?`<strong>${r.tlnId}</strong>`:"–"}</td><td>${[...r.chains].map(c=>c==="bsc"?"BSC":"ETH").join(" + ")}</td><td class="num">${tradingFormatAmount(r.buy)}</td><td class="num">${tradingFormatAmount(r.sell)}</td><td class="num"><strong>${tradingFormatAmount(r.total)}</strong></td><td class="num">${r.tradeCount}</td></tr>`).join(""):`<tr><td colspan="8">Keine ${tradingTargetLabel(token)}-Trades im gewählten Zeitraum gefunden.</td></tr>`;
 }
+// Alchemy Transfers API indexiert ERC-20-Transfers tokenbezogen. Ein Transfer ist
+// KEIN Trade: erst die nachgeladenen Receipts und verifizierte Pool-Swap-Events
+// liefern Kauf/Verkauf, Anzahl und transaction.from. Es gibt keinen Pool-Scan.
+const TRADING_ALCHEMY_WINDOW=6*60*60;
+async function tradingAlchemyReceiptBatch(chain, hashes){
+  const unique=[...new Set(hashes.filter(Boolean))];
+  const result=new Map();
+  for(let i=0;i<unique.length;i+=10){
+    const part=unique.slice(i,i+10);
+    const replies=await alchemyRpcBatch(chain,part.map(hash=>({method:"eth_getTransactionReceipt",params:[hash]})),"discovery");
+    if(!Array.isArray(replies)||replies.length!==part.length)throw new Error(`${chain}: Alchemy-Receipt-Batch unvollständig`);
+    for(let j=0;j<part.length;j++){
+      if(!replies[j]||!Array.isArray(replies[j].logs))throw new Error(`${chain}: Receipt fehlt: ${part[j]}`);
+      result.set(part[j].toLowerCase(),replies[j]);
+    }
+  }
+  return result;
+}
+async function tradingAlchemyWindow(chain,startBlock,endBlock,targetTokens,knownPools,userId,cutoffTs,progress){
+  const poolMap=new Map(knownPools.map(p=>[norm(p.address),p]));
+  const rejected=new Set(),transfers=new Map();
+  const contracts=[...targetTokens.keys()];
+  // Der pageKey ist nur kurz gültig. Deshalb alle Seiten eines kleinen
+  // Blockfensters vollständig abarbeiten, bevor ein Checkpoint geschrieben wird.
+  let pageKey=null,pages=0;
+  do{
+    const query={fromBlock:tradingBlockHex(startBlock),toBlock:tradingBlockHex(endBlock),
+      category:["erc20"],contractAddresses:contracts,withMetadata:true,
+      order:"asc",maxCount:"0x3e8",excludeZeroValue:true};
+    if(pageKey)query.pageKey=pageKey;
+    const response=await alchemyRpc(chain,"alchemy_getAssetTransfers",[query],"discovery");
+    if(!Array.isArray(response?.transfers))throw new Error(`${chain}: Alchemy Transfers API ohne transfers-Array`);
+    for(const tr of response.transfers){
+      const hash=String(tr.hash||"").toLowerCase();
+      if(!/^0x[0-9a-f]{64}$/.test(hash))continue;
+      const timestamp=Date.parse(tr.metadata?.blockTimestamp||"")/1000;
+      if(!Number.isFinite(timestamp))throw new Error(`${chain}: Transfer ohne Blockzeit, kann nicht sicher bewertet werden`);
+      if(timestamp>=cutoffTs){
+        const old=transfers.get(hash);
+        if(!old)transfers.set(hash,{timestamp,block:Number(BigInt(tr.blockNum)),from:norm(tr.from)});
+      }
+    }
+    pageKey=response.pageKey||null;
+    pages++;
+    progress(`Alchemy ${chain.toUpperCase()} · Blockfenster ${startBlock}–${endBlock} · ${pages} Seite(n) · ${transfers.size} Transaktionen`);
+    if(pages>10000)throw new Error(`${chain}: Transfer-Pagination ungewöhnlich gross; Scan angehalten`);
+  }while(pageKey);
+  const hashes=[...transfers.keys()];
+  let eventsWritten=0;
+  for(let offset=0;offset<hashes.length;offset+=40){
+    const part=hashes.slice(offset,offset+40);
+    const receipts=await tradingAlchemyReceiptBatch(chain,part);
+    const pending=[];
+    for(const hash of part){
+      const receipt=receipts.get(hash);
+      const meta=transfers.get(hash);
+      if(!receipt||receipt.status==='0x0')continue;
+      const wallet=norm(receipt.from||meta.from);
+      if(!ethers.isAddress(wallet))continue;
+      for(const log of receipt.logs){
+        const topic=log.topics?.[0]?.toLowerCase();
+        if(topic!==TRADE_V2_SWAP_TOPIC.toLowerCase()&&topic!==TRADE_V3_SWAP_TOPIC.toLowerCase())continue;
+        const address=norm(log.address);
+        if(rejected.has(address))continue;
+        let pool=poolMap.get(address);
+        if(!pool){
+          pool=await tradingVerifyCandidatePool(chain,address,targetTokens);
+          if(!pool){rejected.add(address);continue;}
+          // Swap topic muss auch mit dem verifizierten Pooltyp übereinstimmen.
+          poolMap.set(address,pool);
+        }
+        if((pool.type==='v2'?TRADE_V2_SWAP_TOPIC:TRADE_V3_SWAP_TOPIC).toLowerCase()!==topic)continue;
+        const blockNumber=Number(BigInt(log.blockNumber||receipt.blockNumber));
+        const logIndex=Number(BigInt(log.logIndex));
+        for(const item of tradingDecodeLog(pool,log)){
+          pending.push({...item,chain,pool:pool.address,txHash:hash,logIndex,blockNumber,
+            timestamp:meta.timestamp,wallet});
+        }
+      }
+    }
+    await tradingWriteEvents(userId,pending);
+    eventsWritten+=pending.length;
+    progress(`Alchemy ${chain.toUpperCase()} · ${offset+part.length}/${hashes.length} Receipts · ${eventsWritten} Trade-Einträge gespeichert`);
+  }
+  return {pools:poolMap.size,transfers:hashes.length,events:eventsWritten};
+}
+async function tradingAlchemyChain(chain,userId,states,nowTs,progress){
+  const latestBlock=await providers[chain].getBlockNumber();
+  const latestTs=await tradingBlockTimestamp(chain,latestBlock);
+  const firstBlock=await tradingFindBlockAtOrAfter(chain,nowTs-TRADING_RETENTION_SECONDS,latestBlock,latestTs);
+  const targets=await tradingTokenContracts(chain);
+  if(!targets.size)throw new Error(`${chain}: VOW-/v$-Contract-Adressen fehlen in den Projektstammdaten`);
+  const seeds=await tradingLoadPools(chain);
+  const group='alchemy:transfers-v1';
+  const previous=states.get(`${chain}|${group}`);
+  let next=Math.max(firstBlock,previous?Number(previous.last_scanned_block)-20:firstBlock);
+  // Kleine Zeitfenster begrenzen die Transfers-Pagination und ermöglichen
+  // dauerhaft gespeicherte Fortschritte ohne flüchtige pageKeys.
+  const windowBlocks=chain==='bsc'?7200:1800;
+  let total=0,pools=seeds.length;
+  while(next<=latestBlock){
+    const end=Math.min(latestBlock,next+windowBlocks-1);
+    const result=await tradingAlchemyWindow(chain,next,end,targets,seeds,userId,nowTs-TRADING_RETENTION_SECONDS,progress);
+    total+=result.events;
+    pools=Math.max(pools,result.pools);
+    // Cursor erst nach vollständig gelesener Pagination, Receipts und DB-Upserts.
+    await tradingSaveScanState(userId,chain,group,end);
+    states.set(`${chain}|${group}`,{last_scanned_block:end});
+    next=end+1;
+    progress(`Alchemy ${chain.toUpperCase()} · ${Math.min(100,Math.round((end-firstBlock+1)/Math.max(1,latestBlock-firstBlock+1)*100))}% · ${total} Trade-Einträge · Checkpoint gespeichert`);
+  }
+  return {pools,total};
+}
 async function loadTradingAnalysis({force=false}={}){
   if(tradingState.promise)return tradingState.promise;
   if(!force&&tradingState.data&&(Date.now()-tradingState.loadedAt)<TRADING_REFRESH_MS){renderTradingSummary();renderTradingTraders();return tradingState.data;}
   tradingState.promise=(async()=>{
     const userId=await tradingAuthUser();
-    tradingSetStatus("Lade gespeicherte Handelsdaten aus Supabase…","loading");
+    tradingSetStatus('Lade Handelsdaten aus Supabase…','loading');
     let cachedEvents=await tradingReadCache(userId);
     const nowTs=Math.floor(Date.now()/1000),cutoffs={};
-    for(const chain of ["bsc","eth"]){cutoffs[chain]={};for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=nowTs-w.seconds;}
+    for(const chain of ['bsc','eth']){cutoffs[chain]={};for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=nowTs-w.seconds;}
     let identity=await tradingLoadIdentityMap(cachedEvents.map(e=>e.wallet));
     const poolCounts={bsc:0,eth:0};
     tradingUpdateFromEvents(cachedEvents,cutoffs,identity,poolCounts,new Date());
-    if(cachedEvents.length)tradingSetStatus(`${cachedEvents.length} gespeicherte Trade-Einträge geladen · aktualisiere neue Blöcke…`,"loading");
-    else tradingSetStatus("Noch kein Handels-Cache vorhanden · einmaliger 30-Tage-Import gestartet…","loading");
     await ensureInfrastructure();
-    const scanStates=await tradingReadScanState(userId);
-    const failures=[];
-    for(const chain of ["bsc","eth"]){
-      if(!projectChains.includes(chain)||!providers[chain]){failures.push(`${chain}: kein RPC`);continue;}
+    const states=await tradingReadScanState(userId),failures=[],completed=[];
+    for(const chain of ['bsc','eth']){
+      if(!projectChains.includes(chain)||!providers[chain]){failures.push(`${chain}: RPC nicht konfiguriert`);continue;}
       try{
-        const chainLabel=chain==="bsc"?"BSC":"Ethereum";
-        const latestBlock=await providers[chain].getBlockNumber();
-        const latestTs=await tradingBlockTimestamp(chain,latestBlock);
-        const firstBlock=await tradingFindBlockAtOrAfter(chain,nowTs-TRADING_RETENTION_SECONDS,latestBlock,latestTs);
-        const targetTokens=await tradingTokenContracts(chain);
-        if(!targetTokens.size)throw new Error("Kein verifizierbarer VOW-/v$-Token-Contract in den Projektstammdaten oder Seed-Pools.");
-        const seeds=await tradingLoadPools(chain);
-        const pools=await tradingDiscoverPools(chain,userId,scanStates,firstBlock,latestBlock,targetTokens,seeds);
-        poolCounts[chain]=pools.length;
-        // Eigene Cursor je Pool: neu entdeckte Pools bekommen auch dann ihren
-        // historischen 30-Tage-Backfill, wenn andere Pools schon aktuell sind.
-        for(const pool of pools){
-          const stateKey=`${chain}|pool:${pool.type}:${pool.address}`;
-          const previous=scanStates.get(stateKey);
-          let current=Math.max(firstBlock,previous?Number(previous.last_scanned_block)-20:firstBlock);
-          let chunkSize=2000;
-          const topic=pool.type==="v3"?TRADE_V3_SWAP_TOPIC:TRADE_V2_SWAP_TOPIC;
-          while(current<=latestBlock){
-            const end=Math.min(latestBlock,current+chunkSize-1);
-            let logs;
-            try{
-              logs=await tradingRpc(chain,"eth_getLogs",[{address:pool.address,fromBlock:tradingBlockHex(current),toBlock:tradingBlockHex(end),topics:[topic]}]);
-              if(!Array.isArray(logs))throw new Error(`${chain}: eth_getLogs lieferte kein Array`);
-            }catch(e){
-              if(chunkSize>100){chunkSize=Math.max(100,Math.floor(chunkSize/2));continue;}
-              throw e;
-            }
-            const blockNums=[...new Set(logs.map(l=>Number(BigInt(l.blockNumber))))];
-            const senders=await tradingBatchTransactionSenders(chain,logs.map(l=>l.transactionHash));
-            const timestamps=await tradingBatchBlockTimes(chain,blockNums);
-            const newEvents=[];
-            for(const log of logs){
-              const blockNumber=Number(BigInt(log.blockNumber));
-              const timestamp=timestamps.get(blockNumber);
-              const logIndex=Number(BigInt(log.logIndex));
-              if(!timestamp||timestamp<nowTs-TRADING_RETENTION_SECONDS)continue;
-              for(const item of tradingDecodeLog(pool,log))newEvents.push({...item,chain,pool:pool.address,
-                txHash:log.transactionHash,logIndex,blockNumber,timestamp,wallet:senders.get(log.transactionHash)||null});
-            }
-            await tradingWriteEvents(userId,newEvents);
-            await tradingSaveScanState(userId,chain,`pool:${pool.type}:${pool.address}`,end);
-            scanStates.set(stateKey,{last_scanned_block:end});
-            current=end+1;
-            if(chunkSize<2000)chunkSize=Math.min(2000,Math.ceil(chunkSize*1.25));
-            const pct=Math.min(100,Math.floor((end-firstBlock+1)/Math.max(1,latestBlock-firstBlock+1)*100));
-            tradingSetStatus(`${chainLabel} · ${pool.label} · Historie ${pct}% · ${newEvents.length} Trade-Einträge im Abschnitt · Cache gespeichert`,"loading");
-          }
-        }
-      }catch(e){failures.push(`${chain}: ${String(e?.message||e)}`);console.warn("TLN/VOW Handelsanalyse Chain",chain,e);}
+        const r=await tradingAlchemyChain(chain,userId,states,nowTs,msg=>tradingSetStatus(msg,'loading'));
+        poolCounts[chain]=r.pools;
+        completed.push(chain.toUpperCase());
+      }catch(e){failures.push(`${chain.toUpperCase()}: ${String(e?.message||e)}`);console.warn('Alchemy Handelsanalyse',chain,e);}
     }
     await tradingPrune(userId);
     cachedEvents=await tradingReadCache(userId);
     identity=await tradingLoadIdentityMap(cachedEvents.map(e=>e.wallet));
     tradingUpdateFromEvents(cachedEvents,cutoffs,identity,poolCounts,new Date());
     const n=new Set(cachedEvents.map(e=>`${e.chain}:${e.txHash}`)).size;
-    tradingSetStatus(`Cache: ${n} Swap-Transaktionen (30 Tage) · BSC ${poolCounts.bsc} verifizierte V2/V3-Pools · ETH ${poolCounts.eth} verifizierte V2/V3-Pools · ${new Date().toLocaleString("de-CH")}${failures.length?` · Nicht vollständig: ${failures.join("; ")}`:""}`,failures.length?"error":"success");
+    tradingSetStatus(`Alchemy · ${n} gecachte Swap-Transaktionen (max. 30 Tage) · aktuell: ${completed.join(', ')||'keine Chain'}${failures.length?` · NICHT VOLLSTÄNDIG: ${failures.join('; ')}`:''} · ${new Date().toLocaleString('de-CH')}`,failures.length?'error':'success');
     return tradingState.data;
-  })().catch(e=>{tradingSetStatus(`Handels-Cache: ${String(e?.message||e)} · SQL-Migration und Berechtigungen prüfen.`,"error");throw e;}).finally(()=>{tradingState.promise=null;});
+  })().catch(e=>{tradingSetStatus(`Alchemy-Handelsanalyse: ${String(e?.message||e)}`,'error');throw e;}).finally(()=>{tradingState.promise=null;});
   return tradingState.promise;
 }
 function ensureTradingLoaded(){return loadTradingAnalysis({force:false});}
