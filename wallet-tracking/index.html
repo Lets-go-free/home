@@ -1,4 +1,4 @@
-<!-- Phase 7.58: VOW/vUSD-Scanner: Multi-Pool Logscan, RPC-Timeout und Fortschrittsanzeige. Build 20261028-135953. -->
+<!-- Phase 7.59: VOW/v$ Handel mit persistentem 30-Tage-Supabase-Cache und inkrementellem Scan. Build 20261028-141222. -->
 <!-- Phase 7.56: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. -->
 <!-- Phase 7.55: Projekt-Token aus der Dashboard-Kursübersicht ausblenden; standardmäßig sichtbar, weiterhin nur bei vorhandenem Projekt. Release-READMEs unter docs/releases archiviert; Usertests APTM-24h und Entdecken bestätigt. -->
 <!-- Phase 7.54: APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten. -->
@@ -829,7 +829,7 @@
       <div class="project-subtabs tln-vow-main-subtabs">
         <button class="tab-btn active" onclick="openTlnDiscoveryTab('overview',this)">Übersicht</button>
         <button class="tab-btn" onclick="openTlnPoolsTab(this)">Kurse und Pools</button>
-        <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','trading',this); Promise.resolve(TLNVOWProject.ensureTradingLoaded()).catch(e=>console.warn('TLN/VOW Handel:',e))">VOW/vUSD Handel</button>
+        <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','trading',this); Promise.resolve(TLNVOWProject.ensureTradingLoaded()).catch(e=>console.warn('TLN/VOW Handel:',e))">VOW/v$ Handel</button>
         <button class="tab-btn" onclick="openTlnDiscoveryTab('stakings',this)">Staking/Rewards</button>
         <button class="tab-btn" onclick="openTlnDiscoveryTab('loans',this)">Loans</button>
         <button class="tab-btn" onclick="openTlnDiscoveryTab('referral',this)">Referral Rewards</button>
@@ -928,13 +928,13 @@
 
       <div id="tlnvow-subtab-trading" class="project-subtab-panel" style="display:none">
         <div class="custom-token-card" style="border-color:var(--accent)">
-          <h3 style="margin-top:0">VOW / vUSD · Käufe &amp; Verkäufe</h3>
-          <div class="note">Ausgewertet werden echte DEX-Swap-Ereignisse der im Projekt TLN/VOW konfigurierten Liquidity Pools, in denen VOW oder vUSD direkt gehandelt wird. «Wallet» ist die Absenderadresse der Transaktion (<code>transaction.from</code>); bei Smart-Contract-/Aggregator-Transaktionen kann deshalb statt einer persönlichen Wallet ein Contract erscheinen. Eine TLN-ID wird nur angezeigt, wenn für die Wallet bereits eine verifizierte Zuordnung im globalen TLN-Identity-Cache vorhanden ist.</div>
+          <h3 style="margin-top:0">VOW / v$ · Käufe &amp; Verkäufe</h3>
+          <div class="note">Ausgewertet werden echte DEX-Swap-Ereignisse der im Projekt TLN/VOW konfigurierten Liquidity Pools, in denen VOW oder v$ direkt gehandelt wird. «Wallet» ist die Absenderadresse der Transaktion (<code>transaction.from</code>); bei Smart-Contract-/Aggregator-Transaktionen kann deshalb statt einer persönlichen Wallet ein Contract erscheinen. Eine TLN-ID wird nur angezeigt, wenn für die Wallet bereits eine verifizierte Zuordnung im globalen TLN-Identity-Cache vorhanden ist.</div>
         </div>
         <div class="custom-token-card" style="margin-top:10px">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button type="button" class="secondary" onclick="TLNVOWProject.refreshTrading()">Jetzt aktualisieren</button>
-            <span class="note">Die Analyse wird beim ersten Öffnen geladen und innerhalb der Sitzung 10 Minuten wiederverwendet.</span>
+            <span class="note">Die Transaktionen werden 30 Tage in Supabase gespeichert; nachfolgende Aktualisierungen laden nur neue Blöcke.</span>
           </div>
           <div id="tlnTradingStatus" class="status" style="margin-top:10px">Noch nicht geladen.</div>
         </div>
@@ -942,7 +942,7 @@
           <h3 style="margin-top:0">Handelsvolumen</h3>
           <div class="project-table-wrap">
             <table>
-              <thead><tr><th>Zeitraum</th><th>Chain</th><th class="num">VOW gekauft</th><th class="num">VOW verkauft</th><th class="num">vUSD gekauft</th><th class="num">vUSD verkauft</th></tr></thead>
+              <thead><tr><th>Zeitraum</th><th>Chain</th><th class="num">VOW gekauft</th><th class="num">VOW verkauft</th><th class="num">v$ gekauft</th><th class="num">v$ verkauft</th></tr></thead>
               <tbody id="tlnTradingSummaryBody"><tr><td colspan="6">Noch keine Daten.</td></tr></tbody>
             </table>
           </div>
@@ -952,7 +952,7 @@
           <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px">
             <label><span class="field-label">Zeitraum</span><br><select id="tlnTradingPeriod" onchange="TLNVOWProject.onTradingFilterChange()"><option value="24h">24 h</option><option value="7d">7 Tage</option><option value="30d" selected>30 Tage</option></select></label>
             <label><span class="field-label">Chain</span><br><select id="tlnTradingChain" onchange="TLNVOWProject.onTradingFilterChange()"><option value="total" selected>Total</option><option value="bsc">BSC</option><option value="eth">Ethereum</option></select></label>
-            <label><span class="field-label">Token</span><br><select id="tlnTradingToken" onchange="TLNVOWProject.onTradingFilterChange()"><option value="vow" selected>VOW</option><option value="vusd">vUSD</option></select></label>
+            <label><span class="field-label">Token</span><br><select id="tlnTradingToken" onchange="TLNVOWProject.onTradingFilterChange()"><option value="vow" selected>VOW</option><option value="vdollar">v$</option></select></label>
           </div>
           <div class="project-table-wrap">
             <table>
@@ -1320,7 +1320,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 28.10.2026 13:59:53 CET · Phase 7.58 · Build 20261028-135953</span><br>
+    <span id="footerVersionLine">Version: 28.10.2026 14:12:22 CET · Phase 7.59 · Build 20261028-141222</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1364,6 +1364,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.10.2026 13:59:53 CET · Phase 7.58 · Build 20261028-135953</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.10.2026 14:12:22 CET · Phase 7.59 · Build 20261028-141222</div>
 </body>
 </html>

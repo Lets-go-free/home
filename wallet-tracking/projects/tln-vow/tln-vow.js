@@ -1,3 +1,4 @@
+// Phase 7.59 · 28.10.2026 14:12:22 CET: VOW/v$ Handel, 30-Tage-Supabase-Cache, inkrementeller Scan. Build 20261028-141222.
 // Phase 7.58 · 28.10.2026 13:59:53 CET: RPC-Timeouts, Fortschritt und gemeinsamer Multi-Pool-Logscan für VOW/vUSD Handel. Keine Änderung der Preis-/Staking-Engine.
 // Phase 7.57 · 28.10.2026 13:47:01 CET: Neuer Tab VOW/vUSD Handel mit DEX-Swap-Analyse für 24 h, 7 Tage und 30 Tage auf BSC/Ethereum sowie Total; grösste Händler inkl. vorhandener TLN-ID. Build 20261028-134701.
 // Phase 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
@@ -2360,7 +2361,7 @@ async function loadDailyPrices(){
 }
 
 /* =========================================================
-   VOW / vUSD · HANDELSANALYSE
+   VOW / v$ · HANDELSANALYSE
    - echte Swap-Events der konfigurierten TLN/VOW DEX-Pools
    - Händler = transaction.from (Router-/Aggregator-Sender wird damit
      nicht fälschlich als Wallet aus dem Swap-Event übernommen)
@@ -2380,14 +2381,95 @@ const TRADE_WINDOWS = [
   {key:"30d",label:"Letzte 30 Tage",seconds:30*24*60*60}
 ];
 const tradingState={promise:null,data:null,loadedAt:0};
+const TRADING_CACHE_TABLE="tln_vow_trade_cache";
+const TRADING_STATE_TABLE="tln_vow_trade_scan_state";
+const TRADING_SCHEMA_VERSION=3;
+const TRADING_REFRESH_MS=5*60*1000;
+const TRADING_RETENTION_SECONDS=30*24*60*60;
+async function tradingAuthUser(){
+  const {data,error}=await sb.auth.getUser();
+  if(error||!data?.user?.id)throw new Error("Für den Handels-Cache bitte anmelden.");
+  return data.user.id;
+}
+async function tradingReadCache(userId){
+  const limitTime=new Date(Date.now()-TRADING_RETENTION_SECONDS*1000).toISOString();
+  const events=[];
+  for(let offset=0;;offset+=1000){
+    const {data,error}=await sb.from(TRADING_CACHE_TABLE)
+      .select("chain_key,pool_address,tx_hash,log_index,token_key,side,amount,wallet_address,block_number,block_time")
+      .eq("user_id",userId).gte("block_time",limitTime)
+      .order("block_time",{ascending:false}).range(offset,offset+999);
+    if(error)throw new Error(`Handels-Cache lesen: ${error.message}`);
+    for(const row of data||[])events.push({chain:row.chain_key,pool:row.pool_address,txHash:row.tx_hash,
+      logIndex:Number(row.log_index),token:row.token_key,side:row.side,amount:Number(row.amount),
+      wallet:row.wallet_address,blockNumber:Number(row.block_number),timestamp:Math.floor(Date.parse(row.block_time)/1000)});
+    if((data||[]).length<1000)break;
+  }
+  return events;
+}
+async function tradingReadScanState(userId){
+  const {data,error}=await sb.from(TRADING_STATE_TABLE)
+    .select("chain_key,group_key,last_scanned_block,updated_at")
+    .eq("user_id",userId).eq("schema_version",TRADING_SCHEMA_VERSION);
+  if(error)throw new Error(`Handels-Scanstatus lesen: ${error.message}`);
+  return new Map((data||[]).map(r=>[`${r.chain_key}|${r.group_key}`,r]));
+}
+async function tradingSaveScanState(userId,chain,group,block){
+  const {error}=await sb.from(TRADING_STATE_TABLE).upsert({user_id:userId,chain_key:chain,
+    group_key:group,schema_version:TRADING_SCHEMA_VERSION,last_scanned_block:block,
+    updated_at:new Date().toISOString()}, {onConflict:"user_id,chain_key,group_key"});
+  if(error)throw new Error(`Handels-Scanstatus schreiben: ${error.message}`);
+}
+async function tradingWriteEvents(userId,events){
+  for(let offset=0;offset<events.length;offset+=250){
+    const chunk=events.slice(offset,offset+250).map(e=>({user_id:userId,chain_key:e.chain,
+      pool_address:e.pool,tx_hash:e.txHash,log_index:e.logIndex,token_key:e.token,side:e.side,
+      amount:String(e.amount),wallet_address:e.wallet,block_number:e.blockNumber,
+      block_time:new Date(e.timestamp*1000).toISOString()}));
+    const {error}=await sb.from(TRADING_CACHE_TABLE).upsert(chunk,{
+      onConflict:"user_id,chain_key,tx_hash,log_index,token_key,side"});
+    if(error)throw new Error(`Handels-Cache schreiben: ${error.message}`);
+  }
+}
+async function tradingPrune(userId){
+  const cutoff=new Date(Date.now()-TRADING_RETENTION_SECONDS*1000).toISOString();
+  const {error}=await sb.from(TRADING_CACHE_TABLE).delete().eq("user_id",userId).lt("block_time",cutoff);
+  if(error)console.warn("Handels-Cache Bereinigung",error);
+}
+async function tradingBatchBlockTimes(chain,blockNumbers){
+  const unique=[...new Set(blockNumbers)].sort((a,b)=>a-b),map=new Map();
+  for(let off=0;off<unique.length;off+=50){
+    const part=unique.slice(off,off+50),controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),18000);
+    try{
+      const result=await fetch(CONFIG[chain]?.rpc,{method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify(part.map((b,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_getBlockByNumber",params:[tradingBlockHex(b),false]}))),signal:controller.signal});
+      if(!result.ok)throw new Error(`${chain}: Blockzeit HTTP ${result.status}`);
+      const raw=await result.json();
+      if(!Array.isArray(raw))throw new Error(`${chain}: Blockzeit-Batchformat`);
+      const byId=new Map(raw.map(v=>[Number(v.id),v]));
+      for(let i=0;i<part.length;i++){
+        const ts=byId.get(i+1)?.result?.timestamp;
+        if(!ts)throw new Error(`${chain}: Blockzeit für Block ${part[i]} fehlt`);
+        map.set(part[i],Number(BigInt(ts)));
+      }
+    }finally{clearTimeout(timeout);}
+  }
+  return map;
+}
+function tradingUpdateFromEvents(events,cutoffs,identity,poolCounts,capturedAt){
+  tradingState.data={events,cutoffs,identity,poolCounts,summary:tradingAggregate(events,cutoffs),capturedAt};
+  tradingState.loadedAt=Date.now();renderTradingSummary();renderTradingTraders();
+}
+
 
 function tradingTargetKey(token){
   const symbol=String(token?.symbol||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
   if(symbol==="VOW")return "vow";
-  if(symbol==="VUSD")return "vusd";
+  if(symbol==="V" || symbol==="V$")return "vdollar";
   return null;
 }
-function tradingTargetLabel(key){return key==="vow"?"VOW":"vUSD";}
+function tradingTargetLabel(key){return key==="vow"?"VOW":"v$";}
 function tradingShortAddress(address){const a=String(address||"");return a&&a.length>14?`${a.slice(0,8)}…${a.slice(-6)}`:(a||"–");}
 function tradingFormatAmount(value){
   const n=Number(value||0);
@@ -2553,12 +2635,12 @@ function tradingAggregate(events,cutoffs){
   for(const window of TRADE_WINDOWS){
     result[window.key]={bsc:{},eth:{},total:{}};
     for(const chain of ["bsc","eth","total"]){
-      for(const token of ["vow","vusd"])result[window.key][chain][token]={buy:0,sell:0,buyTrades:0,sellTrades:0};
+      for(const token of ["vow","vdollar"])result[window.key][chain][token]={buy:0,sell:0,buyTrades:0,sellTrades:0};
     }
   }
   for(const event of events){
     for(const window of TRADE_WINDOWS){
-      if(Number(event.blockNumber)<Number(cutoffs[event.chain]?.[window.key]??Infinity))continue;
+      if(Number(event.timestamp)<Number(cutoffs[event.chain]?.[window.key]??Infinity))continue;
       const buckets=[result[window.key][event.chain][event.token],result[window.key].total[event.token]];
       for(const b of buckets){b[event.side]+=event.amount;b[event.side+"Trades"]++;}
     }
@@ -2575,7 +2657,7 @@ function renderTradingSummary(){
   for(const w of TRADE_WINDOWS){
     for(const chain of ["total","bsc","eth"]){
       const a=data.summary[w.key][chain];
-      rows.push(`<tr><td><strong>${w.label}</strong></td><td>${chain==="total"?"Total":chain==="bsc"?"BSC":"Ethereum"}</td><td class="num">${tradingSummaryCell(a.vow,"buy")}</td><td class="num">${tradingSummaryCell(a.vow,"sell")}</td><td class="num">${tradingSummaryCell(a.vusd,"buy")}</td><td class="num">${tradingSummaryCell(a.vusd,"sell")}</td></tr>`);
+      rows.push(`<tr><td><strong>${w.label}</strong></td><td>${chain==="total"?"Total":chain==="bsc"?"BSC":"Ethereum"}</td><td class="num">${tradingSummaryCell(a.vow,"buy")}</td><td class="num">${tradingSummaryCell(a.vow,"sell")}</td><td class="num">${tradingSummaryCell(a.vdollar,"buy")}</td><td class="num">${tradingSummaryCell(a.vdollar,"sell")}</td></tr>`);
     }
   }
   body.innerHTML=rows.join("");
@@ -2590,7 +2672,7 @@ function tradingTraderRows(){
   for(const e of data.events){
     if(e.token!==token||!e.wallet)continue;
     if(chain!=="total"&&e.chain!==chain)continue;
-    if(Number(e.blockNumber)<Number(cutoff[e.chain]?.[period]??Infinity))continue;
+    if(Number(e.timestamp)<Number(cutoff[e.chain]?.[period]??Infinity))continue;
     if(!map.has(e.wallet))map.set(e.wallet,{wallet:e.wallet,buy:0,sell:0,buyTrades:0,sellTrades:0,chains:new Set()});
     const row=map.get(e.wallet);row[e.side]+=e.amount;row[e.side+"Trades"]++;row.chains.add(e.chain);
   }
@@ -2604,53 +2686,73 @@ function renderTradingTraders(){
 }
 async function loadTradingAnalysis({force=false}={}){
   if(tradingState.promise)return tradingState.promise;
-  if(!force&&tradingState.data&&(Date.now()-tradingState.loadedAt)<10*60*1000){renderTradingSummary();renderTradingTraders();return tradingState.data;}
+  if(!force&&tradingState.data&&(Date.now()-tradingState.loadedAt)<TRADING_REFRESH_MS){renderTradingSummary();renderTradingTraders();return tradingState.data;}
   tradingState.promise=(async()=>{
-    tradingSetStatus("Handelsdaten werden on-chain ausgewertet…","loading");
+    const userId=await tradingAuthUser();
+    tradingSetStatus("Lade gespeicherte Handelsdaten aus Supabase…","loading");
+    let cachedEvents=await tradingReadCache(userId);
+    const nowTs=Math.floor(Date.now()/1000),cutoffs={};
+    for(const chain of ["bsc","eth"]){cutoffs[chain]={};for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=nowTs-w.seconds;}
+    let identity=await tradingLoadIdentityMap(cachedEvents.map(e=>e.wallet));
+    const poolCounts={bsc:0,eth:0};
+    tradingUpdateFromEvents(cachedEvents,cutoffs,identity,poolCounts,new Date());
+    if(cachedEvents.length)tradingSetStatus(`${cachedEvents.length} gespeicherte Trade-Einträge geladen · aktualisiere neue Blöcke…`,"loading");
+    else tradingSetStatus("Noch kein Handels-Cache vorhanden · einmaliger 30-Tage-Import gestartet…","loading");
     await ensureInfrastructure();
-    const nowTs=Math.floor(Date.now()/1000),cutoffs={},allEvents=[],poolCounts={bsc:0,eth:0};
+    const scanStates=await tradingReadScanState(userId);
+    const failures=[];
     for(const chain of ["bsc","eth"]){
-      if(!projectChains.includes(chain)||!providers[chain])continue;
-      const chainLabel=chain==="bsc"?"BSC":"Ethereum";
-      tradingSetStatus(`${chainLabel}: Ermittle Blockgrenzen für 24 h / 7 Tage / 30 Tage…`,"loading");
-      const latestBlock=await providers[chain].getBlockNumber();
-      const latestTs=await tradingBlockTimestamp(chain,latestBlock);
-      cutoffs[chain]={};
-      for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=await tradingFindBlockAtOrAfter(chain,nowTs-w.seconds,latestBlock,latestTs);
-      tradingSetStatus(`${chainLabel}: Lese konfigurierte Swap-Pools…`,"loading");
-      const pools=await tradingLoadPools(chain);poolCounts[chain]=pools.length;
-      const poolByAddress=new Map(pools.map(p=>[p.address,p]));
-      const topics=[{type:"v2",topic:TRADE_V2_SWAP_TOPIC},{type:"v3",topic:TRADE_V3_SWAP_TOPIC}];
-      for(const group of topics){
-        const selected=pools.filter(p=>p.type===group.type);
-        if(!selected.length)continue;
-        const fromBlock=cutoffs[chain]["30d"];
-        tradingSetStatus(`${chainLabel}: Scanne ${selected.length} ${group.type.toUpperCase()}-Pool(s) · 0 %…`,"loading");
-        const logs=await tradingGetLogsRange(chain,selected.map(p=>p.address),group.topic,fromBlock,latestBlock,p=>{
-          const pct=Math.min(100,Math.floor((p.block-fromBlock+1)/Math.max(1,latestBlock-fromBlock+1)*100));
-          tradingSetStatus(`${chainLabel}: ${selected.length} ${group.type.toUpperCase()}-Pool(s) · ${pct} % Blockscan · ${p.count} Swap-Events · ${p.requests} RPC-Abfragen`,"loading");
-        });
-        for(const log of logs){
-          const pool=poolByAddress.get(norm(log.address));
-          if(!pool)continue;
-          const decoded=tradingDecodeLog(pool,log);
-          for(const item of decoded)allEvents.push({...item,chain,pool:pool.address,poolLabel:pool.label,txHash:log.transactionHash,blockNumber:Number(BigInt(log.blockNumber))});
+      if(!projectChains.includes(chain)||!providers[chain]){failures.push(`${chain}: kein RPC`);continue;}
+      try{
+        const chainLabel=chain==="bsc"?"BSC":"Ethereum";
+        const latestBlock=await providers[chain].getBlockNumber();
+        const latestTs=await tradingBlockTimestamp(chain,latestBlock);
+        const firstBlock=await tradingFindBlockAtOrAfter(chain,nowTs-TRADING_RETENTION_SECONDS,latestBlock,latestTs);
+        const pools=await tradingLoadPools(chain);poolCounts[chain]=pools.length;
+        const poolMap=new Map(pools.map(p=>[p.address,p]));
+        for(const grp of [{type:"v2",topic:TRADE_V2_SWAP_TOPIC},{type:"v3",topic:TRADE_V3_SWAP_TOPIC}]){
+          const selected=pools.filter(p=>p.type===grp.type);if(!selected.length)continue;
+          const stateKey=`${chain}|${grp.type}`;
+          const previous=scanStates.get(stateKey);
+          // Kleine Überlappung für Reorgs; alte Trade-Keys bleiben idempotent.
+          let current=Math.max(firstBlock,previous?Number(previous.last_scanned_block)-20:firstBlock);
+          let chunkSize=chain==="bsc"?2000:2000;
+          while(current<=latestBlock){
+            const end=Math.min(latestBlock,current+chunkSize-1);
+            let logs;
+            try{logs=await tradingRpc(chain,"eth_getLogs",[{address:selected.map(p=>p.address),fromBlock:tradingBlockHex(current),toBlock:tradingBlockHex(end),topics:[grp.topic]}]);}
+            catch(e){if(chunkSize>100){chunkSize=Math.max(100,Math.floor(chunkSize/2));continue;}throw e;}
+            const blockNums=[...new Set(logs.map(l=>Number(BigInt(l.blockNumber))))];
+            const senders=await tradingBatchTransactionSenders(chain,logs.map(l=>l.transactionHash));
+            const timestamps=await tradingBatchBlockTimes(chain,blockNums);
+            const newEvents=[];
+            for(const log of logs){
+              const pool=poolMap.get(norm(log.address));if(!pool)continue;
+              const blockNumber=Number(BigInt(log.blockNumber));
+              const timestamp=timestamps.get(blockNumber),logIndex=Number(BigInt(log.logIndex));
+              if(!timestamp||timestamp<nowTs-TRADING_RETENTION_SECONDS)continue;
+              for(const item of tradingDecodeLog(pool,log))newEvents.push({...item,chain,pool:pool.address,
+                txHash:log.transactionHash,logIndex,blockNumber,timestamp,wallet:senders.get(log.transactionHash)||null});
+            }
+            // Erst Trades dauerhaft speichern, DANN den erfolgreich verarbeiteten Block markieren.
+            await tradingWriteEvents(userId,newEvents);
+            await tradingSaveScanState(userId,chain,grp.type,end);
+            current=end+1;
+            if(chunkSize<2000)chunkSize=Math.min(2000,Math.ceil(chunkSize*1.25));
+            const pct=Math.min(100,Math.floor((end-firstBlock+1)/Math.max(1,latestBlock-firstBlock+1)*100));
+            tradingSetStatus(`${chainLabel} ${grp.type.toUpperCase()}: ${pct}% · Block ${end} · ${newEvents.length} neue Event-Einträge in diesem Abschnitt · Cache gespeichert`,"loading");
+          }
         }
-      }
-      tradingSetStatus(`${chainLabel}: Ermittle Händler-Wallets für ${new Set(allEvents.filter(e=>e.chain===chain).map(e=>e.txHash)).size} Transaktionen…`,"loading");
-      const senders=await tradingBatchTransactionSenders(chain,allEvents.filter(e=>e.chain===chain).map(e=>e.txHash));
-      for(const e of allEvents)if(e.chain===chain)e.wallet=senders.get(e.txHash)||null;
+      }catch(e){failures.push(`${chain}: ${String(e?.message||e)}`);console.warn("TLN/VOW Handelsanalyse Chain",chain,e);}
     }
-    tradingSetStatus("Lese verifizierte TLN-IDs und berechne die Übersicht…","loading");
-    if(!Object.keys(cutoffs).length)throw new Error("Keine konfigurierte BSC-/Ethereum-RPC-Verbindung verfügbar.");
-    const identity=await tradingLoadIdentityMap(allEvents.map(e=>e.wallet));
-    tradingState.data={events:allEvents,cutoffs,identity,poolCounts,summary:tradingAggregate(allEvents,cutoffs),capturedAt:new Date()};
-    tradingState.loadedAt=Date.now();
-    renderTradingSummary();renderTradingTraders();
-    const uniqueTx=new Set(allEvents.map(e=>`${e.chain}|${e.txHash}`)).size;
-    tradingSetStatus(`Stand ${tradingState.data.capturedAt.toLocaleString("de-CH")} · ${uniqueTx} Swap-Transaktionen · ${poolCounts.bsc||0} BSC-Pool(s) · ${poolCounts.eth||0} Ethereum-Pool(s).`,"success");
+    await tradingPrune(userId);
+    cachedEvents=await tradingReadCache(userId);
+    identity=await tradingLoadIdentityMap(cachedEvents.map(e=>e.wallet));
+    tradingUpdateFromEvents(cachedEvents,cutoffs,identity,poolCounts,new Date());
+    const n=new Set(cachedEvents.map(e=>`${e.chain}:${e.txHash}`)).size;
+    tradingSetStatus(`Cache: ${n} Swap-Transaktionen (30 Tage) · BSC ${poolCounts.bsc} Pools · ETH ${poolCounts.eth} Pools · ${new Date().toLocaleString("de-CH")}${failures.length?` · Nicht vollständig: ${failures.join("; ")}`:""}`,failures.length?"error":"success");
     return tradingState.data;
-  })().catch(e=>{tradingSetStatus(`Fehler bei der Handelsanalyse: ${String(e?.message||e)}`,"error");throw e;}).finally(()=>{tradingState.promise=null;});
+  })().catch(e=>{tradingSetStatus(`Handels-Cache: ${String(e?.message||e)} · SQL-Migration und Berechtigungen prüfen.`,"error");throw e;}).finally(()=>{tradingState.promise=null;});
   return tradingState.promise;
 }
 function ensureTradingLoaded(){return loadTradingAnalysis({force:false});}
