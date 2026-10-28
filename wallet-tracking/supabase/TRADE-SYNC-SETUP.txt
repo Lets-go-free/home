@@ -1,0 +1,39 @@
+WalletTracking 7.64 – tln-vow-trade-sync
+
+1. Supabase Dashboard > Edge Functions > Secrets:
+   - ALCHEMY_API_KEY: bestehender Key aus Alchemy Dashboard > Apps
+   - TRADE_SYNC_SECRET: eigener zufälliger langer Secret-Wert (mind. 32 Zeichen)
+   SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY werden von gehostetem Supabase bereitgestellt.
+   Den Alchemy-Key NICHT in SQL oder im Chat veröffentlichen.
+
+2. Dashboard > Edge Functions > Deploy new function:
+   Name tln-vow-trade-sync
+   Inhalt aus supabase/functions/tln-vow-trade-sync/index.ts einfügen.
+   JWT verification / Verify JWT ausschalten, da die Funktion einen eigenen
+   x-trade-sync-secret Header prüft. Die URL darf ohne diesen Header nicht nutzbar sein.
+
+3. SQL Editor: supabase/migrations/20261028_tln_vow_trade_sync_cron.sql öffnen.
+   PROJECT_REF durch die Projekt-Referenz aus der Supabase-URL ersetzen.
+   YOUR_RANDOM_JOB_SECRET durch den IDENTISCHEN Wert aus TRADE_SYNC_SECRET ersetzen.
+   SQL einmalig ausführen. Geheimen Wert nicht in einem geteilten SQL-Dokument speichern.
+   Cron-Job läuft */30 * * * * (alle 30 Minuten, UTC-Minute 0 und 30).
+
+4. Prüfen: Supabase > Integrations > Cron > Jobs / History,
+   Edge Functions > tln-vow-trade-sync > Logs.
+   Die Function synchronisiert vorhandene Benutzer aus
+   tln_vow_trade_scan_state mit group_key alchemy:transfers-v1.
+   Ein Benutzer muss vorher einmal die Handelsanalyse geöffnet haben.
+   Jeder Job scannt pro Chain ein begrenztes Blockfenster und merkt sich
+   den letzten erfolgreich abgeschlossenen Block.
+   Wenn Initialimport noch weit hinterher ist, ist der Job NICHT die
+   schnelle historische Backfill-Methode. Für diesen muss der laufende
+   interaktive Import vollständig durchlaufen oder ein separater Backfill
+   eingerichtet werden.
+
+5. ALTER: Der Browser-Scanner bleibt in 7.64 weiterhin aktiv und kann parallel
+   mit dem Job laufen. Beide nutzen dieselben Checkpoints und Upsert-Keys;
+   eine serverseitige gegenseitige Lauf-Sperre ist noch nicht implementiert.
+   Daher während eines längeren Erstimports nicht gleichzeitig Cron starten.
+
+Wichtig: Dies ist eine vorbereitete Integration, nicht bereits in deinem
+Supabase-Projekt deployed oder aktiviert. Edge-Live-Ausführung nicht verifiziert.
