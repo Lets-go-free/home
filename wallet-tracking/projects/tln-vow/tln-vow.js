@@ -1,3 +1,4 @@
+// Phase 7.58 · 28.10.2026 13:59:53 CET: RPC-Timeouts, Fortschritt und gemeinsamer Multi-Pool-Logscan für VOW/vUSD Handel. Keine Änderung der Preis-/Staking-Engine.
 // Phase 7.57 · 28.10.2026 13:47:01 CET: Neuer Tab VOW/vUSD Handel mit DEX-Swap-Analyse für 24 h, 7 Tage und 30 Tage auf BSC/Ethereum sowie Total; grösste Händler inkl. vorhandener TLN-ID. Build 20261028-134701.
 // Phase 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
 // Phase 7.53 · 08.10.2026 18:29:47 CEST: 24-Stunden-Vergleich für DEX-Kurse über dieselbe aktuelle Bewertungsroute; globaler Cache, ehrliche Lücken und Referenzkennzeichnung. Build 20261008-182947.
@@ -2403,11 +2404,19 @@ function tradingBlockHex(n){return "0x"+Math.max(0,Number(n)||0).toString(16);}
 async function tradingRpc(chain,method,params=[]){
   const rpc=CONFIG[chain]?.rpc;
   if(!rpc)throw new Error(`${chain}: RPC fehlt.`);
-  const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
-  if(!response.ok)throw new Error(`${chain}: RPC HTTP ${response.status}`);
-  const json=await response.json();
-  if(json?.error)throw new Error(`${chain}: ${json.error.message||"RPC-Fehler"}`);
-  return json?.result;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),18000);
+  try{
+    const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),signal:controller.signal});
+    if(!response.ok)throw new Error(`${chain}: RPC HTTP ${response.status}`);
+    const json=await response.json();
+    if(json?.error)throw new Error(`${chain}: ${json.error.message||"RPC-Fehler"}`);
+    if(json?.result==null)throw new Error(`${chain}: ${method} ohne Ergebnis`);
+    return json.result;
+  }catch(e){
+    if(e?.name==="AbortError")throw new Error(`${chain}: ${method} Timeout (18 s)`);
+    throw e;
+  }finally{clearTimeout(timeout);}
 }
 async function tradingBlockTimestamp(chain,blockNumber){
   const raw=await tradingRpc(chain,"eth_getBlockByNumber",[tradingBlockHex(blockNumber),false]);
@@ -2429,20 +2438,27 @@ async function tradingFindBlockAtOrAfter(chain,targetTs,latestBlock,latestTs){
   }
   return lo;
 }
-async function tradingGetLogsRange(chain,address,topic,fromBlock,toBlock){
+async function tradingGetLogsRange(chain,addresses,topic,fromBlock,toBlock,progress){
+  // Filtert alle relevanten Pools in EINER Log-Abfrage; das spart pro Chunk
+  // bis zu N identische Blockbereichsscans bei vielen TLN/VOW-Pools.
   const out=[];
   let start=fromBlock;
-  let chunk=chain==="bsc"?50000:12000;
-  const minChunk=250;
+  const maxChunk=chain==="bsc"?2000:2000;
+  let chunk=maxChunk;
+  const minChunk=100;
+  let requests=0;
   while(start<=toBlock){
     const end=Math.min(toBlock,start+chunk-1);
     try{
-      const rows=await tradingRpc(chain,"eth_getLogs",[{address,fromBlock:tradingBlockHex(start),toBlock:tradingBlockHex(end),topics:[topic]}]);
-      if(Array.isArray(rows))out.push(...rows);
+      const rows=await tradingRpc(chain,"eth_getLogs",[{address:addresses,fromBlock:tradingBlockHex(start),toBlock:tradingBlockHex(end),topics:[topic]}]);
+      if(!Array.isArray(rows))throw new Error(`${chain}: eth_getLogs lieferte kein Array`);
+      out.push(...rows);
       start=end+1;
-      if(chunk<(chain==="bsc"?50000:12000))chunk=Math.min(chain==="bsc"?50000:12000,Math.floor(chunk*1.5));
+      requests++;
+      if(progress&&(requests===1||requests%5===0||start>toBlock))progress({block:Math.min(end,toBlock),fromBlock,toBlock,count:out.length,requests});
+      if(chunk<maxChunk)chunk=Math.min(maxChunk,Math.ceil(chunk*1.25));
     }catch(e){
-      if(chunk<=minChunk)throw e;
+      if(chunk<=minChunk)throw new Error(`${chain}: Log-Scan bei Block ${start} gescheitert: ${String(e?.message||e)}`);
       chunk=Math.max(minChunk,Math.floor(chunk/2));
     }
   }
@@ -2455,9 +2471,15 @@ async function tradingBatchTransactionSenders(chain,hashes){
   for(let offset=0;offset<unique.length;offset+=80){
     const slice=unique.slice(offset,offset+80);
     const payload=slice.map((hash,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_getTransactionByHash",params:[hash]}));
-    const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
-    if(!response.ok)throw new Error(`${chain}: Transaktions-Batch HTTP ${response.status}`);
-    const json=await response.json();
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),18000);
+    let json;
+    try{
+      const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload),signal:controller.signal});
+      if(!response.ok)throw new Error(`${chain}: Transaktions-Batch HTTP ${response.status}`);
+      json=await response.json();
+    }finally{clearTimeout(timeout);}
+    if(!Array.isArray(json))throw new Error(`${chain}: Batch-Antwort nicht vollständig`);
     const rows=Array.isArray(json)?json:[json];
     const byId=new Map(rows.map(x=>[Number(x.id),x]));
     slice.forEach((hash,i)=>{
@@ -2589,22 +2611,38 @@ async function loadTradingAnalysis({force=false}={}){
     const nowTs=Math.floor(Date.now()/1000),cutoffs={},allEvents=[],poolCounts={bsc:0,eth:0};
     for(const chain of ["bsc","eth"]){
       if(!projectChains.includes(chain)||!providers[chain])continue;
+      const chainLabel=chain==="bsc"?"BSC":"Ethereum";
+      tradingSetStatus(`${chainLabel}: Ermittle Blockgrenzen für 24 h / 7 Tage / 30 Tage…`,"loading");
       const latestBlock=await providers[chain].getBlockNumber();
       const latestTs=await tradingBlockTimestamp(chain,latestBlock);
       cutoffs[chain]={};
       for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=await tradingFindBlockAtOrAfter(chain,nowTs-w.seconds,latestBlock,latestTs);
+      tradingSetStatus(`${chainLabel}: Lese konfigurierte Swap-Pools…`,"loading");
       const pools=await tradingLoadPools(chain);poolCounts[chain]=pools.length;
-      for(const pool of pools){
-        const topic=pool.type==="v3"?TRADE_V3_SWAP_TOPIC:TRADE_V2_SWAP_TOPIC;
-        const logs=await tradingGetLogsRange(chain,pool.address,topic,cutoffs[chain]["30d"],latestBlock);
+      const poolByAddress=new Map(pools.map(p=>[p.address,p]));
+      const topics=[{type:"v2",topic:TRADE_V2_SWAP_TOPIC},{type:"v3",topic:TRADE_V3_SWAP_TOPIC}];
+      for(const group of topics){
+        const selected=pools.filter(p=>p.type===group.type);
+        if(!selected.length)continue;
+        const fromBlock=cutoffs[chain]["30d"];
+        tradingSetStatus(`${chainLabel}: Scanne ${selected.length} ${group.type.toUpperCase()}-Pool(s) · 0 %…`,"loading");
+        const logs=await tradingGetLogsRange(chain,selected.map(p=>p.address),group.topic,fromBlock,latestBlock,p=>{
+          const pct=Math.min(100,Math.floor((p.block-fromBlock+1)/Math.max(1,latestBlock-fromBlock+1)*100));
+          tradingSetStatus(`${chainLabel}: ${selected.length} ${group.type.toUpperCase()}-Pool(s) · ${pct} % Blockscan · ${p.count} Swap-Events · ${p.requests} RPC-Abfragen`,"loading");
+        });
         for(const log of logs){
+          const pool=poolByAddress.get(norm(log.address));
+          if(!pool)continue;
           const decoded=tradingDecodeLog(pool,log);
           for(const item of decoded)allEvents.push({...item,chain,pool:pool.address,poolLabel:pool.label,txHash:log.transactionHash,blockNumber:Number(BigInt(log.blockNumber))});
         }
       }
+      tradingSetStatus(`${chainLabel}: Ermittle Händler-Wallets für ${new Set(allEvents.filter(e=>e.chain===chain).map(e=>e.txHash)).size} Transaktionen…`,"loading");
       const senders=await tradingBatchTransactionSenders(chain,allEvents.filter(e=>e.chain===chain).map(e=>e.txHash));
       for(const e of allEvents)if(e.chain===chain)e.wallet=senders.get(e.txHash)||null;
     }
+    tradingSetStatus("Lese verifizierte TLN-IDs und berechne die Übersicht…","loading");
+    if(!Object.keys(cutoffs).length)throw new Error("Keine konfigurierte BSC-/Ethereum-RPC-Verbindung verfügbar.");
     const identity=await tradingLoadIdentityMap(allEvents.map(e=>e.wallet));
     tradingState.data={events:allEvents,cutoffs,identity,poolCounts,summary:tradingAggregate(allEvents,cutoffs),capturedAt:new Date()};
     tradingState.loadedAt=Date.now();
