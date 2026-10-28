@@ -1,4 +1,4 @@
-<!-- Phase 7.59: VOW/v$ Handel mit persistentem 30-Tage-Supabase-Cache und inkrementellem Scan. Build 20261028-141222. -->
+<!-- Phase 7.61: VOW/v$ Handel mit persistentem 30-Tage-Supabase-Cache und inkrementellem Scan. Build 20261028-143840. -->
 <!-- Phase 7.56: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. -->
 <!-- Phase 7.55: Projekt-Token aus der Dashboard-Kursübersicht ausblenden; standardmäßig sichtbar, weiterhin nur bei vorhandenem Projekt. Release-READMEs unter docs/releases archiviert; Usertests APTM-24h und Entdecken bestätigt. -->
 <!-- Phase 7.54: APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten. -->
@@ -929,7 +929,7 @@
       <div id="tlnvow-subtab-trading" class="project-subtab-panel" style="display:none">
         <div class="custom-token-card" style="border-color:var(--accent)">
           <h3 style="margin-top:0">VOW / v$ · Käufe &amp; Verkäufe</h3>
-          <div class="note">Ausgewertet werden echte DEX-Swap-Ereignisse der im Projekt TLN/VOW konfigurierten Liquidity Pools, in denen VOW oder v$ direkt gehandelt wird. «Wallet» ist die Absenderadresse der Transaktion (<code>transaction.from</code>); bei Smart-Contract-/Aggregator-Transaktionen kann deshalb statt einer persönlichen Wallet ein Contract erscheinen. Eine TLN-ID wird nur angezeigt, wenn für die Wallet bereits eine verifizierte Zuordnung im globalen TLN-Identity-Cache vorhanden ist.</div>
+          <div class="note">Ausgewertet werden echte DEX-Swap-Ereignisse der für VOW und v$ entdeckten, unterstützten V2/V3-Liquidity Pools, in denen VOW oder v$ direkt gehandelt wird. «Wallet» ist die Absenderadresse der Transaktion (<code>transaction.from</code>); bei Smart-Contract-/Aggregator-Transaktionen kann deshalb statt einer persönlichen Wallet ein Contract erscheinen. Eine TLN-ID wird nur angezeigt, wenn für die Wallet bereits eine verifizierte Zuordnung im globalen TLN-Identity-Cache vorhanden ist.</div>
         </div>
         <div class="custom-token-card" style="margin-top:10px">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -1320,7 +1320,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 28.10.2026 14:12:22 CET · Phase 7.59 · Build 20261028-141222</span><br>
+    <span id="footerVersionLine">Version: 28.10.2026 14:38:40 CET · Phase 7.61 · Build 20261028-143840</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1364,6 +1364,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.10.2026 14:12:22 CET · Phase 7.59 · Build 20261028-141222</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.10.2026 14:38:40 CET · Phase 7.61 · Build 20261028-143840</div>
 </body>
 </html>

@@ -1,4 +1,5 @@
-// Phase 7.59 · 28.10.2026 14:12:22 CET: VOW/v$ Handel, 30-Tage-Supabase-Cache, inkrementeller Scan. Build 20261028-141222.
+// Phase 7.61 · 28.10.2026: tokenbasierte VOW/v$-Pool-Discovery, persistente Discovery-/Pool-Cursor, historischer Backfill neu entdeckter Pools.
+// Phase 7.60 · 28.10.2026 14:21:10 CET: VOW/v$ Handel – RPC-Adresse-Limit fix. Build 20261028-142110.
 // Phase 7.58 · 28.10.2026 13:59:53 CET: RPC-Timeouts, Fortschritt und gemeinsamer Multi-Pool-Logscan für VOW/vUSD Handel. Keine Änderung der Preis-/Staking-Engine.
 // Phase 7.57 · 28.10.2026 13:47:01 CET: Neuer Tab VOW/vUSD Handel mit DEX-Swap-Analyse für 24 h, 7 Tage und 30 Tage auf BSC/Ethereum sowie Total; grösste Händler inkl. vorhandener TLN-ID. Build 20261028-134701.
 // Phase 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
@@ -2362,7 +2363,7 @@ async function loadDailyPrices(){
 
 /* =========================================================
    VOW / v$ · HANDELSANALYSE
-   - echte Swap-Events der konfigurierten TLN/VOW DEX-Pools
+   - Token-Transfer-basierte Discovery plus echte Swap-Events verifizierter V2/V3-DEX-Pools
    - Händler = transaction.from (Router-/Aggregator-Sender wird damit
      nicht fälschlich als Wallet aus dem Swap-Event übernommen)
    - TLN-ID nur aus bereits verifiziertem globalem Identity-Cache
@@ -2383,7 +2384,9 @@ const TRADE_WINDOWS = [
 const tradingState={promise:null,data:null,loadedAt:0};
 const TRADING_CACHE_TABLE="tln_vow_trade_cache";
 const TRADING_STATE_TABLE="tln_vow_trade_scan_state";
-const TRADING_SCHEMA_VERSION=3;
+const TRADING_SCHEMA_VERSION=4;
+const TRADING_TRANSFER_TOPIC=ethers.id("Transfer(address,address,uint256)");
+const TRADING_DISCOVERY_CHUNK={bsc:1200,eth:2000};
 const TRADING_REFRESH_MS=5*60*1000;
 const TRADING_RETENTION_SECONDS=30*24*60*60;
 async function tradingAuthUser(){
@@ -2571,6 +2574,130 @@ async function tradingBatchTransactionSenders(chain,hashes){
   }
   return map;
 }
+// Token-adressbasierte Pool-Discovery. Ein Scan der ERC20-Transfer-Logs findet
+// auch ältere, nicht in defi_project_tokens eingetragene DEX-Pools, sofern sie
+// innerhalb des Fensters mit VOW/v$ interagiert haben. Nur verifizierte V2/V3
+// Pools bekannter Factories werden als Handelsplätze aufgenommen.
+async function tradingTokenContracts(chain){
+  const found=new Map();
+  const addresses=new Set();
+  for(const row of configuredTokens(chain))if(ethers.isAddress(row.address))addresses.add(norm(row.address));
+  // Pool-Tokenmetadaten dienen zusätzlich als Quelle, falls die explizite
+  // Projekt-Tokenklassifikation einen der Zielcontracts noch nicht enthält.
+  for(const row of configuredLPs(chain)){
+    try{
+      const type=await detectPoolType(chain,row.address);
+      const pool=type==="v3"?await readV3Pool(chain,row.address):await readV2Pool(chain,row.address);
+      for(const t of [pool.token0,pool.token1])if(tradingTargetKey(t))addresses.add(norm(t.address));
+    }catch(e){console.warn("Handel: Seed-Pool-Metadaten",chain,row.address,e);}
+  }
+  for(const address of addresses){
+    try{
+      const token=await getToken(chain,address);
+      const key=tradingTargetKey(token);
+      if(key)found.set(address,key);
+    }catch(e){console.warn("Handel: Token nicht lesbar",chain,address,e);}
+  }
+  return found;
+}
+async function tradingVerifyCandidatePool(chain,address,targetTokens){
+  if(!ethers.isAddress(address)||targetTokens.has(norm(address)))return null;
+  const a=norm(address);
+  try{
+    const type=await detectPoolType(chain,a);
+    const pool=type==="v3"?await readV3Pool(chain,a):await readV2Pool(chain,a);
+    const target0=targetTokens.get(norm(pool.token0.address))||null;
+    const target1=targetTokens.get(norm(pool.token1.address))||null;
+    if(!target0&&!target1)return null;
+    return {chain,address:a,type,token0:pool.token0,token1:pool.token1,
+      target0,target1,label:`Entdeckt: ${pool.token0.symbol}/${pool.token1.symbol}`};
+  }catch{return null;}
+}
+// EOAs werden in einem einzigen JSON-RPC-Batch ausgesiebt. Andernfalls
+// würde für jeden normalen Tokenempfänger ein teures factory() versucht.
+async function tradingContractAddresses(chain,addresses){
+  const result=[];
+  const rpc=CONFIG[chain]?.rpc;
+  for(let i=0;i<addresses.length;i+=75){
+    const batch=addresses.slice(i,i+75);
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),18000);
+    try{
+      const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify(batch.map((a,j)=>({jsonrpc:"2.0",id:j+1,method:"eth_getCode",params:[a,"latest"]}))),signal:controller.signal});
+      if(!response.ok)throw new Error(`${chain}: Code-Prüfung HTTP ${response.status}`);
+      const values=await response.json();
+      if(!Array.isArray(values))throw new Error(`${chain}: Code-Batchantwort fehlt`);
+      const byId=new Map(values.map(x=>[Number(x.id),x]));
+      for(let j=0;j<batch.length;j++){
+        const item=byId.get(j+1);
+        if(item?.error)throw new Error(`${chain}: Code-Prüfung ${item.error.message||"RPC-Fehler"}`);
+        if(!item||typeof item.result!=="string")throw new Error(`${chain}: Code-Batch unvollständig`);
+        if(item.result!=="0x"&&item.result!=="0x0")result.push(batch[j]);
+      }
+    }finally{clearTimeout(timer);}
+  }
+  return result;
+}
+async function tradingDiscoverPools(chain,userId,states,firstBlock,latestBlock,targetTokens,knownPools){
+  const poolMap=new Map(knownPools.map(p=>[p.address,p]));
+  // Bereits bestätigte Pools aus persistentem Scan-State wiederherstellen:
+  // andernfalls würde ein inzwischen ruhender Pool nach dem Reload verschwinden.
+  for(const key of states.keys()){
+    const prefix=`${chain}|pool:`;
+    if(!key.startsWith(prefix))continue;
+    const address=key.split(":").at(-1);
+    if(!ethers.isAddress(address)||poolMap.has(norm(address)))continue;
+    const pool=await tradingVerifyCandidatePool(chain,address,targetTokens);
+    if(pool)poolMap.set(norm(address),pool);
+  }
+  const tested=new Set(poolMap.keys());
+  const zero="0x0000000000000000000000000000000000000000";
+  for(const token of targetTokens.keys()){
+    const group=`discover:${token}`;
+    const previous=states.get(`${chain}|${group}`);
+    let current=Math.max(firstBlock,previous?Number(previous.last_scanned_block)-20:firstBlock);
+    let span=TRADING_DISCOVERY_CHUNK[chain]||1200;
+    while(current<=latestBlock){
+      const end=Math.min(latestBlock,current+span-1);
+      let logs;
+      try{
+        logs=await tradingRpc(chain,"eth_getLogs",[{address:token,
+          fromBlock:tradingBlockHex(current),toBlock:tradingBlockHex(end),
+          topics:[TRADING_TRANSFER_TOPIC]}]);
+        if(!Array.isArray(logs))throw new Error("Transfer-Logs ohne Array");
+      }catch(e){
+        if(span>100){span=Math.max(100,Math.floor(span/2));continue;}
+        throw new Error(`${chain}: Token-Discovery Block ${current}: ${String(e.message||e)}`);
+      }
+      const candidateSet=new Set();
+      for(const log of logs){
+        if(!log.topics||log.topics.length<3)continue;
+        for(const topic of [log.topics[1],log.topics[2]]){
+          const addr=norm("0x"+topic.slice(-40));
+          if(addr!==zero&&!targetTokens.has(addr)&&!tested.has(addr))candidateSet.add(addr);
+        }
+      }
+      // Alle einmalig auftretenden Gegenparteien werden ebenfalls geprüft.
+      // Ohne diese Prüfung könnte ein illiquider Pool übersehen werden.
+      const candidates=[...candidateSet];
+      const contractAddresses=await tradingContractAddresses(chain,candidates);
+      for(const address of candidates)tested.add(address);
+      for(const address of contractAddresses){
+        const pool=await tradingVerifyCandidatePool(chain,address,targetTokens);
+        if(pool)poolMap.set(address,pool);
+      }
+      // Checkpoint nach vollständiger Verarbeitung der Logs UND Kandidaten.
+      await tradingSaveScanState(userId,chain,group,end);
+      states.set(`${chain}|${group}`,{last_scanned_block:end});
+      current=end+1;
+      const pct=Math.floor((end-firstBlock+1)/Math.max(1,latestBlock-firstBlock+1)*100);
+      tradingSetStatus(`${chain.toUpperCase()} · Token-Pool-Discovery ${pct}% · ${poolMap.size} bestätigte Pools · ${logs.length} Transfers im Abschnitt · Checkpoint gespeichert`,"loading");
+      if(span<TRADING_DISCOVERY_CHUNK[chain])span=Math.min(TRADING_DISCOVERY_CHUNK[chain],Math.ceil(span*1.2));
+    }
+  }
+  return [...poolMap.values()];
+}
 async function tradingLoadPools(chain){
   const pools=[];
   for(const row of configuredLPs(chain)){
@@ -2708,39 +2835,48 @@ async function loadTradingAnalysis({force=false}={}){
         const latestBlock=await providers[chain].getBlockNumber();
         const latestTs=await tradingBlockTimestamp(chain,latestBlock);
         const firstBlock=await tradingFindBlockAtOrAfter(chain,nowTs-TRADING_RETENTION_SECONDS,latestBlock,latestTs);
-        const pools=await tradingLoadPools(chain);poolCounts[chain]=pools.length;
-        const poolMap=new Map(pools.map(p=>[p.address,p]));
-        for(const grp of [{type:"v2",topic:TRADE_V2_SWAP_TOPIC},{type:"v3",topic:TRADE_V3_SWAP_TOPIC}]){
-          const selected=pools.filter(p=>p.type===grp.type);if(!selected.length)continue;
-          const stateKey=`${chain}|${grp.type}`;
+        const targetTokens=await tradingTokenContracts(chain);
+        if(!targetTokens.size)throw new Error("Kein verifizierbarer VOW-/v$-Token-Contract in den Projektstammdaten oder Seed-Pools.");
+        const seeds=await tradingLoadPools(chain);
+        const pools=await tradingDiscoverPools(chain,userId,scanStates,firstBlock,latestBlock,targetTokens,seeds);
+        poolCounts[chain]=pools.length;
+        // Eigene Cursor je Pool: neu entdeckte Pools bekommen auch dann ihren
+        // historischen 30-Tage-Backfill, wenn andere Pools schon aktuell sind.
+        for(const pool of pools){
+          const stateKey=`${chain}|pool:${pool.type}:${pool.address}`;
           const previous=scanStates.get(stateKey);
-          // Kleine Überlappung für Reorgs; alte Trade-Keys bleiben idempotent.
           let current=Math.max(firstBlock,previous?Number(previous.last_scanned_block)-20:firstBlock);
-          let chunkSize=chain==="bsc"?2000:2000;
+          let chunkSize=2000;
+          const topic=pool.type==="v3"?TRADE_V3_SWAP_TOPIC:TRADE_V2_SWAP_TOPIC;
           while(current<=latestBlock){
             const end=Math.min(latestBlock,current+chunkSize-1);
             let logs;
-            try{logs=await tradingRpc(chain,"eth_getLogs",[{address:selected.map(p=>p.address),fromBlock:tradingBlockHex(current),toBlock:tradingBlockHex(end),topics:[grp.topic]}]);}
-            catch(e){if(chunkSize>100){chunkSize=Math.max(100,Math.floor(chunkSize/2));continue;}throw e;}
+            try{
+              logs=await tradingRpc(chain,"eth_getLogs",[{address:pool.address,fromBlock:tradingBlockHex(current),toBlock:tradingBlockHex(end),topics:[topic]}]);
+              if(!Array.isArray(logs))throw new Error(`${chain}: eth_getLogs lieferte kein Array`);
+            }catch(e){
+              if(chunkSize>100){chunkSize=Math.max(100,Math.floor(chunkSize/2));continue;}
+              throw e;
+            }
             const blockNums=[...new Set(logs.map(l=>Number(BigInt(l.blockNumber))))];
             const senders=await tradingBatchTransactionSenders(chain,logs.map(l=>l.transactionHash));
             const timestamps=await tradingBatchBlockTimes(chain,blockNums);
             const newEvents=[];
             for(const log of logs){
-              const pool=poolMap.get(norm(log.address));if(!pool)continue;
               const blockNumber=Number(BigInt(log.blockNumber));
-              const timestamp=timestamps.get(blockNumber),logIndex=Number(BigInt(log.logIndex));
+              const timestamp=timestamps.get(blockNumber);
+              const logIndex=Number(BigInt(log.logIndex));
               if(!timestamp||timestamp<nowTs-TRADING_RETENTION_SECONDS)continue;
               for(const item of tradingDecodeLog(pool,log))newEvents.push({...item,chain,pool:pool.address,
                 txHash:log.transactionHash,logIndex,blockNumber,timestamp,wallet:senders.get(log.transactionHash)||null});
             }
-            // Erst Trades dauerhaft speichern, DANN den erfolgreich verarbeiteten Block markieren.
             await tradingWriteEvents(userId,newEvents);
-            await tradingSaveScanState(userId,chain,grp.type,end);
+            await tradingSaveScanState(userId,chain,`pool:${pool.type}:${pool.address}`,end);
+            scanStates.set(stateKey,{last_scanned_block:end});
             current=end+1;
             if(chunkSize<2000)chunkSize=Math.min(2000,Math.ceil(chunkSize*1.25));
             const pct=Math.min(100,Math.floor((end-firstBlock+1)/Math.max(1,latestBlock-firstBlock+1)*100));
-            tradingSetStatus(`${chainLabel} ${grp.type.toUpperCase()}: ${pct}% · Block ${end} · ${newEvents.length} neue Event-Einträge in diesem Abschnitt · Cache gespeichert`,"loading");
+            tradingSetStatus(`${chainLabel} · ${pool.label} · Historie ${pct}% · ${newEvents.length} Trade-Einträge im Abschnitt · Cache gespeichert`,"loading");
           }
         }
       }catch(e){failures.push(`${chain}: ${String(e?.message||e)}`);console.warn("TLN/VOW Handelsanalyse Chain",chain,e);}
@@ -2750,7 +2886,7 @@ async function loadTradingAnalysis({force=false}={}){
     identity=await tradingLoadIdentityMap(cachedEvents.map(e=>e.wallet));
     tradingUpdateFromEvents(cachedEvents,cutoffs,identity,poolCounts,new Date());
     const n=new Set(cachedEvents.map(e=>`${e.chain}:${e.txHash}`)).size;
-    tradingSetStatus(`Cache: ${n} Swap-Transaktionen (30 Tage) · BSC ${poolCounts.bsc} Pools · ETH ${poolCounts.eth} Pools · ${new Date().toLocaleString("de-CH")}${failures.length?` · Nicht vollständig: ${failures.join("; ")}`:""}`,failures.length?"error":"success");
+    tradingSetStatus(`Cache: ${n} Swap-Transaktionen (30 Tage) · BSC ${poolCounts.bsc} verifizierte V2/V3-Pools · ETH ${poolCounts.eth} verifizierte V2/V3-Pools · ${new Date().toLocaleString("de-CH")}${failures.length?` · Nicht vollständig: ${failures.join("; ")}`:""}`,failures.length?"error":"success");
     return tradingState.data;
   })().catch(e=>{tradingSetStatus(`Handels-Cache: ${String(e?.message||e)} · SQL-Migration und Berechtigungen prüfen.`,"error");throw e;}).finally(()=>{tradingState.promise=null;});
   return tradingState.promise;
