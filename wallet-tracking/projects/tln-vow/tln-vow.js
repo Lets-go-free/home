@@ -2814,11 +2814,28 @@ function tradingTraderRows(){
   }
   return [...map.values()].map(x=>({...x,total:x.buy+x.sell,tradeCount:x.buyTrades+x.sellTrades,tlnId:data.identity.get(x.wallet)||null})).sort((a,b)=>b.total-a.total).slice(0,20);
 }
+// Kopiert die vollständige Händler-Wallet; verkürzte Darstellung bleibt unverändert.
+async function tradingCopyWallet(wallet, button){
+  if(!/^0x[0-9a-fA-F]{40}$/.test(String(wallet||"")))return;
+  try{
+    if(navigator.clipboard?.writeText){
+      await navigator.clipboard.writeText(wallet);
+    }else{
+      const field=document.createElement("textarea");
+      field.value=wallet;field.setAttribute("readonly","");
+      field.style.position="fixed";field.style.opacity="0";
+      document.body.appendChild(field);field.select();
+      const ok=document.execCommand("copy");field.remove();
+      if(!ok)throw new Error("Kopieren nicht verfügbar");
+    }
+    if(button){const old=button.textContent;button.textContent="✓";setTimeout(()=>{if(button.isConnected)button.textContent=old;},1200);}
+  }catch(error){console.warn("Händler-Wallet konnte nicht kopiert werden:",error);if(button)button.title="Kopieren fehlgeschlagen";}
+}
 function renderTradingTraders(){
   const body=document.getElementById("tlnTradingTradersBody"),data=tradingState.data;if(!body||!data)return;
   const token=document.getElementById("tlnTradingToken")?.value||"vow";
   const rows=tradingTraderRows();
-  body.innerHTML=rows.length?rows.map((r,i)=>`<tr><td>${i+1}</td><td><span class="mono" title="${r.wallet}">${tradingShortAddress(r.wallet)}</span></td><td>${r.tlnId?`<strong>${r.tlnId}</strong>`:"–"}</td><td>${[...r.chains].map(c=>c==="bsc"?"BSC":"ETH").join(" + ")}</td><td class="num">${tradingFormatAmount(r.buy)}</td><td class="num">${tradingFormatAmount(r.sell)}</td><td class="num"><strong>${tradingFormatAmount(r.total)}</strong></td><td class="num">${r.tradeCount}</td></tr>`).join(""):`<tr><td colspan="8">Keine ${tradingTargetLabel(token)}-Trades im gewählten Zeitraum gefunden.</td></tr>`;
+  body.innerHTML=rows.length?rows.map((r,i)=>`<tr><td>${i+1}</td><td><span class="mono" title="${r.wallet}">${tradingShortAddress(r.wallet)}</span><button type="button" class="tln-trade-wallet-copy" title="Vollständige Händler-Wallet kopieren" aria-label="Händler-Wallet kopieren" onclick="TLNVOWProject.copyTradingWallet('${r.wallet}',this)">⧉</button></td><td>${r.tlnId?`<strong>${r.tlnId}</strong>`:"–"}</td><td>${[...r.chains].map(c=>c==="bsc"?"BSC":"ETH").join(" + ")}</td><td class="num">${tradingFormatAmount(r.buy)}</td><td class="num">${tradingFormatAmount(r.sell)}</td><td class="num"><strong>${tradingFormatAmount(r.total)}</strong></td><td class="num">${r.tradeCount}</td></tr>`).join(""):`<tr><td colspan="8">Keine ${tradingTargetLabel(token)}-Trades im gewählten Zeitraum gefunden.</td></tr>`;
 }
 // Alchemy Transfers API indexiert ERC-20-Transfers tokenbezogen. Ein Transfer ist
 // KEIN Trade: erst die nachgeladenen Receipts und verifizierte Pool-Swap-Events
@@ -3016,6 +3033,7 @@ return {
   ensureTradingLoaded,
   refreshTrading,
   onTradingFilterChange,
+  copyTradingWallet:tradingCopyWallet,
   getPriceState:()=>({capturedAt:currentPriceCapturedAt,source:currentPriceSource,version:CURRENT_PRICE_SNAPSHOT_VERSION})
 };
 
