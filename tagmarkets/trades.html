@@ -122,21 +122,21 @@
         .dash-hinweis { font-size: 0.75em; font-weight: 400; color: #718096; margin-left: 8px; }
         .sum-sub { font-size: 0.8em; color: #718096; white-space: pre-line; line-height: 1.5; }
         .sum-card.sum-saldo .sum-sub { color: #cbd5e0; }
-        .twr-chart {
+        .chart-chart {
             margin-top: 12px;
             background: #ffffff;
             border: 1px solid #cbd5e0;
             border-radius: 10px;
             padding: 14px 16px 6px 16px;
         }
-        .twr-legende { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85em; color: #4a5568; margin-bottom: 6px; }
-        .twr-leg { display: inline-flex; align-items: center; gap: 6px; }
-        .twr-punkt { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-        .twr-svg-wrap { position: relative; }
-        .twr-schalter { cursor: pointer; margin-left: auto; user-select: none; }
-        .twr-schalter input { margin: 0 4px 0 0; cursor: pointer; }
-        .twr-svg-wrap svg { width: 100%; height: auto; display: block; }
-        .twr-tooltip {
+        .chart-legende { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85em; color: #4a5568; margin-bottom: 6px; }
+        .chart-leg { display: inline-flex; align-items: center; gap: 6px; }
+        .chart-punkt { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+        .chart-svg-wrap { position: relative; }
+        .chart-schalter { cursor: pointer; margin-left: auto; user-select: none; }
+        .chart-schalter input { margin: 0 4px 0 0; cursor: pointer; }
+        .chart-svg-wrap svg { width: 100%; height: auto; display: block; }
+        .chart-tooltip {
             display: none;
             position: absolute;
             top: 10px;
@@ -426,16 +426,9 @@
                 </div>
             </div>
             <div class="dash-bereich">
-                <h4>Zeitgewichtete Rendite (TWR, netto) <span class="dash-hinweis">wie gut die Strategien gearbeitet haben, unabhängig davon, wann wie viel Geld ein- oder ausbezahlt wurde · nach Gebühren und Kommissionen</span></h4>
+                <h4>Trades <span class="dash-hinweis">kontoübergreifend je Strategie konsolidiert: gleiches Symbol, gleiche Richtung und identische Öffnungs-/Schliesszeit · Gewinn/Verlust aus der Summe der Bruttoergebnisse</span></h4>
                 <div class="trades-summary">
-                    <div class="sum-card" title="Trades minus Gebühren und Kommissionen, pro Abschnitt zwischen Ein-/Auszahlungen gerechnet und verkettet"><span class="sum-label">Zeitgewichtete Rendite (netto)</span><span class="sum-wert" id="dTWR">–</span><span class="sum-sub" id="dTWRSub"></span></div>
-                </div>
-                <div class="twr-chart" id="twrChart"></div>
-            </div>
-            <div class="dash-bereich">
-                <h4>Trades <span class="dash-hinweis">brutto: Gewinn bzw. Verlust des Trades ohne Gebühren und Kommissionen</span></h4>
-                <div class="trades-summary">
-                    <div class="sum-card"><span class="sum-label">Anzahl Trades</span><span class="sum-wert" id="dAnzahl">–</span><span class="sum-sub" id="dAnzahlSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Anzahl Trades (konsolidiert)</span><span class="sum-wert" id="dAnzahl">–</span><span class="sum-sub" id="dAnzahlSub"></span></div>
                     <div class="sum-card"><span class="sum-label">davon mit Gewinn</span><span class="sum-wert" id="dGewinn">–</span><span class="sum-sub" id="dGewinnSub"></span></div>
                     <div class="sum-card"><span class="sum-label">davon mit Verlust</span><span class="sum-wert" id="dVerlust">–</span><span class="sum-sub" id="dVerlustSub"></span></div>
                 </div>
@@ -448,7 +441,7 @@
                 </div>
             </div>
             <div class="dash-bereich">
-                <h4>Simulation: täglich reinvestieren <span class="dash-hinweis">mit den effektiven Ergebnissen (netto), seit dem ersten Trade · Gewinne werden täglich reinvestiert (ab 1 USD), Verluste verringern das Kapital</span></h4>
+                <h4>Simulation: täglich reinvestieren <span class="dash-hinweis">historische Renditen auf deinen Startbetrag angewendet · 69 % der positiven Bruttogewinne täglich reinvestieren (ab 1 USD) · Verluste vollständig, Gebühren und Kommissionen separat einmal abziehen</span></h4>
                 <div class="trades-toolbar">
                     <label>Startbetrag (USD)
                         <input id="simBetrag" type="number" min="1" step="100" value="1000" class="neo-input" style="width: 160px;" oninput="renderSimulation()">
@@ -458,11 +451,12 @@
                     </label>
                 </div>
                 <div class="trades-summary">
-                    <div class="sum-card sum-saldo"><span class="sum-label">Mit täglichem Reinvest</span><span class="sum-wert" id="simMit">–</span><span class="sum-sub" id="simMitSub"></span></div>
-                    <div class="sum-card"><span class="sum-label">Ohne Reinvest (Gewinne ausbezahlt)</span><span class="sum-wert" id="simOhne">–</span><span class="sum-sub" id="simOhneSub"></span></div>
+                    <div class="sum-card sum-saldo"><span class="sum-label">Mit 69 % Reinvest vom Bruttogewinn</span><span class="sum-wert" id="simMit">–</span><span class="sum-sub" id="simMitSub"></span></div>
+                    <div class="sum-card"><span class="sum-label">Ohne Reinvest</span><span class="sum-wert" id="simOhne">–</span><span class="sum-sub" id="simOhneSub"></span></div>
                     <div class="sum-card" title="Mehrertrag durch das Reinvestieren"><span class="sum-label">Unterschied (Zinseszins)</span><span class="sum-wert" id="simDiff">–</span><span class="sum-sub" id="simDiffSub"></span></div>
                 </div>
-                <div class="twr-chart" id="simChart"></div>
+                <p class="dash-hinweis">Die Gesamtwerte enthalten investiertes Kapital und nicht reinvestierte Gewinne. Nicht reinvestierte Gewinne erwirtschaften keine Rendite und stehen zur Deckung von Kosten bereit. Tagesergebnisse werden auf das investierte Kapital am Tagesanfang gerechnet; Reinvest erfolgt am Tagesende. Historische Kapitalbewegungen bestimmen die zugrunde liegenden Renditen, werden aber nicht als zusätzliche Ein-/Auszahlungen simuliert.</p>
+                <div class="chart-chart" id="simChart"></div>
             </div>
         </div>
         <div class="tab-panel" id="tab-trades">
@@ -577,7 +571,7 @@
                 <div class="sum-card"><span class="sum-label">Total im Jahr</span><span class="sum-wert" id="commTotal">–</span><span class="sum-sub" id="commTotalSub"></span></div>
                 <div class="sum-card"><span class="sum-label">Ø pro Woche</span><span class="sum-wert" id="commSchnitt">–</span><span class="sum-sub" id="commSchnittSub"></span></div>
             </div>
-            <div class="twr-chart" id="commChart" style="margin-bottom: 20px;"></div>
+            <div class="chart-chart" id="commChart" style="margin-bottom: 20px;"></div>
             <div class="table-container-small">
                 <table id="commTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
@@ -682,7 +676,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 17.10.2026 14:35:37</div>
+        <div class="version-info">Version: 29.10.2026 12:11:10</div>
     </div>
 </div>
 
@@ -2100,64 +2094,6 @@ function bestUndSchlechtest(trades) {
     return { best, worst };
 }
 
-// ---------- Zeitgewichtete Rendite (TWR) ----------
-// Alle Einträge chronologisch. Kapital = laufender Saldo (Betrag effektiv inkl. Commission).
-// - Einzahlung, Auszahlung, Balance Adjust = Geldfluss: verändert das Kapital, aber nicht die Rendite
-// - Trades (inkl. Commission) und Gebühren = Ergebnis: Rendite = Ergebnis / Kapital davor
-// Die Einzelrenditen werden verkettet: (1 + r1) x (1 + r2) x ... - 1
-// Rückgabe: { pct, verlauf: [{ tag, pct }], unvollstaendig }
-// opt.brutto = true: Gebühren zählen als Geldfluss (nicht als Ergebnis) -> Rendite vor Gebühren
-function berechneTWR(eintraege, opt) {
-    opt = opt || {};
-    const liste = [...eintraege].sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
-    // Inaktive Accounts: am Ende des Tages "inaktiv seit" wird der verbleibende Saldo
-    // als Geldfluss herausgenommen. So verwässert totes Kapital die Rendite nicht.
-    const accountsHier = [...new Set(liste.map(t => t.account))];
-    accountsHier.forEach(acc => {
-        const tag = inaktivSeit(acc);
-        if (tag) liste.push({ virtuellInaktiv: true, account: acc, openTime: tag + ' 23:59:59', ticket: '0' });
-    });
-    liste.sort((a, b) => a.openTime.localeCompare(b.openTime) || (Number(a.ticket) - Number(b.ticket)));
-
-    let kapital = 0;
-    const kapitalAcc = {};
-    let faktor = 1;
-    let unvollstaendig = false;
-    const proTag = new Map();
-    const gebuehrenTag = new Map();   // Tag -> { betrag, faktor } (faktor = Wirkung auf die Rendite)
-    liste.forEach(t => {
-        if (t.virtuellInaktiv) {
-            kapital -= (kapitalAcc[t.account] || 0);
-            kapitalAcc[t.account] = 0;
-            proTag.set(datumKey(t.openTime), (faktor - 1) * 100);
-            return;
-        }
-        const eff = betragEffektiv(t);
-        if (eff === null) { unvollstaendig = true; return; }
-        const komm = Number(t.commission) || 0;
-        const kat = isAccounting(t) ? getKategorie(t) : '';
-        const istGebuehr = kat === 'Gebühren';
-        const istGeldfluss = kat === 'Einzahlung' || kat === 'Auszahlung' || kat === 'Balance Adjust' || (opt.brutto && istGebuehr);
-        const betrag = eff + komm;
-        if (istGebuehr) {
-            const tag = datumKey(t.openTime);
-            const g = gebuehrenTag.get(tag) || { betrag: 0, faktor: 1 };
-            g.betrag += betrag;
-            if (kapital > 0) g.faktor *= (1 + betrag / kapital);
-            gebuehrenTag.set(tag, g);
-        }
-        if (!istGeldfluss && kapital > 0) faktor *= (1 + betrag / kapital);
-        kapital += betrag;
-        kapitalAcc[t.account] = (kapitalAcc[t.account] || 0) + betrag;
-        proTag.set(datumKey(t.openTime), (faktor - 1) * 100);
-    });
-    const verlauf = [...proTag.entries()].map(([tag, pct]) => ({ tag, pct }));
-    return { pct: eintraege.length ? (faktor - 1) * 100 : null, verlauf, unvollstaendig, gebuehrenTag };
-}
-
-// Liniengrafik als SVG (ohne externe Bibliothek)
-const TWR_FARBEN = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
-
 // Liniengrafik als SVG (ohne externe Bibliothek)
 // cfg: { box, keys (x-Werte, sortiert), xLabel(key), tipTitel(key), yLabel(v), tipWert(v), serien: [{ name, farbe, gesamt, werte }] }
 function zeichneLinienChart(cfg) {
@@ -2214,20 +2150,20 @@ function zeichneLinienChart(cfg) {
     svg += `<rect class="chart-flaeche" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
     svg += '</svg>';
 
-    const legendeTeile = serien.map(s => `<span class="twr-leg"><span class="twr-punkt" style="background:${s.farbe}"></span>${s.name}</span>`);
+    const legendeTeile = serien.map(s => `<span class="chart-leg"><span class="chart-punkt" style="background:${s.farbe}"></span>${s.name}</span>`);
     if (cfg.marker) {
-        legendeTeile.push(`<label class="twr-leg twr-schalter"><input type="checkbox" ${cfg.marker.aktiv ? 'checked' : ''}> <span style="color:${cfg.marker.farbe}">▼</span> ${cfg.marker.name}</label>`);
+        legendeTeile.push(`<label class="chart-leg chart-schalter"><input type="checkbox" ${cfg.marker.aktiv ? 'checked' : ''}> <span style="color:${cfg.marker.farbe}">▼</span> ${cfg.marker.name}</label>`);
     }
-    const legende = (serien.length > 1 || cfg.marker) ? '<div class="twr-legende">' + legendeTeile.join('') + '</div>' : '';
-    box.innerHTML = `${legende}<div class="twr-svg-wrap">${svg}<div class="twr-tooltip"></div></div>`;
+    const legende = (serien.length > 1 || cfg.marker) ? '<div class="chart-legende">' + legendeTeile.join('') + '</div>' : '';
+    box.innerHTML = `${legende}<div class="chart-svg-wrap">${svg}<div class="chart-tooltip"></div></div>`;
 
     if (cfg.marker) {
-        box.querySelector('.twr-schalter input').addEventListener('change', ev => cfg.marker.umschalten(ev.target.checked));
+        box.querySelector('.chart-schalter input').addEventListener('change', ev => cfg.marker.umschalten(ev.target.checked));
     }
     const svgEl = box.querySelector('svg');
     const flaeche = box.querySelector('.chart-flaeche');
     const linie = box.querySelector('.chart-linie');
-    const tip = box.querySelector('.twr-tooltip');
+    const tip = box.querySelector('.chart-tooltip');
     flaeche.addEventListener('mousemove', ev => {
         const r = svgEl.getBoundingClientRect();
         const px = (ev.clientX - r.left) / r.width * W;
@@ -2292,11 +2228,11 @@ function zeichneSaeulenChart(cfg) {
     });
     svg += `<rect class="chart-flaeche" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
     svg += '</svg>';
-    box.innerHTML = `<div class="twr-legende"><span class="twr-leg"><span class="twr-punkt" style="background:#10b981"></span>Summe pro Woche (Zahl in der Säule = Anzahl Claims)</span></div><div class="twr-svg-wrap">${svg}<div class="twr-tooltip"></div></div>`;
+    box.innerHTML = `<div class="chart-legende"><span class="chart-leg"><span class="chart-punkt" style="background:#10b981"></span>Summe pro Woche (Zahl in der Säule = Anzahl Claims)</span></div><div class="chart-svg-wrap">${svg}<div class="chart-tooltip"></div></div>`;
 
     const svgEl = box.querySelector('svg');
     const flaeche = box.querySelector('.chart-flaeche');
-    const tip = box.querySelector('.twr-tooltip');
+    const tip = box.querySelector('.chart-tooltip');
     flaeche.addEventListener('mousemove', ev => {
         const r = svgEl.getBoundingClientRect();
         const px = (ev.clientX - r.left) / r.width * W;
@@ -2313,54 +2249,8 @@ function zeichneSaeulenChart(cfg) {
     });
 }
 
-// TWR-Verlauf: jeder Tag vom ersten bis zum letzten Eintrag, letzter Wert wird fortgeführt
-let gebuehrenMarkieren = true;
-let letzteTWRDaten = null;
-
-function zeichneTWRChart(serien, gebuehren) {
-    letzteTWRDaten = { serien, gebuehren };
-    const alleTage = [...new Set(serien.flatMap(s => s.verlauf.map(p => p.tag)))].sort();
-    const tage = [];
-    if (alleTage.length) {
-        for (let d = keyToDate(alleTage[0]); d <= keyToDate(alleTage[alleTage.length - 1]); d.setDate(d.getDate() + 1)) tage.push(formatDate(d));
-    }
-    serien.forEach(s => {
-        const m = new Map(s.verlauf.map(p => [p.tag, p.pct]));
-        let letzter = null;
-        s.werte = tage.map(tag => { if (m.has(tag)) letzter = m.get(tag); return letzter; });
-    });
-    zeichneLinienChart({
-        box: document.getElementById('twrChart'),
-        keys: tage,
-        xLabel: k => datumZeit(k).substring(0, 6) + datumZeit(k).substring(8, 10),
-        tipTitel: k => WOCHENTAGE[keyToDate(k).getDay()] + ' ' + datumZeit(k),
-        yLabel: v => zahl(v, 1) + '%',
-        tipWert: v => zahl(v, 2) + '%',
-        serien,
-        marker: {
-            name: 'Gebühren markieren',
-            farbe: '#f59e0b',
-            aktiv: gebuehrenMarkieren,
-            keys: new Set(gebuehren ? [...gebuehren.gesamt.keys()] : []),
-            umschalten: an => { gebuehrenMarkieren = an; zeichneTWRChart(letzteTWRDaten.serien, letzteTWRDaten.gebuehren); }
-        },
-        tipExtra: k => {
-            if (!gebuehren || !gebuehren.gesamt.has(k)) return '';
-            const g = gebuehren.gesamt.get(k);
-            let text = '<br><span style="color:#f59e0b">▼</span> Gebühr: ' + zahl(g.betrag, 2) + ' (' + zahl((g.faktor - 1) * 100, 2) + '% Rendite)';
-            gebuehren.strategien.forEach(sg => {
-                if (sg.tage.has(k)) {
-                    const x = sg.tage.get(k);
-                    text += '<br>&nbsp;&nbsp;&nbsp;' + sg.name + ': ' + zahl(x.betrag, 2) + ' (' + zahl((x.faktor - 1) * 100, 2) + '%)';
-                }
-            });
-            return text;
-        }
-    });
-}
-
 // ---------- Renditen der einzelnen Ereignisse (für Summe und Simulation) ----------
-// Gleiche Logik wie die TWR: Trades (inkl. Commission) und Gebühren sind Ergebnisse,
+// Trades (inkl. Commission) und Gebühren sind Ergebnisse,
 // Ein-/Auszahlungen und Balance Adjust sind Geldflüsse, inaktive Accounts werden herausgenommen.
 // Rendite eines Ereignisses = Ergebnis / Kapital direkt davor.
 // Rückgabe: { summe (in %), tage: Map(Tag -> Summe der Renditen des Tages, als Anteil), erster, letzter }
@@ -2375,6 +2265,8 @@ function berechneEinzelRenditen(eintraege) {
     const kapitalAcc = {};
     let summe = 0;
     const tage = new Map();
+    const tageDetails = new Map();
+    let unvollstaendig = false;
     let erster = null, letzter = null;
     liste.forEach(t => {
         if (t.virtuellInaktiv) {
@@ -2383,7 +2275,7 @@ function berechneEinzelRenditen(eintraege) {
             return;
         }
         const eff = betragEffektiv(t);
-        if (eff === null) return;
+        if (eff === null) { unvollstaendig = true; return; }
         const betrag = eff + (Number(t.commission) || 0);
         const kat = isAccounting(t) ? getKategorie(t) : '';
         const istGeldfluss = kat === 'Einzahlung' || kat === 'Auszahlung' || kat === 'Balance Adjust';
@@ -2392,18 +2284,53 @@ function berechneEinzelRenditen(eintraege) {
             summe += r;
             const tag = datumKey(t.openTime);
             tage.set(tag, (tage.get(tag) || 0) + r);
+            const detail = tageDetails.get(tag) || { gewinn: 0, verlust: 0, kosten: 0 };
+            // Bruttoergebnis und Kosten getrennt: 69 % beziehen sich auf positive
+            // Bruttogewinne, niemals auf einen bereits um Gebühren gekürzten Betrag.
+            if (!isAccounting(t)) {
+                if (eff > 0) detail.gewinn += eff / kapital;
+                else detail.verlust += eff / kapital;
+                detail.kosten += (Number(t.commission) || 0) / kapital;
+            } else detail.kosten += betrag / kapital;
+            tageDetails.set(tag, detail);
             if (!isAccounting(t)) { if (!erster) erster = tag; letzter = tag; }
         }
         kapital += betrag;
         kapitalAcc[t.account] = (kapitalAcc[t.account] || 0) + betrag;
     });
-    return { summe: summe * 100, tage, erster, letzter };
+    return { summe: summe * 100, tage, tageDetails, erster, letzter, unvollstaendig };
 }
 
-// ---------- Simulation: täglich reinvestieren ----------
-// Startbetrag x Tagesrenditen. Gewinne werden täglich reinvestiert, sobald mind. 1 USD zusammen ist
-// (kleinere Beträge warten bis zum nächsten Tag). Verluste verringern das Kapital.
-// Ohne Reinvest: Kapital bleibt beim Startbetrag, Gewinne werden ausbezahlt (Summe der Renditen).
+// ---------- Simulation: 69 % des Bruttogewinns täglich reinvestieren ----------
+// Historische Brutto-, Verlust- und Kostenrenditen werden auf das investierte
+// Simulationskapital am Tagesanfang angewendet. Reinvest erst am Tagesende.
+// Nicht reinvestierte Gewinne bleiben als separate Reserve im Gesamtvermögen.
+// Kosten werden einmal aus der Reserve, bei Bedarf aus dem Kapital bezahlt.
+function simuliereVerlauf(start, keys, tageDetails, mitReinvest) {
+    let kapital = start, reserve = 0, berechtigt = 0;
+    const werte = [];
+    for (const tag of keys) {
+        const r = tageDetails.get(tag) || { gewinn: 0, verlust: 0, kosten: 0 };
+        const basis = kapital;
+        const gewinn = basis * r.gewinn;
+        reserve += gewinn;
+        berechtigt += 0.69 * gewinn;
+        kapital += basis * r.verlust;
+        reserve += basis * r.kosten;
+        if (reserve < 0) { kapital += reserve; reserve = 0; }
+        if (kapital < 0) { reserve = Math.max(0, reserve + kapital); kapital = 0; }
+        // Verlorenes/verbrauchtes Geld kann später nicht erneut investiert werden.
+        berechtigt = Math.min(berechtigt, reserve);
+        if (mitReinvest && kapital > 0 && berechtigt >= 1 - 1e-9) {
+            kapital += berechtigt;
+            reserve -= berechtigt;
+            berechtigt = 0;
+        }
+        werte.push(kapital + reserve);
+    }
+    return { kapital, reserve, werte, gesamt: kapital + reserve };
+}
+
 function renderSimulation() {
     const sel = document.getElementById('simStrategie');
     const input = document.getElementById('simBetrag');
@@ -2425,19 +2352,25 @@ function renderSimulation() {
     if (sel.value === '__wechsel') {
         // Tagesrendite jeweils aus der zuletzt gestarteten Strategie
         const tage = new Map();
+        const tageDetails = new Map();
+        let unvollstaendig = false;
         const alleTage = [...new Set(proStrat.flatMap(x => [...x.r.tage.keys()]))].sort();
         alleTage.forEach(tag => {
             const aktiv = proStrat.filter(x => x.r.erster <= tag).pop();
-            if (aktiv && aktiv.r.tage.has(tag)) tage.set(tag, aktiv.r.tage.get(tag));
+            if (aktiv && aktiv.r.tage.has(tag)) {
+                tage.set(tag, aktiv.r.tage.get(tag));
+                tageDetails.set(tag, aktiv.r.tageDetails.get(tag));
+                unvollstaendig ||= aktiv.r.unvollstaendig;
+            }
         });
-        r = { tage, erster: proStrat[0].r.erster };
+        r = { tage, tageDetails, unvollstaendig, erster: proStrat[0]?.r.erster };
     } else {
         const eintraege = sel.value ? gruppen.find(g => g.name === sel.value).eintraege : mt5Trades;
         r = berechneEinzelRenditen(eintraege);
     }
-    if (!r.erster || start <= 0) {
+    if (!r.erster || start <= 0 || r.unvollstaendig) {
         ['simMit', 'simOhne', 'simDiff'].forEach(id => setzeKachel(id, null));
-        document.getElementById('simChart').innerHTML = '<p class="dash-hinweis" style="margin:0;">Keine Daten für die Simulation.</p>';
+        document.getElementById('simChart').innerHTML = '<p class="dash-hinweis" style="margin:0;">' + (r.unvollstaendig ? 'Simulation nicht berechenbar: Bei mindestens einem Konto fehlt der Hebel.' : 'Keine Daten für die Simulation.') + '</p>';
         return;
     }
 
@@ -2446,23 +2379,15 @@ function renderSimulation() {
     const keys = [];
     for (let d = keyToDate(r.erster); d <= keyToDate(letzterTag); d.setDate(d.getDate() + 1)) keys.push(formatDate(d));
 
-    let kapital = start, offen = 0, ohne = start;
-    const werteMit = [], werteOhne = [];
-    keys.forEach(tag => {
-        const rt = r.tage.get(tag) || 0;
-        const ergebnis = kapital * rt;
-        if (ergebnis >= 0) offen += ergebnis; else kapital += ergebnis;
-        if (offen >= 1) { kapital += offen; offen = 0; }
-        ohne += start * rt;
-        werteMit.push(kapital + offen);
-        werteOhne.push(ohne);
-    });
-    const mit = kapital + offen;
+    const mitReinvest = simuliereVerlauf(start, keys, r.tageDetails, true);
+    const ohneReinvest = simuliereVerlauf(start, keys, r.tageDetails, false);
+    const mit = mitReinvest.gesamt, ohne = ohneReinvest.gesamt;
     const tageAnz = keys.length;
     const pct = v => zahl((v / start - 1) * 100, 2) + '%';
-    setzeKachel('simMit', mit, { sub: pct(mit) + ' seit ' + datumZeit(r.erster) + ' (' + tageAnz + ' Tage)' });
-    setzeKachel('simOhne', ohne, { sub: pct(ohne) + ' (Startbetrag + ausbezahlte Gewinne)' });
-    setzeKachel('simDiff', mit - ohne, { farbig: true, sub: 'durch tägliches Reinvestieren' });
+    const aufteilung = x => 'Investiert: ' + zahl(x.kapital, 2) + ' USD · Nicht reinvestiert: ' + zahl(x.reserve, 2) + ' USD';
+    setzeKachel('simMit', mit, { sub: pct(mit) + ' seit ' + datumZeit(r.erster) + ' (' + tageAnz + ' Tage)\n' + aufteilung(mitReinvest) });
+    setzeKachel('simOhne', ohne, { sub: pct(ohne) + '\n' + aufteilung(ohneReinvest) });
+    setzeKachel('simDiff', mit - ohne, { farbig: true, sub: 'Mehr-/Minderergebnis durch Reinvestieren' });
 
     zeichneLinienChart({
         box: document.getElementById('simChart'),
@@ -2473,36 +2398,35 @@ function renderSimulation() {
         tipWert: v => zahl(v, 2) + ' USD',
         ohneNull: true,
         serien: [
-            { name: 'Mit täglichem Reinvest', farbe: '#10b981', gesamt: false, werte: werteMit },
-            { name: 'Ohne Reinvest', farbe: '#3b82f6', gesamt: false, werte: werteOhne }
+            { name: 'Mit 69 % Reinvest vom Bruttogewinn', farbe: '#10b981', gesamt: false, werte: mitReinvest.werte },
+            { name: 'Ohne Reinvest', farbe: '#3b82f6', gesamt: false, werte: ohneReinvest.werte }
         ]
     });
 }
 
-function renderTWR() {
-    const gesamt = berechneTWR(mt5Trades);
-    const gesamtBrutto = berechneTWR(mt5Trades, { brutto: true });
-    const gruppen = nachStrategie(mt5Trades).map(g => ({ name: g.name, twr: berechneTWR(g.eintraege), brutto: berechneTWR(g.eintraege, { brutto: true }) }));
-    // Gebühren in USD und als Anteil der Brutto-Gewinne aus Trades
-    const gebText = eintraege => {
-        const sum = tradeSummen(eintraege);
-        if (sum.fehlt) return '–';
-        const geb = Math.abs(sum.geb);
-        return zahl(geb, 2) + ' USD' + (sum.gew > 0 ? ' = ' + zahl(geb / sum.gew * 100, 1) + '% der Brutto-Gewinne' : '');
-    };
-    const sub = (gesamt.unvollstaendig ? 'Hebel bei einem Konto fehlt, Wert unvollständig\n' : '') +
-        gruppen.map(g => g.name + ': ' + (g.twr.pct === null ? '–' : zahl(g.twr.pct, 2) + '%')).join('\n') +
-        '\nBrutto (vor Gebühren): ' + (gesamtBrutto.pct === null ? '–' : zahl(gesamtBrutto.pct, 2) + '%') +
-        gruppen.map(g => '\n   ' + g.name + ': brutto ' + (g.brutto.pct === null ? '–' : zahl(g.brutto.pct, 2) + '%')).join('') +
-        '\nGebühren: ' + gebText(mt5Trades) +
-        nachStrategie(mt5Trades).map(g => '\n   ' + g.name + ': ' + gebText(g.eintraege)).join('');
-    setzeKachel('dTWR', gesamt.pct, { farbig: true, suffix: '%', sub });
-    const serien = [{ name: 'Gesamt', farbe: '#2d3748', gesamt: true, verlauf: gesamt.verlauf }]
-        .concat(gruppen.map((g, i) => ({ name: g.name, farbe: TWR_FARBEN[i % TWR_FARBEN.length], verlauf: g.twr.verlauf })));
-    zeichneTWRChart(serien, {
-        gesamt: gesamt.gebuehrenTag,
-        strategien: gruppen.map(g => ({ name: g.name, tage: g.twr.gebuehrenTag }))
-    });
+// Gleiche Handelsentscheidung auf mehreren Konten derselben Strategie.
+// Konservativ: exakte Zeiten; unvollständige Angaben bleiben einzelne Trades.
+function konsolidiereTrades(trades) {
+    const gruppen = new Map();
+    const result = [];
+    const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    for (const t of trades.filter(t => !isAccounting(t))) {
+        const strategie = norm(strategieVon(t.account));
+        const vollstaendig = strategie !== 'ohne strategie' && t.openTime && t.closedTime && t.symbol && t.type;
+        const key = vollstaendig ? JSON.stringify([strategie, norm(t.symbol), norm(t.type), t.openTime, t.closedTime]) : null;
+        const kandidaten = key === null ? [] : (gruppen.get(key) || []);
+        let gruppe = kandidaten.find(g => !g.accounts.has(String(t.account)));
+        if (!gruppe) {
+            gruppe = { accounts: new Set(), profit: 0, ausfuehrungen: [] };
+            kandidaten.push(gruppe);
+            if (key !== null) gruppen.set(key, kandidaten);
+            result.push(gruppe);
+        }
+        gruppe.accounts.add(String(t.account));
+        gruppe.profit += Number(t.profit) || 0;
+        gruppe.ausfuehrungen.push(t);
+    }
+    return result;
 }
 
 function renderDashboard() {
@@ -2535,21 +2459,21 @@ function renderDashboard() {
     const summeSub = nachStrategie(mt5Trades).map(g => g.name + ': ' + zahl(berechneEinzelRenditen(g.eintraege).summe, 2) + '%').join('\n');
     setzeKachel('dEffGVPct', summeGesamt.erster ? summeGesamt.summe : null, { farbig: true, suffix: '%', sub: summeSub });
 
-    // Anzahl Trades + je Strategie
+    // Konsolidierte Handelsentscheidungen; Beträge und Rohdaten bleiben vollständig.
     const trades = mt5Trades.filter(t => !isAccounting(t));
+    const konsolidiert = konsolidiereTrades(trades);
     const pctVon = (n, total) => total ? zahl(n / total * 100, 2) + '%' : '';
-    const tGruppen = nachStrategie(trades).map(g => ({
-        name: g.name,
-        anzahl: g.eintraege.length,
-        gewinne: g.eintraege.filter(t => t.profit > 0).length,
-        verluste: g.eintraege.filter(t => t.profit < 0).length
-    }));
-    const gewinne = trades.filter(t => t.profit > 0).length;
-    const verluste = trades.filter(t => t.profit < 0).length;
-    setzeKachel('dAnzahl', zahl(trades.length), { sub: tGruppen.map(g => g.name + ': ' + zahl(g.anzahl)).join('\n') });
-    setzeKachel('dGewinn', zahl(gewinne), { sub: pctVon(gewinne, trades.length) + '\n' +
+    const statistik = liste => ({
+        anzahl: liste.length,
+        gewinne: liste.filter(t => t.profit > 0).length,
+        verluste: liste.filter(t => t.profit < 0).length
+    });
+    const tGruppen = nachStrategie(trades).map(g => ({ name: g.name, ...statistik(konsolidiereTrades(g.eintraege)) }));
+    const { gewinne, verluste } = statistik(konsolidiert);
+    setzeKachel('dAnzahl', zahl(konsolidiert.length), { sub: tGruppen.map(g => g.name + ': ' + zahl(g.anzahl)).join('\n') + '\n' + zahl(trades.length) + ' Kontoausführungen insgesamt' });
+    setzeKachel('dGewinn', zahl(gewinne), { sub: pctVon(gewinne, konsolidiert.length) + '\n' +
         tGruppen.map(g => g.name + ': ' + zahl(g.gewinne) + ' (' + pctVon(g.gewinne, g.anzahl) + ')').join('\n') });
-    setzeKachel('dVerlust', zahl(verluste), { sub: pctVon(verluste, trades.length) + '\n' +
+    setzeKachel('dVerlust', zahl(verluste), { sub: pctVon(verluste, konsolidiert.length) + '\n' +
         tGruppen.map(g => g.name + ': ' + zahl(g.verluste) + ' (' + pctVon(g.verluste, g.anzahl) + ')').join('\n') });
 
     // Bester / schlechtester Trade (nach %) + je Strategie
@@ -2565,8 +2489,7 @@ function renderDashboard() {
     setzeKachel('dSchlechtester', gesamt.worst ? gesamt.worst.pct : null, { farbig: true, dez: 3, suffix: '%',
         sub: (gesamt.worst ? info(gesamt.worst) : '') + '\n' + jeStrat.map(g => g.name + ': ' + kurz(g.bs.worst)).join('\n') });
 
-    // Zeitgewichtete Rendite inkl. Grafik
-    renderTWR();
+    // Simulation mit begrenztem Reinvest
     renderSimulation();
 }
 
