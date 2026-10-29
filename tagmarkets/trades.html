@@ -403,6 +403,7 @@
                 <h4>Konto <span class="dash-hinweis">aus den Wallet-Transaktionen: Geld von aussen und aus dem System heraus</span></h4>
                 <div class="trades-summary">
                     <div class="sum-card"><span class="sum-label">Einzahlungen</span><span class="sum-wert" id="dKontoEin">–</span><span class="sum-sub" id="dKontoEinSub"></span></div>
+                    <div class="sum-card" title="Summe aus dem Tab Commissions über alle Jahre, unabhängig vom Jahresfilter"><span class="sum-label">Partner-Rewards</span><span class="sum-wert" id="dPartnerRewards">–</span><span class="sum-sub" id="dPartnerRewardsSub"></span></div>
                     <div class="sum-card"><span class="sum-label">Auszahlungen</span><span class="sum-wert" id="dKontoAus">–</span><span class="sum-sub" id="dKontoAusSub"></span></div>
                     <div class="sum-card" title="Einzahlungen minus Auszahlungen"><span class="sum-label">Netto-Einzahlungen</span><span class="sum-wert" id="dKontoNetto">–</span><span class="sum-sub" id="dKontoNettoSub"></span></div>
                 </div>
@@ -676,7 +677,7 @@
     <div class="footer-link">
         <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
         <!-- Version: bei jeder Änderung anpassen (Schweizer Zeit) -->
-        <div class="version-info">Version: 29.10.2026 12:11:10</div>
+        <div class="version-info">Version: 29.10.2026 22:53:01</div>
     </div>
 </div>
 
@@ -2434,6 +2435,9 @@ function renderDashboard() {
     const w = walletSummen({ ein: DASHBOARD_EINZAHLUNG, aus: DASHBOARD_AUSZAHLUNG });
     const netto = w.ein - w.aus;
     setzeKachel('dKontoEin', w.ein);
+    const partnerRewards = walletTx.filter(w => istCommission(w) && w.date)
+        .reduce((summe, w) => summe + (Number(w.amount) || 0), 0);
+    setzeKachel('dPartnerRewards', partnerRewards, { sub: 'Commissions · alle Jahre' });
     setzeKachel('dKontoAus', -w.aus);
     setzeKachel('dKontoNetto', netto);
 
