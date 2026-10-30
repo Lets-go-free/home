@@ -6,8 +6,8 @@ create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net with schema extensions;
 -- Vault is provided by Supabase; activate it in Dashboard > Database > Extensions if needed.
 
-select vault.create_secret('https://cfnxuesibpnlgyklzqkj.supabase.co', 'tln_vow_trade_sync_url');
-select vault.create_secret('880d6e8425ce70e52ae729e14c58d8e4bb555f0988bd283debd1cf166c6c2cb0', 'tln_vow_trade_sync_auth');
+-- Sicherheitsbereinigung 7.68: URL in Supabase Vault im Dashboard als tln_vow_trade_sync_url setzen; Projekt-URL nicht im Repo hinterlegen.
+-- Sicherheitsbereinigung 7.68: Job-Secret ausschliesslich in Supabase Vault unter tln_vow_trade_sync_auth setzen. Niemals im Repo speichern.
 
 select cron.schedule('tln-vow-trade-sync-30m', '*/30 * * * *', $$
   select net.http_post(

@@ -1,3 +1,4 @@
+// Phase 7.68 · 29.10.2026 11:15:30 CET: Atomare Speicherung automatischer Snapshots per user-gebundener SQL-Transaktion.
 // Phase 7.66 · 28.10.2026: Erster Browser-Login pro Sitzung prüft Wallet-Bestände erneut; bestehende Projekt-/Discovery-Jobs unverändert. Basis 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
 // Phase 7.55 · 09.10.2026 00:31:46 CEST: Projekt-Token aus der Dashboard-Kursübersicht ausblenden; standardmäßig sichtbar, weiterhin nur bei vorhandenem Projekt. Release-READMEs unter docs/releases archiviert; Usertests APTM-24h und Entdecken bestätigt. Build 20261009-003146.
 // Phase 7.54 · 08.10.2026 19:30:51 CEST: APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten. Build 20261008-193051.
@@ -8073,22 +8074,21 @@ async function createSnapshot(isAutomated) {
     return;
   }
 
-  // Erst den neuen Snapshot vollständig schreiben, dann den alten Cache ersetzen.
-  const { data: snap, error: snapErr } = await sb.from("snapshots").insert({ user_id: currentUser.id, is_automated: isAutomated }).select().single();
-  if (snapErr) {
-    if(isAutomated)throw new Error("Snapshot erstellen: " + snapErr.message);
-    alert("Fehler beim Erstellen des Snapshots: " + snapErr.message);return;
+  if (isAutomated) {
+    // Serverseitige Transaktion + usergebundene Advisory-Sperre.
+    // Eine fehlgeschlagene Operation lässt den alten Tages-Snapshot unverändert.
+    const {error} = await sb.rpc("wallettracking_replace_own_automated_snapshot", {p_items: items});
+    if (error) throw new Error("Automatischen Snapshot atomar speichern: " + error.message);
+    return;
   }
+  // Manuelle historische Snapshots bleiben bewusst unverändert und unabhängig.
+  const { data: snap, error: snapErr } = await sb.from("snapshots").insert({ user_id: currentUser.id, is_automated: false }).select().single();
+  if (snapErr) { alert("Fehler beim Erstellen des Snapshots: " + snapErr.message); return; }
   const rows = items.map(it => ({ ...it, snapshot_id: snap.id }));
   const { error: itemsErr } = await sb.from("snapshot_items").insert(rows);
   if (itemsErr) {
     await sb.from("snapshots").delete().eq("user_id",currentUser.id).eq("id",snap.id);
-    if(isAutomated)throw new Error("Snapshot-Daten speichern: " + itemsErr.message);
-    alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message);return;
-  }
-  if(isAutomated){
-    const {error}=await sb.from("snapshots").delete().eq("user_id",currentUser.id).eq("is_automated",true).neq("id",snap.id);
-    if(error)throw new Error("Alten Snapshot ersetzen: " + error.message);
+    alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message); return;
   }
 
   if (!isAutomated) {

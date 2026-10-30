@@ -1,5 +1,11 @@
-# WalletTracking · Phase 7.55
+# WalletTracking · Phase 7.68
 
+
+## Update 7.68
+
+Täglicher serverseitiger Wallet-Bestandsjob für die 12 konfigurierten Chains. Neue Edge Function `wallet-daily-refresh`, Service-only Wiederaufnahme/Fehlerprotokoll, gemeinsame atomare Snapshot-Speicherung und beibehaltene Browser-Live-Prüfung beim ersten Öffnen. Bestehende LP-/Staking-Caches werden nach dem Laden weiter eingeblendet; die komplexe Projekt-Discovery bleibt separat.
+
+**Installation:** Die verbindliche Installations- und Testanleitung steht unter [`docs/releases/README-7.68.md`](docs/releases/README-7.68.md). Zuerst beide SQL-Migrationen, dann Edge Function und Secrets, manueller Testlauf, erst danach Cron und Veröffentlichung der Hauptseite. Keine Dateien mit API- oder Cron-Secrets committen. Die historische Trade-Cron-Migration enthält nur noch Platzhalter; der frühere Trade-Secret muss trotzdem rotiert werden.
 
 ## Update 7.55
 Admin → Vordefinierte Token: neue Option „In der Dashboard-Kursübersicht anzeigen“ je Projekt-Token, standardmäßig aktiviert. Globale Stammdateneinstellung für alle Nutzer. Projekt muss beim jeweiligen User aus Bestand oder bestätigtem Projekt-Summary vorhanden sein. Ausblenden hat Vorrang vor positivem Bestand und „Im Dashboard immer anzeigen“. Nichtprojekt-Token behalten ihre Regeln; Bestände, Vermögen, historische Bewertung und Kurse im Projekt bzw. in Projekt-Kacheln bleiben erhalten.

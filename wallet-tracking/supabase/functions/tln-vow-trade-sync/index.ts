@@ -108,20 +108,47 @@ async function transferWindow(chain:string,from:number,to:number,cutoff:number,u
   for(let i=0;i<events.length;i+=200){const {error}=await sb.from('tln_vow_trade_cache').upsert(events.slice(i,i+200),{onConflict:'user_id,chain_key,tx_hash,log_index,token_key,side'});if(error)throw error;}
   return {transfers:hashes.length,events:events.length};
 }
+// 7.69: resumable bounded catch-up. Every completed window commits its checkpoint;
+// never advance on a failed transfer page, receipt or DB write.
 async function syncChain(user:string,chain:string){
-  const now=Math.floor(Date.now()/1000),cutoff=now-30*86400;
+  const started=Date.now(),now=Math.floor(started/1000),cutoff=now-30*86400;
   const latest=asInt(await rpc(chain,'eth_blockNumber',[]));
-  const {data:state,error}=await sb.from('tln_vow_trade_scan_state').select('last_scanned_block,schema_version').eq('user_id',user).eq('chain_key',chain).eq('group_key','alchemy:transfers-v1').maybeSingle();
+  const {data:state,error}=await sb.from('tln_vow_trade_scan_state')
+    .select('last_scanned_block,schema_version').eq('user_id',user)
+    .eq('chain_key',chain).eq('group_key','alchemy:transfers-v1').maybeSingle();
   if(error)throw error;
   const first=state?.schema_version===5?null:await locateStart(chain,latest,cutoff);
-  const start=Math.max(0,state?.schema_version===5?Number(state.last_scanned_block)-20:first!);
-  // Bounded work: one small window per chain and invocation; next cron resumes from checkpoint.
-  const span=chain==='bsc'?1200:180;const end=Math.min(latest,start+span-1);
-  const result=await transferWindow(chain,start,end,cutoff,user);
-  const {error:upsertError}=await sb.from('tln_vow_trade_scan_state').upsert({user_id:user,chain_key:chain,group_key:'alchemy:transfers-v1',schema_version:5,last_scanned_block:end,updated_at:new Date().toISOString()}, {onConflict:'user_id,chain_key,group_key'});
-  if(upsertError)throw upsertError;
-  return {chain,from:start,to:end,latest,complete:end>=latest,...result};
+  let next=Math.max(0,state?.schema_version===5?Number(state.last_scanned_block)-20:first!);
+  const span=chain==='bsc'?1200:180;
+  const maxWindows=chain==='bsc'?3:2;
+  const budgetMs=35000;
+  let windows=0,totalTransfers=0,totalEvents=0,lastCompleted=Number(state?.last_scanned_block||0);
+  while(next<=latest&&windows<maxWindows){
+    if(windows>0&&Date.now()-started>=budgetMs)break;
+    const end=Math.min(latest,next+span-1);
+    const result=await transferWindow(chain,next,end,cutoff,user);
+    const {error:upsertError}=await sb.from('tln_vow_trade_scan_state').upsert({
+      user_id:user,chain_key:chain,group_key:'alchemy:transfers-v1',schema_version:5,
+      last_scanned_block:end,latest_observed_block:latest,latest_observed_at:new Date().toISOString(),
+      updated_at:new Date().toISOString()
+    }, {onConflict:'user_id,chain_key,group_key'});
+    if(upsertError)throw upsertError;
+    lastCompleted=end;next=end+1;windows++;
+    totalTransfers+=result.transfers;totalEvents+=result.events;
+  }
+  // When already synchronized, still refresh the observed chain tip (no blockchain scan).
+  if(windows===0){
+    const {error:observationError}=await sb.from('tln_vow_trade_scan_state').upsert({
+      user_id:user,chain_key:chain,group_key:'alchemy:transfers-v1',schema_version:5,
+      last_scanned_block:lastCompleted,latest_observed_block:latest,
+      latest_observed_at:new Date().toISOString(),updated_at:new Date().toISOString()
+    },{onConflict:'user_id,chain_key,group_key'});
+    if(observationError)throw observationError;
+  }
+  return {chain,to:lastCompleted,latest,lagBlocks:Math.max(0,latest-lastCompleted),
+    complete:lastCompleted>=latest,windows,transfers:totalTransfers,events:totalEvents};
 }
+
 Deno.serve(async(req)=>{
   if(req.method!=='POST')return new Response('Method Not Allowed',{status:405});
   if(!authSecret||req.headers.get('x-trade-sync-secret')!==authSecret)return new Response('Unauthorized',{status:401});

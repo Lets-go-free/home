@@ -1,5 +1,7 @@
 # Änderungshistorie
 
+- 7.68: Täglicher serverseitiger Wallet-Bestandsjob für alle 12 aktivierten Chains, verschlüsselte Wallet-Adressen, Service-only Job-Queue, sichere Fehlerbehandlung und atomare automatische Snapshots. Browser prüft beim ersten Öffnen pro Sitzung erneut live; LP-/Staking-Projektcaches bleiben getrennt. Handelsjob-Secret aus historischer Repository-SQL entfernt; Rotation weiterhin erforderlich. Installation mit gesonderter Freigabe nach beobachtetem manuellem Edge-Test.
+
 - 7.55: Projekt-Token aus der Dashboard-Kursübersicht ausblenden; standardmäßig sichtbar, weiterhin nur bei vorhandenem Projekt. Release-READMEs unter docs/releases archiviert; Usertests APTM-24h und Entdecken bestätigt. Neue globale Admin-Option predefined_tokens.dashboard_price_visible (SQL 093, DEFAULT true); nur Kursübersicht gefiltert, Projekt-Kacheln/Bestände/Bewertung erhalten. Keine neue Tabelle/keine neuen Refresh-Jobs. Dokumentation vollständig nachgeführt; Cleanup-Helfer mit Inhaltsprüfung.
 
 - 7.54: APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten. SQL 092 erlaubt NULL-NFT-ID; Schlüssel, RLS/Grants und kanonische Flows unverändert. Audit, Systemübersicht, Ideen und Hilfen aktualisiert; bestätigte Usertests nachgeführt, verbleibende produktive Tests ausdrücklich offen.

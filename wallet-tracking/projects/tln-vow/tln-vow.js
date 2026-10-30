@@ -2425,7 +2425,7 @@ async function tradingReadCache(userId){
 }
 async function tradingReadScanState(userId){
   const {data,error}=await sb.from(TRADING_STATE_TABLE)
-    .select("chain_key,group_key,last_scanned_block,updated_at")
+    .select("chain_key,group_key,last_scanned_block,latest_observed_block,latest_observed_at,updated_at")
     .eq("user_id",userId).eq("schema_version",TRADING_SCHEMA_VERSION);
   if(error)throw new Error(`Handels-Scanstatus lesen: ${error.message}`);
   return new Map((data||[]).map(r=>[`${r.chain_key}|${r.group_key}`,r]));
@@ -2780,19 +2780,24 @@ function tradingAggregate(events,cutoffs){
   }
   return result;
 }
-function tradingSummaryCell(bucket,side){
-  return `${tradingFormatAmount(bucket?.[side]||0)} <span class="muted">(${Number(bucket?.[side+"Trades"]||0)} Trades)</span>`;
+function tradingSummaryCell(bucket,side,incomplete=false){
+  const count=Number(bucket?.[side+"Trades"]||0);
+  if(incomplete&&count===0)return '<span class="muted" title="Scan noch unvollständig">– (noch unvollständig)</span>';
+  return `${tradingFormatAmount(bucket?.[side]||0)} <span class="muted">(${count} Trades${incomplete?', vorläufig':''})</span>`;
 }
 function renderTradingSummary(){
   const body=document.getElementById("tlnTradingSummaryBody"),data=tradingState.data;
   if(!body||!data)return;
   const rows=[];
+  const chainState=data.chainCoverage||{};
   const chainLabel={bsc:'<span class="tln-trade-chain"><span class="tln-trade-chain-icon tln-trade-bsc">BNB</span> BSC</span>',eth:'<span class="tln-trade-chain"><span class="tln-trade-chain-icon tln-trade-eth">◆</span> Ethereum</span>',total:'<strong>∑ Gesamt BSC + ETH</strong>'};
   for(const w of TRADE_WINDOWS){
     rows.push(`<tr class="tln-trade-period-row"><th colspan="6" scope="colgroup">${w.label} <span>VOW / v$ · Handelsvolumen</span></th></tr>`);
     for(const chain of ["bsc","eth","total"]){
       const a=data.summary[w.key][chain];
-      rows.push(`<tr class="${chain==='total'?'tln-trade-total-row':'tln-trade-chain-row'}"><td>${chain==='total'?'<strong>SUMME</strong>':'&nbsp;'}</td><td>${chainLabel[chain]}</td><td class="num">${tradingSummaryCell(a.vow,"buy")}</td><td class="num">${tradingSummaryCell(a.vow,"sell")}</td><td class="num">${tradingSummaryCell(a.vdollar,"buy")}</td><td class="num">${tradingSummaryCell(a.vdollar,"sell")}</td></tr>`);
+      const incomplete=chain==='total'?(['bsc','eth'].some(c=>chainState[c]!==true)):chainState[chain]!==true;
+      const completeness=incomplete?' <span class="muted" title="Handelsdaten nicht bis zur zuletzt beobachteten Blockhöhe vollständig gescannt">(vorläufig)</span>':'';
+      rows.push(`<tr class="${chain==='total'?'tln-trade-total-row':'tln-trade-chain-row'}"><td>${chain==='total'?'<strong>SUMME</strong>':'&nbsp;'}</td><td>${chainLabel[chain]}${completeness}</td><td class="num">${tradingSummaryCell(a.vow,"buy",incomplete)}</td><td class="num">${tradingSummaryCell(a.vow,"sell",incomplete)}</td><td class="num">${tradingSummaryCell(a.vdollar,"buy",incomplete)}</td><td class="num">${tradingSummaryCell(a.vdollar,"sell",incomplete)}</td></tr>`);
     }
   }
   body.innerHTML=rows.join("");
@@ -2967,12 +2972,24 @@ async function loadTradingAnalysis({force=false}={}){
     }
     const identity=await tradingLoadIdentityMap(events.map(e=>e.wallet));
     tradingUpdateFromEvents(events,cutoffs,identity,{bsc:0,eth:0},new Date());
-    const stamp=(chain)=>states.get(`${chain}|alchemy:transfers-v1`)?.updated_at||null;
-    const times=['bsc','eth'].map(c=>({chain:c,time:stamp(c)}));
-    const details=times.map(({chain,time})=>`${chain.toUpperCase()}: ${time?new Date(time).toLocaleString('de-CH'):'noch kein Checkpoint'}`);
-    const missing=times.some(x=>!x.time);
+    const coverage={};
+    const details=['bsc','eth'].map(chain=>{
+      const state=states.get(`${chain}|alchemy:transfers-v1`);
+      const tip=Number(state?.latest_observed_block||0);
+      const scanned=Number(state?.last_scanned_block||0);
+      const ageMs=Date.now()-Date.parse(state?.latest_observed_at||state?.updated_at||'');
+      // A fresh checkpoint is NOT proof of chain coverage. Unknown or stale tip = provisional.
+      const recent=Number.isFinite(ageMs)&&ageMs>=0&&ageMs<=20*60*1000;
+      const complete=tip>0&&scanned>=tip&&recent;
+      coverage[chain]=complete;
+      const lag=tip>0?Math.max(0,tip-scanned):null;
+      return `${chain.toUpperCase()}: ${state?.updated_at?new Date(state.updated_at).toLocaleString('de-CH'):'kein Checkpoint'} · ${lag===null?'Rückstand unbekannt':`${lag.toLocaleString('de-CH')} Blöcke zurück`} · ${complete?'bis zum beobachteten Block synchron':'SCAN UNVOLLSTÄNDIG / vorläufig'}`;
+    });
+    tradingState.data.chainCoverage=coverage;
+    renderTradingSummary();
     const count=new Set(events.map(e=>`${e.chain}:${e.txHash}`)).size;
-    tradingSetStatus(`Supabase · ${count} gecachte Swap-Transaktionen (max. 30 Tage) · ${details.join(' · ')}${missing?' · Mindestens eine Chain noch ohne Scanstatus':''} · Aktualisierung über Cron alle 30 Minuten`,missing?'error':'success');
+    const incomplete=Object.values(coverage).some(x=>!x);
+    tradingSetStatus(`Supabase · ${count} gecachte Swap-Transaktionen (max. 30 Tage) · ${details.join(' · ')} · Cron alle 5 Minuten${incomplete?' · Handelszahlen sind vorläufig, fehlende Trades sind KEINE bestätigte Null':''}`,incomplete?'error':'success');
     return tradingState.data;
   })().catch(e=>{tradingSetStatus(`Handels-Cache: ${String(e?.message||e)}`,'error');throw e;}).finally(()=>{tradingState.promise=null;});
   return tradingState.promise;
