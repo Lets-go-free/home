@@ -2819,6 +2819,94 @@ function tradingTraderRows(){
   }
   return [...map.values()].map(x=>({...x,total:x.buy+x.sell,tradeCount:x.buyTrades+x.sellTrades,tlnId:data.identity.get(x.wallet)||null})).sort((a,b)=>b.total-a.total).slice(0,20);
 }
+// Live-Tokenbestände der angezeigten Top-Händler: getrennt vom historischen Trade-Cache.
+// Keine Mutationen und keine persönlichen Wallet-Adressen in zusätzlichen Tabellen.
+const tradingHoldingCache=new Map();
+const TRADING_HOLDING_TTL=5*60*1000;
+let tradingHoldingRenderId=0;
+const tradingHoldingDecimals=new Map();
+async function tradingHoldingRpcBatch(chain,calls){
+  const rpc=CONFIG[chain]?.rpc;
+  if(!rpc)throw new Error(`${chain}: RPC fehlt`);
+  const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify(calls.map((call,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_call",params:[call,"latest"]})))});
+  if(!response.ok)throw new Error(`${chain}: HTTP ${response.status}`);
+  const result=await response.json();
+  if(!Array.isArray(result))throw new Error(`${chain}: RPC-Batch nicht unterstützt`);
+  const byId=new Map(result.map(x=>[Number(x.id),x]));
+  return calls.map((_,i)=>{
+    const r=byId.get(i+1);
+    if(r?.error||!/^0x[0-9a-fA-F]{64}$/.test(String(r?.result||"")))throw new Error(`${chain}: ungültige balanceOf-Antwort`);
+    return BigInt(r.result);
+  });
+}
+async function tradingHoldingDecimalsFor(chain,token){
+  const key=`${chain}|${token}`;
+  if(tradingHoldingDecimals.has(key))return tradingHoldingDecimals.get(key);
+  const result=await tradingRpc(chain,"eth_call",[{to:token,data:"0x313ce567"},"latest"]);
+  if(!/^0x[0-9a-fA-F]{64}$/.test(String(result)))throw new Error(`${chain}: Token-Dezimalstellen unbekannt`);
+  const decimals=Number(BigInt(result));
+  if(!Number.isInteger(decimals)||decimals<0||decimals>36)throw new Error(`${chain}: Token-Dezimalstellen ungültig`);
+  tradingHoldingDecimals.set(key,decimals);return decimals;
+}
+async function tradingFetchHoldings(chain,wallets){
+  const contracts=Object.entries(TRADING_CONTRACTS[chain]||{});
+  const decimals=await Promise.all(contracts.map(([token])=>tradingHoldingDecimalsFor(chain,token)));
+  const totals=new Map(wallets.map(w=>[w,{vow:0,vdollar:0}]));
+  // 10 eth_call je Batch; RPC-Limits für öffentliche Provider respektieren.
+  const work=[];
+  for(const wallet of wallets)for(let i=0;i<contracts.length;i++){
+    const [token,kind]=contracts[i];
+    work.push({wallet,kind,decimals:decimals[i],to:token,data:"0x70a08231"+wallet.slice(2).toLowerCase().padStart(64,"0")});
+  }
+  for(let offset=0;offset<work.length;offset+=10){
+    const batch=work.slice(offset,offset+10);
+    const raw=await tradingHoldingRpcBatch(chain,batch.map(x=>({to:x.to,data:x.data})));
+    raw.forEach((amount,i)=>{
+      const item=batch[i],row=totals.get(item.wallet);
+      const human=Number(ethers.formatUnits(amount,item.decimals));
+      if(!Number.isFinite(human))throw new Error(`${chain}: Bestand nicht darstellbar`);
+      row[item.kind]+=human;
+    });
+  }
+  return totals;
+}
+async function tradingLoadHoldings(rows,chainFilter,renderId){
+  const chains=chainFilter==="total"?["bsc","eth"]:[chainFilter];
+  const wallets=[...new Set(rows.map(r=>r.wallet))];
+  try{
+    for(const chain of chains){
+      const stale=wallets.filter(w=>{
+        const x=tradingHoldingCache.get(`${chain}|${w}`);
+        return !x||Date.now()-x.at>TRADING_HOLDING_TTL;
+      });
+      if(!stale.length)continue;
+      const fetched=await tradingFetchHoldings(chain,stale);
+      for(const [wallet,amounts] of fetched)tradingHoldingCache.set(`${chain}|${wallet}`,{...amounts,at:Date.now()});
+    }
+    if(renderId!==tradingHoldingRenderId)return;
+    for(const row of rows){
+      const matching=[...document.querySelectorAll('#tlnTradingTradersBody tr[data-trading-wallet]')]
+        .find(el=>el.dataset.tradingWallet===row.wallet);
+      if(!matching)continue;
+      for(const kind of ["vow","vdollar"]){
+        const cell=matching.querySelector(`[data-holding-kind="${kind}"]`);
+        if(!cell)continue;
+        let sum=0,available=true;
+        for(const chain of chains){const value=tradingHoldingCache.get(`${chain}|${row.wallet}`);
+          if(!value){available=false;break;}sum+=value[kind];}
+        cell.textContent=available?tradingFormatAmount(sum):"–";
+      }
+    }
+  }catch(error){
+    if(renderId!==tradingHoldingRenderId)return;
+    console.warn("Top-Händler Bestände konnten nicht geladen werden:",error);
+    for(const cell of document.querySelectorAll('#tlnTradingTradersBody [data-holding-kind]'))
+      if(cell.textContent==="…")cell.textContent="–";
+    const info=document.getElementById("tlnTradingHoldingsNote");
+    if(info)info.textContent="Aktuelle Tokenbestände konnten nicht geladen werden (RPC-Fehler). Handelsvolumen bleibt unverändert.";
+  }
+}
 // Kopiert die vollständige Händler-Wallet; verkürzte Darstellung bleibt unverändert.
 async function tradingCopyWallet(wallet, button){
   if(!/^0x[0-9a-fA-F]{40}$/.test(String(wallet||"")))return;
@@ -2839,8 +2927,13 @@ async function tradingCopyWallet(wallet, button){
 function renderTradingTraders(){
   const body=document.getElementById("tlnTradingTradersBody"),data=tradingState.data;if(!body||!data)return;
   const token=document.getElementById("tlnTradingToken")?.value||"vow";
+  const chainFilter=document.getElementById("tlnTradingChain")?.value||"total";
   const rows=tradingTraderRows();
-  body.innerHTML=rows.length?rows.map((r,i)=>`<tr><td>${i+1}</td><td><span class="mono" title="${r.wallet}">${tradingShortAddress(r.wallet)}</span><button type="button" class="tln-trade-wallet-copy" title="Vollständige Händler-Wallet kopieren" aria-label="Händler-Wallet kopieren" onclick="TLNVOWProject.copyTradingWallet('${r.wallet}',this)">⧉</button></td><td>${r.tlnId?`<strong>${r.tlnId}</strong>`:"–"}</td><td>${[...r.chains].map(c=>c==="bsc"?"BSC":"ETH").join(" + ")}</td><td class="num">${tradingFormatAmount(r.buy)}</td><td class="num">${tradingFormatAmount(r.sell)}</td><td class="num"><strong>${tradingFormatAmount(r.total)}</strong></td><td class="num">${r.tradeCount}</td></tr>`).join(""):`<tr><td colspan="8">Keine ${tradingTargetLabel(token)}-Trades im gewählten Zeitraum gefunden.</td></tr>`;
+  const renderId=++tradingHoldingRenderId;
+  body.innerHTML=rows.length?rows.map((r,i)=>`<tr data-trading-wallet="${r.wallet}"><td>${i+1}</td><td><span class="mono" title="${r.wallet}">${tradingShortAddress(r.wallet)}</span><button type="button" class="tln-trade-wallet-copy" title="Vollständige Händler-Wallet kopieren" aria-label="Händler-Wallet kopieren" onclick="TLNVOWProject.copyTradingWallet('${r.wallet}',this)">⧉</button></td><td>${r.tlnId?`<strong>${r.tlnId}</strong>`:"–"}</td><td>${[...r.chains].map(c=>c==="bsc"?"BSC":"ETH").join(" + ")}</td><td class="num">${tradingFormatAmount(r.buy)}</td><td class="num">${tradingFormatAmount(r.sell)}</td><td class="num"><strong>${tradingFormatAmount(r.total)}</strong></td><td class="num">${r.tradeCount}</td><td class="num" data-holding-kind="vow">…</td><td class="num" data-holding-kind="vdollar">…</td></tr>`).join(""):`<tr><td colspan="10">Keine ${tradingTargetLabel(token)}-Trades im gewählten Zeitraum gefunden.</td></tr>`;
+  const info=document.getElementById("tlnTradingHoldingsNote");
+  if(info)info.textContent="Bestände werden live von der Blockchain geladen (max. 5 Minuten zwischengespeichert). Total = BSC + Ethereum. v$ ETH umfasst beide hinterlegten v$-Contracts; Contract-/Aggregator-Wallets sind möglich.";
+  if(rows.length)void tradingLoadHoldings(rows,chainFilter,renderId);
 }
 // Alchemy Transfers API indexiert ERC-20-Transfers tokenbezogen. Ein Transfer ist
 // KEIN Trade: erst die nachgeladenen Receipts und verifizierte Pool-Swap-Events
