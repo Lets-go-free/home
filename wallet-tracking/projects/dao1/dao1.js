@@ -2717,10 +2717,22 @@ window.DAO1Project = (() => {
     const min=Math.max(APTM_MARKET_START_BLOCK,requestedMin);
     // Load only the requested range plus exactly one predecessor anchor. The previous
     // implementation loaded the complete pool history from genesis on every call.
-    const {data,error}=await sb.from("aptm_price_history").select("*")
-      .eq("pool_address",lower(PAIR_ADDRESS)).gte("block_number",min).lte("block_number",max)
-      .order("block_number",{ascending:true}).order("log_index",{ascending:true});
-    if(error)throw error;
+    // Supabase/PostgREST begrenzt Resultsets serverseitig (häufig 1'000 Zeilen).
+    // Ein still abgeschnittener Preis-Cache darf nie als vollständige Historie gelten.
+    // Stabile Schlüsselsortierung: block_number + log_index sind innerhalb des Pools eindeutig.
+    const PAGE_SIZE=500;
+    const data=[];
+    for(let offset=0;;offset+=PAGE_SIZE){
+      const {data:page,error}=await sb.from("aptm_price_history")
+        .select("block_number,log_index,tx_hash,aptm_usd,reserve_aptm,reserve_usdt,pool_address")
+        .eq("pool_address",lower(PAIR_ADDRESS)).gte("block_number",min).lte("block_number",max)
+        .order("block_number",{ascending:true}).order("log_index",{ascending:true})
+        .range(offset,offset+PAGE_SIZE-1);
+      if(error)throw error;
+      if(!Array.isArray(page))throw new Error("APTM-Preishistorie: ungültige API-Antwort");
+      data.push(...page);
+      if(page.length<PAGE_SIZE)break;
+    }
     let predecessor=[];
     if(min>0){
       const {data:prev,error:prevError}=await sb.from("aptm_price_history").select("*")
@@ -3053,11 +3065,8 @@ window.DAO1Project = (() => {
       // target_block als Ersatz dienen. Das würde die Exact-Garantie verletzen.
       return {price:null,priceBlock:null,source:`Kein belastbarer historischer Poolpreis · ${PRICE_MISSING_TAG}`};
     }
-    // Sicherheits-Fallback für alte Aufrufer ohne Anchor-Map.
-    const ph=priceAtBlock(history, target);
-    if(ph){
-      return {price:Number(ph.aptm_usd),priceBlock:Number(ph.block_number),source:`APTM/wUSDT Pool · Sync Block ${ph.block_number} · ${PRICE_SOURCE_TAG}`};
-    }
+    // Ein beliebiger älterer Sync aus einem unvollständigen Cache ist keine
+    // blockgenaue Bewertung. Alle Aufrufer müssen den zentralen Anchor-Weg nutzen.
     return {price:null,priceBlock:null,source:`Kein belastbarer historischer Poolpreis · ${PRICE_MISSING_TAG}`};
   }
 
@@ -3127,48 +3136,30 @@ window.DAO1Project = (() => {
     }
   }
 
-  async function loadLegacyPredecessorPrice(targetBlock){
-    const target=Number(targetBlock);
-    if(!Number.isFinite(target)||target<0)return null;
-    try{
-      const {data,error}=await sb.from("aptm_price_history").select("block_number,log_index,tx_hash,aptm_usd")
-        .eq("pool_address",lower(PAIR_ADDRESS)).lte("block_number",target)
-        .order("block_number",{ascending:false}).order("log_index",{ascending:false}).limit(1);
-      if(error)throw error;
-      const r=(data||[])[0];
-      if(!r||r.aptm_usd==null||!Number.isFinite(Number(r.aptm_usd))||Number(r.aptm_usd)<=0)return null;
-      return {
-        project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
-        target_block:target,sync_block:Number(r.block_number),log_index:Number(r.log_index||0),tx_hash:r.tx_hash||null,
-        aptm_usd:Number(r.aptm_usd),scanned_from_block:Number(r.block_number),scanned_at:new Date().toISOString()
-      };
-    }catch(e){
-      console.warn("APTM Legacy-Preisanker lesen:",e);
-      return null;
-    }
-  }
-
+  // Leere Anker nie durch einen ungeprüften Vorgänger aus aptm_price_history füllen.
+  // Ausschliesslich eine abgeschlossene on-chain Sync-Suche belegt den letzten Poolzustand.
   async function revalidateNullCachedAnchors(rows,status){
     const out=[];
+    const meta=await poolMeta();
     for(let i=0;i<(rows||[]).length;i++){
       const r=rows[i];
       const target=Number(r.target_block);
-      if(status)status.textContent=`Leere Preisanker werden neu validiert ${i+1}/${rows.length}…`;
-      let replacement=await loadLegacyPredecessorPrice(target);
-      if(replacement){
-        if(activePriceJobLog)activePriceJobLog.legacyAnchorHits++;
-      }else{
-        const meta=await poolMeta();
-        const pred=await findPredecessorSync(target,meta,status);
-        replacement={
-          project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
-          target_block:target,sync_block:pred.row?Number(pred.row.block_number):null,
-          log_index:pred.row?Number(pred.row.log_index):null,tx_hash:pred.row?.tx_hash||null,
-          aptm_usd:pred.row?Number(pred.row.aptm_usd):null,scanned_from_block:Number(pred.scannedFrom),scanned_at:new Date().toISOString(),
-          _diag_rounds:Number(pred.rounds||0),_diag_logs:Number(pred.totalLogs||0),_diag_reason:pred.reason||null
-        };
+      if(status)status.textContent=`Leere Preisanker werden on-chain geprüft ${i+1}/${rows.length}…`;
+      const exact=await exactPoolPriceFromHistoricalReserves(target,meta);
+      if(exact){out.push(exact);continue;}
+      const pred=await findPredecessorSync(target,meta,status);
+      // Ein RPC-/Suchlimit ist KEIN Beweis für einen Pre-Launch.
+      // Unverifizierte Ergebnisse dürfen nicht persistent als endgültige Anker gelten.
+      if(pred.reason==="search_limit_reached"){
+        if(activePriceJobLog)priceJobLog(`APTM Block ${target}: RPC-Suche unvollständig · kein neuer Anker gespeichert`);
+        continue;
       }
-      out.push(replacement);
+      out.push({
+        project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
+        target_block:target,sync_block:pred.row?Number(pred.row.block_number):null,
+        log_index:pred.row?Number(pred.row.log_index):null,tx_hash:pred.row?.tx_hash||null,
+        aptm_usd:pred.row?Number(pred.row.aptm_usd):null,scanned_from_block:Number(pred.scannedFrom),scanned_at:new Date().toISOString()
+      });
       if(activePriceJobLog)activePriceJobLog.nullAnchorsRechecked++;
     }
     return out;

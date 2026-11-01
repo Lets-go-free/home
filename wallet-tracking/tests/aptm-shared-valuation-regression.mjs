@@ -1,0 +1,11 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const dao=fs.readFileSync(new URL('../projects/dao1/dao1.js',import.meta.url),'utf8');
+const app=fs.readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
+assert.match(dao,/const PAGE_SIZE=500/);
+assert.match(dao,/\.range\(offset,offset\+PAGE_SIZE-1\)/);
+assert.doesNotMatch(dao,/async function loadLegacyPredecessorPrice/);
+assert.match(dao,/async function historicalAptmPriceAtBlock/);
+assert.match(dao,/async function priceForTransaction/);
+assert.match(app,/window\.DAO1Project\?\.historicalAptmPriceAtBlock/);
+assert.match(app,/wAPTM\/APTM 1:1/);
+console.log('PASS: APTM shared historical engine, pagination, legacy fallback removed');
