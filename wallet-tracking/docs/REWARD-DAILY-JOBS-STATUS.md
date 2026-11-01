@@ -4,6 +4,7 @@
 - Getrennte Reward-Queue und DAO-Rohdatenimport (aus dem vorherigen Update).
 - Eigenständige Server-Rohdaten-Cursor für DAO; keine Bewegung der Browser-/Claim-Cursor.
 - Insert-only-Verhalten bei bereits gespeicherten Transaktionen und Flows.
+- Kanonische Zuordnung der beiden DAO-Claim-Methodennamen anhand ihrer On-Chain-Selektoren (noch ohne NFT-/Bot-Zuordnung oder Reward-Berechnung).
 - Beobachtende Verifizierung neu eingelesener DAO-Referral-Ereignisse nur anhand Wallet, Vertrag, wUSDT-Token und eingehendem Contract-Flow. Diese Zahl ist **keine** historische oder vollständige Reward-Summe; keine Claim-/Preis-Berechnung und keine Datenbank-Klassifizierung.
 
 ## Noch nicht implementiert – daher nicht produktiv aktivieren

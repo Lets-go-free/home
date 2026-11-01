@@ -18,3 +18,8 @@ console.log('Reward staging worker safety checks passed');
 for (const constant of ['REFERRAL_WALLET','REFERRAL_REWARD_CONTRACT','REFERRAL_WUSDT_TOKEN','isVerifiedReferralTransaction']) assert.ok(source.includes(constant));
 assert.match(source, /classification:'observational-only'/);
 assert.doesNotMatch(source, /claim_nft_subtype\s*:/);
+
+// Selector mapping must match the canonical DAO1 application. Selector identification
+// is not sufficient evidence of a completed or correctly assigned bot payout.
+assert.match(source,/const CLAIM_SELECTOR='0x86bb8f37', NEW_MINER_CLAIM_SELECTOR='0x19da4078'/);
+assert.match(source,/method:canonicalMethod\(input,t\.method/);

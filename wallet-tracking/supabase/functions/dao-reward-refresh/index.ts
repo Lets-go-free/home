@@ -11,6 +11,14 @@ const enc=new TextEncoder(),dec=new TextDecoder()
 const EXPLORER='https://explorer.apertum.io/api/v2'
 const OVERLAP=250
 const PROJECT='dao1', CHAIN='apertum'
+// Use the same function selectors as the canonical DAO claim UI.
+const CLAIM_SELECTOR='0x86bb8f37', NEW_MINER_CLAIM_SELECTOR='0x19da4078'
+function canonicalMethod(input:string,explorerMethod:unknown){
+ const selector=input.slice(0,10).toLowerCase();
+ if(selector===CLAIM_SELECTOR)return 'claimReward';
+ if(selector===NEW_MINER_CLAIM_SELECTOR)return 'Miner Claim';
+ return String(explorerMethod||'Transfer/Call').trim()||'Transfer/Call'
+}
 // Contract evidence must match the canonical DAO browser rules; never infer
 // rewards from a token symbol or an unverified incoming transfer alone.
 const REFERRAL_WALLET='0x239c5822a0d2a67e629d7a3b5c8180721e228b47'
@@ -102,7 +110,7 @@ async function process(job:any){
  const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
-   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t.block_number),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:String(t.method||t.tx_types?.[0]||''),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
+   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t.block_number),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
   });for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');txCount+=rows.length
  });await updateState(job,RAW_TX_SCAN,lastTx);
  const fc=await state(job,RAW_FLOW_SCAN);
