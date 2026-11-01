@@ -125,14 +125,59 @@ async function insertRawWithoutReplacing(table:string,rows:any[],conflict:string
   if(error)throw error;
  }
 }
+// Native APTM claim payouts are transaction-local. Only successful, directly
+// evidenced incoming transfers are staged. Missing explorer evidence is not
+// treated as a zero payout, and no USD price is invented.
+async function nativeClaimPayout(address:string,tx:any){
+ if(![CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(String(tx.selector||'')))return null;
+ if(!['ok','success'].includes(String(tx.status||'').toLowerCase()))return null;
+ const url=`${EXPLORER}/transactions/${tx.tx_hash}/internal-transactions`;
+ let items:any[]=[];let next=url;const seen=new Set<string>();
+ while(next){
+  if(seen.has(next)||seen.size>=30)throw Error('Native claim pagination safety limit');
+  seen.add(next);
+  const response=await json(next);
+  if(!Array.isArray(response.items))throw Error('Native claim internal transfers missing');
+  items.push(...response.items);
+  if(!response.next_page_params)break;
+  const u=new URL(url);
+  for(const [k,v] of Object.entries(response.next_page_params))if(v!=null)u.searchParams.set(k,String(v));
+  next=u.toString();
+ }
+ const transfers=items.filter(r=>lower(r.to)===address&&!r.error&&r.success!==false&&String(r.status||'').toLowerCase()!=='error').map(r=>{
+  const raw=String(r.value?.value??r.value??'0');
+  if(!/^\d+$/.test(raw))throw Error('Invalid native payout amount');
+  return {from:lower(r.from),raw:BigInt(raw)};
+ }).filter(r=>r.raw>0n);
+ // Match the canonical browser preference: direct contract payment first;
+ // if no direct payment exists, accept traced inbound proxy transfers.
+ const direct=transfers.filter(r=>r.from===lower(tx.to_address));
+ const chosen=direct.length?direct:transfers;
+ const sum=chosen.reduce((v,r)=>v+r.raw,0n);
+ if(sum<=0n)return null;
+ return {
+  user_id:tx.user_id,wallet_id:tx.wallet_id,project_key:PROJECT,chain_key:CHAIN,
+  flow_key:`claim-native:${tx.tx_hash}`,tx_hash:tx.tx_hash,
+  block_number:tx.block_number,tx_timestamp:tx.tx_timestamp,
+  log_index:-1,token_address:'native',token_symbol:'APTM',token_name:'Apertum',
+  token_decimals:18,amount_raw:sum.toString(),amount:decimalAmount(sum.toString(),18),
+  counterparty_address:direct.length?lower(tx.to_address):(chosen.length===1?chosen[0].from:null),
+  direction:'eingang',updated_at:new Date().toISOString()
+ };
+}
 async function process(job:any){
- const address=await loadAddress(job);let txCount=0,flowCount=0;const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
+ const address=await loadAddress(job);let txCount=0,flowCount=0,nativeClaimFlows=0;const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
  const tc=await state(job,RAW_TX_SCAN);
  const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
-  });for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');txCount+=rows.length
+  });for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');
+  for(const tx of rows){
+   const nativeFlow=await nativeClaimPayout(address,tx);
+   if(nativeFlow){await insertRawWithoutReplacing('project_transaction_asset_flows',[nativeFlow],'user_id,project_key,chain_key,wallet_id,flow_key');nativeClaimFlows++}
+  }
+  txCount+=rows.length
  });await updateState(job,RAW_TX_SCAN,lastTx);
  const fc=await state(job,RAW_FLOW_SCAN);
  const lastFlow=await paginate(`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
@@ -147,7 +192,7 @@ async function process(job:any){
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
   });for(const row of rows){const candidate=txReferralCandidates.get(row.tx_hash);if(candidate&&isVerifiedReferralTransaction(address,candidate,[row]))verifiedReferralHashes.add(row.tx_hash)}await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
  });await updateState(job,RAW_FLOW_SCAN,lastFlow);
- return {transactions:txCount,flows:flowCount,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
+ return {transactions:txCount,flows:flowCount,nativeClaimFlows,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
 }
 Deno.serve(async request=>{
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});

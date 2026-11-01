@@ -48,3 +48,18 @@ Automatischer Regressionstest: `tests/dao-reward-wei-precision.test.mjs`.
 
 Dies ist eine Korrektur am Rohimport, **keine** Fertigstellung der DAO-Claims,
 der NFT-Zuordnung oder des TLN/VOW-Reward-Jobs. Reward-Crons weiterhin aus.
+
+## Native Claim-Staging – noch keine Produktivfreigabe
+
+Der DAO-Rohdaten-Worker kann bei erfolgreich bestätigten Claim-Transaktionen
+(`claimReward`, `Miner Claim`) interne native APTM-Auszahlungen lesen. Nur
+belegte eingehende Transfers werden mit dem bereits kanonischen Schlüssel
+`claim-native:<tx-hash>` insert-only als Asset-Flow hinterlegt. Zahlungen
+direkt vom Zielcontract haben Vorrang vor Proxy-/Router-Transfers. Die
+Beträge bleiben als Wei-Ganzzahl und exakter Dezimalstring erhalten.
+Bereits vorhandene historische Bewertungen werden nicht überschrieben.
+
+**Weiterhin unvollständig:** RPC-Trace-Fallback bei lückenhafter Explorer-
+Historie, NFT-/Bot-Zuordnung, historische Preisanreicherung, endgültige
+Referral-Klassifikation, TNL/VOW-Worker und End-to-End-Vergleich. Der Worker
+bleibt deaktiviert; die Rohdaten-Queue darf nicht als abgeschlossen gelten.

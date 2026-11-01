@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const src=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.match(src,/flow_key:`claim-native:\$\{tx\.tx_hash\}`/);
+assert.match(src,/amount_raw:sum\.toString\(\)/);
+assert.match(src,/decimalAmount\(sum\.toString\(\),18\)/);
+assert.match(src,/const direct=transfers\.filter\(r=>r\.from===lower\(tx\.to_address\)\)/);
+assert.match(src,/ignoreDuplicates:true/);
+assert.match(src,/nativeClaimFlows/);
+assert.match(src,/if\(!\['ok','success'\]\.includes/);
+console.log('DAO native-claim structure checks: passed');
