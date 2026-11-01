@@ -4,6 +4,8 @@ const worker=readFileSync(new URL('../supabase/functions/dao-reward-refresh/inde
 assert.match(worker,/from\('nft_cache'\)\.select\('nfts'\)/);
 assert.match(worker,/eq\('user_id',job\.user_id\)\.eq\('wallet_id',job\.wallet_id\)/);
 assert.match(worker,/if\(matches\.size!==1\)return null/);
+assert.match(worker,/prior\._contract!==contract/);
+assert.match(worker,/if\(!known\.get\(id\)\)return null/);
 assert.match(worker,/claim_nft_id:candidate\.id/);
 assert.match(worker,/if\(BigInt\(id\)>9223372036854775807n\)return null/);
 assert.match(worker,/ignoreDuplicates:true/);

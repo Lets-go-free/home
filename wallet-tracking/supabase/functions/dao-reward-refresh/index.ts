@@ -178,7 +178,14 @@ async function knownWalletNfts(job:any){
   if(nft?.possibleSpam||nft?.userMarkedSpam)continue;
   const id=String(nft?.tokenId??'');
   if(!/^\d+$/.test(id))continue;
-  known.set(BigInt(id).toString(),nft);
+  // Token IDs are only unique inside an NFT contract. Two different NFT
+  // collections may both contain #42; never silently select the last one.
+  const normalizedId=BigInt(id).toString();
+  const contract=lower(nft?.tokenAddress);
+  if(!/^0x[0-9a-f]{40}$/.test(contract))continue;
+  const prior=known.get(normalizedId);
+  if(prior===undefined)known.set(normalizedId,{...nft,_contract:contract});
+  else if(prior!==null && prior._contract!==contract)known.set(normalizedId,null);
  }
  return known;
 }
@@ -195,6 +202,8 @@ function unequivocalClaimNft(input:string,known:Map<string,any>){
  }
  if(matches.size!==1)return null;
  const id=[...matches][0];
+ // A duplicated numeric NFT ID across contracts is not unique evidence.
+ if(!known.get(id))return null;
  // DB claim_nft_id is bigint: never write a JS-rounded identifier.
  if(BigInt(id)>9223372036854775807n)return null;
  return {id,nft:known.get(id)};

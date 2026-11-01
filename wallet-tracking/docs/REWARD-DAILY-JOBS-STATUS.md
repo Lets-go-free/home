@@ -77,3 +77,10 @@ und vollständige Bot-Klassifikation sind noch nicht serverseitig verifiziert.
 Dies ist eine Kandidaten-Anreicherung und keine fertige Reward-Verarbeitung.
 Daher `dao-reward-refresh` und beide Reward-Crons weiterhin deaktiviert lassen.
 Test: `node tests/dao-reward-nft-evidence.test.mjs`.
+
+
+## NFT-ID-Kollisionen (Sicherheitskorrektur)
+NFT-Token-IDs sind nur innerhalb eines NFT-Contracts eindeutig. Der DAO-Staging-Worker
+weist deshalb bei identischer ID in mehreren NFT-Collections **keine** NFT-/Bot-Zuordnung zu.
+Dies vermeidet eine falsche Zuordnung aus dem aktuellen `nft_cache`; historische Ownership
+und die vollständige Reward-Engine bleiben weiterhin erforderlich.
