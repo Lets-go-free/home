@@ -71,32 +71,16 @@ async function paginate(path:string,cursor:number,handler:(items:any[])=>Promise
 }
 async function state(job:any,kind:string){const {data,error}=await sb.from('project_scan_state').select('last_scanned_block').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('scan_type',kind).maybeSingle();if(error)throw error;return Number(data?.last_scanned_block||0)}
 async function updateState(job:any,kind:string,block:number){if(!block)return;const {error}=await sb.from('project_scan_state').upsert({user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,scan_type:kind,last_scanned_block:block,last_scanned_at:new Date().toISOString()},{onConflict:'user_id,project_key,chain_key,wallet_id,scan_type'});if(error)throw error}
-// The raw scanner must never erase an NFT/claim classification or a historical
-// price which the canonical browser pipeline has already persisted. PostgREST
-// upserts can otherwise turn omitted fields into NULL on conflict.
-async function upsertRawPreservingEnrichment(table:string,rows:any[],conflict:string){
+// The raw staging import is insert-only. On an existing transaction/flow, a
+// canonical browser refresh may be enriching claim classification or prices
+// concurrently. Never perform a read-modify-upsert: it can race and overwrite
+// those enriched columns. Database uniqueness + ignoreDuplicates makes retries
+// and overlapping block scans safe without changing existing rows.
+async function insertRawWithoutReplacing(table:string,rows:any[],conflict:string){
  for(let i=0;i<rows.length;i+=100){
   const batch=rows.slice(i,i+100);
   if(!batch.length)continue;
-  const key=table==='project_transactions'?'tx_hash':'flow_key';
-  const keys=batch.map(r=>r[key]);
-  const {data:existing,error:readError}=await sb.from(table).select('*')
-    .eq('user_id',batch[0].user_id).eq('wallet_id',batch[0].wallet_id)
-    .eq('project_key',PROJECT).eq('chain_key',CHAIN).in(key,keys);
-  if(readError)throw readError;
-  const byKey=new Map((existing||[]).map((r:any)=>[String(r[key]),r]));
-  const payload=batch.map(r=>{
-   const old=byKey.get(String(r[key]));
-   // On an existing row only fill raw columns which have no value yet.
-   // Ownership, prices, classifications and manual decisions remain intact.
-   if(!old)return r;
-   const merged={...old};
-   for(const [field,value] of Object.entries(r)){
-    if(merged[field]===null||merged[field]===undefined||merged[field]==='')merged[field]=value;
-   }
-   return merged;
-  });
-  const {error}=await sb.from(table).upsert(payload,{onConflict:conflict});
+  const {error}=await sb.from(table).upsert(batch,{onConflict:conflict,ignoreDuplicates:true});
   if(error)throw error;
  }
 }
@@ -107,20 +91,20 @@ async function process(job:any){
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t.block_number),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:String(t.method||t.tx_types?.[0]||''),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
-  });await upsertRawPreservingEnrichment('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');txCount+=rows.length
+  });await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');txCount+=rows.length
  });await updateState(job,RAW_TX_SCAN,lastTx);
  const fc=await state(job,RAW_FLOW_SCAN);
  const lastFlow=await paginate(`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
   const rows=items.map((t)=>{
    const token=lower(t.token?.address_hash||t.token?.address||t.token_address);const tx=hash(t);
-   const from=lower(t.from),to=lower(t.to);const direction=to===address?'eingang':from===address?'ausgang':'sonst';
+   const from=lower(t.from),to=lower(t.to);const direction=from===address&&to===address?'intern':to===address?'eingang':from===address?'ausgang':'sonst';
    const raw=String(t.total?.value??t.value??'0'),decimals=Number(t.token?.decimals??t.total?.decimals??18);
    if(!/^0x[0-9a-f]{40}$/i.test(token)||!/^0x[0-9a-f]{64}$/i.test(tx)||!/^\d+$/.test(raw)||!Number.isSafeInteger(decimals)||decimals<0||decimals>36)throw Error('Malformed token transfer');
    const log=Number(t.log_index??t.logIndex??t.index??-1);
    // Do not assign synthetic page indices for missing log_index: page order changes.
    if(!Number.isSafeInteger(log)||log<0)throw Error('Token transfer missing canonical log index');
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t.block_number),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
-  });await upsertRawPreservingEnrichment('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
+  });await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
  });await updateState(job,RAW_FLOW_SCAN,lastFlow);
  return {transactions:txCount,flows:flowCount}
 }

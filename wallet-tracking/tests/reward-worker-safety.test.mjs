@@ -6,8 +6,10 @@ for(const canonical of ["state(job,'transactions_wallet_v1')","state(job,'token_
 assert.match(source,/if\(!complete\)throw Error\('Incomplete pagination'\)/);
 assert.match(source,/if\(!Number\.isSafeInteger\(log\)\|\|log<0\)throw Error/);
 assert.match(source,/if\(minute<245\|\|minute>=330\)/);
-assert.match(source,/async function upsertRawPreservingEnrichment/);
-assert.match(source,/const merged=\{\.\.\.old\}/);
+assert.match(source,/async function insertRawWithoutReplacing/);
+assert.match(source,/ignoreDuplicates:true/);
+assert.match(source,/from===address&&to===address\?'intern'/);
+assert.doesNotMatch(source,/const merged=\{\.\.\.old\}/);
 assert.doesNotMatch(source,/await upsert\('project_transactions'/);
 assert.doesNotMatch(source,/cron\.schedule|CREATE EXTENSION|createSnapshot/i);
 console.log('Reward staging worker safety checks passed');
