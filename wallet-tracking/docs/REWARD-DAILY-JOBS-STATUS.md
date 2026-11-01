@@ -1,18 +1,25 @@
-# Reward Daily Jobs – verifizierter Entwicklungsstand
+# Reward-Worker – Status 6.09
 
-## Bereits implementiert
-- Getrennte Reward-Queue und DAO-Rohdatenimport (aus dem vorherigen Update).
-- Eigenständige Server-Rohdaten-Cursor für DAO; keine Bewegung der Browser-/Claim-Cursor.
-- Insert-only-Verhalten bei bereits gespeicherten Transaktionen und Flows.
-- Kanonische Zuordnung der beiden DAO-Claim-Methodennamen anhand ihrer On-Chain-Selektoren (noch ohne NFT-/Bot-Zuordnung oder Reward-Berechnung).
-- Beobachtende Verifizierung neu eingelesener DAO-Referral-Ereignisse nur anhand Wallet, Vertrag, wUSDT-Token und eingehendem Contract-Flow. Diese Zahl ist **keine** historische oder vollständige Reward-Summe; keine Claim-/Preis-Berechnung und keine Datenbank-Klassifizierung.
+## Technischer Zwischenstand
 
-## Noch nicht implementiert – daher nicht produktiv aktivieren
-- Vollständige Bot-Claim-Zuordnung samt NFT-Ownership, wAPTM-Nachzahlungen und historischen Preisen.
-- Der vollständige DAO-Referral-Lifecycle inklusive bestehender/zeitlich entkoppelter Flows.
-- Inkrementeller TLN/VOW Reward-Worker und zugehöriger Staking-/Referral-Lifecycle.
-- End-to-End-Abgleich gegen die aktuelle Datenbank und die Blockchain.
-- Erfolgreiche Produktionstests und Aktivierung der beiden Reward-Crons.
+- Der DAO-Worker importiert nur rohe Transaktionen und ERC-20-Flows.
+- Nach einem vollständigen Rohimport ist der Queue-Status `staged`, **nicht** `completed`.
+- Der Status `completed` ist ausschliesslich für vollständig klassifizierte und verifizierte Rewards reserviert.
+- Die bestehenden Browser-Scan-Cursor werden vom Worker nicht verändert.
+- Die fachlich zwingende native APTM-/Internal-Transaction-Erkennung, NFT-Zuordnung und historische Preisbewertung sind serverseitig noch nicht implementiert.
+- `dao-reward-refresh` und `tln-vow-reward-refresh` **nicht produktiv deployen oder per Cron starten**.
 
-## Betrieb
-**Die Funktion `dao-reward-refresh` noch nicht deployen und keinen Reward-Cron aktivieren.** Bestehende Browser-Reward-Verarbeitung unverändert lassen. Keine Reward-Snapshots erstellen. Zeitfenster (Europe/Zurich): Wallet 01:00–04:00, DAO 04:05–05:30, TLN/VOW 05:35–07:00.
+## Installation
+
+SQL-Migration nach Einspielen des ZIP im Supabase SQL Editor ausführen. Die SQL-Datei enthält DDL und die Definition einer Funktion; keine SELECT-Abfragen/Resultsets. Die Funktion ist nur für `service_role` ausführbar.
+
+## Akzeptanzkriterien vor Aktivierung
+
+1. Claim-Kandidaten: Legacy `0x86bb8f37`, neuer Miner `0x19da4078`.
+2. tatsächliche ERC-20- und native APTM-Auszahlungen verifizieren, einschliesslich interner Miner-Transfers.
+3. NFT-/Bot-Zuordnung aus Wallet-spezifischem persistentem Cache und historischer Ownership.
+4. DAO-Referral-Rewards anhand Contract und eingehendem Token-Flow, nicht Symbol.
+5. historische Preisermittlung über applikationsweit einheitliche Preisquelle.
+6. mit bestehendem Browser-Resultat walletweise vergleichen, inklusive Monica 9 Mining + 1 Trading.
+7. vollständige Wiederholbarkeit, fehlende Logs dürfen Cursor nicht als fachlich verarbeitet markieren.
+8. erst danach Cron-Fenster DAO 04:05–05:30 und TLN 05:35–07:00 Europe/Zurich aktivieren.

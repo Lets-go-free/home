@@ -1,4 +1,6 @@
 // DAO1/APTMDAO: incremental transaction and ERC-20 flow ingestion (staging worker).
+// A raw import transitions to 'staged', NOT 'completed'. Only the future
+// canonical claim/flow/valuation pipeline may mark reward jobs completed.
 // Important: NOT a complete reward worker. NFT claim classification and historical
 // price enrichment still require the canonical DAO application pipeline.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -137,7 +139,7 @@ Deno.serve(async request=>{
  try{const claim=await sb.rpc('wallettracking_reward_claim',{p_day:day,p_project:'dao1'});if(claim.error)throw claim.error;
   job=claim.data?.[0];if(!job)return Response.json({ok:true,skipped:'No pending DAO wallets'});
   const result=await process(job);
-  const completed=await sb.rpc('wallettracking_reward_finish',{p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id,p_error:null});if(completed.error)throw completed.error;
-  return Response.json({ok:true,...result,notice:'Raw events only; reward classification incomplete; canonical browser cursors untouched'});
+  const staged=await sb.rpc('wallettracking_reward_stage',{p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id});if(staged.error)throw staged.error;
+  return Response.json({ok:true,...result,notice:'Rohdaten importiert; Claim-/Referral-/Preisbewertung ausstehend; Job bewusst NICHT abgeschlossen'});
  }catch(e){const message=String(e instanceof Error?e.message:e);if(job)await sb.rpc('wallettracking_reward_finish',{p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id,p_error:message.slice(0,2000)});return Response.json({ok:false,error:message},{status:500})}
 })
