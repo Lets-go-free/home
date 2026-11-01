@@ -165,13 +165,48 @@ async function nativeClaimPayout(address:string,tx:any){
   direction:'eingang',updated_at:new Date().toISOString()
  };
 }
+// The canonical browser uses wallet NFT evidence to match claims. This server
+// staging step deliberately assigns an NFT only when ABI arguments identify
+// exactly one NFT present in the user-specific Apertum NFT cache. Historical
+// ownership, ambiguous calls and unknown NFTs remain unassigned for review.
+async function knownWalletNfts(job:any){
+ const {data,error}=await sb.from('nft_cache').select('nfts').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).maybeSingle();
+ if(error)throw error;
+ const known=new Map<string,any>();
+ for(const nft of (Array.isArray(data?.nfts)?data.nfts:[])){
+  if(String(nft?.chain||'').toLowerCase()!==CHAIN)continue;
+  if(nft?.possibleSpam||nft?.userMarkedSpam)continue;
+  const id=String(nft?.tokenId??'');
+  if(!/^\d+$/.test(id))continue;
+  known.set(BigInt(id).toString(),nft);
+ }
+ return known;
+}
+function unequivocalClaimNft(input:string,known:Map<string,any>){
+ const selector=input.slice(0,10).toLowerCase();
+ if(selector!==CLAIM_SELECTOR&&selector!==NEW_MINER_CLAIM_SELECTOR)return null;
+ const args=input.slice(10);
+ if(!/^[0-9a-f]*$/i.test(args)||args.length%64!==0)return null;
+ const limit=selector===CLAIM_SELECTOR?Math.min(args.length,128):args.length;
+ const matches=new Set<string>();
+ for(let i=0;i<limit;i+=64){
+  const id=BigInt('0x'+args.slice(i,i+64)).toString();
+  if(known.has(id))matches.add(id);
+ }
+ if(matches.size!==1)return null;
+ const id=[...matches][0];
+ // DB claim_nft_id is bigint: never write a JS-rounded identifier.
+ if(BigInt(id)>9223372036854775807n)return null;
+ return {id,nft:known.get(id)};
+}
 async function process(job:any){
- const address=await loadAddress(job);let txCount=0,flowCount=0,nativeClaimFlows=0;const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
+ const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0;const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
  const tc=await state(job,RAW_TX_SCAN);
  const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
-   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
+   const candidate=unequivocalClaimNft(input,knownNfts);if(candidate)claimNftCandidates++;
+   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,...(candidate?{claim_nft_id:candidate.id,claim_nft_name:String(candidate.nft?.name||candidate.nft?.collectionName||`NFT #${candidate.id}`)}:{}),updated_at:new Date().toISOString()}
   });for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');
   for(const tx of rows){
    const nativeFlow=await nativeClaimPayout(address,tx);
@@ -192,7 +227,7 @@ async function process(job:any){
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
   });for(const row of rows){const candidate=txReferralCandidates.get(row.tx_hash);if(candidate&&isVerifiedReferralTransaction(address,candidate,[row]))verifiedReferralHashes.add(row.tx_hash)}await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
  });await updateState(job,RAW_FLOW_SCAN,lastFlow);
- return {transactions:txCount,flows:flowCount,nativeClaimFlows,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
+ return {transactions:txCount,flows:flowCount,nativeClaimFlows,claimNftCandidates,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
 }
 Deno.serve(async request=>{
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});

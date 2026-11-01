@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const worker=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.match(worker,/from\('nft_cache'\)\.select\('nfts'\)/);
+assert.match(worker,/eq\('user_id',job\.user_id\)\.eq\('wallet_id',job\.wallet_id\)/);
+assert.match(worker,/if\(matches\.size!==1\)return null/);
+assert.match(worker,/claim_nft_id:candidate\.id/);
+assert.match(worker,/if\(BigInt\(id\)>9223372036854775807n\)return null/);
+assert.match(worker,/ignoreDuplicates:true/);
+assert.match(worker,/classification:'observational-only'/);
+console.log('DAO wallet-specific NFT evidence safety checks passed');

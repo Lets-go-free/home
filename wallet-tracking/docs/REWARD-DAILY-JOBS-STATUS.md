@@ -63,3 +63,17 @@ Bereits vorhandene historische Bewertungen werden nicht überschrieben.
 Historie, NFT-/Bot-Zuordnung, historische Preisanreicherung, endgültige
 Referral-Klassifikation, TNL/VOW-Worker und End-to-End-Vergleich. Der Worker
 bleibt deaktiviert; die Rohdaten-Queue darf nicht als abgeschlossen gelten.
+
+## 6.09 – Konservative NFT-Kandidaten-Zuordnung (2026-11-01)
+
+Der deaktivierte DAO-Staging-Worker lädt nun die pro User/Wallet gespeicherten
+Apertum-NFTs aus `nft_cache`. Für `claimReward` werden ausschliesslich die ersten
+zwei ABI-Argumentwörter, für `Miner Claim` die vorhandenen ABI-Argumentwörter
+gegen den NFT-Bestand abgeglichen. Nur wenn genau **eine** bekannte NFT-ID
+übereinstimmt, wird die neue Transaktion mit `claim_nft_id` und Name eingefügt.
+Unbekannte oder mehrere Treffer bleiben unzugeordnet. Bereits gespeicherte
+Transaktionen werden weiterhin **nicht** überschrieben; historische Ownership
+und vollständige Bot-Klassifikation sind noch nicht serverseitig verifiziert.
+Dies ist eine Kandidaten-Anreicherung und keine fertige Reward-Verarbeitung.
+Daher `dao-reward-refresh` und beide Reward-Crons weiterhin deaktiviert lassen.
+Test: `node tests/dao-reward-nft-evidence.test.mjs`.
