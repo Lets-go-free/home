@@ -1,100 +1,18 @@
-# Reward-Worker – Status 6.09
+# Reward-Daily-Jobs – Entwicklungsstand 6.09
 
-## Technischer Zwischenstand
+## Neue historische NFT-Evidenzprüfung
+- Verwendet die Blockscout-v2-Transferhistorie des konkreten ERC-721-Vertrags und der Token-ID.
+- Prüft die zuletzt belegte Übertragung vor dem Claim-Block. Empfänger muss die Claim-Wallet sein.
+- Transfers im Claim-Block sind ungeklärt (keine zuverlässige Transaktionsreihenfolge).
+- Nur eindeutig erkannte ERC-721-Transfers zählen; ERC-1155 und fehlende Angaben bleiben ungeprüft.
+- Bei mehr als 100 Historienseiten oder unvollständigen API-Daten wird nichts als verifiziert markiert.
+- Pro Job-Durchlauf maximal 20 Kandidaten geprüft, um API-Last zu begrenzen.
+- Ergebnis bislang nur Rückgabe-Zähler `historicallyVerifiedCandidates`; keine DB-Änderung bestehender Claims.
 
-- Der DAO-Worker importiert nur rohe Transaktionen und ERC-20-Flows.
-- Nach einem vollständigen Rohimport ist der Queue-Status `staged`, **nicht** `completed`.
-- Der Status `completed` ist ausschliesslich für vollständig klassifizierte und verifizierte Rewards reserviert.
-- Die bestehenden Browser-Scan-Cursor werden vom Worker nicht verändert.
-- Die fachlich zwingende native APTM-/Internal-Transaction-Erkennung, NFT-Zuordnung und historische Preisbewertung sind serverseitig noch nicht implementiert.
-- `dao-reward-refresh` und `tln-vow-reward-refresh` **nicht produktiv deployen oder per Cron starten**.
+## Noch NICHT produktionsbereit
+Historische Besitzprüfung allein bestätigt nicht, ob die dekodierte NFT-ID im konkreten Claim-Call wirklich der richtige Methodenparameter ist. Die fachliche Abbildung muss gegen die kanonische DAO-Verarbeitung geprüft werden. Ausserdem fehlen vollständige Claim-/Referral-/Preisbewertung, TLN/VOW-Worker und End-to-End-Tests.
 
-## Installation
+Edge Function `dao-reward-refresh` und beide Reward-Crons NICHT aktivieren.
 
-SQL-Migration nach Einspielen des ZIP im Supabase SQL Editor ausführen. Die SQL-Datei enthält DDL und die Definition einer Funktion; keine SELECT-Abfragen/Resultsets. Die Funktion ist nur für `service_role` ausführbar.
-
-## Akzeptanzkriterien vor Aktivierung
-
-1. Claim-Kandidaten: Legacy `0x86bb8f37`, neuer Miner `0x19da4078`.
-2. tatsächliche ERC-20- und native APTM-Auszahlungen verifizieren, einschliesslich interner Miner-Transfers.
-3. NFT-/Bot-Zuordnung aus Wallet-spezifischem persistentem Cache und historischer Ownership.
-4. DAO-Referral-Rewards anhand Contract und eingehendem Token-Flow, nicht Symbol.
-5. historische Preisermittlung über applikationsweit einheitliche Preisquelle.
-6. mit bestehendem Browser-Resultat walletweise vergleichen, inklusive Monica 9 Mining + 1 Trading.
-7. vollständige Wiederholbarkeit, fehlende Logs dürfen Cursor nicht als fachlich verarbeitet markieren.
-8. erst danach Cron-Fenster DAO 04:05–05:30 und TLN 05:35–07:00 Europe/Zurich aktivieren.
-
-## Blockscout-Schnittstelle / Verifikation
-
-Der DAO-Staging-Worker prüft die Blocknummer jedes Transaktions-/ERC-20-Events.
-Wenn ein Token-Transfer keine `block_number` liefert, muss die Blocknummer anhand
-`/api/v2/transactions/{tx_hash}` nachgeladen werden. Transaktionsdetails werden
-für wiederholte Hashes zwischengespeichert. Ein fehlender oder ungültiger Block
-ist ein **Lauffehler**, kein Grund, den Scan-Cursor fortzuschreiben. Die
-beiden Rohimport-Cursor bleiben getrennt von den kanonischen Reward-Cursorn.
-
-**Produktivfreigabe unverändert ausstehend:** vollständige NFT-/Bot-Claim-
-Zuordnung, native Auszahlungen, Preisbewertung und TLN/VOW-Reward-Worker.
-Die Edge Function und Reward-Crons nicht aktivieren.
-
-## Folgeprüfung: native Betragspräzision
-
-Blockscout-v2-Felder `transaction.value` und `transaction.fee.value` werden
-als **Wei-Ganzzahlstrings** interpretiert und vor Speicherung mit BigInt in
-exakte APTM-Dezimalstrings umgerechnet. Keine Umrechnung grosser Wei-Zahlen
-über JavaScript `Number` (Rundungsgefahr). Fehlerhafte bzw. bereits als
-Dezimalbetrag gelieferte Werte führen absichtlich zu einem Scan-Fehler.
-Automatischer Regressionstest: `tests/dao-reward-wei-precision.test.mjs`.
-
-Dies ist eine Korrektur am Rohimport, **keine** Fertigstellung der DAO-Claims,
-der NFT-Zuordnung oder des TLN/VOW-Reward-Jobs. Reward-Crons weiterhin aus.
-
-## Native Claim-Staging – noch keine Produktivfreigabe
-
-Der DAO-Rohdaten-Worker kann bei erfolgreich bestätigten Claim-Transaktionen
-(`claimReward`, `Miner Claim`) interne native APTM-Auszahlungen lesen. Nur
-belegte eingehende Transfers werden mit dem bereits kanonischen Schlüssel
-`claim-native:<tx-hash>` insert-only als Asset-Flow hinterlegt. Zahlungen
-direkt vom Zielcontract haben Vorrang vor Proxy-/Router-Transfers. Die
-Beträge bleiben als Wei-Ganzzahl und exakter Dezimalstring erhalten.
-Bereits vorhandene historische Bewertungen werden nicht überschrieben.
-
-**Weiterhin unvollständig:** RPC-Trace-Fallback bei lückenhafter Explorer-
-Historie, NFT-/Bot-Zuordnung, historische Preisanreicherung, endgültige
-Referral-Klassifikation, TNL/VOW-Worker und End-to-End-Vergleich. Der Worker
-bleibt deaktiviert; die Rohdaten-Queue darf nicht als abgeschlossen gelten.
-
-## 6.09 – Konservative NFT-Kandidaten-Zuordnung (2026-11-01)
-
-Der deaktivierte DAO-Staging-Worker lädt nun die pro User/Wallet gespeicherten
-Apertum-NFTs aus `nft_cache`. Für `claimReward` werden ausschliesslich die ersten
-zwei ABI-Argumentwörter, für `Miner Claim` die vorhandenen ABI-Argumentwörter
-gegen den NFT-Bestand abgeglichen. Nur wenn genau **eine** bekannte NFT-ID
-übereinstimmt, wird die neue Transaktion mit `claim_nft_id` und Name eingefügt.
-Unbekannte oder mehrere Treffer bleiben unzugeordnet. Bereits gespeicherte
-Transaktionen werden weiterhin **nicht** überschrieben; historische Ownership
-und vollständige Bot-Klassifikation sind noch nicht serverseitig verifiziert.
-Dies ist eine Kandidaten-Anreicherung und keine fertige Reward-Verarbeitung.
-Daher `dao-reward-refresh` und beide Reward-Crons weiterhin deaktiviert lassen.
-Test: `node tests/dao-reward-nft-evidence.test.mjs`.
-
-
-## NFT-ID-Kollisionen (Sicherheitskorrektur)
-NFT-Token-IDs sind nur innerhalb eines NFT-Contracts eindeutig. Der DAO-Staging-Worker
-weist deshalb bei identischer ID in mehreren NFT-Collections **keine** NFT-/Bot-Zuordnung zu.
-Dies vermeidet eine falsche Zuordnung aus dem aktuellen `nft_cache`; historische Ownership
-und die vollständige Reward-Engine bleiben weiterhin erforderlich.
-
-## Korrektur: Historische NFT-Besitzprüfung fehlt noch
-
-Der aktuelle `nft_cache` ist kein historischer Besitznachweis. Eine heute gehaltene
-NFT-ID kann bei einem früheren Claim einer anderen Wallet gehört haben. Deshalb
-speichert der serverseitige DAO-Staging-Import ab sofort **keine** `claim_nft_id`
-oder `claim_nft_name` mehr aus dem Cache-Abgleich. Der Zähler
-`claimNftCandidatesUnverified` ist ausdrücklich **nur diagnostisch**. Bereits
-vorhandene, im Browser bestätigte Zuordnungen bleiben durch insert-only geschützt.
-
-Für eine spätere bestätigte Zuordnung sind Contract-Adresse, Claim-ABI-Parameter
-und ein historischer Besitznachweis am Claim-Block erforderlich. Diese Logik ist
-**noch nicht implementiert**. Automatischen DAO-Cron und Edge Function weiterhin
-nicht aktivieren.
+## Tests
+`node --experimental-strip-types tests/dao-reward-historical-ownership.test.mjs` (6 Fälle mit kontrollierten Mock-Antworten).
