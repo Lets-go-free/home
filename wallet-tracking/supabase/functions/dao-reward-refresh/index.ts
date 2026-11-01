@@ -61,9 +61,12 @@ async function decryptWalletField(key:CryptoKey,user:string,id:string,ciphertext
 
 function lower(v:any){return String(v?.hash||v?.address_hash||v?.address||v||'').toLowerCase()}
 function hash(v:any){return lower(v?.transaction_hash||v?.tx_hash||v?.hash||'')}
+// Blockscout v2 transaction value and fee.value are unsigned WEI strings.
+// Persist exact decimal amounts; converting wei through Number loses precision.
 function aptmAmount(raw:unknown){
- if(typeof raw==='number'){if(!Number.isFinite(raw)||raw<0)throw Error('Invalid APTM value');return raw>1e12?raw/1e18:raw}
- const x=String(raw??'0');if(!/^\d+$/.test(x))throw Error('Invalid APTM value');return Number(BigInt(x))/1e18
+ const value=String(raw??'0');
+ if(!/^\d+$/.test(value))throw Error('Invalid APTM wei value');
+ return decimalAmount(value,18);
 }
 function decimalAmount(raw:string,decimals:number){
  const n=BigInt(raw),d=Math.max(0,Math.min(36,decimals));

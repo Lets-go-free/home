@@ -36,3 +36,15 @@ beiden Rohimport-Cursor bleiben getrennt von den kanonischen Reward-Cursorn.
 **Produktivfreigabe unverändert ausstehend:** vollständige NFT-/Bot-Claim-
 Zuordnung, native Auszahlungen, Preisbewertung und TLN/VOW-Reward-Worker.
 Die Edge Function und Reward-Crons nicht aktivieren.
+
+## Folgeprüfung: native Betragspräzision
+
+Blockscout-v2-Felder `transaction.value` und `transaction.fee.value` werden
+als **Wei-Ganzzahlstrings** interpretiert und vor Speicherung mit BigInt in
+exakte APTM-Dezimalstrings umgerechnet. Keine Umrechnung grosser Wei-Zahlen
+über JavaScript `Number` (Rundungsgefahr). Fehlerhafte bzw. bereits als
+Dezimalbetrag gelieferte Werte führen absichtlich zu einem Scan-Fehler.
+Automatischer Regressionstest: `tests/dao-reward-wei-precision.test.mjs`.
+
+Dies ist eine Korrektur am Rohimport, **keine** Fertigstellung der DAO-Claims,
+der NFT-Zuordnung oder des TLN/VOW-Reward-Jobs. Reward-Crons weiterhin aus.
