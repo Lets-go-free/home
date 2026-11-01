@@ -84,3 +84,17 @@ NFT-Token-IDs sind nur innerhalb eines NFT-Contracts eindeutig. Der DAO-Staging-
 weist deshalb bei identischer ID in mehreren NFT-Collections **keine** NFT-/Bot-Zuordnung zu.
 Dies vermeidet eine falsche Zuordnung aus dem aktuellen `nft_cache`; historische Ownership
 und die vollständige Reward-Engine bleiben weiterhin erforderlich.
+
+## Korrektur: Historische NFT-Besitzprüfung fehlt noch
+
+Der aktuelle `nft_cache` ist kein historischer Besitznachweis. Eine heute gehaltene
+NFT-ID kann bei einem früheren Claim einer anderen Wallet gehört haben. Deshalb
+speichert der serverseitige DAO-Staging-Import ab sofort **keine** `claim_nft_id`
+oder `claim_nft_name` mehr aus dem Cache-Abgleich. Der Zähler
+`claimNftCandidatesUnverified` ist ausdrücklich **nur diagnostisch**. Bereits
+vorhandene, im Browser bestätigte Zuordnungen bleiben durch insert-only geschützt.
+
+Für eine spätere bestätigte Zuordnung sind Contract-Adresse, Claim-ABI-Parameter
+und ein historischer Besitznachweis am Claim-Block erforderlich. Diese Logik ist
+**noch nicht implementiert**. Automatischen DAO-Cron und Edge Function weiterhin
+nicht aktivieren.
