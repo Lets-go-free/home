@@ -77,13 +77,29 @@ async function loadAddress(job:any){
  if(!/^0x[0-9a-f]{40}$/i.test(a))throw Error('Wallet has no valid EVM address');return a.toLowerCase()
 }
 async function json(url:string){const abort=new AbortController();const t=setTimeout(()=>abort.abort(),15000);try{const r=await fetch(url,{signal:abort.signal,headers:{accept:'application/json'}});if(!r.ok)throw Error('Explorer status '+r.status);return await r.json()}finally{clearTimeout(t)}}
+// Blockscout-compatible explorers do not consistently include block_number
+// in address token-transfer items. Resolve missing blocks from the canonical
+// transaction detail before deciding which page or event can advance a cursor.
+// Never guess a block from a page cursor or timestamp.
+const txBlockCache=new Map<string,number>()
+async function itemBlock(item:any){
+ const direct=Number(item.block_number??item.block);
+ if(Number.isSafeInteger(direct)&&direct>0)return direct;
+ const tx=hash(item);
+ if(!/^0x[0-9a-f]{64}$/.test(tx))throw Error('Transfer without block and transaction hash');
+ const cached=txBlockCache.get(tx);if(cached)return cached;
+ const detail=await json(`${EXPLORER}/transactions/${tx}`);
+ const block=Number(detail?.block_number??detail?.block);
+ if(!Number.isSafeInteger(block)||block<=0)throw Error('Transaction has no verified block');
+ txBlockCache.set(tx,block);return block;
+}
 async function paginate(path:string,cursor:number,handler:(items:any[])=>Promise<void>){
  let url=EXPLORER+path, count=0, max=cursor,complete=false;const visited=new Set<string>();
  while(url){
   if(visited.has(url)||++count>200)throw Error('Explorer pagination safety limit');visited.add(url);
   const response=await json(url);if(!Array.isArray(response.items))throw Error('Explorer missing items');
   let oldest=Infinity;const rows=[];
-  for(const t of response.items){const block=Number(t.block_number??t.block);if(!Number.isSafeInteger(block)||block<0)throw Error('Invalid block number');oldest=Math.min(oldest,block);max=Math.max(max,block);if(block>=Math.max(0,cursor-OVERLAP))rows.push(t)}
+  for(const t of response.items){const block=await itemBlock(t);oldest=Math.min(oldest,block);max=Math.max(max,block);if(block>=Math.max(0,cursor-OVERLAP))rows.push({...t,_verifiedBlock:block})}
   await handler(rows);
   if(!response.next_page_params){complete=true;break}
   if(cursor>0&&oldest<Math.max(0,cursor-OVERLAP)){complete=true;break}
@@ -112,7 +128,7 @@ async function process(job:any){
  const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
-   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t.block_number),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
+   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
   });for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');txCount+=rows.length
  });await updateState(job,RAW_TX_SCAN,lastTx);
  const fc=await state(job,RAW_FLOW_SCAN);
@@ -125,7 +141,7 @@ async function process(job:any){
    const log=Number(t.log_index??t.logIndex??t.index??-1);
    // Do not assign synthetic page indices for missing log_index: page order changes.
    if(!Number.isSafeInteger(log)||log<0)throw Error('Token transfer missing canonical log index');
-   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t.block_number),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
+   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
   });for(const row of rows){const candidate=txReferralCandidates.get(row.tx_hash);if(candidate&&isVerifiedReferralTransaction(address,candidate,[row]))verifiedReferralHashes.add(row.tx_hash)}await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
  });await updateState(job,RAW_FLOW_SCAN,lastFlow);
  return {transactions:txCount,flows:flowCount,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}

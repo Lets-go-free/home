@@ -23,3 +23,16 @@ SQL-Migration nach Einspielen des ZIP im Supabase SQL Editor ausführen. Die SQL
 6. mit bestehendem Browser-Resultat walletweise vergleichen, inklusive Monica 9 Mining + 1 Trading.
 7. vollständige Wiederholbarkeit, fehlende Logs dürfen Cursor nicht als fachlich verarbeitet markieren.
 8. erst danach Cron-Fenster DAO 04:05–05:30 und TLN 05:35–07:00 Europe/Zurich aktivieren.
+
+## Blockscout-Schnittstelle / Verifikation
+
+Der DAO-Staging-Worker prüft die Blocknummer jedes Transaktions-/ERC-20-Events.
+Wenn ein Token-Transfer keine `block_number` liefert, muss die Blocknummer anhand
+`/api/v2/transactions/{tx_hash}` nachgeladen werden. Transaktionsdetails werden
+für wiederholte Hashes zwischengespeichert. Ein fehlender oder ungültiger Block
+ist ein **Lauffehler**, kein Grund, den Scan-Cursor fortzuschreiben. Die
+beiden Rohimport-Cursor bleiben getrennt von den kanonischen Reward-Cursorn.
+
+**Produktivfreigabe unverändert ausstehend:** vollständige NFT-/Bot-Claim-
+Zuordnung, native Auszahlungen, Preisbewertung und TLN/VOW-Reward-Worker.
+Die Edge Function und Reward-Crons nicht aktivieren.
