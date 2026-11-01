@@ -218,7 +218,8 @@ async function historicalNftOwnership(nft:any,wallet:string,claimBlock:number){
  if(!/^0x[0-9a-f]{40}$/.test(contract)||!/^[0-9]+$/.test(id)||
     !Number.isSafeInteger(claimBlock)||claimBlock<=0)return {verified:false,reason:'invalid-input'};
  const root=`${EXPLORER}/tokens/${contract}/instances/${BigInt(id).toString()}/transfers`;
- let next=root;const visited=new Set<string>();let preceding:any=null;let lastBlock=Infinity;
+ let next=root;const visited=new Set<string>();let preceding:any=null;let precedingBlock=-1;
+ let precedingCount=0,lastBlock=Infinity,finished=false;
  for(let page=0;next;page++){
   if(page>=100||visited.has(next))return {verified:false,reason:'pagination-incomplete'};
   visited.add(next);
@@ -228,22 +229,25 @@ async function historicalNftOwnership(nft:any,wallet:string,claimBlock:number){
    const block=await itemBlock(item);
    if(block>lastBlock)return {verified:false,reason:'history-out-of-order'};
    lastBlock=block;
-   // A claim and transfer in the same block cannot be ordered reliably here.
    if(block===claimBlock)return {verified:false,reason:'same-block-ambiguous'};
    if(block<claimBlock){
-    if(preceding)return {verified:false,reason:'multiple-preceding-in-page'};
-    preceding=item;
-    // We have the most recent earlier transfer in a descending history.
-    break;
+    if(precedingBlock===-1){precedingBlock=block;preceding=item;}
+    if(block===precedingBlock){precedingCount++;continue;}
+    // A strictly older block means we have inspected every transfer in the
+    // latest prior block, even if its entries spanned multiple pages.
+    finished=true;break;
    }
   }
-  if(preceding)break;
+  if(finished)break;
   if(!response.next_page_params)break;
   const url=new URL(root);
   for(const [k,v] of Object.entries(response.next_page_params))if(v!=null)url.searchParams.set(k,String(v));
   next=url.toString();
  }
  if(!preceding)return {verified:false,reason:'no-prior-transfer'};
+ // Without transaction/log ordering, two transfers in the same prior block
+ // cannot establish the final owner, even if they name the same recipient.
+ if(precedingCount!==1)return {verified:false,reason:'prior-block-ambiguous'};
  const tokenType=String(preceding.token?.type||preceding.token_type||'').toUpperCase();
  if(tokenType!=='ERC-721')return {verified:false,reason:'not-proven-erc721'};
  const tokenId=String(preceding.total?.token_id??preceding.token_id??preceding.token_ids?.[0]??'');

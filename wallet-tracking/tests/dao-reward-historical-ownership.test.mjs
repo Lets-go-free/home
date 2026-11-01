@@ -20,6 +20,9 @@ assert.equal((await check([{items:[make(100,addr)],next_page_params:null}])).rea
 assert.equal((await check([{items:[make(101,other)],next_page_params:{index:1}},{items:[make(98,addr)],next_page_params:null}])).verified,true);
 assert.equal((await check([{items:[make(99,addr,'ERC-1155')],next_page_params:null}])).verified,false);
 assert.equal((await check([{items:[make(101,other)],next_page_params:{index:1}}],100)).reason,'no-prior-transfer');
+assert.equal((await check([{items:[make(99,addr),make(99,other)],next_page_params:null}])).reason,'prior-block-ambiguous');
+assert.equal((await check([{items:[make(99,addr)],next_page_params:{index:1}},{items:[make(99,other),make(98,addr)],next_page_params:null}])).reason,'prior-block-ambiguous');
+assert.equal((await check([{items:[make(99,addr)],next_page_params:{index:1}},{items:[make(98,other)],next_page_params:null}])).verified,true);
 assert.match(src,/historicallyVerifiedCandidates/);
 assert.match(src,/Candidate is diagnostic only/);
-console.log('6 NFT ownership evidence regression cases passed');
+console.log('9 NFT ownership evidence regression cases passed');
