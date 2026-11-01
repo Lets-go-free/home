@@ -1179,22 +1179,17 @@ async function onLoggedIn(session) {
   // startet ein normaler Login/Reload keinen allgemeinen Live-Grunddatenlauf mehr.
   // Der Refresh-State dient hier nur zur Anzeige, ob eine gezielte Aktualisierung sinnvoll ist.
   const cachedAt = await loadFromAutomatedCache();
-  // Pro Browser-Sitzung beim ersten Login die Wallet-Bestände erneut on-chain prüfen.
-  // Die geschützte Wallet-Liste bleibt im eingeloggten Client; kein Server-Export.
-  const sessionBalanceKey = `wt-first-balance-check-v1:${currentUser?.id || 'unknown'}`;
-  let forceSessionBalances = false;
-  try { forceSessionBalances = sessionStorage.getItem(sessionBalanceKey) !== 'done'; }
-  catch { forceSessionBalances = true; }
-  const autoRefreshNeeded = forceSessionBalances || wallets.some(w => Object.keys(CHAIN_CONFIG).some(c => walletAddressForChain(w,c) && CHAIN_CONFIG[c]?.balanceProvider && !refreshedToday(w,c,'balances')) || (w.evm && !refreshedToday(w,'bsc','project:tln_vow')) || !refreshedToday(w,'','nft'));
+  // 7.72: Login liest ausschliesslich den benutzerbezogenen Bestand aus Supabase.
+  // Der tägliche serverseitige Cron hält ihn aktuell. Ein erneuter Live-Scan erfolgt
+  // nur auf ausdrücklichen Klick oder beim gezielten Erstaufbau einer neuen Wallet.
+  const autoRefreshNeeded = false;
   if (cachedAt) {
     renderResults();
     renderSafeTokenTable();
     renderCustomTokenList();
     renderAllocationChart();
     renderCacheStatusNote(
-      autoRefreshNeeded
-        ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – tägliche Hintergrundprüfung ausstehend."
-        : "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – heute bereits automatisch geprüft."
+      "Wallet-Bestände aus Cache vom " + fmtSnapshotDateTime(cachedAt) + "."
     );
   } else {
     renderCacheStatusNote(wallets.length > 0
@@ -1231,34 +1226,9 @@ async function onLoggedIn(session) {
   const releaseNoticeShown=await maybeShowReleaseNotice();
   if(!releaseNoticeShown)maybeShowWelcomeModal();
 
-  // Phase 6.62: Cache-first bleibt erhalten, aber der erste aktive Start des Tages
-  // führt danach wieder kontrollierte Delta-Prüfungen aus. Es gibt keinen Blind-/Vollscan:
-  // Wallet-Bestände verwenden Activity-Checks; DAO1/APTMDAO arbeitet inkrementell aus den
-  // persistenten Transaktions-/Flow-/Team-Caches. Bereits heute geprüfte Daten werden übersprungen.
-  if (autoRefreshNeeded && wallets.length > 0) {
-    renderCacheStatusNote(cachedAt
-      ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – tägliche Hintergrundprüfung wird gestartet."
-      : "Noch kein gespeicherter Stand – täglicher Erstaufbau wird gestartet.");
-  }
-  if(wallets.length){
-    setTimeout(async()=>{
-      try{
-        let centralDailyResult=null;
-        if(autoRefreshNeeded){
-          centralDailyResult=await loadAll({automatic:true,forceSessionBalances});
-          const failed=Array.isArray(centralDailyResult?.failures)&&centralDailyResult.failures.length>0;
-          if(forceSessionBalances&&!failed){
-            try{sessionStorage.setItem(sessionBalanceKey,'done');}catch{}
-          }
-        }
-        // Wenn der zentrale Tageslauf gerade den NFT-Current-State erfolgreich geladen hat,
-        // darf DAO1 denselben Apertum-NFT-Bestand nicht nochmals live abrufen.
-        const centralNftFailed=Array.isArray(centralDailyResult?.failures)&&centralDailyResult.failures.some(f=>/\bNFTs?:/i.test(String(f?.error||f?.message||"")));
-        if(window.DAO1Project?.runDailyDeltaRefresh) await window.DAO1Project.runDailyDeltaRefresh({useCachedCurrentNfts:!!autoRefreshNeeded&&!centralNftFailed});
-        await refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries nach Tageslauf",e));
-      }catch(e){console.warn("Täglicher automatischer Delta-Refresh",e);}
-    },650);
-  }
+  // Kein automatischer Browser-Datenjob beim Login (7.72).
+  // Projekt-Summaries wurden oben bereits cache-only geladen; spezifische
+  // Discovery-/Team-/LP-Aktionen bleiben in ihren jeweiligen Bereichen verfügbar.
   markRequestAudit("login-ready");
 }
 
@@ -2974,7 +2944,7 @@ function exportTaxPdf(){
 
 // Phase 4.95 · zentrale Datenstands-Metadaten für Tabs + Systemübersicht
 const WT_DATA_STATUS = window.WT_DATA_STATUS || (window.WT_DATA_STATUS = {});
-function wtFormatDataStamp(v){if(!v)return null;const d=new Date(v);if(Number.isNaN(d.getTime()))return null;return d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});}
+function wtFormatDataStamp(v){if(!v)return null;const d=new Date(v);if(Number.isNaN(d.getTime()))return null;return d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});}
 function setWtDataStatus(key,{updatedAt=null,cacheAt=null,source=null,label=null}={}){const prev=WT_DATA_STATUS[key]||{},next={...prev,updatedAt,cacheAt,source,label};if(JSON.stringify(prev)===JSON.stringify(next))return;WT_DATA_STATUS[key]=next;document.dispatchEvent(new CustomEvent("wallettracking:data-status",{detail:{key,...next}}));}
 function wtDataStatusText(key){const x=WT_DATA_STATUS[key];if(!x)return "Aktualisierungszeitpunkt noch nicht verfügbar";const u=wtFormatDataStamp(x.updatedAt),c=wtFormatDataStamp(x.cacheAt);if(c&&x.source==="cache")return `aus Cache vom ${c}`;if(u)return `Daten aktualisiert am ${u}`;if(c)return `aus Cache vom ${c}`;return "Aktualisierungszeitpunkt noch nicht verfügbar";}
 function ensureTabDataStatus(panel,name){if(!panel||name==="admin")return;let el=panel.querySelector(":scope > .wt-tab-data-status");if(!el){el=document.createElement("div");el.className="wt-tab-data-status";panel.insertBefore(el,panel.firstChild);}const key=name==="tlnvow"?"tln":name==="dao1"?"dao":name;el.innerHTML=`<strong>Datenstand:</strong> ${escapeAttr(wtDataStatusText(key).replace(/^Datenstand:\s*/,""))}`;}
@@ -5071,7 +5041,7 @@ async function loadCachedCurrentPricesAtStart(){
   if(cached?.payload&&hydrateGlobalCurrentPriceSnapshot(cached.payload)){
     currentPriceCacheState={capturedAt:cached.capturedAt,source:"supabase",slotKey:cached.slotKey};
     setCentralPriceStatus(`${formatCurrentPriceTimestamp(cached.capturedAt)} · global gespeichert${cached.currentSlot?" · aktueller 15-Min.-Slot":""}.`,cached.currentSlot?"success":"warning");
-    setWtDataStatus("dashboard",{updatedAt:cached.capturedAt,cacheAt:cached.capturedAt,source:"cache",label:"Dashboard"});
+    setWtDataStatus("prices",{updatedAt:cached.capturedAt,cacheAt:cached.capturedAt,source:"cache",label:"Tokenpreise"});
     rerenderAllCurrentPriceViews();renderDashboard();return currentPriceCacheState;
   }
   setCentralPriceStatus("Noch kein global gespeicherter Preisstand vorhanden.","warning");renderDashboard();return null;
@@ -5148,7 +5118,7 @@ async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
   const comparisonNote=comparison?.missing?` · ${comparison.missing} DEX-Vergleich(e) nicht verfügbar (Details in 24-Std.-Spalte)`:"";
   const partialNote=!cgOk&&generalSources?.coinGecko?.ids?" · teilweise aktualisiert; CoinGecko nicht erreichbar, letzte gueltige CoinGecko-Kurse beibehalten":"";
   setCentralPriceStatus(`${stamp} · globaler Preisstand${saved?" gespeichert":" (Speichern fehlgeschlagen)"}${partialNote}${comparisonNote}.`,saved&&cgOk?"success":"warning");
-  setWtDataStatus("tracking",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Wallet-Tracking"});
+  setWtDataStatus("prices",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Tokenpreise"});
   window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,sources:generalSources,tln:tlnState}}));
   finishCentralPriceJob(currentPriceCacheState.capturedAt||new Date());
   diag.elapsedMs=Math.round((performance.now()-auditT0)*10)/10;
@@ -7241,6 +7211,16 @@ async function refreshDashboardProjectSummaries(){
 }
 window.refreshDashboardProjectSummaries=refreshDashboardProjectSummaries;
 
+function confirmDashboardDataRefresh() {
+  const stamp = walletSnapshotCapturedAt
+    ? new Date(walletSnapshotCapturedAt).toLocaleString('de-CH', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})
+    : 'kein gespeicherter Wallet-Bestand vorhanden';
+  const message = `Datenstand Aktualisierungszeitpunkt: ${stamp}.\nMöchtest du wirklich nochmals aktualisieren? Eine Aktualisierung kann je nach Datenbestand etwas länger dauern.`;
+  if (!window.confirm(message)) return;
+  return loadAll();
+}
+window.confirmDashboardDataRefresh = confirmDashboardDataRefresh;
+
 async function loadAll(options = {}) {
   const automatic=!!options.automatic;
   markRequestAudit(automatic?"refresh:auto:start":"refresh:manual:start");
@@ -7912,7 +7892,7 @@ function renderDashboard(){
   if(actionCount)loadDashboardTaskAliases().catch(e=>console.warn("Aufgabennamen",e));
   const actionPanel=`<details class="dashboard-card dashboard-action-card" ${actionCount?"open":""}><summary class="dashboard-action-summary"><span><strong>Was muss ich tun?</strong>${actionCount?`<small>${actionCount} offene Aufgabe${actionCount===1?"":"n"}</small>`:`<span class="dashboard-action-all-ok" title="Keine offenen Aufgaben">✓</span><small>Keine offenen Aufgaben</small>`}</span><span class="dashboard-action-chevron" aria-hidden="true">⌄</span></summary>${actionCount?`<div class="dashboard-action-list dashboard-action-grid">${actionItems.join("")}</div>`:`<div class="dashboard-action-empty">Aktuell ist keine Aktion nötig.</div>`}</details>`;
   root.innerHTML=`
-    <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>
+    <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="confirmDashboardDataRefresh()">Daten aktualisieren</button></div>
     <section class="dashboard-kpi-grid dashboard-kpi-grid-main">
       <article class="dashboard-kpi dashboard-kpi-blue dashboard-wealth-kpi"><span class="dashboard-kpi-main-title">Vermögen</span><div class="dashboard-wealth-lines" style="display:grid;grid-template-columns:1fr;gap:0">
         <div style="display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:16px;align-items:center;padding:10px 0;border-top:1px solid rgba(80,110,160,.16)"><strong style="font-size:clamp(1.35rem,2.2vw,2rem);white-space:nowrap">${money(portfolio.totalUsd)}</strong><span style="font-size:.82rem;line-height:1.35"><b>Gesamtvermögen</b><br><span style="opacity:.78">aktuell bewertbarer Cache-Stand</span></span></div>
@@ -7929,7 +7909,7 @@ function renderDashboard(){
     <div class="dashboard-section-title"><h3>Projekte</h3><span>Nur vorhandene Projekte</span></div>
     <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}</section>
     ${isAdmin?`<div class="dashboard-section-title dashboard-admin-title"><h3>Administration</h3><span>Nur Admin</span></div><section class="dashboard-admin-grid"><article class="dashboard-project-card dashboard-admin-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Administration</span><h3>Prüfliste & Verwaltung</h3></div><strong>Admin</strong></div><div class="dashboard-admin-links"><button class="secondary" onclick="showTab('admin');showAdminTab('customtokens')">Neue sichere Token prüfen</button><button class="secondary" onclick="showTab('tlnvow')">TLN-Staking-Varianten prüfen</button></div><div class="dashboard-cache-note">Administrationsfunktionen sind bewusst vom Projektbereich getrennt.</div></article></section>`:""}`;
-  setWtDataStatus("dashboard",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:currentPriceCacheState.capturedAt,source:"cache",label:"Dashboard"});
+  setWtDataStatus("dashboard",{updatedAt:walletSnapshotCapturedAt,cacheAt:walletSnapshotCapturedAt,source:"cache",label:"Wallet-Bestände"});
   syncCentralPriceJobUi();
 }
 window.renderDashboard=renderDashboard;
@@ -7979,6 +7959,7 @@ async function loadSnapshotsFromDb() {
   return snapshots;
 }
 
+let walletSnapshotCapturedAt = null; // nur Snapshot des angemeldeten Users; niemals globaler Preiscache
 // ---- Automatisierter Tages-Cache (Bestände) ----
 // Rekonstruiert walletData je Wallet + Chain aus dem automatisierten Snapshot, statt live abzufragen.
 // Gibt den Zeitstempel des Snapshots zurück (für die "zuletzt geladen"-Anzeige) oder null,
@@ -7986,7 +7967,10 @@ async function loadSnapshotsFromDb() {
 async function loadFromAutomatedCache() {
   const { data: snap, error: e1 } = await sb.from("snapshots").select("*").eq("user_id", currentUser.id).eq("is_automated", true).maybeSingle();
   if (e1) { console.error(e1); return null; }
-  if (!snap) return null;
+  if (!snap) { walletSnapshotCapturedAt = null;
+    setWtDataStatus("dashboard",{updatedAt:null,cacheAt:null,source:"cache",label:"Wallet-Bestände"});
+    setWtDataStatus("tracking",{updatedAt:null,cacheAt:null,source:"cache",label:"Wallet-Bestände"});
+    return null; }
 
   const { data: items, error: e2 } = await sb.from("snapshot_items").select("*").eq("snapshot_id", snap.id);
   if (e2) { console.error(e2); return null; }
@@ -8017,6 +8001,9 @@ async function loadFromAutomatedCache() {
   });
 
   walletData = byWalletChain;
+  walletSnapshotCapturedAt = snap.created_at;
+  setWtDataStatus("dashboard",{updatedAt:snap.created_at,cacheAt:snap.created_at,source:"cache",label:"Wallet-Bestände"});
+  setWtDataStatus("tracking",{updatedAt:snap.created_at,cacheAt:snap.created_at,source:"cache",label:"Wallet-Bestände"});
   return snap.created_at;
 }
 
@@ -8079,6 +8066,9 @@ async function createSnapshot(isAutomated) {
     // Eine fehlgeschlagene Operation lässt den alten Tages-Snapshot unverändert.
     const {error} = await sb.rpc("wallettracking_replace_own_automated_snapshot", {p_items: items});
     if (error) throw new Error("Automatischen Snapshot atomar speichern: " + error.message);
+    walletSnapshotCapturedAt = new Date().toISOString();
+    setWtDataStatus("dashboard",{updatedAt:walletSnapshotCapturedAt,cacheAt:walletSnapshotCapturedAt,source:"cache",label:"Wallet-Bestände"});
+    setWtDataStatus("tracking",{updatedAt:walletSnapshotCapturedAt,cacheAt:walletSnapshotCapturedAt,source:"cache",label:"Wallet-Bestände"});
     return;
   }
   // Manuelle historische Snapshots bleiben bewusst unverändert und unabhängig.
@@ -8152,6 +8142,35 @@ function renderSnapshotManager() {
       <button class="remove" onclick="deleteSnapshot('${s.id}')">Löschen</button>
     </div>
   `).join("");
+}
+
+// Phase 7.74: Historischer automatischer Bestandsverlauf; unabhängig von manuellen Snapshots.
+let dailyBalanceHistoryLoaded = null;
+async function loadDailyBalanceHistory(force = false) {
+  const el = document.getElementById("dailyBalanceHistoryList");
+  if (!el || !currentUser) return;
+  if (dailyBalanceHistoryLoaded === currentUser.id && !force) return;
+  el.textContent = "Bestandsverlauf wird geladen …";
+  const { data, error } = await sb.from("wallet_daily_balance_history")
+    .select("sample_day,captured_at,wallet_count,position_count,total_usd,unpriced_positions")
+    .eq("user_id", currentUser.id)
+    .order("sample_day", { ascending: false }).limit(500);
+  if (error) {
+    el.textContent = "Bestandsverlauf nicht verfügbar: " + error.message;
+    return;
+  }
+  dailyBalanceHistoryLoaded = currentUser.id;
+  const rows = data || [];
+  if (!rows.length) { el.textContent = "Noch keine nächtlichen Bestandsaufnahmen vorhanden."; return; }
+  el.innerHTML = `<div style="overflow-x:auto"><table class="data-table" style="width:100%">
+    <thead><tr><th>Stichtag</th><th>Auflösung</th><th>Wallets</th><th>Positionen</th><th style="text-align:right">Wert in USD</th><th>Ohne Kurs</th></tr></thead>
+    <tbody>${rows.map(r => {
+      const age=Math.floor((new Date().setHours(0,0,0,0)-new Date(String(r.sample_day)+"T00:00:00").getTime())/86400000);
+      const resolution=age<=7?"Täglich":age<=365?"Wöchentlich":"Monatlich";
+      const stamp=String(r.sample_day).split("-").reverse().join(".");
+      const value=Number(r.total_usd);
+      return `<tr><td>${stamp}</td><td>${resolution}</td><td>${Number(r.wallet_count)||0}</td><td>${Number(r.position_count)||0}</td><td style="text-align:right">${Number.isFinite(value)?value.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}):"–"}</td><td>${Number(r.unpriced_positions)||0}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
 }
 
 // ---- Verlauf-Grafik (ein Token über Zeit, Snapshots + aktueller Bestand) ----

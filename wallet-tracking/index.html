@@ -1,4 +1,5 @@
-<!-- Phase 7.71: Händler-Bestände: isolierte Tokenfehler und RPC-Fallback; vorher Phase 7.69: VOW/v$-Handelscache mit nachholendem BSC-Scan und sichtbarer Checkpoint-Lücke. -->
+<!-- Phase 7.74: Automatischer Bestandsverlauf mit 7T/1J/Monats-Retention; manuelle Snapshots unverändert. -->
+<!-- Phase 7.74: Tracking-Datenstand aus benutzerbezogenem Snapshot, Preisstand getrennt; zuvor Phase 7.72: Login cache-only, benutzerbezogener Wallet-Datenstand, Bestätigung vor manuellem Refresh. Vorher Phase 7.71: Händler-Bestände: isolierte Tokenfehler und RPC-Fallback; vorher Phase 7.69: VOW/v$-Handelscache mit nachholendem BSC-Scan und sichtbarer Checkpoint-Lücke. -->
 <!-- Phase 7.68: Täglicher serverseitiger Wallet-Bestandsjob, gesicherte Tages-Snapshots und Browser-Cron-Koordination. -->
 <!-- Phase 7.67: Händler-Wallets im VOW/v$-Handel mit Kopierbutton. -->
 <!-- Phase 7.66: Erster Browser-Login prüft Wallet-Bestände pro Sitzung; Tages-Cron-Implementierung benötigt den geschützten wallet-private Backend-Code. -->
@@ -213,7 +214,7 @@
     <div id="tab-tracking" class="tab-panel">
       <div id="centralProjectRefreshScratch" style="display:none"></div>
       <div class="note" style="margin-bottom:14px">
-        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Beim ersten aktiven Start pro Kalendertag folgt automatisch eine kontrollierte Delta-Prüfung. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. Der zentrale manuelle Button „Daten aktualisieren“ bleibt im Dashboard. Aktuelle Kurse werden global automatisch je 15-Minuten-Slot nachgeführt; der manuelle Preis-Refresh ist nur für Admins sichtbar. Die Token-Discovery läuft bei einer neu erfassten Wallet genau einmal automatisch; spätere Discovery-Aktualisierungen und Gebühren bleiben bewusst manuell.
+        Beim Login wird der letzte benutzerbezogene Tages-Snapshot geladen. Eine zusätzliche Live-Prüfung erfolgt nur nach Klick auf «Daten aktualisieren». Der Zeitstempel im Tab «Wallet-Bestände» bezeichnet den Wallet-Snapshot; der globale Tokenpreisstand wird separat ausgewiesen. Der zentrale manuelle Button „Daten aktualisieren“ bleibt im Dashboard. Aktuelle Kurse werden global automatisch je 15-Minuten-Slot nachgeführt; der manuelle Preis-Refresh ist nur für Admins sichtbar. Die Token-Discovery läuft bei einer neu erfassten Wallet genau einmal automatisch; spätere Discovery-Aktualisierungen und Gebühren bleiben bewusst manuell.
         Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
       </div>
 
@@ -248,6 +249,14 @@
         </details>
       </div>
 
+
+      <div class="custom-token-card">
+        <details id="dailyHistoryDetails" ontoggle="if(this.open)loadDailyBalanceHistory()">
+          <summary style="cursor:pointer;font-weight:600">Automatischer Bestandsverlauf (7 Tage täglich · bis 365 Tage wöchentlich · danach monatlich)</summary>
+          <div class="muted" style="margin:8px 0">Die nächtlichen Bestände werden historisiert und automatisch verdichtet. Manuelle Snapshots bleiben unverändert.</div>
+          <div id="dailyBalanceHistoryList" style="margin-top:10px">Zum Laden aufklappen.</div>
+        </details>
+      </div>
 
       <h2>Summary (alle Wallets)</h2>
 
@@ -1337,7 +1346,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 31.10.2026 19:24:40 CET · Phase 7.71 · Build 20261031-192440</span><br>
+    <span id="footerVersionLine">Version: 01.11.2026 10:19:07 CET · Phase 7.74 · Build 20261101-101907</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1362,8 +1371,8 @@
 <script src="./projects/dao1/help.js?v=20261009-014029"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="7.71";window.BUILD_ID="20261031-192440";</script>
-<script src="./js/app.js?v=20261029-111530"></script>
+<script>window.APP_VERSION="7.74";window.BUILD_ID="20261101-101907";</script>
+<script src="./js/app.js?v=20261101-101907"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1382,6 +1391,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 31.10.2026 19:24:40 CET · Phase 7.71 · Build 20261031-192440</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 01.11.2026 10:19:07 CET · Phase 7.74 · Build 20261101-101907</div>
 </body>
 </html>
