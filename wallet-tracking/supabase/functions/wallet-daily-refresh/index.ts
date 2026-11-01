@@ -258,7 +258,7 @@ Deno.serve(async req=>{
  if(!SECRET||req.headers.get('x-wallet-refresh-secret')!==SECRET)return Response.json({ok:false,error:'Unauthorized'},{status:401});
  if(!DB_URL||!SERVICE_KEY||!MASTER)return Response.json({ok:false,error:'Server secrets missing'},{status:500});
  let body:any={};try{body=await req.json()}catch{}
- if(hourCH()<3&&body?.run_now!==true)return Response.json({ok:true,skipped:'before 03:00 Europe/Zurich'});
+ if((hourCH()<1||hourCH()>=4)&&body?.run_now!==true)return Response.json({ok:true,skipped:'outside 01:00–04:00 Europe/Zurich'});
  const day=todayCH();let job:any=null;
  try{
   const claim=await sb.rpc('wallettracking_daily_claim',{p_day:day});if(claim.error)throw claim.error;
