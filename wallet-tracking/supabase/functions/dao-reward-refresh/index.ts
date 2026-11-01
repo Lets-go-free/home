@@ -174,19 +174,29 @@ async function knownWalletNfts(job:any){
  const {data,error}=await sb.from('nft_cache').select('nfts').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).maybeSingle();
  if(error)throw error;
  const known=new Map<string,any>();
- for(const nft of (Array.isArray(data?.nfts)?data.nfts:[])){
-  if(String(nft?.chain||'').toLowerCase()!==CHAIN)continue;
-  if(nft?.possibleSpam||nft?.userMarkedSpam)continue;
-  const id=String(nft?.tokenId??'');
-  if(!/^\d+$/.test(id))continue;
-  // Token IDs are only unique inside an NFT contract. Two different NFT
-  // collections may both contain #42; never silently select the last one.
-  const normalizedId=BigInt(id).toString();
-  const contract=lower(nft?.tokenAddress);
-  if(!/^0x[0-9a-f]{40}$/.test(contract))continue;
+ // Current NFT inventory is insufficient for older claims. The canonical DAO
+ // application also reads project_nft_ownership, including historical bots.
+ // These entries are only candidates: ownership at the claim block must still
+ // be established independently from the on-chain transfer history.
+ const {data:history,error:historyError}=await sb.from('project_nft_ownership')
+  .select('chain_key,nft_contract,nft_id,nft_name')
+  .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT);
+ if(historyError)throw historyError;
+ const add=(idValue:unknown,contractValue:unknown,nft:any)=>{
+  const id=String(idValue??'');if(!/^\d+$/.test(id))return;
+  const normalizedId=BigInt(id).toString();const contract=lower(contractValue);
+  if(!/^0x[0-9a-f]{40}$/.test(contract))return;
   const prior=known.get(normalizedId);
-  if(prior===undefined)known.set(normalizedId,{...nft,_contract:contract});
-  else if(prior!==null && prior._contract!==contract)known.set(normalizedId,null);
+  if(prior===undefined)known.set(normalizedId,{...nft,tokenId:normalizedId,_contract:contract});
+  else if(prior!==null&&prior._contract!==contract)known.set(normalizedId,null);
+ };
+ for(const nft of (Array.isArray(data?.nfts)?data.nfts:[])){
+  if(String(nft?.chain||'').toLowerCase()!==CHAIN||nft?.possibleSpam||nft?.userMarkedSpam)continue;
+  add(nft?.tokenId,nft?.tokenAddress,nft);
+ }
+ for(const nft of (history||[])){
+  if(String(nft?.chain_key||'').toLowerCase()!==CHAIN)continue;
+  add(nft?.nft_id,nft?.nft_contract,{name:nft?.nft_name,historical:true});
  }
  return known;
 }
