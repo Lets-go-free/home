@@ -22,3 +22,8 @@ Damit kann ein späterer Testimport nicht die Browser-Discovery-Cursor nach vorn
 5. Erst dann die beiden unabhängigen Edge Functions deployen und die jeweiligen Cron-Jobs aktivieren.
 
 **Ausdrücklich:** Vorliegendes Paket ist ein Sicherheitsfix des Staging-Workers, **kein fertiger Reward-Job**. `dao-reward-refresh` weiterhin nicht deployen/aktivieren; TLN-Cron ebenfalls nicht einrichten.
+
+## Update 6.09 – Schutz vorhandener Reward-Anreicherungen
+Der DAO-Staging-Import liest vor jedem Upsert vorhandene Zeilen anhand des kanonischen TX-/Flow-Schlüssels und behält bereits persistierte Klassifikation, NFT-/Bot-Zuordnung, Claim-/Referral-Information und historische Preise bei. Nur fehlende Rohdatenfelder werden ergänzt. Dies verhindert, dass ein später Test des Rohimporters die bereits ausgewerteten Rewards des bestehenden Browsers auf Nullwerte zurücksetzt.
+
+**Nicht produktionsfreigegeben:** Der Read-then-Upsert-Schutz ist keine transaktionale Garantie gegen parallel laufende Browser-Jobs. Dafür benötigt die finale Version eine atomare SQL-Merge-Operation bzw. eigene Roh-Tabellen. Die DAO-Claim-/Referral-Anreicherung und der TLN/VOW-Worker fehlen weiterhin. Der Worker darf deshalb noch nicht deployt oder per Cron aktiviert werden.
