@@ -1,3 +1,4 @@
+// Phase 7.75: Password recovery gate vor App-Initialisierung.
 // Phase 7.68 · 29.10.2026 11:15:30 CET: Atomare Speicherung automatischer Snapshots per user-gebundener SQL-Transaktion.
 // Phase 7.66 · 28.10.2026: Erster Browser-Login pro Sitzung prüft Wallet-Bestände erneut; bestehende Projekt-/Discovery-Jobs unverändert. Basis 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
 // Phase 7.55 · 09.10.2026 00:31:46 CEST: Projekt-Token aus der Dashboard-Kursübersicht ausblenden; standardmäßig sichtbar, weiterhin nur bei vorhandenem Projekt. Release-READMEs unter docs/releases archiviert; Usertests APTM-24h und Entdecken bestätigt. Build 20261009-003146.
@@ -444,7 +445,7 @@ async function sendPasswordReset(){
   const {email}=authCredentials();
   if(!email){authStatus("Bitte zuerst deine E-Mail-Adresse eingeben.",true);return;}
   authStatus("Passwort-Reset wird gesendet …");
-  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:REDIRECT_URL});
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:REDIRECT_URL+"?wt_recovery=1"});
   authStatus(error?("Fehler: "+error.message):"Reset-Mail verschickt. Dies ist nur bei vergessenem Passwort nötig.",!!error);
 }
 async function sendMagicLink() {
@@ -996,18 +997,86 @@ async function logout() {
   location.reload();
 }
 
+// Recovery wird VOR getSession() erkannt: Supabase kann den URL-Hash dabei entfernen.
+const WT_RECOVERY_KEY="wt_password_recovery_active_v1";
+const wtRecoveryUrlDetected=(()=>{
+  const params=new URLSearchParams(window.location.hash.replace(/^#/,""));
+  const query=new URLSearchParams(window.location.search);
+  return params.get("type")==="recovery"||query.get("type")==="recovery"||query.get("wt_recovery")==="1";
+})();
+let wtRecoveryActive=wtRecoveryUrlDetected;
+let wtRecoverySaving=false;
+function wtRecoveryStatus(message,isError=false){
+  const el=document.getElementById("wtRecoveryStatus");
+  if(el){el.textContent=String(message||"");el.classList.toggle("error",!!isError);}
+}
+function wtShowRecoveryGate(message=""){
+  const gate=document.getElementById("wtPasswordRecoveryGate");
+  if(gate)gate.style.display="block";
+  const login=document.getElementById("authGate");if(login)login.style.display="none";
+  const app=document.getElementById("appContent");if(app)app.style.display="none";
+  const actions=document.getElementById("heroUserActions");if(actions)actions.style.display="none";
+  wtRecoveryStatus(message);
+}
+function wtEndRecoveryUi(){
+  wtRecoveryActive=false;
+  try{sessionStorage.removeItem(WT_RECOVERY_KEY);}catch(_){}
+  const gate=document.getElementById("wtPasswordRecoveryGate");if(gate)gate.style.display="none";
+  const login=document.getElementById("authGate");if(login)login.style.display="block";
+  const app=document.getElementById("appContent");if(app)app.style.display="none";
+  const actions=document.getElementById("heroUserActions");if(actions)actions.style.display="none";
+  document.body.classList.remove("wt-auth-session-expired");
+  const title=login?.querySelector("h3");if(title)title.textContent="Login";
+  for(const id of ["wtRecoveryPassword","wtRecoveryPasswordRepeat"]){const el=document.getElementById(id);if(el)el.value="";}
+  // URL-Tokens nicht in der Adresszeile behalten (nur auf der WalletTracking-Startseite).
+  try{history.replaceState(null,"",window.location.pathname);}catch(_){}
+}
+async function wtCompletePasswordRecovery(){
+  if(!wtRecoveryActive||wtRecoverySaving)return;
+  const a=String(document.getElementById("wtRecoveryPassword")?.value||"");
+  const b=String(document.getElementById("wtRecoveryPasswordRepeat")?.value||"");
+  if(a.length<8){wtRecoveryStatus("Das Passwort muss mindestens 8 Zeichen haben.",true);return;}
+  if(a!==b){wtRecoveryStatus("Die beiden Passwörter stimmen nicht überein.",true);return;}
+  wtRecoverySaving=true;
+  const btn=document.getElementById("wtRecoverySubmit");if(btn)btn.disabled=true;
+  wtRecoveryStatus("Neues Passwort wird gespeichert …");
+  try{
+    const {data:sessionData,error:sessionError}=await sb.auth.getSession();
+    if(sessionError||!sessionData?.session?.user)throw new Error("Der Wiederherstellungslink ist ungültig oder abgelaufen. Bitte fordere einen neuen Link an.");
+    const {error}=await sb.auth.updateUser({password:a});
+    if(error)throw error;
+    // Nach erfolgreichem Setzen neue Anmeldung mit dem neuen Passwort verlangen.
+    const {error:signoutError}=await sb.auth.signOut();
+    if(signoutError)throw signoutError;
+    wtEndRecoveryUi();
+    authStatus("Passwort erfolgreich geändert. Bitte melde dich mit dem neuen Passwort an.");
+  }catch(error){wtRecoveryStatus("Passwort konnte nicht geändert werden: "+(error?.message||error),true);}
+  finally{wtRecoverySaving=false;if(btn)btn.disabled=false;}
+}
+async function wtCancelPasswordRecovery(){
+  try{await sb.auth.signOut();}catch(_){}
+  wtEndRecoveryUi();
+  authStatus("Wiederherstellung abgebrochen. Du kannst einen neuen Link anfordern.");
+}
 async function initAuth() {
-  const { data: { session } } = await sb.auth.getSession();
+  if(wtRecoveryActive)wtShowRecoveryGate("Wiederherstellungslink wird überprüft …");
+  // Listener zuerst registrieren: PASSWORD_RECOVERY kann während getSession() eintreffen.
   sb.auth.onAuthStateChange((event, newSession) => {
+    if(event==="PASSWORD_RECOVERY"){
+      wtRecoveryActive=true;
+      wtShowRecoveryGate("Bitte jetzt ein neues Passwort festlegen.");
+      return;
+    }
+    if(wtRecoveryActive){
+      // SIGNED_IN und INITIAL_SESSION im Recovery-Modus dürfen die App nicht starten.
+      if(event==="SIGNED_OUT")return;
+      if(newSession?.user)wtShowRecoveryGate("Bitte jetzt ein neues Passwort festlegen.");
+      return;
+    }
     if(newSession?.user){
       wtRestoreAuthenticatedUi(newSession);
-      if(event==="PASSWORD_RECOVERY"){setTimeout(()=>{try{showTab("account-data");}catch(_){ }const st=document.getElementById("accountPasswordStatus");if(st)st.textContent="Reset-Link bestätigt. Bitte jetzt ein neues Passwort setzen.";},0);}
-      // Magic-Link/OAuth/Redirect kann die Session erst nach dem initialen getSession() liefern.
-      // Deshalb nie anhand eines CSS-Strings entscheiden, sondern die App-Initialisierung
-      // idempotent über User-ID + laufendes Promise absichern. TOKEN_REFRESHED darf eine
-      // bereits initialisierte App nicht erneut komplett laden.
       if(!(event==="TOKEN_REFRESHED" && wtAuthReadyUserId===String(newSession.user.id))){
-        setTimeout(()=>{wtEnsureAuthenticatedApp(newSession,event).catch(()=>{});},0);
+        setTimeout(()=>{if(!wtRecoveryActive)wtEnsureAuthenticatedApp(newSession,event).catch(()=>{});},0);
       }
       return;
     }
@@ -1015,11 +1084,14 @@ async function initAuth() {
       wtRenderSessionExpiredState(event==="SIGNED_OUT"?"Sitzung beendet – bitte neu anmelden.":"Benutzerkonto ist nicht mehr angemeldet.");
     }
   });
-  if (session) {
-    await wtEnsureAuthenticatedApp(session,"initial-getSession");
-  } else {
-    currentUser=null;
+  const {data:{session},error}=await sb.auth.getSession();
+  if(wtRecoveryActive){
+    wtShowRecoveryGate(session?.user ? "Bitte jetzt ein neues Passwort festlegen." : "Wiederherstellungslink ungültig oder abgelaufen. Bitte abbrechen und einen neuen Link anfordern.");
+    return;
   }
+  if(error)console.warn("WalletTracking Auth-Initialisierung",error);
+  if(session)await wtEnsureAuthenticatedApp(session,"initial-getSession");
+  else currentUser=null;
 }
 
 async function onLoggedIn(session) {
