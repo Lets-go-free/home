@@ -13,3 +13,8 @@ assert.doesNotMatch(source,/const merged=\{\.\.\.old\}/);
 assert.doesNotMatch(source,/await upsert\('project_transactions'/);
 assert.doesNotMatch(source,/cron\.schedule|CREATE EXTENSION|createSnapshot/i);
 console.log('Reward staging worker safety checks passed');
+
+// Contract-pinned referral evidence may be observed but must not rewrite enriched claims.
+for (const constant of ['REFERRAL_WALLET','REFERRAL_REWARD_CONTRACT','REFERRAL_WUSDT_TOKEN','isVerifiedReferralTransaction']) assert.ok(source.includes(constant));
+assert.match(source, /classification:'observational-only'/);
+assert.doesNotMatch(source, /claim_nft_subtype\s*:/);

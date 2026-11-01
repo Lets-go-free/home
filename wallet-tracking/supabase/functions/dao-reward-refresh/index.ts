@@ -11,6 +11,18 @@ const enc=new TextEncoder(),dec=new TextDecoder()
 const EXPLORER='https://explorer.apertum.io/api/v2'
 const OVERLAP=250
 const PROJECT='dao1', CHAIN='apertum'
+// Contract evidence must match the canonical DAO browser rules; never infer
+// rewards from a token symbol or an unverified incoming transfer alone.
+const REFERRAL_WALLET='0x239c5822a0d2a67e629d7a3b5c8180721e228b47'
+const REFERRAL_REWARD_CONTRACT='0xcd40d3bcfc29c51edb1fdd78580578362366f856'
+const REFERRAL_WUSDT_TOKEN='0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f'
+function isVerifiedReferralTransaction(address:string,tx:any,flows:any[]){
+ const method=String(tx?.method||'').toLowerCase()
+ return address===REFERRAL_WALLET
+  && lower(tx?.to_address)===REFERRAL_REWARD_CONTRACT
+  && (!method||method==='withdraw'||method==='contract call'||method.startsWith('0x'))
+  && flows.some(f=>f.direction==='eingang'&&lower(f.token_address)===REFERRAL_WUSDT_TOKEN&&lower(f.counterparty_address)===REFERRAL_REWARD_CONTRACT)
+}
 // Do not advance the canonical browser/claim cursors until reward enrichment is implemented.
 const RAW_TX_SCAN='reward_server_raw_transactions_v1'
 const RAW_FLOW_SCAN='reward_server_raw_flows_v1'
@@ -85,13 +97,13 @@ async function insertRawWithoutReplacing(table:string,rows:any[],conflict:string
  }
 }
 async function process(job:any){
- const address=await loadAddress(job);let txCount=0,flowCount=0;
+ const address=await loadAddress(job);let txCount=0,flowCount=0;const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
  const tc=await state(job,RAW_TX_SCAN);
  const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t.block_number),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:String(t.method||t.tx_types?.[0]||''),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
-  });await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');txCount+=rows.length
+  });for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');txCount+=rows.length
  });await updateState(job,RAW_TX_SCAN,lastTx);
  const fc=await state(job,RAW_FLOW_SCAN);
  const lastFlow=await paginate(`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
@@ -104,9 +116,9 @@ async function process(job:any){
    // Do not assign synthetic page indices for missing log_index: page order changes.
    if(!Number.isSafeInteger(log)||log<0)throw Error('Token transfer missing canonical log index');
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t.block_number),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
-  });await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
+  });for(const row of rows){const candidate=txReferralCandidates.get(row.tx_hash);if(candidate&&isVerifiedReferralTransaction(address,candidate,[row]))verifiedReferralHashes.add(row.tx_hash)}await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
  });await updateState(job,RAW_FLOW_SCAN,lastFlow);
- return {transactions:txCount,flows:flowCount}
+ return {transactions:txCount,flows:flowCount,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
 }
 Deno.serve(async request=>{
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
