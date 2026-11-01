@@ -2825,86 +2825,125 @@ const tradingHoldingCache=new Map();
 const TRADING_HOLDING_TTL=5*60*1000;
 let tradingHoldingRenderId=0;
 const tradingHoldingDecimals=new Map();
+// Jeder RPC-/Tokenfehler wird isoliert: ein fehlerhafter v$-Contract darf
+// niemals gleichzeitig die korrekt ermittelten VOW-Bestände ausblenden.
+const tradingHoldingMissingWarned=new Set();
 async function tradingHoldingRpcBatch(chain,calls){
   const rpc=CONFIG[chain]?.rpc;
   if(!rpc)throw new Error(`${chain}: RPC fehlt`);
-  const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},
-    body:JSON.stringify(calls.map((call,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_call",params:[call,"latest"]})))});
-  if(!response.ok)throw new Error(`${chain}: HTTP ${response.status}`);
-  const result=await response.json();
-  if(!Array.isArray(result))throw new Error(`${chain}: RPC-Batch nicht unterstützt`);
-  const byId=new Map(result.map(x=>[Number(x.id),x]));
-  return calls.map((_,i)=>{
-    const r=byId.get(i+1);
-    if(r?.error||!/^0x[0-9a-fA-F]{64}$/.test(String(r?.result||"")))throw new Error(`${chain}: ungültige balanceOf-Antwort`);
-    return BigInt(r.result);
-  });
+  const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),18000);
+  try{
+    const response=await fetch(rpc,{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify(calls.map((call,i)=>({jsonrpc:"2.0",id:i+1,method:"eth_call",params:[call,"latest"]}))),signal:controller.signal});
+    if(!response.ok)throw new Error(`${chain}: RPC HTTP ${response.status}`);
+    const result=await response.json();
+    if(!Array.isArray(result))throw new Error(`${chain}: RPC-Batch nicht unterstützt`);
+    const byId=new Map(result.map(x=>[Number(x.id),x]));
+    return calls.map((_,i)=>{
+      const r=byId.get(i+1);
+      try{return !r?.error&&/^0x[0-9a-fA-F]{64}$/.test(String(r?.result||""))?BigInt(r.result):null;}
+      catch(_){return null;}
+    });
+  }finally{clearTimeout(timeout);}
 }
 async function tradingHoldingDecimalsFor(chain,token){
   const key=`${chain}|${token}`;
   if(tradingHoldingDecimals.has(key))return tradingHoldingDecimals.get(key);
-  const result=await tradingRpc(chain,"eth_call",[{to:token,data:"0x313ce567"},"latest"]);
-  if(!/^0x[0-9a-fA-F]{64}$/.test(String(result)))throw new Error(`${chain}: Token-Dezimalstellen unbekannt`);
-  const decimals=Number(BigInt(result));
-  if(!Number.isInteger(decimals)||decimals<0||decimals>36)throw new Error(`${chain}: Token-Dezimalstellen ungültig`);
-  tradingHoldingDecimals.set(key,decimals);return decimals;
+  try{
+    const result=await tradingRpc(chain,"eth_call",[{to:token,data:"0x313ce567"},"latest"]);
+    if(!/^0x[0-9a-fA-F]{64}$/.test(String(result)))return null;
+    const decimals=Number(BigInt(result));
+    if(!Number.isInteger(decimals)||decimals<0||decimals>36)return null;
+    tradingHoldingDecimals.set(key,decimals);return decimals;
+  }catch(_){return null;}
 }
 async function tradingFetchHoldings(chain,wallets){
   const contracts=Object.entries(TRADING_CONTRACTS[chain]||{});
   const decimals=await Promise.all(contracts.map(([token])=>tradingHoldingDecimalsFor(chain,token)));
   const totals=new Map(wallets.map(w=>[w,{vow:0,vdollar:0}]));
-  // 10 eth_call je Batch; RPC-Limits für öffentliche Provider respektieren.
+  const pending=new Map(wallets.map(w=>[w,{vow:0,vdollar:0}]));
   const work=[];
   for(const wallet of wallets)for(let i=0;i<contracts.length;i++){
-    const [token,kind]=contracts[i];
-    work.push({wallet,kind,decimals:decimals[i],to:token,data:"0x70a08231"+wallet.slice(2).toLowerCase().padStart(64,"0")});
+    const [token,kind]=contracts[i],d=decimals[i];
+    if(d===null){pending.get(wallet)[kind]++;continue;}
+    work.push({wallet,kind,decimals:d,to:token,data:"0x70a08231"+wallet.slice(2).toLowerCase().padStart(64,"0")});
   }
-  for(let offset=0;offset<work.length;offset+=10){
-    const batch=work.slice(offset,offset+10);
-    const raw=await tradingHoldingRpcBatch(chain,batch.map(x=>({to:x.to,data:x.data})));
-    raw.forEach((amount,i)=>{
-      const item=batch[i],row=totals.get(item.wallet);
+  // Öffentliche RPCs unterstützen Batch teils nicht oder nur unzuverlässig.
+  // Bei Batch-Fehler einzelne Calls versuchen; Ergebnisse pro Contract isolieren.
+  for(let offset=0;offset<work.length;offset+=8){
+    const batch=work.slice(offset,offset+8);
+    let raw;
+    try{raw=await tradingHoldingRpcBatch(chain,batch.map(x=>({to:x.to,data:x.data})));}
+    catch(_){raw=batch.map(()=>null);}
+    for(let i=0;i<batch.length;i++){
+      const item=batch[i];let amount=raw[i];
+      if(amount===null){
+        try{
+          const result=await tradingRpc(chain,"eth_call",[{to:item.to,data:item.data},"latest"]);
+          amount=/^0x[0-9a-fA-F]{64}$/.test(String(result))?BigInt(result):null;
+        }catch(_){amount=null;}
+      }
+      if(amount===null){pending.get(item.wallet)[item.kind]++;continue;}
       const human=Number(ethers.formatUnits(amount,item.decimals));
-      if(!Number.isFinite(human))throw new Error(`${chain}: Bestand nicht darstellbar`);
-      row[item.kind]+=human;
-    });
+      if(!Number.isFinite(human)){pending.get(item.wallet)[item.kind]++;continue;}
+      totals.get(item.wallet)[item.kind]+=human;
+    }
+  }
+  for(const wallet of wallets){
+    const row=totals.get(wallet),missing=pending.get(wallet);
+    if(missing.vow)row.vow=null;
+    if(missing.vdollar)row.vdollar=null;
   }
   return totals;
 }
 async function tradingLoadHoldings(rows,chainFilter,renderId){
   const chains=chainFilter==="total"?["bsc","eth"]:[chainFilter];
   const wallets=[...new Set(rows.map(r=>r.wallet))];
-  try{
-    for(const chain of chains){
-      const stale=wallets.filter(w=>{
-        const x=tradingHoldingCache.get(`${chain}|${w}`);
-        return !x||Date.now()-x.at>TRADING_HOLDING_TTL;
-      });
-      if(!stale.length)continue;
-      const fetched=await tradingFetchHoldings(chain,stale);
-      for(const [wallet,amounts] of fetched)tradingHoldingCache.set(`${chain}|${wallet}`,{...amounts,at:Date.now()});
-    }
-    if(renderId!==tradingHoldingRenderId)return;
-    for(const row of rows){
-      const matching=[...document.querySelectorAll('#tlnTradingTradersBody tr[data-trading-wallet]')]
-        .find(el=>el.dataset.tradingWallet===row.wallet);
-      if(!matching)continue;
-      for(const kind of ["vow","vdollar"]){
-        const cell=matching.querySelector(`[data-holding-kind="${kind}"]`);
-        if(!cell)continue;
-        let sum=0,available=true;
-        for(const chain of chains){const value=tradingHoldingCache.get(`${chain}|${row.wallet}`);
-          if(!value){available=false;break;}sum+=value[kind];}
-        cell.textContent=available?tradingFormatAmount(sum):"–";
+  let failed=0;
+  for(const chain of chains){
+    const stale=wallets.filter(w=>{
+      const x=tradingHoldingCache.get(`${chain}|${w}`);
+      return !x||Date.now()-x.at>TRADING_HOLDING_TTL;
+    });
+    if(!stale.length)continue;
+    try{
+      // Maximal vier Händler pro Gruppe, damit öffentliche RPCs nicht überlastet werden.
+      for(let i=0;i<stale.length;i+=4){
+        const group=stale.slice(i,i+4);
+        const fetched=await tradingFetchHoldings(chain,group);
+        for(const [wallet,amounts] of fetched)tradingHoldingCache.set(`${chain}|${wallet}`,{...amounts,at:Date.now()});
       }
+    }catch(error){
+      failed+=stale.length;
+      console.warn(`Top-Händler Bestände ${chain}:`,error);
+      for(const wallet of stale)tradingHoldingCache.set(`${chain}|${wallet}`,{vow:null,vdollar:null,at:Date.now()});
     }
-  }catch(error){
-    if(renderId!==tradingHoldingRenderId)return;
-    console.warn("Top-Händler Bestände konnten nicht geladen werden:",error);
-    for(const cell of document.querySelectorAll('#tlnTradingTradersBody [data-holding-kind]'))
-      if(cell.textContent==="…")cell.textContent="–";
-    const info=document.getElementById("tlnTradingHoldingsNote");
-    if(info)info.textContent="Aktuelle Tokenbestände konnten nicht geladen werden (RPC-Fehler). Handelsvolumen bleibt unverändert.";
+  }
+  if(renderId!==tradingHoldingRenderId)return;
+  let missing=0;
+  for(const row of rows){
+    const matching=[...document.querySelectorAll('#tlnTradingTradersBody tr[data-trading-wallet]')]
+      .find(el=>el.dataset.tradingWallet===row.wallet);
+    if(!matching)continue;
+    for(const kind of ["vow","vdollar"]){
+      const cell=matching.querySelector(`[data-holding-kind="${kind}"]`);
+      if(!cell)continue;
+      let sum=0,available=true;
+      for(const chain of chains){
+        const value=tradingHoldingCache.get(`${chain}|${row.wallet}`);
+        if(!value||value[kind]===null||value[kind]===undefined){available=false;break;}
+        sum+=value[kind];
+      }
+      cell.textContent=available?tradingFormatAmount(sum):"–";
+      if(!available){missing++;cell.title="Bestand für mindestens einen Token-Contract/RPC nicht zuverlässig abrufbar";}
+      else cell.removeAttribute("title");
+    }
+  }
+  const info=document.getElementById("tlnTradingHoldingsNote");
+  if(info){
+    info.textContent=missing
+      ? `Live-Bestände teilweise nicht verfügbar (${missing} von ${rows.length*2} Werten). „–“ bedeutet unbekannt, nicht 0. Bitte BSC/ETH einzeln prüfen. Bereits erfolgreiche Tokenabfragen bleiben sichtbar.`
+      : "Live-Bestände erfolgreich geladen (5 Minuten Browser-Cache). Total = BSC + Ethereum; v$ ETH umfasst beide Contracts.";
   }
 }
 // Kopiert die vollständige Händler-Wallet; verkürzte Darstellung bleibt unverändert.
