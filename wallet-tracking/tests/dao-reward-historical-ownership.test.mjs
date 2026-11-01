@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const src=fs.readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
 const begin=src.indexOf('async function historicalNftOwnership(');
-const end=src.indexOf('\nasync function process(',begin);
+const end=src.indexOf('\n// Read-only end-to-end evidence:',begin);
 assert.ok(begin>0&&end>begin);
 const code=src.slice(begin,end).replace('nft:any,wallet:string,claimBlock:number','nft,wallet,claimBlock').replace('let preceding:any=null','let preceding=null').replace('new Set<string>()','new Set()');
 const addr='0x'+'a'.repeat(40),other='0x'+'b'.repeat(40),contract='0x'+'c'.repeat(40);

@@ -256,8 +256,32 @@ async function historicalNftOwnership(nft:any,wallet:string,claimBlock:number){
  if(!/^0x[0-9a-f]{40}$/.test(recipient))return {verified:false,reason:'missing-recipient'};
  return recipient===wallet?{verified:true,reason:'prior-transfer-recipient'}:{verified:false,reason:'owned-by-other-wallet'};
 }
+// Read-only end-to-end evidence: an NFT proof alone is not a paid claim.
+// A claim is confirmed for staging diagnostics only when its transaction
+// succeeded AND a verified, positive incoming payout was observed. This does
+// not mutate claim_nft_id nor replace the canonical claim/price pipeline.
+function isSuccessfulClaim(tx:any){
+ return [CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(String(tx?.selector||'').toLowerCase())
+  && ['ok','success'].includes(String(tx?.status||'').toLowerCase());
+}
+function hasVerifiedClaimPayout(tx:any,flows:any[],address:string){
+ if(!isSuccessfulClaim(tx))return false;
+ return flows.some(flow=>{
+  if(lower(flow?.tx_hash)!==lower(tx.tx_hash)||flow?.direction!=='eingang')return false;
+  if(!/^\d+$/.test(String(flow?.amount_raw??''))||BigInt(String(flow.amount_raw))<=0n)return false;
+  // Native transfers are created by nativeClaimPayout only after tracing
+  // successful incoming internal transfers for this exact wallet and tx.
+  if(flow?.flow_key===`claim-native:${lower(tx.tx_hash)}`&&flow?.token_address==='native')return true;
+  // For token payouts the wallet address is proven by the address-scoped scan,
+  // and the sender must be the recipient of the claim call. Do not count
+  // unverified incoming transfers from unrelated contracts as bot payouts.
+  return lower(flow?.counterparty_address)===lower(tx.to_address)
+   && /^0x[0-9a-f]{40}$/.test(lower(tx.to_address))
+   && /^0x[0-9a-f]{40}$/.test(lower(flow.token_address));
+ });
+}
 async function process(job:any){
- const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0,historicallyVerifiedCandidates=0,historicalCheckCount=0;const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
+ const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0,historicallyVerifiedCandidates=0,historicalCheckCount=0;let ownedAndPaidClaims=0;const verifiedOwnedClaimTxs=new Map<string,any>();const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
  const tc=await state(job,RAW_TX_SCAN);
  const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
@@ -271,12 +295,12 @@ async function process(job:any){
    if(!candidate||historicalCheckCount>=20)continue;
    historicalCheckCount++;
    const proof=await historicalNftOwnership(candidate.nft,address,row.block_number);
-   if(proof.verified)historicallyVerifiedCandidates++;
+   if(proof.verified){historicallyVerifiedCandidates++;verifiedOwnedClaimTxs.set(row.tx_hash,row)}
   }
   for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');
   for(const tx of rows){
    const nativeFlow=await nativeClaimPayout(address,tx);
-   if(nativeFlow){await insertRawWithoutReplacing('project_transaction_asset_flows',[nativeFlow],'user_id,project_key,chain_key,wallet_id,flow_key');nativeClaimFlows++}
+   if(nativeFlow){await insertRawWithoutReplacing('project_transaction_asset_flows',[nativeFlow],'user_id,project_key,chain_key,wallet_id,flow_key');nativeClaimFlows++;if(verifiedOwnedClaimTxs.has(tx.tx_hash)&&hasVerifiedClaimPayout(tx,[nativeFlow],address)){ownedAndPaidClaims++;verifiedOwnedClaimTxs.delete(tx.tx_hash)}}
   }
   txCount+=rows.length
  });await updateState(job,RAW_TX_SCAN,lastTx);
@@ -291,9 +315,9 @@ async function process(job:any){
    // Do not assign synthetic page indices for missing log_index: page order changes.
    if(!Number.isSafeInteger(log)||log<0)throw Error('Token transfer missing canonical log index');
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
-  });for(const row of rows){const candidate=txReferralCandidates.get(row.tx_hash);if(candidate&&isVerifiedReferralTransaction(address,candidate,[row]))verifiedReferralHashes.add(row.tx_hash)}await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
+  });for(const row of rows){const owned=verifiedOwnedClaimTxs.get(row.tx_hash);if(owned&&hasVerifiedClaimPayout(owned,[row],address)){ownedAndPaidClaims++;verifiedOwnedClaimTxs.delete(row.tx_hash)}const candidate=txReferralCandidates.get(row.tx_hash);if(candidate&&isVerifiedReferralTransaction(address,candidate,[row]))verifiedReferralHashes.add(row.tx_hash)}await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
  });await updateState(job,RAW_FLOW_SCAN,lastFlow);
- return {transactions:txCount,flows:flowCount,nativeClaimFlows,claimNftCandidatesUnverified:claimNftCandidates,historicalChecks:historicalCheckCount,historicallyVerifiedCandidates,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
+ return {transactions:txCount,flows:flowCount,nativeClaimFlows,claimNftCandidatesUnverified:claimNftCandidates,historicalChecks:historicalCheckCount,historicallyVerifiedCandidates,ownedAndPaidClaimsObserved:ownedAndPaidClaims,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
 }
 Deno.serve(async request=>{
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
