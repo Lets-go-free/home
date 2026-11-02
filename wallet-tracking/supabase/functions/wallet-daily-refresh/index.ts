@@ -253,6 +253,26 @@ async function scanWallet(job:any){
  if(failures.length)throw Error(failures.join('; ').slice(0,2000));
  return entries
 }
+function errorText(e:unknown):string {
+ if(e instanceof Error)return `${e.name}: ${e.message}`.slice(0,2000);
+ if(typeof e==='string')return e.slice(0,2000);
+ try {const o=e as Record<string,unknown>;if(o&&typeof o==='object')return JSON.stringify({message:o.message,code:o.code,details:o.details,hint:o.hint,status:o.status}).slice(0,2000)}catch{}
+ return String(e).slice(0,2000);
+}
+async function finalize(day:string,userId?:string){
+ const chosen=userId?{user_id:userId}:(await sb.rpc('wallettracking_daily_finalize_next',{p_day:day}));
+ if(!userId&&chosen.error)throw chosen.error;
+ const user=userId?userId:chosen.data?.[0]?.user_id;
+ if(!user)return {finalized:false,reason:'none pending'};
+ const result=await sb.rpc('wallettracking_daily_finalize',{p_user:user,p_day:day});
+ if(result.error){
+  const message=errorText(result.error);
+  const logged=await sb.rpc('wallettracking_daily_finalize_fail',{p_user:user,p_day:day,p_error:message});
+  if(logged.error)console.error('Finalize failure logging failed:',errorText(logged.error));
+  return {finalized:false,user,error:message};
+ }
+ return {finalized:result.data===true,user};
+}
 Deno.serve(async req=>{
  if(req.method!=='POST')return Response.json({ok:false,error:'Method not allowed'},{status:405});
  if(!SECRET||req.headers.get('x-wallet-refresh-secret')!==SECRET)return Response.json({ok:false,error:'Unauthorized'},{status:401});
@@ -262,13 +282,14 @@ Deno.serve(async req=>{
  const day=todayCH();let job:any=null;
  try{
   const claim=await sb.rpc('wallettracking_daily_claim',{p_day:day});if(claim.error)throw claim.error;
-  job=claim.data?.[0];if(!job)return Response.json({ok:true,day,skipped:'no pending wallets'});
+  job=claim.data?.[0];if(!job)return Response.json({ok:true,day,skipped:'no pending wallets',snapshot:await finalize(day)});
   const entries=await scanWallet(job);
   const finish=await sb.rpc('wallettracking_daily_complete',{p_wallet:job.wallet_id,p_user:job.user_id,p_day:day,p_items:entries});
   if(finish.error)throw finish.error;
-  return Response.json({ok:true,day,wallet:job.wallet_id,positions:entries.length,finalized:finish.data});
+  const snapshot=finish.data===true?await finalize(day,job.user_id):{finalized:false,reason:'other wallets pending'};
+  return Response.json({ok:true,day,wallet:job.wallet_id,positions:entries.length,snapshot});
  }catch(e){
-  const error=String(e instanceof Error?e.message:e).slice(0,2000);
+  const error=errorText(e);
   if(job){try{await sb.rpc('wallettracking_daily_fail',{p_wallet:job.wallet_id,p_user:job.user_id,p_day:day,p_error:error})}catch{}}
   return Response.json({ok:false,day,error},{status:500});
  }
