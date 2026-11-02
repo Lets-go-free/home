@@ -456,7 +456,13 @@ Deno.serve(async request=>{
  try{const claim=await sb.rpc('wallettracking_reward_claim',{p_day:day,p_project:'dao1'});if(claim.error)throw claim.error;
   job=claim.data?.[0];if(!job)return Response.json({ok:true,skipped:'No pending DAO wallets'});
   const result=await process(job);
-  const staged=await sb.rpc('wallettracking_reward_stage',{p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id});if(staged.error)throw staged.error;
-  return Response.json({ok:true,...result,notice:'Rohdaten importiert; Claim-/Referral-/Preisbewertung ausstehend; Job bewusst NICHT abgeschlossen'});
+  // Partial explorer pages and ownership backlog must remain claimable TODAY.
+  // 'staged' is terminal for today's raw import; it is NOT reward completion.
+  const partial=!result.transactionScan.complete||!result.flowScan.complete||result.pendingHistoricalChecks>0;
+  const transition=await sb.rpc(partial?'wallettracking_reward_continue':'wallettracking_reward_stage',
+   {p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id});
+  if(transition.error)throw transition.error;
+  return Response.json({ok:true,...result,queueState:partial?'partial':'staged',
+   notice:'Rohdaten/Prüfliste verarbeitet; Claim-/Referral-/Preisbewertung ausstehend; Job bewusst NICHT abgeschlossen'});
  }catch(e){const message=String(e instanceof Error?e.message:e);if(job)await sb.rpc('wallettracking_reward_finish',{p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id,p_error:message.slice(0,2000)});return Response.json({ok:false,error:message},{status:500})}
 })

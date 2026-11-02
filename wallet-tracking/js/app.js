@@ -7019,6 +7019,27 @@ async function loadWalletRefreshStates(){
   const {data,error}=await sb.from('wallet_refresh_state').select('*').eq('user_id',currentUser.id);
   if(error){console.warn('wallet_refresh_state:',error);return;}
   for(const r of data||[])walletRefreshStates.set(refreshStateKey(r.wallet_id,r.chain_key,r.data_type),r);
+  // Der serverseitige Nachtjob schreibt absichtlich nicht in die Browser-Refresh-Tabelle.
+  // Sein bestätigter Abschluss zählt dennoch als heutiger Bestandscheck (nicht für NFT/Rewards).
+  // Nur erfolgreich abgeschlossene Wallet-Jobs übernehmen; laufende/fehlgeschlagene nie.
+  const {data:daily,error:dailyError}=await sb.rpc('wallettracking_own_daily_balance_status');
+  if(dailyError){console.warn('Nächtlicher Wallet-Datenstand nicht verfügbar:',dailyError.message);return;}
+  const dayParts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Zurich',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+  const swissToday=`${dayParts.year}-${dayParts.month}-${dayParts.day}`;
+  for(const job of daily||[]){
+    if(job.scan_day!==swissToday||job.state!=='completed'||!job.completed_at)continue;
+    const w=wallets.find(w=>walletDbId(w)===String(job.wallet_id));
+    if(!w)continue;
+    for(const chain of Object.keys(CHAIN_CONFIG)){
+      if(!CHAIN_CONFIG[chain]?.balanceProvider||!walletAddressForChain(w,chain))continue;
+      const key=refreshStateKey(walletDbId(w),chain,'balances');
+      const previous=walletRefreshStates.get(key);
+      if(previous?.last_checked_at&&new Date(previous.last_checked_at)>new Date(job.completed_at)&&previous.last_result!=='failed')continue;
+      walletRefreshStates.set(key,{...previous,wallet_id:walletDbId(w),chain_key:chain,data_type:'balances',
+        data_version:requiredDataVersion(chain,'balances'),last_checked_at:job.completed_at,
+        last_refreshed_at:job.completed_at,last_result:'refreshed'});
+    }
+  }
 }
 async function saveWalletRefreshState(w,chain,dataType,patch={}){
   const payload={user_id:currentUser.id,wallet_id:walletDbId(w),chain_key:chain||'',data_type:dataType,data_version:requiredDataVersion(chain,dataType),updated_at:new Date().toISOString(),...patch};

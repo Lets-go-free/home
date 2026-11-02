@@ -1,0 +1,13 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const app=readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
+const sql=readFileSync(new URL('../supabase/migrations/20261102185124_wallet_daily_visible_status_609.sql',import.meta.url),'utf8');
+assert.match(app,/sb\.rpc\('wallettracking_own_daily_balance_status'\)/);
+assert.match(app,/job\.state!=='completed'/);
+assert.match(app,/timeZone:'Europe\/Zurich'/);
+assert.match(app,/formatToParts/);
+assert.match(app,/data_type:'balances'/);
+assert.match(sql,/a\.user_id = \(SELECT auth\.uid\(\)\)/);
+assert.match(sql,/REVOKE ALL .* FROM PUBLIC, anon/);
+assert.match(sql,/a\.scan_day = \(now\(\) AT TIME ZONE 'Europe\/Zurich'\)::date/);
+console.log('Daily wallet status read/permission checks OK');
