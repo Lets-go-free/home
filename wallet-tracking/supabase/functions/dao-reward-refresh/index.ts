@@ -112,7 +112,8 @@ async function state(job:any,kind:string):Promise<RawScanState>{
  if(data?.last_scan_message){
   try{checkpoint=JSON.parse(data.last_scan_message)}catch{throw Error('Invalid reward scan checkpoint')}
   if(checkpoint?.version!==1||typeof checkpoint.next!=='object'||
-     !Number.isSafeInteger(checkpoint.startBlock)||!Number.isSafeInteger(checkpoint.highestBlock))
+     !Number.isSafeInteger(checkpoint.startBlock)||!Number.isSafeInteger(checkpoint.highestBlock)||
+     (checkpoint.oldestBlock!==undefined&&(!Number.isSafeInteger(checkpoint.oldestBlock)||checkpoint.oldestBlock<=0)))
    throw Error('Unsupported reward scan checkpoint');
  }
  return {block:Number(data?.last_scanned_block||0),checkpoint};
@@ -131,6 +132,10 @@ function explorerPageUrl(path:string,params:Record<string,unknown>|null){
  for(const [k,v] of Object.entries(params||{}))if(v!==null&&v!==undefined)url.searchParams.set(k,String(v));
  return url.toString();
 }
+function assertDescendingBlock(previous:number,current:number){
+ if(!Number.isSafeInteger(current)||current<=0||current>previous)
+  throw Error('Explorer page order changed; refusing to advance verified cursor');
+}
 async function paginate(job:any,kind:string,path:string,scan:RawScanState,
  handler:(items:any[])=>Promise<void>){
  const cursor=scan.block;
@@ -138,15 +143,21 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
  if(checkpoint&&checkpoint.startBlock!==cursor)throw Error('Reward cursor/checkpoint mismatch');
  let next=checkpoint?.next??null;
  let highest=Number(checkpoint?.highestBlock??cursor);
+ // Enforce descending block order across pages AND across invocations. A
+ // stale/unstable explorer cursor must never certify an incomplete interval.
+ let previousOldest=Number(checkpoint?.oldestBlock??Infinity);
  const visited=new Set<string>();
  for(let page=0;page<MAX_PAGES_PER_INVOCATION;page++){
   const url=explorerPageUrl(path,next);
   if(visited.has(url))throw Error('Explorer page cursor loop');visited.add(url);
   const response=await json(url);
   if(!Array.isArray(response.items))throw Error('Explorer missing items');
-  let oldest=Infinity;const rows=[];
+  let oldest=Infinity;let previousBlock=previousOldest;const rows=[];
+  if(!response.items.length&&response.next_page_params)throw Error('Explorer empty page with continuation');
   for(const item of response.items){
    const block=await itemBlock(item);
+   assertDescendingBlock(previousBlock,block);
+   previousBlock=block;
    oldest=Math.min(oldest,block);highest=Math.max(highest,block);
    if(block>=Math.max(0,cursor-OVERLAP))rows.push({...item,_verifiedBlock:block});
   }
@@ -161,8 +172,9 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
      !Object.keys(nextParams).length)throw Error('Invalid Explorer next page');
   // Commit page continuation only AFTER the handler has successfully saved
   // every event and candidate in this page.
-  await saveScan(job,kind,cursor,{version:1,startBlock:cursor,highestBlock:highest,next:nextParams});
-  next=nextParams;
+  await saveScan(job,kind,cursor,{version:1,startBlock:cursor,highestBlock:highest,
+   oldestBlock:Number.isFinite(oldest)?oldest:previousOldest,next:nextParams});
+  previousOldest=oldest;next=nextParams;
  }
  return {complete:false,block:cursor,pages:MAX_PAGES_PER_INVOCATION};
 }

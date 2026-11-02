@@ -12,7 +12,7 @@ test('checkpoint persists only after page handler has completed',()=>{
  const end=src.indexOf('// The raw staging import',begin);
  const body=src.slice(begin,end);
  assert.ok(body.indexOf('await handler(rows)')<body.indexOf('await saveScan(job,kind,cursor,'));
- assert.match(body,/highestBlock:highest,next:nextParams/);
+ assert.match(body,/highestBlock:highest,[\s\S]*?next:nextParams/);
  assert.match(body,/await saveScan\(job,kind,highest,null\)/);
  assert.match(body,/checkpoint\.startBlock!==cursor/);
 });
