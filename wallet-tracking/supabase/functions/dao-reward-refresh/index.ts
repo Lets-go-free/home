@@ -385,7 +385,14 @@ async function verifyPendingCandidates(job:any,address:string){
  let verified=0,checked=0;
  for(const item of (data||[])){
   const proof=await historicalNftOwnership({_contract:item.nft_contract,tokenId:item.nft_id},address,Number(item.claim_block));
-  // Failed proof is recorded as non-confirmation, never as a claim allocation.
+  // Missing/inconsistent explorer evidence is a temporary verification failure,
+  // NOT proof that this wallet did not own the NFT. Leave the candidate pending
+  // and fail the bounded worker attempt so it can retry on a later invocation.
+  // In particular, never advance the candidate status after a page-budget exit.
+  if(['pagination-incomplete','missing-history','history-out-of-order'].includes(proof.reason)){
+   throw Error(`Historical NFT ownership evidence incomplete (${proof.reason}) for ${item.tx_hash}`);
+  }
+  // A conclusive negative proof stays unverified; no claim allocation is written.
   const {error:updateError}=await sb.from('dao_reward_claim_candidates').update({
    status:proof.verified?'ownership_verified':'unverified',
    proof_reason:proof.reason,checked_at:new Date().toISOString()})
