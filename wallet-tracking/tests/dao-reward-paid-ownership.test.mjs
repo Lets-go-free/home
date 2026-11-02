@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const src=fs.readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
-const start=src.indexOf('function isSuccessfulClaim('),end=src.indexOf('\nasync function process(',start);
+const start=src.indexOf('function isSuccessfulClaim('),end=src.indexOf('\n// Persist candidate work',start);
 assert.ok(start>0&&end>start);
 const fn=src.slice(start,end).replaceAll('tx:any','tx').replaceAll('flows:any[]','flows').replaceAll('address:string','address');
 const lower=v=>String(v?.hash||v?.address_hash||v?.address||v||'').toLowerCase();
@@ -18,6 +18,6 @@ assert.equal(hasVerifiedClaimPayout(tx,[{...flow,tx_hash:'0x'+'e'.repeat(64)}],w
 assert.equal(hasVerifiedClaimPayout(tx,[{...flow,counterparty_address:wallet}],wallet),false);
 assert.equal(hasVerifiedClaimPayout(tx,[{...flow,flow_key:`claim-native:${hash}`,token_address:'native'}],wallet),true);
 assert.equal(hasVerifiedClaimPayout(tx,[{...flow,amount_raw:'-1'}],wallet),false);
-assert.match(src,/ownedAndPaidClaimsObserved/);
+assert.match(src,/async function verifyPendingCandidates/);
 assert.match(src,/classification:'observational-only'/);
 console.log('10 DAO claim ownership+payout checks passed');

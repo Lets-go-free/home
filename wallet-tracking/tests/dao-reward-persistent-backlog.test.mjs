@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const src=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.match(src,/async function enqueueCandidates\(/);
+assert.match(src,/dao_reward_claim_candidates/);
+assert.match(src,/ignoreDuplicates:true/);
+assert.match(src,/claimNftCandidates\+=await enqueueCandidates\(job,rows,knownNfts\)/);
+assert.match(src,/await updateState\(job,RAW_TX_SCAN,lastTx\)/);
+assert.ok(src.indexOf('claimNftCandidates+=await enqueueCandidates')<src.indexOf('await updateState(job,RAW_TX_SCAN,lastTx)'));
+assert.match(src,/\.eq\('status','pending'\)/);
+assert.match(src,/\.limit\(MAX_HISTORICAL_CHECKS\)/);
+assert.match(src,/status:proof\.verified\?'ownership_verified':'unverified'/);
+assert.match(src,/pendingHistoricalChecks/);
+assert.doesNotMatch(src,/if\(historicalCheckCount>=MAX_HISTORICAL_CHECKS\)throw/);
+assert.match(src,/classification:'observational-only'/);
+console.log('Persistent DAO historical candidate backlog checks passed');

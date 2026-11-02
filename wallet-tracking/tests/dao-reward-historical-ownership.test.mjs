@@ -24,5 +24,5 @@ assert.equal((await check([{items:[make(99,addr),make(99,other)],next_page_param
 assert.equal((await check([{items:[make(99,addr)],next_page_params:{index:1}},{items:[make(99,other),make(98,addr)],next_page_params:null}])).reason,'prior-block-ambiguous');
 assert.equal((await check([{items:[make(99,addr)],next_page_params:{index:1}},{items:[make(98,other)],next_page_params:null}])).verified,true);
 assert.match(src,/historicallyVerifiedCandidates/);
-assert.match(src,/Candidate is diagnostic only/);
+assert.match(src,/Persist candidate work before moving raw scan cursors/);
 console.log('9 NFT ownership evidence regression cases passed');

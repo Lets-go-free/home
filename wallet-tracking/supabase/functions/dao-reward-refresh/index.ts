@@ -1,8 +1,8 @@
 // DAO1/APTMDAO: incremental transaction and ERC-20 flow ingestion (staging worker).
 // A raw import transitions to 'staged', NOT 'completed'. Only the future
 // canonical claim/flow/valuation pipeline may mark reward jobs completed.
-// Important: NOT a complete reward worker. NFT claim classification and historical
-// price enrichment still require the canonical DAO application pipeline.
+// Important: NOT a complete reward worker. Candidate ownership checks are now
+// durable and incremental; confirmed claims and prices still need canonical enrichment.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
@@ -291,50 +291,109 @@ function hasVerifiedClaimPayout(tx:any,flows:any[],address:string){
    && /^0x[0-9a-f]{40}$/.test(lower(flow.token_address));
  });
 }
+// Persist candidate work before moving raw scan cursors. The candidate queue is
+// deliberately separate from verified claims and does not affect reward totals.
+async function enqueueCandidates(job:any, rows:any[], nfts:Map<string,any>){
+ const candidates=[];
+ for(const row of rows){
+  if(![CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(row.selector))continue;
+  const match=unequivocalClaimNft(row.raw_input,nfts);
+  if(!match)continue;
+  candidates.push({user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,
+   chain_key:CHAIN,tx_hash:row.tx_hash,claim_block:row.block_number,
+   nft_contract:match.nft._contract,nft_id:match.id});
+ }
+ if(candidates.length){
+  const {error}=await sb.from('dao_reward_claim_candidates').upsert(candidates,
+   {onConflict:'user_id,wallet_id,chain_key,tx_hash',ignoreDuplicates:true});
+  if(error)throw error;
+ }
+ return candidates.length;
+}
+async function verifyPendingCandidates(job:any,address:string){
+ const {data,error}=await sb.from('dao_reward_claim_candidates')
+  .select('tx_hash,claim_block,nft_contract,nft_id')
+  .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+  .eq('chain_key',CHAIN).eq('status','pending')
+  .order('claim_block',{ascending:true}).limit(MAX_HISTORICAL_CHECKS);
+ if(error)throw error;
+ let verified=0,checked=0;
+ for(const item of (data||[])){
+  const proof=await historicalNftOwnership({_contract:item.nft_contract,tokenId:item.nft_id},address,Number(item.claim_block));
+  // Failed proof is recorded as non-confirmation, never as a claim allocation.
+  const {error:updateError}=await sb.from('dao_reward_claim_candidates').update({
+   status:proof.verified?'ownership_verified':'unverified',
+   proof_reason:proof.reason,checked_at:new Date().toISOString()})
+   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('chain_key',CHAIN).eq('tx_hash',item.tx_hash).eq('status','pending');
+  if(updateError)throw updateError;
+  checked++;if(proof.verified)verified++;
+ }
+ const {count,error:countError}=await sb.from('dao_reward_claim_candidates')
+  .select('tx_hash',{count:'exact',head:true}).eq('user_id',job.user_id)
+  .eq('wallet_id',job.wallet_id).eq('chain_key',CHAIN).eq('status','pending');
+ if(countError)throw countError;
+ return {historicalChecks:checked,historicallyVerifiedCandidates:verified,pendingHistoricalChecks:count||0};
+}
 async function process(job:any){
- const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0,historicallyVerifiedCandidates=0,historicalCheckCount=0;let ownedAndPaidClaims=0;const verifiedOwnedClaimTxs=new Map<string,any>();const txReferralCandidates=new Map<string,any>();const verifiedReferralHashes=new Set<string>();
+ const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);
+ let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0;
  const tc=await state(job,RAW_TX_SCAN);
  const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
-   const candidate=unequivocalClaimNft(input,knownNfts);if(candidate)claimNftCandidates++;
-   // Candidate is diagnostic only. Never store it as a verified historical claim.
-   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:hash(t),block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||null,from_address:from||null,to_address:to||null,direction:from===address?'ausgang':to===address?'eingang':'sonst',method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()}
-  });for(const row of rows){
-   if(![CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(row.selector))continue;
-   const candidate=unequivocalClaimNft(row.raw_input,knownNfts);
-   if(!candidate)continue;
-   // Never advance the scan cursor when the verification budget is exhausted.
-   // Otherwise unverified older claims could disappear from later delta scans.
-   // Retry remains possible with the unchanged cursor; a range-based backlog
-   // processor is still needed before enabling this worker for production.
-   if(historicalCheckCount>=MAX_HISTORICAL_CHECKS)throw Error(`Historical NFT verification budget exceeded (${MAX_HISTORICAL_CHECKS}); cursor not advanced`);
-   historicalCheckCount++;
-   const proof=await historicalNftOwnership(candidate.nft,address,row.block_number);
-   if(proof.verified){historicallyVerifiedCandidates++;verifiedOwnedClaimTxs.set(row.tx_hash,row)}
-  }
-  for(const row of rows)if(address===REFERRAL_WALLET&&lower(row.to_address)===REFERRAL_REWARD_CONTRACT)txReferralCandidates.set(row.tx_hash,row);await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');
+   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,
+    tx_hash:hash(t),block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||null,
+    from_address:from||null,to_address:to||null,
+    direction:from===address?'ausgang':to===address?'eingang':'sonst',
+    method:canonicalMethod(input,t.method||t.tx_types?.[0]),selector:input.slice(0,10).toLowerCase(),
+    status:String(t.status??t.result??''),value_aptm:aptmAmount(t.value??t.value_wei??'0'),
+    gas_aptm:aptmAmount(t.fee?.value??'0'),raw_input:input,updated_at:new Date().toISOString()};
+  });
+  // Durable queue must be written BEFORE cursor advance. On a failed scan,
+  // overlap replay is harmless because both writes are insert-only.
+  claimNftCandidates+=await enqueueCandidates(job,rows,knownNfts);
+  await insertRawWithoutReplacing('project_transactions',rows,'user_id,project_key,chain_key,wallet_id,tx_hash');
   for(const tx of rows){
    const nativeFlow=await nativeClaimPayout(address,tx);
-   if(nativeFlow){await insertRawWithoutReplacing('project_transaction_asset_flows',[nativeFlow],'user_id,project_key,chain_key,wallet_id,flow_key');nativeClaimFlows++;if(verifiedOwnedClaimTxs.has(tx.tx_hash)&&hasVerifiedClaimPayout(tx,[nativeFlow],address)){ownedAndPaidClaims++;verifiedOwnedClaimTxs.delete(tx.tx_hash)}}
+   if(nativeFlow){await insertRawWithoutReplacing('project_transaction_asset_flows',[nativeFlow],
+    'user_id,project_key,chain_key,wallet_id,flow_key');nativeClaimFlows++}
   }
-  txCount+=rows.length
- });await updateState(job,RAW_TX_SCAN,lastTx);
+  txCount+=rows.length;
+ });
+ await updateState(job,RAW_TX_SCAN,lastTx);
  const fc=await state(job,RAW_FLOW_SCAN);
  const lastFlow=await paginate(`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
-  const rows=items.map((t)=>{
+  const rows=items.map(t=>{
    const token=lower(t.token?.address_hash||t.token?.address||t.token_address);const tx=hash(t);
-   const from=lower(t.from),to=lower(t.to);const direction=from===address&&to===address?'intern':to===address?'eingang':from===address?'ausgang':'sonst';
+   const from=lower(t.from),to=lower(t.to);
+   const direction=from===address&&to===address?'intern':to===address?'eingang':from===address?'ausgang':'sonst';
    const raw=String(t.total?.value??t.value??'0'),decimals=Number(t.token?.decimals??t.total?.decimals??18);
-   if(!/^0x[0-9a-f]{40}$/i.test(token)||!/^0x[0-9a-f]{64}$/i.test(tx)||!/^\d+$/.test(raw)||!Number.isSafeInteger(decimals)||decimals<0||decimals>36)throw Error('Malformed token transfer');
+   if(!/^0x[0-9a-f]{40}$/i.test(token)||!/^0x[0-9a-f]{64}$/i.test(tx)||!/^[0-9]+$/.test(raw)||
+      !Number.isSafeInteger(decimals)||decimals<0||decimals>36)throw Error('Malformed token transfer');
    const log=Number(t.log_index??t.logIndex??t.index??-1);
-   // Do not assign synthetic page indices for missing log_index: page order changes.
    if(!Number.isSafeInteger(log)||log<0)throw Error('Token transfer missing canonical log index');
-   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||t.block_timestamp||null,log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,direction,updated_at:new Date().toISOString()}
-  });for(const row of rows){const owned=verifiedOwnedClaimTxs.get(row.tx_hash);if(owned&&hasVerifiedClaimPayout(owned,[row],address)){ownedAndPaidClaims++;verifiedOwnedClaimTxs.delete(row.tx_hash)}const candidate=txReferralCandidates.get(row.tx_hash);if(candidate&&isVerifiedReferralTransaction(address,candidate,[row]))verifiedReferralHashes.add(row.tx_hash)}await insertRawWithoutReplacing('project_transaction_asset_flows',rows,'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length
- });await updateState(job,RAW_FLOW_SCAN,lastFlow);
- return {transactions:txCount,flows:flowCount,nativeClaimFlows,claimNftCandidatesUnverified:claimNftCandidates,historicalChecks:historicalCheckCount,historicallyVerifiedCandidates,ownedAndPaidClaimsObserved:ownedAndPaidClaims,verifiedReferralEventsObserved:verifiedReferralHashes.size,classification:'observational-only'}
+   return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,
+    flow_key:`${tx}|${token}|${log}|${direction}|${raw}`,tx_hash:tx,
+    block_number:Number(t._verifiedBlock),tx_timestamp:t.timestamp||t.block_timestamp||null,
+    log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),
+    token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,
+    amount:decimalAmount(raw,decimals),
+    counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,
+    direction,updated_at:new Date().toISOString()};
+  });
+  await insertRawWithoutReplacing('project_transaction_asset_flows',rows,
+   'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length;
+ });
+ await updateState(job,RAW_FLOW_SCAN,lastFlow);
+ // Separate verification budget: unprocessed candidates stay persisted and are
+ // retried independently of the raw block cursors on subsequent invocations.
+ const verification=await verifyPendingCandidates(job,address);
+ return {transactions:txCount,flows:flowCount,nativeClaimFlows,
+  claimNftCandidatesObserved:claimNftCandidates,...verification,
+  classification:'observational-only'};
 }
+
 Deno.serve(async request=>{
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
  if(!SECRET||request.headers.get('x-wallet-refresh-secret')!==SECRET)return Response.json({error:'Unauthorized'},{status:401});
