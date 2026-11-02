@@ -6,7 +6,7 @@ test('missing token-transfer block must resolve using canonical tx detail',()=>{
  assert.match(source,/async function itemBlock\(/);
  assert.match(source,/json\(`\$\{EXPLORER\}\/transactions\/\$\{tx\}`\)/);
  assert.match(source,/txBlockCache\.set\(tx,block\)/);
- assert.match(source,/block=await itemBlock\(t\)/);
+ assert.match(source,/block=await itemBlock\(item\)/);
  assert.match(source,/_verifiedBlock:block/);
 });
 test('stored raw events use the verified block rather than an optional API field',()=>{

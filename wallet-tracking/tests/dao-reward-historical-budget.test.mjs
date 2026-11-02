@@ -4,7 +4,7 @@ const src=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.t
 assert.match(src,/const MAX_HISTORICAL_CHECKS=20/);
 assert.match(src,/\.limit\(MAX_HISTORICAL_CHECKS\)/);
 assert.match(src,/claimNftCandidates\+=await enqueueCandidates\(job,rows,knownNfts\)/);
-assert.match(src,/await updateState\(job,RAW_TX_SCAN,lastTx\)/);
+assert.match(src,/const txProgress=await paginate\(job,RAW_TX_SCAN/);
 assert.match(src,/await verifyPendingCandidates\(job,address\)/);
 assert.doesNotMatch(src,/historicalCheckCount>=MAX_HISTORICAL_CHECKS/);
 console.log('Historical verification budget is independent of raw cursor');

@@ -97,22 +97,75 @@ async function itemBlock(item:any){
  if(!Number.isSafeInteger(block)||block<=0)throw Error('Transaction has no verified block');
  txBlockCache.set(tx,block);return block;
 }
-async function paginate(path:string,cursor:number,handler:(items:any[])=>Promise<void>){
- let url=EXPLORER+path, count=0, max=cursor,complete=false;const visited=new Set<string>();
- while(url){
-  if(visited.has(url)||++count>200)throw Error('Explorer pagination safety limit');visited.add(url);
-  const response=await json(url);if(!Array.isArray(response.items))throw Error('Explorer missing items');
-  let oldest=Infinity;const rows=[];
-  for(const t of response.items){const block=await itemBlock(t);oldest=Math.min(oldest,block);max=Math.max(max,block);if(block>=Math.max(0,cursor-OVERLAP))rows.push({...t,_verifiedBlock:block})}
-  await handler(rows);
-  if(!response.next_page_params){complete=true;break}
-  if(cursor>0&&oldest<Math.max(0,cursor-OVERLAP)){complete=true;break}
-  const next=new URL(EXPLORER+path);for(const [k,v] of Object.entries(response.next_page_params))if(v!=null)next.searchParams.set(k,String(v));url=next.toString()
+// Checkpoint pages in the existing *server-only* scan types. The verified
+// block cursor advances only after the full historical range has been read.
+// Page checkpoints are recoverable on crashes: the database writes below are
+// insert-only, so replaying a partially processed page is idempotent.
+const MAX_PAGES_PER_INVOCATION=8;
+type RawScanState={block:number;checkpoint:any|null};
+async function state(job:any,kind:string):Promise<RawScanState>{
+ const {data,error}=await sb.from('project_scan_state').select('last_scanned_block,last_scan_message')
+  .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+  .eq('chain_key',CHAIN).eq('scan_type',kind).maybeSingle();
+ if(error)throw error;
+ let checkpoint=null;
+ if(data?.last_scan_message){
+  try{checkpoint=JSON.parse(data.last_scan_message)}catch{throw Error('Invalid reward scan checkpoint')}
+  if(checkpoint?.version!==1||typeof checkpoint.next!=='object'||
+     !Number.isSafeInteger(checkpoint.startBlock)||!Number.isSafeInteger(checkpoint.highestBlock))
+   throw Error('Unsupported reward scan checkpoint');
  }
- if(!complete)throw Error('Incomplete pagination');return max
+ return {block:Number(data?.last_scanned_block||0),checkpoint};
 }
-async function state(job:any,kind:string){const {data,error}=await sb.from('project_scan_state').select('last_scanned_block').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('scan_type',kind).maybeSingle();if(error)throw error;return Number(data?.last_scanned_block||0)}
-async function updateState(job:any,kind:string,block:number){if(!block)return;const {error}=await sb.from('project_scan_state').upsert({user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,scan_type:kind,last_scanned_block:block,last_scanned_at:new Date().toISOString()},{onConflict:'user_id,project_key,chain_key,wallet_id,scan_type'});if(error)throw error}
+async function saveScan(job:any,kind:string,block:number,checkpoint:any|null){
+ const {error}=await sb.from('project_scan_state').upsert({user_id:job.user_id,
+  wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,scan_type:kind,
+  last_scanned_block:block,last_scanned_at:new Date().toISOString(),
+  last_scan_message:checkpoint?JSON.stringify(checkpoint):null,
+  last_scan_result:checkpoint?'partial':'complete'},
+  {onConflict:'user_id,project_key,chain_key,wallet_id,scan_type'});
+ if(error)throw error;
+}
+function explorerPageUrl(path:string,params:Record<string,unknown>|null){
+ const url=new URL(EXPLORER+path);
+ for(const [k,v] of Object.entries(params||{}))if(v!==null&&v!==undefined)url.searchParams.set(k,String(v));
+ return url.toString();
+}
+async function paginate(job:any,kind:string,path:string,scan:RawScanState,
+ handler:(items:any[])=>Promise<void>){
+ const cursor=scan.block;
+ const checkpoint=scan.checkpoint;
+ if(checkpoint&&checkpoint.startBlock!==cursor)throw Error('Reward cursor/checkpoint mismatch');
+ let next=checkpoint?.next??null;
+ let highest=Number(checkpoint?.highestBlock??cursor);
+ const visited=new Set<string>();
+ for(let page=0;page<MAX_PAGES_PER_INVOCATION;page++){
+  const url=explorerPageUrl(path,next);
+  if(visited.has(url))throw Error('Explorer page cursor loop');visited.add(url);
+  const response=await json(url);
+  if(!Array.isArray(response.items))throw Error('Explorer missing items');
+  let oldest=Infinity;const rows=[];
+  for(const item of response.items){
+   const block=await itemBlock(item);
+   oldest=Math.min(oldest,block);highest=Math.max(highest,block);
+   if(block>=Math.max(0,cursor-OVERLAP))rows.push({...item,_verifiedBlock:block});
+  }
+  await handler(rows);
+  const finished=!response.next_page_params||(cursor>0&&oldest<Math.max(0,cursor-OVERLAP));
+  if(finished){
+   await saveScan(job,kind,highest,null);
+   return {complete:true,block:highest,pages:page+1};
+  }
+  const nextParams=response.next_page_params;
+  if(!nextParams||typeof nextParams!=='object'||Array.isArray(nextParams)||
+     !Object.keys(nextParams).length)throw Error('Invalid Explorer next page');
+  // Commit page continuation only AFTER the handler has successfully saved
+  // every event and candidate in this page.
+  await saveScan(job,kind,cursor,{version:1,startBlock:cursor,highestBlock:highest,next:nextParams});
+  next=nextParams;
+ }
+ return {complete:false,block:cursor,pages:MAX_PAGES_PER_INVOCATION};
+}
 // The raw staging import is insert-only. On an existing transaction/flow, a
 // canonical browser refresh may be enriching claim classification or prices
 // concurrently. Never perform a read-modify-upsert: it can race and overwrite
@@ -339,7 +392,7 @@ async function process(job:any){
  const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);
  let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0;
  const tc=await state(job,RAW_TX_SCAN);
- const lastTx=await paginate(`/addresses/${address}/transactions`,tc,async items=>{
+ const txProgress=await paginate(job,RAW_TX_SCAN,`/addresses/${address}/transactions`,tc,async items=>{
   const rows=items.filter(t=>/^0x[0-9a-f]{64}$/i.test(hash(t))).map(t=>{
    const input=String(t.raw_input||t.input||'');const from=lower(t.from),to=lower(t.to);
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,
@@ -361,9 +414,9 @@ async function process(job:any){
   }
   txCount+=rows.length;
  });
- await updateState(job,RAW_TX_SCAN,lastTx);
+
  const fc=await state(job,RAW_FLOW_SCAN);
- const lastFlow=await paginate(`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
+ const flowProgress=await paginate(job,RAW_FLOW_SCAN,`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
   const rows=items.map(t=>{
    const token=lower(t.token?.address_hash||t.token?.address||t.token_address);const tx=hash(t);
    const from=lower(t.from),to=lower(t.to);
@@ -385,12 +438,12 @@ async function process(job:any){
   await insertRawWithoutReplacing('project_transaction_asset_flows',rows,
    'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length;
  });
- await updateState(job,RAW_FLOW_SCAN,lastFlow);
+
  // Separate verification budget: unprocessed candidates stay persisted and are
  // retried independently of the raw block cursors on subsequent invocations.
  const verification=await verifyPendingCandidates(job,address);
  return {transactions:txCount,flows:flowCount,nativeClaimFlows,
-  claimNftCandidatesObserved:claimNftCandidates,...verification,
+  claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }
 
