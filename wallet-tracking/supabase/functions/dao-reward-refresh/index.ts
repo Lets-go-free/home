@@ -12,6 +12,7 @@ const sb=createClient(DB_URL,SERVICE_KEY,{auth:{persistSession:false,autoRefresh
 const enc=new TextEncoder(),dec=new TextDecoder()
 const EXPLORER='https://explorer.apertum.io/api/v2'
 const OVERLAP=250
+const MAX_HISTORICAL_CHECKS=20
 const PROJECT='dao1', CHAIN='apertum'
 // Use the same function selectors as the canonical DAO claim UI.
 const CLAIM_SELECTOR='0x86bb8f37', NEW_MINER_CLAIM_SELECTOR='0x19da4078'
@@ -302,7 +303,12 @@ async function process(job:any){
   });for(const row of rows){
    if(![CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(row.selector))continue;
    const candidate=unequivocalClaimNft(row.raw_input,knownNfts);
-   if(!candidate||historicalCheckCount>=20)continue;
+   if(!candidate)continue;
+   // Never advance the scan cursor when the verification budget is exhausted.
+   // Otherwise unverified older claims could disappear from later delta scans.
+   // Retry remains possible with the unchanged cursor; a range-based backlog
+   // processor is still needed before enabling this worker for production.
+   if(historicalCheckCount>=MAX_HISTORICAL_CHECKS)throw Error(`Historical NFT verification budget exceeded (${MAX_HISTORICAL_CHECKS}); cursor not advanced`);
    historicalCheckCount++;
    const proof=await historicalNftOwnership(candidate.nft,address,row.block_number);
    if(proof.verified){historicallyVerifiedCandidates++;verifiedOwnedClaimTxs.set(row.tx_hash,row)}
