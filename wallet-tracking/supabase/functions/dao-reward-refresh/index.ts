@@ -415,6 +415,29 @@ async function verifyPendingCandidates(job:any,address:string){
 // Second independent proof: ownership_verified is NOT the same as paid.
 // Inspect only persisted, wallet-scoped transaction and transfer evidence;
 // do not modify the canonical reward totals, historical prices or NFT fields.
+// Produce an exact, transaction-local payout proof. This is staging evidence,
+// not a canonical reward or valuation. Never infer a payout from token symbols.
+type PayoutEvidence={status:'verified'|'needs_review';reason:string;token_address?:string;amount_raw?:string;token_decimals?:number;flow_count?:number};
+function verifiedPayoutEvidence(tx:any,flows:any[],address:string):PayoutEvidence{
+ if(!isSuccessfulClaim(tx))return {status:'needs_review',reason:'claim-not-successful'};
+ const matched=(flows||[]).filter(flow=>hasVerifiedClaimPayout(tx,[flow],address));
+ if(!matched.length)return {status:'needs_review',reason:'no-verified-incoming-flow'};
+ const assets=new Set(matched.map(flow=>lower(flow.token_address)));
+ // Mixed-token claims require the canonical bot-specific classification.
+ if(assets.size!==1)return {status:'needs_review',reason:'multiple-payout-assets'};
+ const decimals=new Set(matched.map(flow=>Number(flow.token_decimals)));
+ if(decimals.size!==1)return {status:'needs_review',reason:'inconsistent-token-decimals'};
+ const d=[...decimals][0];
+ if(!Number.isSafeInteger(d)||d<0||d>36)return {status:'needs_review',reason:'invalid-token-decimals'};
+ // An exact amount cannot be safely reconstructed from a partially truncated set.
+ const keys=matched.map(flow=>String(flow.flow_key||''));
+ if(keys.some(key=>!key)||new Set(keys).size!==keys.length)return {status:'needs_review',reason:'ambiguous-flow-keys'};
+ const amount=matched.reduce((sum,flow)=>sum+BigInt(String(flow.amount_raw)),0n);
+ if(amount<=0n)return {status:'needs_review',reason:'nonpositive-payout'};
+ return {status:'verified',reason:'transaction-flow-evidence',
+  token_address:[...assets][0],amount_raw:amount.toString(),token_decimals:d,
+  flow_count:matched.length};
+}
 async function verifyCandidatePayouts(job:any,address:string){
  const {data:candidates,error:lookupError}=await sb.from('dao_reward_claim_candidates')
   .select('tx_hash').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
@@ -429,21 +452,25 @@ async function verifyCandidatePayouts(job:any,address:string){
    .eq('tx_hash',candidate.tx_hash).maybeSingle();
   if(txError)throw txError;
   const {data:flows,error:flowError}=await sb.from('project_transaction_asset_flows')
-   .select('tx_hash,direction,amount_raw,flow_key,token_address,counterparty_address')
+   .select('tx_hash,direction,amount_raw,flow_key,token_address,token_decimals,counterparty_address')
    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
    .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash);
   if(flowError)throw flowError;
-  const paid=!!tx&&hasVerifiedClaimPayout(tx,flows||[],address);
-  // This is evidence status only. No inferred zero reward, no price and
-  // no claim_nft_id update if the available flow evidence is insufficient.
+  const evidence:PayoutEvidence=tx?verifiedPayoutEvidence(tx,flows||[],address):{status:'needs_review',reason:'transaction-not-persisted'};
+  // Atomic update of evidence and status. Do not change canonical transactions,
+  // reward summaries, NFT IDs or USD prices.
   const {error:writeError}=await sb.from('dao_reward_claim_candidates')
-   .update({payout_status:paid?'verified':'needs_review',
+   .update({payout_status:evidence.status,payout_reason:evidence.reason,
+    payout_token_address:evidence.status==='verified'?evidence.token_address:null,
+    payout_amount_raw:evidence.status==='verified'?evidence.amount_raw:null,
+    payout_token_decimals:evidence.status==='verified'?evidence.token_decimals:null,
+    payout_flow_count:evidence.status==='verified'?evidence.flow_count:null,
     payout_checked_at:new Date().toISOString()})
    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('chain_key',CHAIN)
    .eq('tx_hash',candidate.tx_hash).eq('status','ownership_verified')
    .eq('payout_status','pending');
   if(writeError)throw writeError;
-  if(paid)verified++;else needsReview++;
+  if(evidence.status==='verified')verified++;else needsReview++;
  }
  return {verifiedPayoutClaims:verified,payoutsNeedingReview:needsReview};
 }

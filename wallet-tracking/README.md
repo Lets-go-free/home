@@ -1,4 +1,11 @@
-# WalletTracking · Phase 7.68
+# WalletTracking · Phase 7.79
+
+
+## Update 7.79 – DAO-Auszahlungsnachweis (Staging)
+
+Der DAO-Worker speichert für historisch bestätigte Claim-Kandidaten einen nachgewiesenen Token-Vertrag, den exakten Rohbetrag, die Dezimalstellen und die Zahl der belegenden Blockchain-Flows. Mehrdeutige, gemischte oder nicht belegte Auszahlungen werden nicht automatisch bestätigt. Bereits als verifiziert markierte Fälle aus 7.78 ohne Betragsnachweis werden zur erneuten Prüfung vorgemerkt. Es werden **keine Reward-Summen, Preise, Bot-Zuordnungen oder Snapshots geändert**.
+
+**Installation:** Migration `supabase/migrations/20261103084538_dao_payout_evidence_amount_779.sql` nach 7.77/7.78 in Supabase SQL Editor ausführen; dann Dateien veröffentlichen und Phase 7.79 prüfen. **`dao-reward-refresh` nicht deployen oder per Cron aktivieren.** Der vollständige serverseitige Claim-/Referral- und Preisabgleich sowie TLN/VOW fehlen noch. Einzelheiten: `docs/releases/7.79-dao-payout-amount.md`.
 
 
 ## Update 7.68

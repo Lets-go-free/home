@@ -9,12 +9,12 @@ test('payout verification only considers historically proven claims',()=>{
  assert.match(unit,/eq\('payout_status','pending'\)/);
 });
 test('payouts require known successful transaction and on-chain flow',()=>{
- assert.match(unit,/hasVerifiedClaimPayout\(tx,flows\|\|\[\],address\)/);
+ assert.match(unit,/verifiedPayoutEvidence\(tx,flows\|\|\[\],address\)/);
  assert.match(source,/txProgress.complete&&flowProgress.complete/);
 });
 test('payout proof writes no reward sums or claim NFT fields',()=>{
  assert.doesNotMatch(unit,/\.update\(\{[^}]*claim_nft_id|\.update\(\{[^}]*claim_reward_usd|\.update\(\{[^}]*price_usd/);
- assert.match(unit,/payout_status:paid\?'verified':'needs_review'/);
+ assert.match(unit,/payout_status:evidence.status/);
 });
 test('migration restricts payout status and indexes pending work',()=>{
  assert.match(sql,/CHECK \(payout_status IN \('pending','verified','needs_review'\)\)/);

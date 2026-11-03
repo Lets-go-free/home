@@ -9,7 +9,7 @@ assert.match(src,/const txProgress=await paginate\(job,RAW_TX_SCAN/);
 assert.match(src,/await handler\(rows\);[\s\S]*await saveScan\(job,kind,cursor,/);
 assert.match(src,/\.eq\('status','pending'\)/);
 assert.match(src,/\.limit\(MAX_HISTORICAL_CHECKS\)/);
-assert.match(src,/status:proof\.verified\?'ownership_verified':'unverified'/);
+assert.match(src,/const candidateStatus=proof\.verified\?'ownership_verified':conclusiveNegative\?'unverified':'needs_review'/);
 assert.match(src,/pendingHistoricalChecks/);
 assert.doesNotMatch(src,/if\(historicalCheckCount>=MAX_HISTORICAL_CHECKS\)throw/);
 assert.match(src,/classification:'observational-only'/);
