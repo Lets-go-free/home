@@ -667,10 +667,106 @@ async function process(job:any){
   classification:'observational-only'};
 }
 
+// Read-only, manually enabled single-address readiness check. It never claims a
+// queue row, advances a cursor, imports an event or writes to a reward table.
+const INSPECT_ADDRESS='0x239c5822a0d2a67e629d7a3b5c8180721e228b47';
+async function countScoped(table:string,filters:Record<string,string>,extra?:{column:string;value:string}){
+ let q=sb.from(table).select('*',{head:true,count:'exact'});
+ for(const [key,value] of Object.entries(filters))q=q.eq(key,value);
+ if(extra)q=q.eq(extra.column,extra.value);
+ const {count,error}=await q;
+ if(error)throw Error('Inspect '+table+': '+error.message);
+ return count||0;
+}
+async function inspectTestAddress(){
+ // Do not accept a user-supplied address; explicitly restrict to the known
+ // DAO referral test address. Wallet ciphertext remains protected at rest.
+ const matches:{id:string;user_id:string}[]=[];
+ let offset=0;
+ while(true){
+  const {data,error}=await sb.from('wallets')
+   .select('id,user_id,evm_address_ciphertext,encryption_version,key_version')
+   .not('evm_address_ciphertext','is',null)
+   .order('id').range(offset,offset+199);
+  if(error)throw Error('Inspect wallets: '+error.message);
+  const batch=data||[];
+  for(const wallet of batch){
+   if(wallet.encryption_version!==1||wallet.key_version!==1)continue;
+   try{
+    const value=await decryptWalletField(await userKey(wallet.user_id),wallet.user_id,
+     wallet.id,wallet.evm_address_ciphertext,'evm_address');
+    if(value.toLowerCase()===INSPECT_ADDRESS)
+     matches.push({id:wallet.id,user_id:wallet.user_id});
+   }catch{ /* Unreadable wallets cannot be silently selected. */ }
+  }
+  if(batch.length<200)break;
+  offset+=batch.length;
+  if(offset>=2000)throw Error('Inspect wallet search exceeds safe bound');
+ }
+ const wallets=[];
+ for(const wallet of matches){
+  const scope={user_id:wallet.user_id,wallet_id:wallet.id,project_key:PROJECT};
+  const {data:cursors,error:cursorError}=await sb.from('project_scan_state')
+   .select('scan_type,last_scanned_block,last_scan_result')
+   .eq('user_id',wallet.user_id).eq('wallet_id',wallet.id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+   .in('scan_type',[RAW_TX_SCAN,RAW_FLOW_SCAN,REFERRAL_FLOW_SCAN]);
+  if(cursorError)throw cursorError;
+  const {data:attempts,error:attemptError}=await sb.from('wallet_reward_refresh_attempts')
+   .select('scan_day,state,attempt_count,last_error')
+   .eq('user_id',wallet.user_id).eq('wallet_id',wallet.id)
+   .eq('project_key',PROJECT).order('scan_day',{ascending:false}).limit(1);
+  if(attemptError)throw attemptError;
+  wallets.push({
+   // No user id, wallet id, transaction hash, ciphertext, or token amounts.
+   transactions:await countScoped('project_transactions',scope),
+   incomingFlows:await countScoped('project_transaction_asset_flows',scope,{column:'direction',value:'eingang'}),
+   candidateClaims:await countScoped('dao_reward_claim_candidates',
+    {user_id:wallet.user_id,wallet_id:wallet.id,chain_key:CHAIN}),
+   cursors:(cursors||[]).map(({scan_type,last_scanned_block,last_scan_result})=>
+    ({scan_type,last_scanned_block,last_scan_result})),
+   queue:(attempts||[]).map(({scan_day,state,attempt_count,last_error})=>
+    ({scan_day,state,attempt_count,has_error:!!last_error}))
+  });
+ }
+ return {ok:true,mode:'read-only-test',project:PROJECT,chain:CHAIN,
+  walletAddress:INSPECT_ADDRESS,matchingWallets:matches.length,wallets,
+  notice:'No wallet data, reward sum, snapshot, scan cursor or queue row was modified.'};
+}
+// The manual inspector uses a logged-in ADMIN account, never the daily job secret.
+// Its fixed-address scope is enforced server-side and its body cannot select a wallet.
+async function authenticateInspectAdmin(request:Request){
+ const authorization=request.headers.get('authorization')||'';
+ const match=/^Bearer\s+([^\s]+)$/i.exec(authorization);
+ if(!match)return {ok:false,status:401,error:'Valid user Authorization Bearer JWT required'};
+ const {data:session,error:authError}=await sb.auth.getUser(match[1]);
+ if(authError||!session?.user?.id)return {ok:false,status:401,error:'Invalid or expired user JWT'};
+ // The existing admins.user_id UUID, NOT client-supplied roles or email, grants access.
+ const {data:admin,error:adminError}=await sb.from('admins')
+  .select('user_id').eq('user_id',session.user.id).maybeSingle();
+ if(adminError)throw Error('Admin authorization check failed');
+ if(!admin)return {ok:false,status:403,error:'Administrator access required'};
+ return {ok:true,status:200};
+}
 Deno.serve(async request=>{
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
- if(!SECRET||request.headers.get('x-wallet-refresh-secret')!==SECRET)return Response.json({error:'Unauthorized'},{status:401});
  if(!DB_URL||!SERVICE_KEY||!MASTER)return Response.json({error:'Server configuration missing'},{status:500});
+ // The test route is independent from the existing daily-refresh secret.
+ // All other routes continue to require that secret, even if the worker is disabled.
+ let body:any={};try{body=await request.json()}catch{}
+ if(body?.mode==='inspect-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_INSPECT')!=='true')
+   return Response.json({error:'Manual read-only inspection disabled'},{status:403});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   return Response.json(await inspectTestAddress());
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(!SECRET||request.headers.get('x-wallet-refresh-secret')!==SECRET)
+  return Response.json({error:'Unauthorized'},{status:401});
+ if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')!=='true')
+  return Response.json({ok:true,skipped:'DAO worker disabled; only manual read-only inspection allowed'});
  const minute=localMinute();if(minute<245||minute>=330)return Response.json({ok:true,skipped:'Outside DAO window'});
  const day=localDay();let job:any=null;
  try{const claim=await sb.rpc('wallettracking_reward_claim',{p_day:day,p_project:'dao1'});if(claim.error)throw claim.error;

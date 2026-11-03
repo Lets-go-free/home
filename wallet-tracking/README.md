@@ -1,3 +1,11 @@
+**Version 7.91 · Build 20261103-152003** – DAO-Test mit authentifiziertem Admin-JWT statt Wallet-Daily-Secret; übriger Worker unverändert deaktiviert. Siehe `docs/releases/7.91-dao-admin-jwt-test.md`.
+
+**Version 7.90 · Build 20261103-145850** – Manueller, rein lesender DAO-Referral-Wallet-Test ohne Cron und Datenbank-Schreibzugriff. Einzelheiten `docs/releases/7.90-dao-readonly-referral-test.md`.
+
+## WalletTracking 7.89 – DAO-Live-Readiness-Audit
+
+Nur lesender aggregierter SQL-Audit unter `sql/audits/dao-reward-live-readiness-789.sql`. Keine Datenbankmigration und keine Cron-Aktivierung. Der Worker bleibt deaktiviert bis zur Prüfung der echten Supabase-Ergebnisse.
+
 ## Version 7.88 — 03.11.2026
 
 Build 20261103-141328. DAO: bestehende exakt zielblockgebundene `aptm_price_anchors` (canonical exact-v13) werden im Worker für native APTM bzw. den verifizierten wAPTM-Contract übernommen. Keine neue historische Preisermittlung, kein Predecessor-Fallback, keine Token-Symbol-Erkennung für ERC20, keine Überschreibung bestehender Preise. Fehlende Anker bleiben unbewertet. Migration `20261103141328_dao_exact_target_anchor_prices_788.sql` vor künftigem Worker-Deployment ausführen. Worker/Cron bleibt deaktiviert bis zum Live-Test und Abschluss der fachlichen Reward-Pipeline.
