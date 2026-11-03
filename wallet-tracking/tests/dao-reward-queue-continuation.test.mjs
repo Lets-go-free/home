@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const worker=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
 const sql=readFileSync(new URL('../supabase/migrations/20261102184148_reward_partial_continuation_609.sql',import.meta.url),'utf8');
 test('incomplete pages or NFT backlog stay queued instead of becoming staged',()=>{
- assert.match(worker,/const partial=!result\.transactionScan\.complete\|\|!result\.flowScan\.complete\|\|result\.pendingHistoricalChecks>0/);
+ assert.match(worker,/const partial=!result\.transactionScan\.complete\|\|!result\.flowScan\.complete\|\|result\.referralScan\?\.complete===false\|\|result\.pendingHistoricalChecks>0/);
  assert.match(worker,/partial\?'wallettracking_reward_continue':'wallettracking_reward_stage'/);
 });
 test('partial jobs are claimable and retries remain bounded for failures',()=>{

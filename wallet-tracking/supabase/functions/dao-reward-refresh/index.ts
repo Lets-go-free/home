@@ -37,6 +37,8 @@ function isVerifiedReferralTransaction(address:string,tx:any,flows:any[]){
 // Do not advance the canonical browser/claim cursors until reward enrichment is implemented.
 const RAW_TX_SCAN='reward_server_raw_transactions_v1'
 const RAW_FLOW_SCAN='reward_server_raw_flows_v1'
+// Independent targeted scan: a token transfer may not be listed in the wallet's address transactions.
+const REFERRAL_FLOW_SCAN='reward_server_referral_wusdt_v1'
 function localDay(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Zurich',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}
 function localMinute(){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Zurich',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());return Number(parts.find(x=>x.type==='hour')?.value)*60+Number(parts.find(x=>x.type==='minute')?.value)}
 function bytesFromMaster(){
@@ -524,9 +526,10 @@ async function process(job:any){
   txCount+=rows.length;
  });
 
- const fc=await state(job,RAW_FLOW_SCAN);
- const flowProgress=await paginate(job,RAW_FLOW_SCAN,`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
-  const rows=items.map(t=>{
+ // Reuse the exact same canonical flow keys for broad and targeted scans.
+ // This prevents double-counting when Blockscout returns the same event twice.
+ function transferRows(items:any[]){
+  return items.map(t=>{
    const token=lower(t.token?.address_hash||t.token?.address||t.token_address);const tx=hash(t);
    const from=lower(t.from),to=lower(t.to);
    const direction=from===address&&to===address?'intern':to===address?'eingang':from===address?'ausgang':'sonst';
@@ -544,9 +547,65 @@ async function process(job:any){
     counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,
     direction,updated_at:new Date().toISOString()};
   });
+ }
+ const fc=await state(job,RAW_FLOW_SCAN);
+ const flowProgress=await paginate(job,RAW_FLOW_SCAN,`/addresses/${address}/token-transfers?type=ERC-20`,fc,async items=>{
+  const rows=transferRows(items);
   await insertRawWithoutReplacing('project_transaction_asset_flows',rows,
    'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length;
  });
+ // Match the browser's targeted referral wUSDT import. Only the historically
+ // documented referral wallet is eligible; every other wallet skips this scan.
+ // A targeted transfer is evidence of payment, NOT automatically a referral:
+ // the canonical UI also requires the qualifying contract transaction.
+ let targetedReferralFlows=0;
+ let referralProgress:{complete:boolean;block:number;pages:number}|null=null;
+ if(address===REFERRAL_WALLET){
+  const rc=await state(job,REFERRAL_FLOW_SCAN);
+  referralProgress=await paginate(job,REFERRAL_FLOW_SCAN,
+   `/addresses/${address}/token-transfers?type=ERC-20&filter=to&token=${REFERRAL_WUSDT_TOKEN}`,
+   rc,async items=>{
+    const rows=transferRows(items);
+    // Do not accept a silently ignored filter from the Explorer: require
+    // wallet, asset and direction independently for every returned event.
+    for(const row of rows){
+     if(row.direction!=='eingang'||row.token_address!==REFERRAL_WUSDT_TOKEN)
+      throw Error('Targeted referral Explorer filter mismatch');
+    }
+    await insertRawWithoutReplacing('project_transaction_asset_flows',rows,
+     'user_id,project_key,chain_key,wallet_id,flow_key');
+    targetedReferralFlows+=rows.length;
+    // Incoming token events do not necessarily appear in the receiver's TX
+    // address history. Materialise only a genuine verified contract withdraw
+    // from full TX details, never a made-up transaction from a token symbol.
+    const contractTxs=new Map<string,number>();
+    for(const row of rows){
+     if(row.counterparty_address===REFERRAL_REWARD_CONTRACT)
+      contractTxs.set(row.tx_hash,row.block_number);
+    }
+    for(const [txHash,flowBlock] of contractTxs){
+     const tx=await json(`${EXPLORER}/transactions/${txHash}`);
+     const from=lower(tx.from),to=lower(tx.to);
+     const block=Number(tx.block_number??tx.block);
+     const input=String(tx.raw_input||tx.input||'');
+     const method=canonicalMethod(input,tx.method||tx.tx_types?.[0]);
+     const status=String(tx.status??tx.result??'');
+     if(block!==flowBlock||to!==REFERRAL_REWARD_CONTRACT||
+        !['ok','success'].includes(status.toLowerCase())||
+        !isVerifiedReferralTransaction(address,{to_address:to,method},
+         rows.filter(f=>f.tx_hash===txHash)))continue;
+     await insertRawWithoutReplacing('project_transactions',[{
+      user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,
+      tx_hash:txHash,block_number:block,tx_timestamp:tx.timestamp||null,
+      from_address:from||null,to_address:to,direction:from===address?'ausgang':'sonst',
+      method,selector:input.slice(0,10).toLowerCase(),status,
+      value_aptm:aptmAmount(tx.value??tx.value_wei??'0'),
+      gas_aptm:aptmAmount(tx.fee?.value??'0'),raw_input:input,
+      updated_at:new Date().toISOString()
+     }],'user_id,project_key,chain_key,wallet_id,tx_hash');
+    }
+   });
+ }
 
  // Separate verification budget: unprocessed candidates stay persisted and are
  // retried independently of the raw block cursors on subsequent invocations.
@@ -584,7 +643,7 @@ async function process(job:any){
   if(error)throw error;
   canonicallyCreatedUnassignedMinerClaims=Number(data||0);
  }
- return {...payoutVerification,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,nativeClaimFlows,
+ return {...payoutVerification,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,targetedReferralFlows,referralScan:referralProgress,nativeClaimFlows,
   claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }
@@ -600,7 +659,7 @@ Deno.serve(async request=>{
   const result=await process(job);
   // Partial explorer pages and ownership backlog must remain claimable TODAY.
   // 'staged' is terminal for today's raw import; it is NOT reward completion.
-  const partial=!result.transactionScan.complete||!result.flowScan.complete||result.pendingHistoricalChecks>0;
+  const partial=!result.transactionScan.complete||!result.flowScan.complete||result.referralScan?.complete===false||result.pendingHistoricalChecks>0;
   const transition=await sb.rpc(partial?'wallettracking_reward_continue':'wallettracking_reward_stage',
    {p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id});
   if(transition.error)throw transition.error;

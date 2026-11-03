@@ -1,3 +1,7 @@
+## Version 7.86 — 03.11.2026
+
+Build 20261103-135010. DAO-Referral-wUSDT erhält einen separaten, fortsetzbaren serverseitigen ERC-20-Transferscan, nur für die im vorhandenen DAO-Code verifizierte Referral-Wallet. Der neue Scan nutzt denselben eindeutigen Flow-Key wie der allgemeine Token-Scan, prüft eingehende Token/Wallet-Richtung nach und lädt Contract-Transaktionen bei Bedarf aus Blockchain-Details nach. Ein blosser wUSDT-Eingang ist keine Referral-Bestätigung. Unvollständige Seiten halten die Queue auf `partial`. Keine eigenen Reward-Summaries oder Snapshots. Kein neuer Cron und keine Datenbankmigration; Edge Function noch nicht deployen, vollständige Reward-Pipeline und Live-Test weiterhin offen.
+
 ## Version 7.85 — 03.11.2026
 
 - DAO: Verifizierte neue Miner-Claims ohne belegte NFT-ID können als «Nicht zugeordnet» im bestehenden `project_nft_claims` gespeichert werden. Voraussetzung sind vollständige TX-/Flow-Evidenz, identischer Token/Rohbetrag und bereits vorhandene historische Bewertung. Keine Bot-ID-Erfindung, kein zweiter Preisweg.
