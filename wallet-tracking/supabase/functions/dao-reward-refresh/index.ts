@@ -555,7 +555,18 @@ async function process(job:any){
  const payoutVerification=txProgress.complete&&flowProgress.complete
   ?await verifyCandidatePayouts(job,address)
   :{verifiedPayoutClaims:0,payoutsNeedingReview:0};
- return {...payoutVerification,transactions:txCount,flows:flowCount,nativeClaimFlows,
+ // Reconcile ONLY already-existing, historically owned DAO claim rows whose
+ // payout flows were valued by the application's canonical price pipeline.
+ // Unassigned claims, missing prices and unclear evidence remain untouched.
+ // This does not complete the daily reward job or invent new reward records.
+ let canonicallyReconciledClaims=0;
+ if(txProgress.complete&&flowProgress.complete){
+  const {data,error}=await sb.rpc('wallettracking_dao_reconcile_verified_claims',
+   {p_user:job.user_id,p_wallet:job.wallet_id,p_limit:20});
+  if(error)throw error;
+  canonicallyReconciledClaims=Number(data||0);
+ }
+ return {...payoutVerification,canonicallyReconciledClaims,transactions:txCount,flows:flowCount,nativeClaimFlows,
   claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }

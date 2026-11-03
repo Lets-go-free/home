@@ -1,4 +1,8 @@
-# WalletTracking · Phase 7.82
+## Version 7.83 · 03.11.2026
+
+DAO: Verifizierte historische Auszahlungs-Flows können vorhandene, noch nicht bewertete NFT-Claim-Datensätze transaktional vervollständigen, sofern der applikationsweite Preisweg die Flows bereits bewertet hat. Kein eigenständiger Preisrechner und keine neuen Claim-Datensätze. Migration `20261103111756_dao_canonical_payout_reconcile_783.sql` vor einem zukünftigen Worker-Deployment ausführen. DAO-Worker bleibt deaktiviert bis zur vollständigen Claim-/Referral-Pipeline und Live-Tests.
+
+# WalletTracking · Phase 7.83
 
 ## Update 7.82 – Unzugeordnete Legacy-Claims (Staging)
 
