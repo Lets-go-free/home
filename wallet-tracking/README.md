@@ -1,3 +1,8 @@
+## Version 7.85 — 03.11.2026
+
+- DAO: Verifizierte neue Miner-Claims ohne belegte NFT-ID können als «Nicht zugeordnet» im bestehenden `project_nft_claims` gespeichert werden. Voraussetzung sind vollständige TX-/Flow-Evidenz, identischer Token/Rohbetrag und bereits vorhandene historische Bewertung. Keine Bot-ID-Erfindung, kein zweiter Preisweg.
+- SQL: `20261103134421_dao_verified_unassigned_miner_claims_785.sql`. DAO-Worker noch NICHT deployen / Cron nicht aktivieren; Live-Test steht aus.
+
 ## Version 7.84 — 03.11.2026
 
 - Neue, eindeutig historisch verifizierte Legacy-DAO-Claims können aus bestehenden, bewerteten Auszahlungs-Flows in `project_nft_claims` angelegt werden; neue Miner ohne NFT-ID bleiben unzugeordnet.
