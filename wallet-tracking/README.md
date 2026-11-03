@@ -1,4 +1,14 @@
-# WalletTracking · Phase 7.81
+# WalletTracking · Phase 7.82
+
+## Update 7.82 – Unzugeordnete Legacy-Claims (Staging)
+
+- Bisher nicht erfasste `claimReward`-Transaktionen ohne eindeutige NFT-ID werden als `unassigned_legacy` gespeichert.
+- Sie gelangen zur gesonderten Auszahlungsprüfung, **ohne** eine Bot-ID, einen Reward-Betrag oder einen Preis zu behaupten.
+- Neue `Miner Claim`-Fälle bleiben getrennt als `unassigned_miner`.
+- Weiterhin kein produktiver DAO-Cron; die kanonische Claim-/Referral-Verarbeitung fehlt noch.
+- Migration: `20261103111113_dao_unassigned_legacy_claims_782.sql`; DAO-Edge-Function **nicht** deployen.
+- Build: `20261103-111113` (CET).
+
 
 ## Update 7.81 – Neue Miner-Claims ohne eindeutige NFT-ID (Staging)
 

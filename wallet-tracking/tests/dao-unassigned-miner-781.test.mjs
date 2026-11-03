@@ -24,10 +24,11 @@ test('new Miner without NFT identity remains explicitly unassigned and persisted
  assert.equal(x.rows[0].nft_id,null);
  assert.equal(x.rows[0].nft_contract,null);
 });
-test('legacy claims with no confirmed NFT do not become unassigned miner records',async()=>{
+test('legacy claims without NFTs have independent staging status (not miner)',async()=>{
  const x=worker(()=>null);
- assert.equal(await x.fn(job,[{tx_hash:'0xabc',block_number:555,selector:'0x86bb8f37',raw_input:'0x86bb8f37'}],new Map()),0);
- assert.equal(x.rows.length,0);
+ assert.equal(await x.fn(job,[{tx_hash:'0xabc',block_number:555,selector:'0x86bb8f37',raw_input:'0x86bb8f37'}],new Map()),1);
+ assert.equal(x.rows.length,1);
+ assert.equal(x.rows[0].status,'unassigned_legacy');
 });
 test('known NFT evidence retains historical ownership verification route',async()=>{
  const x=worker(()=>({nft:{_contract:'0xabc'},id:'123'}));
@@ -37,7 +38,7 @@ test('known NFT evidence retains historical ownership verification route',async(
 });
 test('new payout verification includes explicit unassigned status without touching canonical reward fields',()=>{
  const unit=source.slice(source.indexOf('async function verifyCandidatePayouts('),source.indexOf('async function process('));
- assert.match(unit,/in\('status',\['ownership_verified','unassigned_miner'\]\)/);
+ assert.match(unit,/in\('status',\['ownership_verified','unassigned_miner','unassigned_legacy'\]\)/);
  assert.doesNotMatch(unit,/claim_reward_usd|claim_nft_id|\.from\('snapshots'\)/);
  assert.match(sql,/nft_contract DROP NOT NULL/);
  assert.match(sql,/nft_id DROP NOT NULL/);
