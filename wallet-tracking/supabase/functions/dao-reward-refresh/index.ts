@@ -363,10 +363,14 @@ async function enqueueCandidates(job:any, rows:any[], nfts:Map<string,any>){
  for(const row of rows){
   if(![CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(row.selector))continue;
   const match=unequivocalClaimNft(row.raw_input,nfts);
-  if(!match)continue;
+  // New Miner claims can be genuine without a unique NFT identifier in the
+  // call input. Keep these as explicitly UNASSIGNED payout candidates; do not
+  // manufacture ownership evidence or write claim_nft_id.
+  if(!match && row.selector!==NEW_MINER_CLAIM_SELECTOR)continue;
   candidates.push({user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,
    chain_key:CHAIN,tx_hash:row.tx_hash,claim_block:row.block_number,
-   nft_contract:match.nft._contract,nft_id:match.id});
+   nft_contract:match?.nft._contract??null,nft_id:match?.id??null,
+   status:match?'pending':'unassigned_miner'});
  }
  if(candidates.length){
   const {error}=await sb.from('dao_reward_claim_candidates').upsert(candidates,
@@ -447,7 +451,7 @@ function verifiedPayoutEvidence(tx:any,flows:any[],address:string):PayoutEvidenc
 async function verifyCandidatePayouts(job:any,address:string){
  const scope=()=>sb.from('dao_reward_claim_candidates').select('tx_hash')
   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-  .eq('chain_key',CHAIN).eq('status','ownership_verified');
+  .eq('chain_key',CHAIN).in('status',['ownership_verified','unassigned_miner']);
  const {data:pending,error:pendingError}=await scope()
   .eq('payout_status','pending').order('claim_block',{ascending:true}).limit(20);
  if(pendingError)throw pendingError;
@@ -485,7 +489,7 @@ async function verifyCandidatePayouts(job:any,address:string){
     payout_flow_count:evidence.status==='verified'?evidence.flow_count:null,
     payout_checked_at:new Date().toISOString()})
    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('chain_key',CHAIN)
-   .eq('tx_hash',candidate.tx_hash).eq('status','ownership_verified')
+   .eq('tx_hash',candidate.tx_hash).in('status',['ownership_verified','unassigned_miner'])
    .in('payout_status',['pending','needs_review']);
   if(writeError)throw writeError;
   if(evidence.status==='verified')verified++;else needsReview++;

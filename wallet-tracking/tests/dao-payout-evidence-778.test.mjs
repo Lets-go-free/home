@@ -4,8 +4,8 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
 const sql=readFileSync(new URL('../supabase/migrations/20261102220424_dao_payout_evidence_778.sql',import.meta.url),'utf8');
 const unit=source.slice(source.indexOf('async function verifyCandidatePayouts('),source.indexOf('async function process('));
-test('payout verification only considers historically proven claims',()=>{
- assert.match(unit,/eq\('status','ownership_verified'\)/);
+test('payout verification covers proven NFTs and explicitly unassigned new miners',()=>{
+ assert.match(unit,/in\('status',\['ownership_verified','unassigned_miner'\]\)/);
  assert.match(unit,/eq\('payout_status','pending'\)/);
 });
 test('payouts require known successful transaction and on-chain flow',()=>{

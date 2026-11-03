@@ -1,4 +1,10 @@
-# WalletTracking · Phase 7.80
+# WalletTracking · Phase 7.81
+
+## Update 7.81 – Neue Miner-Claims ohne eindeutige NFT-ID (Staging)
+
+Der serverseitige DAO-Rohdaten-Worker nimmt neue `Miner Claim`-Transaktionen auch dann in die dauerhaft gespeicherte Prüfliste auf, wenn noch keine eindeutige historische Bot-/NFT-Zuordnung erkennbar ist. Diese Fälle erhalten `status=unassigned_miner`, leere NFT-Vertrags-/ID-Felder und können ihre tatsächlich belegte Auszahlung separat nachweisen. Legacy-Claims ohne eindeutige NFT-ID werden **nicht** pauschal so behandelt. Staging-Status und Auszahlungsnachweis ersetzen **keine** bestätigte Bot-Zuordnung, historische Preisbewertung oder Reward-Summe.
+
+**Installation:** SQL-Migration `supabase/migrations/20261103110156_dao_unassigned_miner_candidates_781.sql` ausführen; Webdateien veröffentlichen. `dao-reward-refresh` weiterhin **nicht deployen/aktivieren**. 42 lokale DAO-Tests erfolgreich; kein Live-End-to-End-Test.
 
 ## Update 7.80 – DAO-Auszahlungsnachweise erneut prüfen
 
