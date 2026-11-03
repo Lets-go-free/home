@@ -1,5 +1,10 @@
-# WalletTracking · Phase 7.79
+# WalletTracking · Phase 7.80
 
+## Update 7.80 – DAO-Auszahlungsnachweise erneut prüfen
+
+DAO-Claim-Kandidaten mit `payout_status=needs_review` werden nach mindestens 24 Stunden erneut mit den mittlerweile importierten On-Chain-Flows verglichen. Neue `pending`-Kandidaten haben Vorrang. Insgesamt werden pro Lauf höchstens 20 Kandidaten geprüft. Bereits bestätigte (`verified`) Nachweise werden weder zurückgesetzt noch verändert. Damit bleiben zuvor fehlende Explorer-Transfers nicht dauerhaft ungeprüft.
+
+**Installation:** Nur geänderte Dateien einspielen und veröffentlichen. Keine SQL-Migration; `dao-reward-refresh` weiterhin **nicht deployen oder per Cron aktivieren**, da die vollständige Claim-/Referral-/Preiszuordnung sowie TLN/VOW weiter offen sind. Tests: 43 lokale DAO-/Reward-Tests bestanden; kein Live-End-to-End-Test.
 
 ## Update 7.79 – DAO-Auszahlungsnachweis (Staging)
 

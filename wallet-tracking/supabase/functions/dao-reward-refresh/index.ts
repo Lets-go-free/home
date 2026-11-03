@@ -438,14 +438,32 @@ function verifiedPayoutEvidence(tx:any,flows:any[],address:string):PayoutEvidenc
   token_address:[...assets][0],amount_raw:amount.toString(),token_decimals:d,
   flow_count:matched.length};
 }
+// Explorer/indexer lag can produce a temporarily missing payout. Keep these
+// cases retryable: first process new pending claims, then recheck old ambiguous
+// evidence at most once per 24 hours. Without this, needs_review is terminal
+// even if the next scan imports the missing token transfer. The 20-item budget
+// is shared across both classes; an indefinitely ambiguous claim cannot starve
+// newly discovered payouts.
 async function verifyCandidatePayouts(job:any,address:string){
- const {data:candidates,error:lookupError}=await sb.from('dao_reward_claim_candidates')
-  .select('tx_hash').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-  .eq('chain_key',CHAIN).eq('status','ownership_verified')
+ const scope=()=>sb.from('dao_reward_claim_candidates').select('tx_hash')
+  .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+  .eq('chain_key',CHAIN).eq('status','ownership_verified');
+ const {data:pending,error:pendingError}=await scope()
   .eq('payout_status','pending').order('claim_block',{ascending:true}).limit(20);
- if(lookupError)throw lookupError;
+ if(pendingError)throw pendingError;
+ const candidates=[...(pending||[])];
+ if(candidates.length<20){
+  const retryBefore=new Date(Date.now()-24*60*60*1000).toISOString();
+  const {data:stale,error:staleError}=await scope()
+   .eq('payout_status','needs_review')
+   .or(`payout_checked_at.is.null,payout_checked_at.lt.${retryBefore}`)
+   .order('payout_checked_at',{ascending:true,nullsFirst:true})
+   .limit(20-candidates.length);
+  if(staleError)throw staleError;
+  candidates.push(...(stale||[]));
+ }
  let verified=0,needsReview=0;
- for(const candidate of candidates||[]){
+ for(const candidate of candidates){
   const {data:tx,error:txError}=await sb.from('project_transactions')
    .select('tx_hash,selector,status,to_address').eq('user_id',job.user_id)
    .eq('wallet_id',job.wallet_id).eq('project_key',PROJECT).eq('chain_key',CHAIN)
@@ -468,7 +486,7 @@ async function verifyCandidatePayouts(job:any,address:string){
     payout_checked_at:new Date().toISOString()})
    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('chain_key',CHAIN)
    .eq('tx_hash',candidate.tx_hash).eq('status','ownership_verified')
-   .eq('payout_status','pending');
+   .in('payout_status',['pending','needs_review']);
   if(writeError)throw writeError;
   if(evidence.status==='verified')verified++;else needsReview++;
  }
