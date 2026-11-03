@@ -614,6 +614,16 @@ async function process(job:any){
  const payoutVerification=txProgress.complete&&flowProgress.complete
   ?await verifyCandidatePayouts(job,address)
   :{verifiedPayoutClaims:0,payoutsNeedingReview:0};
+ // Reuse an already established canonical price only when wallet, chain,
+ // contract, decimals AND exact block all match, with a unique price/source.
+ // This does NOT calculate any new historic price or overwrite a manual value.
+ let canonicallyPricedFlows=0;
+ if(txProgress.complete&&flowProgress.complete){
+  const {data,error}=await sb.rpc('wallettracking_dao_reuse_exact_block_prices',
+   {p_user:job.user_id,p_wallet:job.wallet_id,p_limit:100});
+  if(error)throw error;
+  canonicallyPricedFlows=Number(data||0);
+ }
  // Reconcile ONLY already-existing, historically owned DAO claim rows whose
  // payout flows were valued by the application's canonical price pipeline.
  // Unassigned claims, missing prices and unclear evidence remain untouched.
@@ -643,7 +653,7 @@ async function process(job:any){
   if(error)throw error;
   canonicallyCreatedUnassignedMinerClaims=Number(data||0);
  }
- return {...payoutVerification,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,targetedReferralFlows,referralScan:referralProgress,nativeClaimFlows,
+ return {...payoutVerification,canonicallyPricedFlows,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,targetedReferralFlows,referralScan:referralProgress,nativeClaimFlows,
   claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }

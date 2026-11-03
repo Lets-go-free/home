@@ -1,3 +1,7 @@
+## Version 7.87 — 03.11.2026
+
+Build 20261103-135703. DAO-Worker: Bewertungslücken werden ausschliesslich aus bereits kanonisch bewerteten Flows derselben Wallet, desselben Tokens/Contracts, derselben Decimals und exakt desselben Blocks ergänzt. Konfliktierende Preise/Quellen, fehlende Bewertung und manuelle Werte bleiben unangetastet. Keine neue Preisroute. Serverseitige RPC nur Service Role. Vollständiger Live-Test und Cron weiterhin offen.
+
 ## Version 7.86 — 03.11.2026
 
 Build 20261103-135010. DAO-Referral-wUSDT erhält einen separaten, fortsetzbaren serverseitigen ERC-20-Transferscan, nur für die im vorhandenen DAO-Code verifizierte Referral-Wallet. Der neue Scan nutzt denselben eindeutigen Flow-Key wie der allgemeine Token-Scan, prüft eingehende Token/Wallet-Richtung nach und lädt Contract-Transaktionen bei Bedarf aus Blockchain-Details nach. Ein blosser wUSDT-Eingang ist keine Referral-Bestätigung. Unvollständige Seiten halten die Queue auf `partial`. Keine eigenen Reward-Summaries oder Snapshots. Kein neuer Cron und keine Datenbankmigration; Edge Function noch nicht deployen, vollständige Reward-Pipeline und Live-Test weiterhin offen.
