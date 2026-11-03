@@ -566,7 +566,16 @@ async function process(job:any){
   if(error)throw error;
   canonicallyReconciledClaims=Number(data||0);
  }
- return {...payoutVerification,canonicallyReconciledClaims,transactions:txCount,flows:flowCount,nativeClaimFlows,
+ // Create ONLY missing, fully verified legacy claims with pre-priced on-chain
+ // flows. New miner claims / unassigned bots are intentionally excluded.
+ let canonicallyCreatedLegacyClaims=0;
+ if(txProgress.complete&&flowProgress.complete){
+  const {data,error}=await sb.rpc('wallettracking_dao_create_verified_legacy_claims',
+   {p_user:job.user_id,p_wallet:job.wallet_id,p_limit:20});
+  if(error)throw error;
+  canonicallyCreatedLegacyClaims=Number(data||0);
+ }
+ return {...payoutVerification,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,transactions:txCount,flows:flowCount,nativeClaimFlows,
   claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }

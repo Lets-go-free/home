@@ -1,3 +1,8 @@
+## Version 7.84 — 03.11.2026
+
+- Neue, eindeutig historisch verifizierte Legacy-DAO-Claims können aus bestehenden, bewerteten Auszahlungs-Flows in `project_nft_claims` angelegt werden; neue Miner ohne NFT-ID bleiben unzugeordnet.
+- Keine Preis-Fallbacks und keine Überschreibung vorhandener Claims. Reward-Cron bleibt deaktiviert bis Live-Abgleich.
+
 ## Version 7.83 · 03.11.2026
 
 DAO: Verifizierte historische Auszahlungs-Flows können vorhandene, noch nicht bewertete NFT-Claim-Datensätze transaktional vervollständigen, sofern der applikationsweite Preisweg die Flows bereits bewertet hat. Kein eigenständiger Preisrechner und keine neuen Claim-Datensätze. Migration `20261103111756_dao_canonical_payout_reconcile_783.sql` vor einem zukünftigen Worker-Deployment ausführen. DAO-Worker bleibt deaktiviert bis zur vollständigen Claim-/Referral-Pipeline und Live-Tests.
