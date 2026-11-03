@@ -7,7 +7,7 @@ test('incomplete NFT transfer history is retryable, not a terminal negative proo
   for(const reason of ['pagination-incomplete','missing-history','history-out-of-order'])
     assert.ok(verify.includes(`'${reason}'`),`${reason} must remain pending`);
   const guard=verify.indexOf('Historical NFT ownership evidence incomplete');
-  const update=verify.indexOf("status:proof.verified?'ownership_verified':'unverified'");
+  const update=verify.indexOf("status:candidateStatus");
   assert.ok(guard>=0&&guard<update,'failure must happen before status update');
   assert.match(verify,/throw Error\(`/);
 });

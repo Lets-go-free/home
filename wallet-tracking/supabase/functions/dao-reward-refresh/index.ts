@@ -392,9 +392,13 @@ async function verifyPendingCandidates(job:any,address:string){
   if(['pagination-incomplete','missing-history','history-out-of-order'].includes(proof.reason)){
    throw Error(`Historical NFT ownership evidence incomplete (${proof.reason}) for ${item.tx_hash}`);
   }
-  // A conclusive negative proof stays unverified; no claim allocation is written.
+  // Missing or ambiguous evidence is NOT a conclusive negative ownership proof.
+  // Keep it visible for manual investigation rather than silently burying it
+  // in the same status as a confirmed transfer to somebody else's wallet.
+  const conclusiveNegative=proof.reason==='owned-by-other-wallet';
+  const candidateStatus=proof.verified?'ownership_verified':conclusiveNegative?'unverified':'needs_review';
   const {error:updateError}=await sb.from('dao_reward_claim_candidates').update({
-   status:proof.verified?'ownership_verified':'unverified',
+   status:candidateStatus,
    proof_reason:proof.reason,checked_at:new Date().toISOString()})
    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
    .eq('chain_key',CHAIN).eq('tx_hash',item.tx_hash).eq('status','pending');
@@ -407,6 +411,43 @@ async function verifyPendingCandidates(job:any,address:string){
  if(countError)throw countError;
  return {historicalChecks:checked,historicallyVerifiedCandidates:verified,pendingHistoricalChecks:count||0};
 }
+
+// Second independent proof: ownership_verified is NOT the same as paid.
+// Inspect only persisted, wallet-scoped transaction and transfer evidence;
+// do not modify the canonical reward totals, historical prices or NFT fields.
+async function verifyCandidatePayouts(job:any,address:string){
+ const {data:candidates,error:lookupError}=await sb.from('dao_reward_claim_candidates')
+  .select('tx_hash').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+  .eq('chain_key',CHAIN).eq('status','ownership_verified')
+  .eq('payout_status','pending').order('claim_block',{ascending:true}).limit(20);
+ if(lookupError)throw lookupError;
+ let verified=0,needsReview=0;
+ for(const candidate of candidates||[]){
+  const {data:tx,error:txError}=await sb.from('project_transactions')
+   .select('tx_hash,selector,status,to_address').eq('user_id',job.user_id)
+   .eq('wallet_id',job.wallet_id).eq('project_key',PROJECT).eq('chain_key',CHAIN)
+   .eq('tx_hash',candidate.tx_hash).maybeSingle();
+  if(txError)throw txError;
+  const {data:flows,error:flowError}=await sb.from('project_transaction_asset_flows')
+   .select('tx_hash,direction,amount_raw,flow_key,token_address,counterparty_address')
+   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash);
+  if(flowError)throw flowError;
+  const paid=!!tx&&hasVerifiedClaimPayout(tx,flows||[],address);
+  // This is evidence status only. No inferred zero reward, no price and
+  // no claim_nft_id update if the available flow evidence is insufficient.
+  const {error:writeError}=await sb.from('dao_reward_claim_candidates')
+   .update({payout_status:paid?'verified':'needs_review',
+    payout_checked_at:new Date().toISOString()})
+   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('chain_key',CHAIN)
+   .eq('tx_hash',candidate.tx_hash).eq('status','ownership_verified')
+   .eq('payout_status','pending');
+  if(writeError)throw writeError;
+  if(paid)verified++;else needsReview++;
+ }
+ return {verifiedPayoutClaims:verified,payoutsNeedingReview:needsReview};
+}
+
 async function process(job:any){
  const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);
  let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0;
@@ -461,7 +502,11 @@ async function process(job:any){
  // Separate verification budget: unprocessed candidates stay persisted and are
  // retried independently of the raw block cursors on subsequent invocations.
  const verification=await verifyPendingCandidates(job,address);
- return {transactions:txCount,flows:flowCount,nativeClaimFlows,
+ // Do not decide that a payout is missing while either explorer import is partial.
+ const payoutVerification=txProgress.complete&&flowProgress.complete
+  ?await verifyCandidatePayouts(job,address)
+  :{verifiedPayoutClaims:0,payoutsNeedingReview:0};
+ return {...payoutVerification,transactions:txCount,flows:flowCount,nativeClaimFlows,
   claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }
