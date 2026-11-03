@@ -1,3 +1,7 @@
+## Version 7.88 — 03.11.2026
+
+Build 20261103-141328. DAO: bestehende exakt zielblockgebundene `aptm_price_anchors` (canonical exact-v13) werden im Worker für native APTM bzw. den verifizierten wAPTM-Contract übernommen. Keine neue historische Preisermittlung, kein Predecessor-Fallback, keine Token-Symbol-Erkennung für ERC20, keine Überschreibung bestehender Preise. Fehlende Anker bleiben unbewertet. Migration `20261103141328_dao_exact_target_anchor_prices_788.sql` vor künftigem Worker-Deployment ausführen. Worker/Cron bleibt deaktiviert bis zum Live-Test und Abschluss der fachlichen Reward-Pipeline.
+
 ## Version 7.87 — 03.11.2026
 
 Build 20261103-135703. DAO-Worker: Bewertungslücken werden ausschliesslich aus bereits kanonisch bewerteten Flows derselben Wallet, desselben Tokens/Contracts, derselben Decimals und exakt desselben Blocks ergänzt. Konfliktierende Preise/Quellen, fehlende Bewertung und manuelle Werte bleiben unangetastet. Keine neue Preisroute. Serverseitige RPC nur Service Role. Vollständiger Live-Test und Cron weiterhin offen.

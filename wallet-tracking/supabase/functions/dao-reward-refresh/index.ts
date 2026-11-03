@@ -614,6 +614,15 @@ async function process(job:any){
  const payoutVerification=txProgress.complete&&flowProgress.complete
   ?await verifyCandidatePayouts(job,address)
   :{verifiedPayoutClaims:0,payoutsNeedingReview:0};
+ // Reuse the SAME canonical exact-v13 target-block anchors as the DAO UI.
+ // Missing anchors remain unpriced; never seek a preceding price in the worker.
+ let exactAnchorPricedFlows=0;
+ if(txProgress.complete&&flowProgress.complete){
+  const {data,error}=await sb.rpc('wallettracking_dao_apply_exact_target_anchors',
+   {p_user:job.user_id,p_wallet:job.wallet_id,p_limit:100});
+  if(error)throw error;
+  exactAnchorPricedFlows=Number(data||0);
+ }
  // Reuse an already established canonical price only when wallet, chain,
  // contract, decimals AND exact block all match, with a unique price/source.
  // This does NOT calculate any new historic price or overwrite a manual value.
@@ -653,7 +662,7 @@ async function process(job:any){
   if(error)throw error;
   canonicallyCreatedUnassignedMinerClaims=Number(data||0);
  }
- return {...payoutVerification,canonicallyPricedFlows,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,targetedReferralFlows,referralScan:referralProgress,nativeClaimFlows,
+ return {...payoutVerification,exactAnchorPricedFlows,canonicallyPricedFlows,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,targetedReferralFlows,referralScan:referralProgress,nativeClaimFlows,
   claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }
