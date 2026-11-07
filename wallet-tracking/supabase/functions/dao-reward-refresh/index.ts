@@ -139,7 +139,7 @@ function assertDescendingBlock(previous:number,current:number){
   throw Error('Explorer page order changed; refusing to advance verified cursor');
 }
 async function paginate(job:any,kind:string,path:string,scan:RawScanState,
- handler:(items:any[])=>Promise<void>){
+ handler:(items:any[])=>Promise<void>,pageLimit=MAX_PAGES_PER_INVOCATION){
  const cursor=scan.block;
  const checkpoint=scan.checkpoint;
  if(checkpoint&&checkpoint.startBlock!==cursor)throw Error('Reward cursor/checkpoint mismatch');
@@ -149,7 +149,7 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
  // stale/unstable explorer cursor must never certify an incomplete interval.
  let previousOldest=Number(checkpoint?.oldestBlock??Infinity);
  const visited=new Set<string>();
- for(let page=0;page<MAX_PAGES_PER_INVOCATION;page++){
+ for(let page=0;page<pageLimit;page++){
   const url=explorerPageUrl(path,next);
   if(visited.has(url))throw Error('Explorer page cursor loop');visited.add(url);
   const response=await json(url);
@@ -178,7 +178,7 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
    oldestBlock:Number.isFinite(oldest)?oldest:previousOldest,next:nextParams});
   previousOldest=oldest;next=nextParams;
  }
- return {complete:false,block:cursor,pages:MAX_PAGES_PER_INVOCATION};
+ return {complete:false,block:cursor,pages:pageLimit};
 }
 // The raw staging import is insert-only. On an existing transaction/flow, a
 // canonical browser refresh may be enriching claim classification or prices
@@ -499,7 +499,10 @@ async function verifyCandidatePayouts(job:any,address:string){
  return {verifiedPayoutClaims:verified,payoutsNeedingReview:needsReview};
 }
 
-async function process(job:any){
+async function process(job:any,stageOnly=false){
+ // Manual staging: one Explorer page per stream, no ownership/payout verification,
+ // no price or canonical Claim RPCs. Still persist raw events and durable scan cursors.
+ const pageLimit=stageOnly?1:MAX_PAGES_PER_INVOCATION;
  const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);
  let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0;
  const tc=await state(job,RAW_TX_SCAN);
@@ -524,7 +527,7 @@ async function process(job:any){
     'user_id,project_key,chain_key,wallet_id,flow_key');nativeClaimFlows++}
   }
   txCount+=rows.length;
- });
+ },pageLimit);
 
  // Reuse the exact same canonical flow keys for broad and targeted scans.
  // This prevents double-counting when Blockscout returns the same event twice.
@@ -553,7 +556,7 @@ async function process(job:any){
   const rows=transferRows(items);
   await insertRawWithoutReplacing('project_transaction_asset_flows',rows,
    'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length;
- });
+ },pageLimit);
  // Match the browser's targeted referral wUSDT import. Only the historically
  // documented referral wallet is eligible; every other wallet skips this scan.
  // A targeted transfer is evidence of payment, NOT automatically a referral:
@@ -604,7 +607,15 @@ async function process(job:any){
       updated_at:new Date().toISOString()
      }],'user_id,project_key,chain_key,wallet_id,tx_hash');
     }
-   });
+   },pageLimit);
+ }
+
+ if(stageOnly){
+  return {mode:'manual-staging-import',transactionsObserved:txCount,
+   flowsObserved:flowCount,targetedReferralFlowsObserved:targetedReferralFlows,
+   nativeClaimFlowsObserved:nativeClaimFlows,claimCandidatesObserved:claimNftCandidates,
+   transactionScan:txProgress,flowScan:flowProgress,referralScan:referralProgress,
+   notice:'Only insert-if-absent raw events, claim candidates and separate scan cursors were written. No canonical claim, reward total, price, NFT ownership verification, snapshot, or job queue was modified.'};
  }
 
  // Separate verification budget: unprocessed candidates stay persisted and are
@@ -678,7 +689,7 @@ async function countScoped(table:string,filters:Record<string,string>,extra?:{co
  if(error)throw Error('Inspect '+table+': '+error.message);
  return count||0;
 }
-async function inspectTestAddress(){
+async function findInspectWalletMatches(){
  // Do not accept a user-supplied address; explicitly restrict to the known
  // DAO referral test address. Wallet ciphertext remains protected at rest.
  const matches:{id:string;user_id:string}[]=[];
@@ -703,6 +714,10 @@ async function inspectTestAddress(){
   offset+=batch.length;
   if(offset>=2000)throw Error('Inspect wallet search exceeds safe bound');
  }
+ return matches;
+}
+async function inspectTestAddress(){
+ const matches=await findInspectWalletMatches();
  const wallets=[];
  for(const wallet of matches){
   const scope={user_id:wallet.user_id,wallet_id:wallet.id,project_key:PROJECT};
@@ -761,6 +776,21 @@ Deno.serve(async request=>{
    const permission=await authenticateInspectAdmin(request);
    if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
    return Response.json(await inspectTestAddress());
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(body?.mode==='import-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual staging import disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before manual import'},{status:409});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const result=await process({user_id:selected.user_id,wallet_id:selected.id},true);
+   return Response.json({ok:true,project:PROJECT,chain:CHAIN,walletAddress:INSPECT_ADDRESS,...result});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(!SECRET||request.headers.get('x-wallet-refresh-secret')!==SECRET)
