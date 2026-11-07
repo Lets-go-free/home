@@ -499,6 +499,15 @@ async function verifyCandidatePayouts(job:any,address:string){
  return {verifiedPayoutClaims:verified,payoutsNeedingReview:needsReview};
 }
 
+// Explicitly reconcile already persisted and valued native Miner Claims. This
+// updates ONLY the staging candidate status; canonical rewards and prices stay
+// untouched. It does not invent NFT ownership and is safe to repeat.
+async function classifyExistingClaims(job:any){
+ const {data,error}=await sb.rpc('wallettracking_dao_mark_existing_paid_claims',
+  {p_user:job.user_id,p_wallet:job.wallet_id,p_limit:500});
+ if(error)throw error;
+ return Number(data||0);
+}
 async function process(job:any,stageOnly=false){
  // Manual staging: one Explorer page per stream, no ownership/payout verification,
  // no price or canonical Claim RPCs. Still persist raw events and durable scan cursors.
@@ -738,6 +747,9 @@ async function inspectTestAddress(){
    incomingFlows:await countScoped('project_transaction_asset_flows',scope,{column:'direction',value:'eingang'}),
    candidateClaims:await countScoped('dao_reward_claim_candidates',
     {user_id:wallet.user_id,wallet_id:wallet.id,chain_key:CHAIN}),
+   canonicalAlreadyPricedClaims:await countScoped('dao_reward_claim_candidates',
+    {user_id:wallet.user_id,wallet_id:wallet.id,chain_key:CHAIN},
+    {column:'canonical_existing_verified',value:'true'}),
    cursors:(cursors||[]).map(({scan_type,last_scanned_block,last_scan_result})=>
     ({scan_type,last_scanned_block,last_scan_result})),
    queue:(attempts||[]).map(({scan_day,state,attempt_count,last_error})=>
@@ -776,6 +788,24 @@ Deno.serve(async request=>{
    const permission=await authenticateInspectAdmin(request);
    if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
    return Response.json(await inspectTestAddress());
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(body?.mode==='classify-existing-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual staging classification disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before manual classification'},{status:409});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const newlyClassified=await classifyExistingClaims({user_id:selected.user_id,wallet_id:selected.id});
+   return Response.json({ok:true,mode:'manual-existing-claim-classification',
+    project:PROJECT,chain:CHAIN,walletAddress:INSPECT_ADDRESS,
+    newlyClassified,
+    notice:'Only claim candidate statuses were updated. Canonical claims, token flows, reward amounts, USD values, NFT ownership, cursors, queue and snapshots were not modified.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='import-test-wallet'){

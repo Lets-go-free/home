@@ -1,3 +1,4 @@
+**Version 7.93 · Build 20261107-184337** – Sichere manuelle Klassifikation bereits vorhandener, bewerteter nativer DAO-Miner-Claims in der Prüfliste (keine Änderung an Rewards/Preisen). Siehe `docs/releases/7.93-dao-existing-claims.md`.
 **Version 7.92 · Build 20261107-172219** – Separat freigegebener, manuell gestarteter DAO-Einzel-Wallet-Rohdatenimport (eine Explorer-Seite pro Datenstrom; keine Reward-, Preis- oder Snapshot-Änderungen). Siehe `docs/releases/7.92-dao-single-wallet-import.md`.
 
 **Version 7.91 · Build 20261103-152003** – DAO-Test mit authentifiziertem Admin-JWT statt Wallet-Daily-Secret; übriger Worker unverändert deaktiviert. Siehe `docs/releases/7.91-dao-admin-jwt-test.md`.
