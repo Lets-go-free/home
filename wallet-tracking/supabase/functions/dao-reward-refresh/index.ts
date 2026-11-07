@@ -165,6 +165,7 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
  handler:(items:any[])=>Promise<void>,pageLimit=MAX_PAGES_PER_INVOCATION){
  const cursor=scan.block;
  const checkpoint=scan.checkpoint;
+ const scanMode=checkpoint?'resume-history':cursor>0?'incremental-delta':'initial-history';
  if(checkpoint&&checkpoint.startBlock!==cursor)throw Error('Reward cursor/checkpoint mismatch');
  let next=checkpoint?.next??null;
  let highest=Number(checkpoint?.highestBlock??cursor);
@@ -188,13 +189,20 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
    oldest=Math.min(oldest,block);highest=Math.max(highest,block);
    if(block>=Math.max(0,cursor-OVERLAP))rows.push({...item,_verifiedBlock:block});
   }
-  await handler(rows);
+  // A completed scan rechecks only the overlap plus newly confirmed events.
+  // Empty delta pages must not rewrite a verified cursor or replay old events.
+  if(rows.length)await handler(rows);
   observedItems+=response.items.length;
   const finished=!response.next_page_params||(cursor>0&&oldest<Math.max(0,cursor-OVERLAP));
   if(finished){
-   await saveScan(job,kind,highest,null);
+   // In incremental mode the first page can be entirely old history.
+   // Report this as a successful no-change check, not historical progress.
+   const advanced=highest>cursor;
+   if(checkpoint||advanced||cursor===0)await saveScan(job,kind,highest,null);
    return {complete:true,block:highest,pages:page+1,observedItems,
-    checkpointProgress:{hadCheckpoint:!!checkpoint,startOldest:startingOldest,endOldest:Number.isFinite(oldest)?oldest:null,advanced:true}};
+    scanMode,newBlocksObserved:advanced,upToDate:cursor>0&&!advanced,
+    checkpointProgress:{hadCheckpoint:!!checkpoint,startOldest:startingOldest,
+     endOldest:Number.isFinite(oldest)?oldest:null,advanced:!!checkpoint||advanced}};
   }
   const nextParams=response.next_page_params;
   if(!nextParams||typeof nextParams!=='object'||Array.isArray(nextParams)||
@@ -209,6 +217,7 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
   previousOldest=oldest;next=nextParams;
  }
  return {complete:false,block:cursor,pages:pageLimit,observedItems,
+  scanMode,newBlocksObserved:highest>cursor,upToDate:false,
   checkpointProgress:{hadCheckpoint:!!checkpoint,startOldest:startingOldest,
    endOldest:Number.isFinite(previousOldest)?previousOldest:null,
    advanced:!checkpoint||stablePageCursor(checkpoint.next)!==stablePageCursor(next)}};

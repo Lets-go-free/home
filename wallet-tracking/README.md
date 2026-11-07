@@ -166,3 +166,9 @@ Produktiver Test: nach Veröffentlichung neu laden, Daten aktualisieren, die vie
 
 ## Dokumentation
 Diese README.md wird künftig aktualisiert. Ältere README-7.xx.md sind Release-Historie und für die App nicht erforderlich. SQL-/Baseline-Dokumentation in sql/ und technische Dokumentation in docs/ bleiben separat erhalten. Nutzerhilfe und Systemübersicht stehen in der App.
+
+
+### 7.95 · DAO-Delta-Scan transparenter
+- Abgeschlossene Referral-/Flow-Scans werden als `incremental-delta` ausgewiesen. Ohne neuere Blocks (`upToDate: true`) wird der verifizierte Cursor nicht erneut geschrieben. Der erste Explorer-Seitenaufruf bleibt für den Sicherheits-Overlap notwendig.
+- Historisch unvollständige Transaktionen bleiben im Modus `resume-history`; ein manueller Import verarbeitet weiterhin maximal eine Seite je Datenstrom.
+- Kein Cron und keine automatische Reward-Freigabe.
