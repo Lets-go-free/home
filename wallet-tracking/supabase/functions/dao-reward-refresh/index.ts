@@ -123,16 +123,39 @@ async function state(job:any,kind:string):Promise<RawScanState>{
 async function saveScan(job:any,kind:string,block:number,checkpoint:any|null){
  const {error}=await sb.from('project_scan_state').upsert({user_id:job.user_id,
   wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,scan_type:kind,
-  last_scanned_block:block,last_scanned_at:new Date().toISOString(),
+  last_scanned_block:block,last_scanned_at:new Date().toISOString(),updated_at:new Date().toISOString(),
   last_scan_message:checkpoint?JSON.stringify(checkpoint):null,
   last_scan_result:checkpoint?'partial':'complete'},
   {onConflict:'user_id,project_key,chain_key,wallet_id,scan_type'});
  if(error)throw error;
+ // A successful upsert response alone is insufficient for manual diagnostics:
+ // verify that the exact continuation (or completed block) is readable back.
+ const {data:stored,error:readError}=await sb.from('project_scan_state')
+  .select('last_scanned_block,last_scan_message,last_scan_result')
+  .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+  .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('scan_type',kind).maybeSingle();
+ if(readError||!stored)throw Error('Reward checkpoint read-back failed');
+ if(Number(stored.last_scanned_block)!==block||
+    (stored.last_scan_message??null)!==(checkpoint?JSON.stringify(checkpoint):null)||
+    stored.last_scan_result!==(checkpoint?'partial':'complete'))
+  throw Error('Reward checkpoint write not confirmed');
 }
 function explorerPageUrl(path:string,params:Record<string,unknown>|null){
  const url=new URL(EXPLORER+path);
  for(const [k,v] of Object.entries(params||{}))if(v!==null&&v!==undefined)url.searchParams.set(k,String(v));
  return url.toString();
+}
+// Blockscout `next_page_params` may be a compound cursor; compare the entire
+// object, never just one block/index field. JSON key order is normalized.
+function stablePageCursor(next:any):string{
+ if(!next||typeof next!=='object'||Array.isArray(next)||!Object.keys(next).length)
+  throw Error('Invalid Explorer next page');
+ const sorted=Object.entries(next).sort(([a],[b])=>a.localeCompare(b));
+ return JSON.stringify(sorted);
+}
+function assertPageCursorProgress(previous:any,next:any){
+ if(previous&&stablePageCursor(previous)===stablePageCursor(next))
+  throw Error('Explorer pagination made no progress: unchanged next-page cursor');
 }
 function assertDescendingBlock(previous:number,current:number){
  if(!Number.isSafeInteger(current)||current<=0||current>previous)
@@ -148,6 +171,8 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
  // Enforce descending block order across pages AND across invocations. A
  // stale/unstable explorer cursor must never certify an incomplete interval.
  let previousOldest=Number(checkpoint?.oldestBlock??Infinity);
+ const startingOldest=Number.isFinite(previousOldest)?previousOldest:null;
+ let observedItems=0;
  const visited=new Set<string>();
  for(let page=0;page<pageLimit;page++){
   const url=explorerPageUrl(path,next);
@@ -164,21 +189,29 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
    if(block>=Math.max(0,cursor-OVERLAP))rows.push({...item,_verifiedBlock:block});
   }
   await handler(rows);
+  observedItems+=response.items.length;
   const finished=!response.next_page_params||(cursor>0&&oldest<Math.max(0,cursor-OVERLAP));
   if(finished){
    await saveScan(job,kind,highest,null);
-   return {complete:true,block:highest,pages:page+1};
+   return {complete:true,block:highest,pages:page+1,observedItems,
+    checkpointProgress:{hadCheckpoint:!!checkpoint,startOldest:startingOldest,endOldest:Number.isFinite(oldest)?oldest:null,advanced:true}};
   }
   const nextParams=response.next_page_params;
   if(!nextParams||typeof nextParams!=='object'||Array.isArray(nextParams)||
      !Object.keys(nextParams).length)throw Error('Invalid Explorer next page');
+  // The Explorer must advance its continuation even when no new records were
+  // inserted (those may all already exist). Never silently accept a loop.
+  assertPageCursorProgress(next,nextParams);
   // Commit page continuation only AFTER the handler has successfully saved
   // every event and candidate in this page.
   await saveScan(job,kind,cursor,{version:1,startBlock:cursor,highestBlock:highest,
    oldestBlock:Number.isFinite(oldest)?oldest:previousOldest,next:nextParams});
   previousOldest=oldest;next=nextParams;
  }
- return {complete:false,block:cursor,pages:pageLimit};
+ return {complete:false,block:cursor,pages:pageLimit,observedItems,
+  checkpointProgress:{hadCheckpoint:!!checkpoint,startOldest:startingOldest,
+   endOldest:Number.isFinite(previousOldest)?previousOldest:null,
+   advanced:!checkpoint||stablePageCursor(checkpoint.next)!==stablePageCursor(next)}};
 }
 // The raw staging import is insert-only. On an existing transaction/flow, a
 // canonical browser refresh may be enriching claim classification or prices
