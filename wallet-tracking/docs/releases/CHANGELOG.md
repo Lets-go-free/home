@@ -1,3 +1,9 @@
+### Live-Nachtrag 8.04 · 08.11.2026 13:13:35 CET
+
+- Alle vier frühen nativen Auszahlungen live als verified bestätigt; Rawbeträge dauerhaft gespeichert, Preis-Ausnahme und USD NULL erhalten, canonical_existing_verified bleibt false.
+- Wiederholung checked=0/results leer; separate SQL-Prüfung bestätigt je einen Protokolleintrag. Zusätzliche pending-Payout-Prüfungen abgeschlossen.
+- Nächster Schwerpunkt: neuer Claim im serverseitigen inkrementellen Gesamtprozess, keine neue Klassifikation bereits geklärter historischer Fälle. DAO-Cron bleibt deaktiviert, Phase/Build unverändert.
+
 ## 8.04 · 08.11.2026 13:02:39 CET · Build 20261108-130239
 
 - Kontrollierter Admin-Test für maximal vier offene native Payouts: bestehende TX-/Flow-/Betragsevidenz unabhängig vom USD-Kurs, atomar und wiederholbar. Keine neuen Rewards/Preise oder canonical_existing-Kennzeichnungen.
