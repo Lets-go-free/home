@@ -1,18 +1,12 @@
-**WalletTracking Phase 8.06 · Build 20261108-214535 · 08.11.2026 21:45:35 CET**
+**WalletTracking Phase 8.07 · Build 20261108-221303 · 08.11.2026 22:13:03 CET**
 
-Der begrenzte Einzel-Claim-Pfad unterstützt jetzt zusätzlich die verifizierten ERC20-Verträge wAPTM, wUSDT und wUSDC. Native Claims bleiben unterstützt; alte native Route bleibt kompatibel und weiterhin native-only. Neue allgemeine Admin-Route: `process-next-claim-test-wallet`, weiterhin eine Import-Seite je Strom und höchstens ein neuer Claim, feste Testwallet und Live-Worker/Cron aus.
+Fehlende technische Apertum-Dezimalstellen werden über die Explorer-Token-Metadaten ermittelt, in predefined_tokens gespeichert und von Browser und DAO-Worker wiederverwendet. Ein vorhandener gültiger Wert benötigt keinen RPC-Aufruf pro Claim. display_decimals und summary_decimals bleiben unverändert. Kein pauschaler 18-Fallback für die geänderten Apertum-Konvertierungen. NULL, leere Werte, boolesche Werte und ungültige Skalen werden nicht als 0 akzeptiert; technische 0 ist zulässig.
 
-Neue gemeinsame Datei `supabase/functions/dao-reward-refresh/asset-policy.js` ist die Contract-/Quote-Regel für Browser und Worker. Stablecoin-Parität und APTM/wAPTM-Erkennung verwenden die Adresse statt Name/Symbol. Technische ERC20-Decimale werden per eth_call am Claim-Block geprüft, bevorzugt am konfigurierten Archive-RPC; kein 18-Decimals-Fallback. Ungültige/unvollständige RPC-Antworten, falsche Chain, unbekannte Assets, gemischte Auszahlungen, falsche Absender/Log-Keys und fehlende Belege bleiben blockiert.
+8.06 ist installiert; inkrementeller Leerlauf live bestätigt. Zehn der 13 Apertum-Stammdaten haben laut Live-SQL noch keine technischen Dezimalstellen. 8.07 stellt den zentralen Abruf bereit, der Live-Abruf steht noch aus. 208 lokale DAO-/Reward-Tests und vier Preis-/Dashboard-Skripte bestanden. DAO-Cron und Live-Worker bleiben deaktiviert.
 
-Mehrere Transfers desselben Assets werden exakt aus Raw-Units summiert; beliebige verifizierte technische Decimale 0–36 werden ohne Number-/Divisionsrundung normalisiert. Bestehende Preise und Claim-Datensätze bleiben erhalten. ERC20-Mengen werden nicht als native APTM gebucht. wAPTM verwendet die gemeinsame exakte Zielanker-Logik, bekannte Stablecoins die unveränderte 1-USD-Referenz aus der gemeinsamen Policy; vorhandene zentrale Bewertungen dürfen exakt block-/token-/walletgebunden wiederverwendet werden. Legacy-Bot-Claims werden auf belegte alte MineBot-NFTs begrenzt, DID-Identitäten nicht als Bot-Claims übernommen.
+**Nächster Schritt:** Nur `supabase/migrations/20261108220835_apertum_central_token_decimals_807.sql` vollständig im Supabase SQL Editor ausführen. Mehrere DDL-/Funktionsanweisungen in **einer Transaktion**, keine separaten SELECT-Resultsets. Die Migration legt die Metadatenfelder und Funktionen an; sie ruft den Explorer noch nicht ab und aktiviert keinen Cron. Nach Rückmeldung erst Deployment anleiten.
 
-**Nächster Schritt:** Nur `supabase/migrations/20261108213404_dao_erc20_single_claim_pipeline_806.sql` vollständig im Supabase SQL Editor ausführen. Mehrere DDL-/Funktionsanweisungen in einer atomaren Transaktion, keine SELECT-Resultsets und keine automatische Claim-Buchung. Nach Rückmeldung erst weiteres Deployment/Test anleiten.
-
-Für ein späteres Edge-Deployment werden index.ts **und die zusätzliche Datei asset-policy.js** benötigt, beide in der bestehenden Funktion dao-reward-refresh; payout-coverage.ts aus 8.03 beibehalten. Für die Web-App ebenfalls alle geänderten ZIP-Dateien übernehmen: der Browser lädt dieselbe Policy-Datei aus deren Repo-Pfad. Kein zweites Policy-Duplikat.
-
-198 lokale DAO-/Reward-Tests inkl. PostgreSQL sowie vier bestehende Preis-/Dashboard-Regressionsskripte bestanden. Kein 8.06-Live-Lauf. Letzter Live-Stand 8.05: Leerlauf bestätigt, Referenzbestand unverändert 395/388/4/3/0/0. Echte neue native und ERC20-Claim-Neuanlage live noch offen. DAO-Cron/LIVE_WORKER bleiben deaktiviert; Referral, zugeordnete neue Miner, Tagesqueue-Gesamtabschluss und TLN/VOW weiter offen.
-
-Status: [`docs/PROJECT_STATUS_OPEN_ITEMS.md`](docs/PROJECT_STATUS_OPEN_ITEMS.md). Details: [`docs/releases/8.06-dao-erc20-single-claim-pipeline.md`](docs/releases/8.06-dao-erc20-single-claim-pipeline.md).
+Status: [docs/PROJECT_STATUS_OPEN_ITEMS.md](docs/PROJECT_STATUS_OPEN_ITEMS.md). Technische Details: [8.07](docs/releases/8.07-apertum-central-token-decimals.md).
 
 ---
 

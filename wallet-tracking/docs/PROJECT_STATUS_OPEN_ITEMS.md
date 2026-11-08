@@ -1,6 +1,6 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 21:45:35 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.06, Build 20261108-214535.
+**Dokumentationsstand:** 08.11.2026 22:13:03 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.07, Build 20261108-221303.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
@@ -13,7 +13,23 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - 3 Transaktionen mit Reward=0 bei Blöcken 403'915 (Bot 37174), 10'791'488 (Bot 10295), 11'254'937 (Bot 10294): nach 8.03 **live als `no_payout_evidence` klassifiziert**, TX-/Token-/Internal-Coverage vollständig, keine Token-Transfers und 17/7/7 interne Aufrufe ohne erkannten Eingang. Dauerhafte Speicherung separat per SQL bestätigt: `payout_checked_at` 08.11.2026 12:45:20–12:45:21 CET, zu diesem Zeitpunkt je zwei Protokolleinträge und passender letzter Status. Anschliessende erneute manuelle Prüfung ebenfalls erfolgreich (`noPayoutEvidenceClaims=3`, `payoutsNeedingReview=0`, `verifiedPayoutClaims=0`, `pendingPayoutChecks=4`, keine konkurrierenden Skips). Explorer-indexierter Negativbefund, kein endgültiges On-Chain-Nullurteil.
 - Rohdaten-Import und Klassifikation liefen kontrolliert/manuell; produktiver DAO-Rewards-Worker und Cron bleiben deaktiviert (`DAO_REWARD_ENABLE_LIVE_WORKER=false`). Kein vollständiger End-to-End-Live-Test neuer Rewards/Referral/Bot-Zuordnung.
 
-## Phase 8.06 – ERC20-Einzel-Claim-Pfad implementiert, Live-Lauf offen
+## Phase 8.07 – zentrale technische Dezimalstellen, Live-Abruf offen
+
+Fehlende technische Apertum-Dezimalstellen werden über die Explorer-Token-Metadaten ermittelt, in predefined_tokens gespeichert und von Browser und DAO-Worker wiederverwendet. Ein vorhandener gültiger Wert benötigt keinen RPC-Aufruf pro Claim. display_decimals und summary_decimals bleiben unverändert. Kein pauschaler 18-Fallback für die geänderten Apertum-Konvertierungen. NULL, leere Werte, boolesche Werte und ungültige Skalen werden nicht als 0 akzeptiert; technische 0 ist zulässig.
+
+Vorhandene technische Werte werden niemals automatisch überschrieben. Eine abweichende Beobachtung markiert decimals_status=conflict und speichert Originalwert, zuletzt beobachteten Wert, Quelle und Prüfzeit. Konflikte bleiben gesperrt und benötigen eine gesonderte geprüfte Admin-Korrektur; wiederholte Abrufe löschen sie nicht. Noch kein eigener Konflikt-Auflösungsdialog. Pro Session gespeicherte Browserwerte werden beim erneuten Laden der Stammdaten aktualisiert.
+
+Primärquelle ist https://explorer.apertum.io/api/v2/tokens/<Contract>. Antwortadresse/Token-Typ werden geprüft, soweit geliefert. Dezimalstellen 0–36 strikt validieren. Nur fehlende Explorer-Metadaten eines Claim-Tokens benötigen den bisherigen chain-geprüften decimals()-RPC am Claim-Block. Eine widersprechende Contract-Adresse wird nicht durch einen Fallback verdeckt. Zentrale Explorer-Metadaten sind aktuelle Contract-Metadaten, keine Behauptung eines historischen eth_call-Nachweises. Diese tatsächliche Quelle wird auch in claim_pipeline_asset_evidence protokolliert. Bestehende historische Flow-Skalen werden nicht rückwirkend umgeschrieben; Abweichungen zwischen Payout/Flows und zentralen Einheiten blockieren den Claim wie bisher.
+
+Browser-Live-/historische Preis-Metadaten, bekannte Token-Bestände, Apertum-Explorer-Bestände und DAO-Receipt-Token-Metadaten verwenden denselben Resolver. Der DAO-Rohimport akzeptiert vollständige Transfer-Metadaten weiterhin, verwirft jedoch den bisherigen geratenen 18-Fallback; fehlende/ungültige Skalen halten den Import offen. Bekannte technische Konflikte blockieren die anschliessende kanonische ERC20-Verarbeitung. Unregistrierte Custom-Token dürfen Metadaten temporär nutzen, erzeugen aber keine neuen globalen Stammdatenzeilen und werden dadurch nicht als Reward-Assets freigegeben.
+
+Zwei begrenzte Metadaten-Modi in der bestehenden dao-reward-refresh-Funktion: resolve-apertum-token-decimals prüft einen echten User-JWT und verarbeitet einen Contract. refresh-apertum-token-decimals ist Admin-only, erfordert das bestehende Test-Import-Flag und ausgeschalteten Live-Worker; höchstens 20 Katalog-Contracts je Aufruf, vier parallele Explorer-Anfragen, after/nextAfter bei weiteren Contracts. Kein Request akzeptiert technische Werte oder Quellen vom Browser. Globale Schreib-RPC und kanonische Abschluss-RPC bleiben service-only; vorhandene browserlesbare Token-Stammdatentabelle wird erweitert, keine neue exponierte Job-Tabelle.
+
+8.06 ist laut User installiert/deployt; allgemeiner Einzel-Claim-Test lieferte no_eligible_claim und claimsCreated=0. Alle Rohströme complete/incremental-delta, keine neueren Ereignisblöcke. Das ist kein Live-Beweis einer neuen ERC20-Claim-Buchung. Live-SQL bestätigt 13 Apertum-Stammdaten: APTM/ANOUBIS/PUGLORD mit 18 technischen Dezimalstellen, zehn ERC20-/LP-Zeilen mit NULL. Ihre Werte werden in 8.07 dynamisch abgerufen, nicht geraten oder vorab als live ergänzt behauptet.
+
+208 lokale DAO-/Reward-Tests inklusive PostgreSQL und vier Preis-/Dashboard-Regressionsskripte bestanden. Geprüft: NULL ergänzen, 0/6/18/36, Wiederverwendung ohne Netzwerk, ungültige Antworten, Contract-/Chain-Konflikte, RPC-Fallback, Authentifizierung, Batchlimit/Fortsetzung, Konfliktschutz, unveränderte Anzeige-/Summarywerte, korrekte Claim-Quelle, atomare kanonische ERC20-Speicherung und Wiederholung. 8.07-Live-Ausführung offen. DAO-Cron/LIVE_WORKER bleiben deaktiviert; Referral, neue Miner-Zuordnung, vollständiger Tagesabschluss, neue echte Claims und TLN/VOW-Job bleiben offen.
+
+## Phase 8.06 – installiert, inkrementeller Leerlauf live bestätigt
 
 - Allgemeine Admin-Route process-next-claim-test-wallet für dieselbe feste Testwallet, JWT/Admin-Gates/Test-Flag/Live-Worker-aus und ein Claim je Aufruf. Alte native Route bleibt kompatibel und wird nicht stillschweigend für ERC20 geöffnet.
 - Whitelist aus bestehenden Projekt-Stammdaten: wAPTM 0x110ac02ba3384bc055c13a87766049a74517beda; wUSDT 0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f; wUSDC 0xd979f41e12a69aa82f04866444ea91e8e8faefd9. Asset-Policy ist eine physische JS-Datei für Browser und Worker. Stablecoin-Parität unverändert, jetzt per Contract statt Symbol/Name; aktuelle/historische Apertum- und DAO-Bewertung nutzen dieselbe Regel, andere Chains bleiben unverändert.
@@ -67,7 +83,7 @@ Separate Live-SQL-Kontrolle danach bestätigt exakt: 395 Kandidaten, 388 canonic
 
 ## Unmittelbar nächster Schritt
 
-Nur Migration `20261108213404_dao_erc20_single_claim_pipeline_806.sql` vollständig im Supabase SQL Editor ausführen. Mehrere DDL-/Funktionsanweisungen in einer atomaren Transaktion, keine SELECT-Resultsets und keine automatische Claim-Buchung. Erst nach Rückmeldung weitere Deployment-/Testanweisung. DAO-Cron und Live-Worker bleiben aus.
+Nur `supabase/migrations/20261108220835_apertum_central_token_decimals_807.sql` vollständig im Supabase SQL Editor ausführen. Mehrere DDL-/Funktionsanweisungen in **einer Transaktion**, keine separaten SELECT-Resultsets. Die Migration legt die Metadatenfelder und Funktionen an; sie ruft den Explorer noch nicht ab und aktiviert keinen Cron. Nach Rückmeldung erst Deployment anleiten.
 
 ## Danach weiter offen – DAO-Reward-Pipeline
 

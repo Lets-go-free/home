@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {stripTypeScriptTypes} from 'node:module';import vm from 'node:vm';
 const src=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
-const helper=src.slice(src.indexOf('async function verifiedClaimTokenDecimals('),src.indexOf('// Controlled one-claim path:'));
+const helper=src.slice(src.indexOf('async function rpcClaimTokenDecimals('),src.indexOf('// Central metadata is contract-scoped'));
 const USDT='0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f',FAKE='0x'+'8'.repeat(40);
 async function inspect({token=USDT,block=16000000,decimals=6,chain='0xae2',bad=null,archive=false}={}){
  const requests=[];const urls=[];const ctx={CHAIN:'apertum',URL,setTimeout,clearTimeout,AbortController,
@@ -9,7 +9,7 @@ async function inspect({token=USDT,block=16000000,decimals=6,chain='0xae2',bad=n
    return {ok:bad!=='http',json:async()=>({jsonrpc:'2.0',id:bad==='id'?0:body.id,error:bad==='rpc'?{code:-32000}:undefined,
     result:body.method==='eth_chainId'?chain:bad==='short'?'0x6':bad==='empty'?'0x':'0x'+BigInt(decimals).toString(16).padStart(64,'0')})}}};
  vm.createContext(ctx);vm.runInContext(readFileSync(new URL('../supabase/functions/dao-reward-refresh/asset-policy.js',import.meta.url),'utf8'),ctx);
- vm.runInContext(stripTypeScriptTypes(helper),ctx);const result=await ctx.verifiedClaimTokenDecimals(token,block);return {result,requests,urls};
+ vm.runInContext(stripTypeScriptTypes(helper),ctx);const result=await ctx.rpcClaimTokenDecimals(token,block);return {result,requests,urls};
 }
 test('technical decimals are verified by eth_call at the exact claim block, not display precision or latest',async()=>{
  for(const decimals of [0,6,18,36]){const r=await inspect({decimals});assert.equal(r.result.decimals,decimals);assert.equal(r.result.block,16000000);
@@ -35,7 +35,7 @@ test('generic driver passes policy quote and verified token identity/decimals to
    from:()=>({select(){return this},eq(){return this},maybeSingle:async()=>({data:{payout_status:'verified',payout_token_address:USDT}})})}};
  vm.createContext(ctx);vm.runInContext(readFileSync(new URL('../supabase/functions/dao-reward-refresh/asset-policy.js',import.meta.url),'utf8'),ctx);vm.runInContext(stripTypeScriptTypes(driver),ctx);
  const r=await ctx.processSingleNativeClaim({user_id:'user',wallet_id:'wallet'},false,true);assert.equal(r.claimsCreated,1);
- assert.equal(calls.at(-1).name,'wallettracking_dao_finalize_single_claim');
+ assert.equal(calls.at(-1).name,'wallettracking_dao_finalize_single_claim_with_metadata');
  assert.equal(calls.at(-1).p.p_verified_token,USDT);assert.equal(calls.at(-1).p.p_verified_decimals,6);assert.equal(calls.at(-1).p.p_fixed_price,1);assert.equal(calls.at(-1).p.p_include_erc20,true);
 });
 const route=src.slice(src.indexOf(" if(body?.mode==='process-next-claim-test-wallet')"),src.indexOf(" if(body?.mode==='classify-existing-test-wallet')"));

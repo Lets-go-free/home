@@ -611,9 +611,9 @@ async function process(job:any,stageOnly=false){
    const token=lower(t.token?.address_hash||t.token?.address||t.token_address);const tx=hash(t);
    const from=lower(t.from),to=lower(t.to);
    const direction=from===address&&to===address?'intern':to===address?'eingang':from===address?'ausgang':'sonst';
-   const raw=String(t.total?.value??t.value??'0'),decimals=Number(t.token?.decimals??t.total?.decimals??18);
+   const raw=String(t.total?.value??t.value??'0'),decimals=(globalThis as any).WTDaoAssetPolicy.technicalDecimals(t.token?.decimals??t.total?.decimals);
    if(!/^0x[0-9a-f]{40}$/i.test(token)||!/^0x[0-9a-f]{64}$/i.test(tx)||!/^[0-9]+$/.test(raw)||
-      !Number.isSafeInteger(decimals)||decimals<0||decimals>36)throw Error('Malformed token transfer');
+      decimals===null||!Number.isSafeInteger(decimals)||decimals<0||decimals>36)throw Error('Malformed token transfer');
    const log=Number(t.log_index??t.logIndex??t.index??-1);
    if(!Number.isSafeInteger(log)||log<0)throw Error('Token transfer missing canonical log index');
    return {user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,
@@ -755,7 +755,7 @@ async function process(job:any,stageOnly=false){
 
 // Verify technical decimals by eth_call at the actual claim block, never UI
 // display decimals or an assumed 18. Failed archive calls remain reviewable.
-async function verifiedClaimTokenDecimals(token:string,block:number){
+async function rpcClaimTokenDecimals(token:string,block:number){
  const asset=(globalThis as any).WTDaoAssetPolicy?.asset(token);
  if(!asset||asset.native)return {token,decimals:null,reason:'unsupported-claim-asset'};
  if(!Number.isSafeInteger(block)||block<=0)return {token,decimals:null,reason:'invalid-claim-block'};
@@ -781,6 +781,47 @@ async function verifiedClaimTokenDecimals(token:string,block:number){
   if(!/^0x[0-9a-f]{64}$/i.test(raw)||BigInt(raw)>36n)return {token,decimals:null,reason:'technical-decimals-invalid'};
   return {token,decimals:Number(BigInt(raw)),block,source:'eth_call-decimals-at-claim-block',reason:'verified'};
  }catch{return {token,decimals:null,reason:'technical-decimals-unavailable'}}
+}
+
+// Central metadata is contract-scoped, not a historical price or per-claim RPC proof.
+async function resolveCentralTokenDecimals(token:string,block:number|null=null,refresh=false){
+ token=lower(token);
+ if(!/^0x[0-9a-f]{40}$/.test(token))return {token,decimals:null,reason:'invalid-token-address'};
+ const {data:rows,error}=await sb.from('predefined_tokens').select('address,decimals,decimals_status,decimals_source')
+  .eq('chain','apertum').ilike('address',token).limit(2);
+ if(error)throw Error('Central technical metadata unavailable');
+ if(rows?.length>1)return {token,decimals:null,reason:'token-not-uniquely-registered'};
+ const registered=rows?.length===1;const row=registered?rows[0]:{};const valid=(globalThis as any).WTDaoAssetPolicy.technicalDecimals;
+ if(row.decimals_status==='conflict')return {token,decimals:null,reason:'technical-decimals-conflict'};
+ const cached=valid(row.decimals);
+ if(!refresh&&cached!==null)return {token,decimals:cached,source:'central-predefined-token-decimals',reason:'verified'};
+ let observed:any=null;
+ try{
+  const abort=new AbortController();const timer=setTimeout(()=>abort.abort(),15000);
+  let response:any;try{const res=await fetch(EXPLORER+'/tokens/'+token,{signal:abort.signal});
+   if(!res.ok)throw Error('Explorer metadata unavailable');response=await res.json();}finally{clearTimeout(timer)}
+  const meta=response?.token||response;
+  const returned=meta?.address_hash??meta?.address;
+  const returnedAddress=typeof returned==='object'?returned?.hash:returned;
+  // A different contract is a contradictory response, never a usable observation.
+  if(returnedAddress!=null&&lower(returnedAddress)!==token)return {token,decimals:null,reason:'explorer-token-mismatch'};
+  if(meta?.type!=null&&!['ERC-20','ERC20'].includes(meta.type))return {token,decimals:null,reason:'unsupported-token-type'};
+  const d=valid(meta?.decimals);
+  if(d!==null)observed={token,decimals:d,source:'apertum-explorer-token-metadata',symbol:String(meta?.symbol||''),name:String(meta?.name||'')};
+ }catch{/* RPC is only a fallback for missing metadata, never a default scale. */}
+ if(!observed&&block!==null)observed=await rpcClaimTokenDecimals(token,block);
+ if(!observed||valid(observed.decimals)===null)return {token,decimals:null,reason:'technical-decimals-unavailable'};
+ if(!registered)return {...observed,reason:'unregistered-token-metadata',persisted:false};
+ const {data:recorded,error:writeError}=await sb.rpc('wallettracking_record_apertum_token_decimals',{
+  p_token:token,p_decimals:observed.decimals,p_source:observed.source});
+ if(writeError)throw Error('Central technical metadata could not be stored');
+ return {...recorded,token,source:observed.source,decimals:valid(recorded?.decimals),symbol:observed.symbol||null,name:observed.name||null};
+}
+async function verifiedClaimTokenDecimals(token:string,block:number){
+ const asset=(globalThis as any).WTDaoAssetPolicy?.asset(token);
+ if(!asset||asset.native)return {token,decimals:null,reason:'unsupported-claim-asset'};
+ if(!Number.isSafeInteger(block)||block<=0)return {token,decimals:null,reason:'invalid-claim-block'};
+ return await resolveCentralTokenDecimals(token,block);
 }
 
 // Controlled one-claim path: one import page per stream, then at most ONE
@@ -823,10 +864,10 @@ async function processSingleNativeClaim(job:any,retryBlocked=false,includeErc20=
    fixedQuote=(globalThis as any).WTDaoAssetPolicy?.fixedQuote(paid.payout_token_address)||null;
   }
  }
- const rpcName=includeErc20?'wallettracking_dao_finalize_single_claim':'wallettracking_dao_finalize_single_native_claim';
+ const rpcName=includeErc20?'wallettracking_dao_finalize_single_claim_with_metadata':'wallettracking_dao_finalize_single_native_claim';
  const params:any={p_user:job.user_id,p_wallet:job.wallet_id,p_tx:candidate.tx_hash};
  if(includeErc20)Object.assign(params,{p_verified_token:assetEvidence?.token??null,
-  p_verified_decimals:assetEvidence?.decimals??null,p_fixed_price:fixedQuote?.price??null,p_include_erc20:true});
+  p_verified_decimals:assetEvidence?.decimals??null,p_metadata_source:assetEvidence?.source??null,p_fixed_price:fixedQuote?.price??null,p_include_erc20:true});
  const {data:finalized,error:finalizeError}=await sb.rpc(rpcName,params);
  if(finalizeError)throw finalizeError;
  return {...(finalized||{}),imported,payout,...(includeErc20?{assetEvidence}:{})};
@@ -1049,12 +1090,41 @@ async function authenticateInspectAdmin(request:Request){
  if(!admin)return {ok:false,status:403,error:'Administrator access required'};
  return {ok:true,status:200};
 }
+const metadataCors={'access-control-allow-origin':'*','access-control-allow-headers':'authorization, apikey, content-type, x-client-info','access-control-allow-methods':'POST, OPTIONS'};
 Deno.serve(async request=>{
+ if(request.method==='OPTIONS')return new Response(null,{status:204,headers:metadataCors});
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
  if(!DB_URL||!SERVICE_KEY||!MASTER)return Response.json({error:'Server configuration missing'},{status:500});
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ if(body?.mode==='resolve-apertum-token-decimals'||body?.mode==='refresh-apertum-token-decimals'){
+  const reply=(value:any,status=200)=>Response.json(value,{status,headers:metadataCors});
+  try{
+   const batch=body.mode==='refresh-apertum-token-decimals';
+   if(batch){
+    if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({error:'Manual metadata refresh disabled'},403);
+    if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({error:'Disable live DAO worker before manual refresh'},409);
+    const permission=await authenticateInspectAdmin(request);if(!permission.ok)return reply({error:permission.error},permission.status);
+    // Fixed bounded batch; no request-supplied decimals, source, user or wallet.
+    const {data:tokens,error}=await sb.from('predefined_tokens').select('address').eq('chain','apertum').order('address');
+    if(error)throw Error('Token catalog unavailable');
+    const all=(tokens||[]).filter((t:any)=>/^0x[0-9a-f]{40}$/i.test(t.address));
+    const after=typeof body.after==='string'?lower(body.after):'';
+    if(after&&!/^0x[0-9a-f]{40}$/.test(after))return reply({error:'Invalid continuation address'},400);
+    const pending=all.filter((t:any)=>lower(t.address)>after).sort((a:any,b:any)=>lower(a.address).localeCompare(lower(b.address)));
+    const selected=pending.slice(0,20);const results:any[]=[];
+    // Four requests at a time, bounded to 20 contracts per invocation.
+    for(let i=0;i<selected.length;i+=4)results.push(...await Promise.all(selected.slice(i,i+4).map((t:any)=>resolveCentralTokenDecimals(t.address,null,true))));
+    return reply({ok:true,mode:body.mode,checked:results.length,results,nextAfter:pending.length>20?lower(selected.at(-1).address):null,
+     notice:'Only central technical metadata updated; display decimals, rewards, prices, cursors, queue and cron unchanged.'});
+   }
+   const authorization=request.headers.get('authorization')||'';const match=/^Bearer\s+([^\s]+)$/i.exec(authorization);
+   if(!match)return reply({error:'User JWT required'},401);
+   const {data:session,error}=await sb.auth.getUser(match[1]);if(error||!session?.user?.id)return reply({error:'Invalid user JWT'},401);
+   const result=await resolveCentralTokenDecimals(String(body.token||''));return reply({ok:result.decimals!==null,...result});
+  }catch{return reply({ok:false,error:'Technical metadata request failed'},500)}
+ }
  if(body?.mode==='inspect-test-wallet'){
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_INSPECT')!=='true')
    return Response.json({error:'Manual read-only inspection disabled'},{status:403});
@@ -1189,7 +1259,7 @@ Deno.serve(async request=>{
    const selected=matches[0];
    const result=await processSingleNativeClaim({user_id:selected.user_id,wallet_id:selected.id},body.retryBlocked===true,true);
    return Response.json({ok:true,mode:'manual-single-claim-pipeline',...result,
-    notice:'One raw page per stream, at most one native or supported ERC20 claim. Technical decimals checked at the claim block; shared browser/worker asset policy and canonical prices. No historical reference reset, no daily queue completion and no cron.'});
+    notice:'One raw page per stream, at most one native or supported ERC20 claim. Central technical decimals reused; Explorer primary, historical RPC only as fallback; shared browser/worker asset policy and canonical prices. No historical reference reset, no daily queue completion and no cron.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='classify-existing-test-wallet'){

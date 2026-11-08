@@ -11,5 +11,9 @@
  function fixedQuote(address){
   return asset(address)?.kind==='stable'?Object.freeze({price:1,source:'Stablecoin-Parität · 1 USD'}):null;
  }
- root.WTDaoAssetPolicy=Object.freeze({asset,fixedQuote});
+ function technicalDecimals(value){
+  if(typeof value!=='number'&&!(typeof value==='string'&&/^(0|[1-9][0-9]?)$/.test(value)))return null;
+  const n=Number(value);return Number.isInteger(n)&&n>=0&&n<=36?n:null;
+ }
+ root.WTDaoAssetPolicy=Object.freeze({asset,fixedQuote,technicalDecimals});
 })(globalThis);

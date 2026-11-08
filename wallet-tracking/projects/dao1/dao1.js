@@ -3458,9 +3458,9 @@ window.DAO1Project = (() => {
   }
 
   function tokenTransferDecimals(t){
-    const d=t?.token?.decimals ?? t?.total?.decimals ?? t?.decimals ?? 18;
-    const n=Number(d);
-    return Number.isFinite(n)?n:18;
+    const d=window.WTDaoAssetPolicy.technicalDecimals(t?.token?.decimals??t?.total?.decimals??t?.decimals);
+    if(d===null)throw Error('Technische Token-Dezimalstellen fehlen');
+    return d;
   }
 
   function decimalAmount(raw,decimals){
@@ -3926,7 +3926,7 @@ window.DAO1Project = (() => {
           const ctx=getContext?.();
           const dateStr=r.tx_timestamp?String(r.tx_timestamp).slice(0,10):"";
           const hp=await ctx?.taxHistoricalPrice?.(CHAIN_KEY,{
-            address:r.token_address,symbol:r.token_symbol,decimals:Number(r.token_decimals||18)
+            address:r.token_address,symbol:r.token_symbol,decimals:Number(r.token_decimals??18)
           },dateStr,Number(r.block_number));
           if(hp?.price!=null){
             r.price_usd=Number(hp.price);
@@ -3991,22 +3991,17 @@ window.DAO1Project = (() => {
 
   async function tokenMetaForContract(contract){
     contract=lower(contract);
-    if(!contract)return {symbol:"",name:"",decimals:18};
+    if(!/^0x[0-9a-f]{40}$/.test(contract))throw Error('Ungültiger Token-Vertrag');
     if(dao1TokenMetaCache.has(contract))return dao1TokenMetaCache.get(contract);
-    let meta={symbol:"",name:"",decimals:18};
+    const context=getContext();
+    // All configured master tokens use the same central resolver as balance/price/worker.
+    const decimals=await context.resolveApertumTokenDecimals(contract);
+    const meta={symbol:"",name:"",decimals};
     try{
-      const j=await fetchJson(`${EXPLORER_API}/tokens/${contract}`,"Apertum Explorer · Token-Metadaten");
-      meta={
-        symbol:String(j?.symbol||j?.token?.symbol||""),
-        name:String(j?.name||j?.token?.name||""),
-        decimals:Number(j?.decimals??j?.token?.decimals??18)
-      };
-      if(!Number.isFinite(meta.decimals))meta.decimals=18;
-    }catch(e){
-      console.warn("DAO1 Token-Metadaten Fallback",contract,e);
-    }
-    dao1TokenMetaCache.set(contract,meta);
-    return meta;
+      const j=await fetchJson(`${EXPLORER_API}/tokens/${contract}`,"Apertum Explorer · Token-Name");
+      meta.symbol=String(j?.symbol||j?.token?.symbol||"");meta.name=String(j?.name||j?.token?.name||"");
+    }catch(e){console.warn('DAO Token-Name nicht verfügbar',contract);}
+    dao1TokenMetaCache.set(contract,meta);return meta;
   }
 
   const dao1ClaimLogsCache=new Map();
