@@ -192,3 +192,9 @@ Diese README.md wird künftig aktualisiert. Ältere README-7.xx.md sind Release-
 - Neue DB-RPC zählt die tatsächlich streng belegten nativen Zahlungen innerhalb einer Transaktion, verlangt exakt die erwartete Anzahl und markiert nur bislang unmarkierte Kandidaten. Zählabweichungen verursachen kompletten Rollback; wiederholter Aufruf mit neuen Sollzahlen ist idempotent.
 - Bei Ergebnis 284/100: `markedAfter=384`; die vier abweichenden sowie vier frühen unbewerteten und drei Null-Rewards bleiben unverändert. Kein Freigeben neuer Rewards.
 - Automatischer DAO-Cron und Live-Worker bleiben deaktiviert.
+
+### 8.01 · Dauerhafte Einordnung sehr früher DAO-Rewards
+- Vier bekannte positive DAO1/APTM-Claims vor der verifizierten Preisgrenze (Apertum-Block 88'356) werden in einer separaten Kandidaten-Spalte als `unpriced_before_exact_anchor` erfasst. Ihre APTM-Mengen bleiben erhalten, USD bleibt unbekannt. Die Markierung bestätigt **keine** on-chain-Auszahlung und ist nicht `canonical_existing_verified`.
+- Guarded, wiederholbare Migration: nur vier fest benannte Transaktionen, Abbruch bei unerwartetem Datenzustand. Keine Reward-Neuberechnung.
+- Drei Null-Reward-Calls ohne erfasste Asset-Flows bleiben ungeklärt; erst Belegabgleich, keine vorschnelle Aussage „keine Auszahlung“.
+- DAO-Live-Worker und Cron bleiben deaktiviert. Chrome/Apple-Passwörter-Autofill bleibt offen.
