@@ -1,3 +1,10 @@
+## 8.06 · 08.11.2026 21:45:35 CET · Build 20261108-214535
+
+- Einzel-Claim-Pfad unterstützt bekannte wAPTM/wUSDT/wUSDC-Verträge, mehrere Transfers desselben Assets und technische Decimale per historischer Contract-Abfrage. Native Route bleibt native-only kompatibel.
+- Eine gemeinsame Contract-/Quote-Regeldatei für Browser und Worker; Symbol-/Namens-Parität entfernt, zentrale Anker/Preisreuse TX-begrenzt. Keine neue Preisroute und keine Überschreibung vorhandener Bewertungen.
+- ERC20-Einheiten exakt und getrennt von nativen APTM, Asset-Evidenz persistiert; DID-Identitäten und bestehende Transaktions-USD-Rewards vor falscher/doppelter Claim-Neuanlage geschützt.
+- 198 DAO-/Reward-Tests inkl. PostgreSQL und vier vorhandene Preis-/Dashboard-Skripte bestanden. Live-Test offen, Referral/Gesamttagesqueue weiter offen, Cron aus.
+
 ### Live-Nachtrag 8.05 · 08.11.2026 20:29:33 CET
 
 - Migration/Deployment erfolgt, Einzel-Claim-Aufruf meldet no_eligible_claim und keine Neuanlage. Alle drei Importströme im vollständigen Delta-Modus ohne neuere Ereignisblöcke.

@@ -5,6 +5,7 @@
 // durable and incremental; confirmed claims and prices still need canonical enrichment.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-coverage.ts'
+import './asset-policy.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const SECRET=Deno.env.get('WALLET_DAILY_REFRESH_SECRET')||''
@@ -752,9 +753,39 @@ async function process(job:any,stageOnly=false){
   classification:'observational-only'};
 }
 
+// Verify technical decimals by eth_call at the actual claim block, never UI
+// display decimals or an assumed 18. Failed archive calls remain reviewable.
+async function verifiedClaimTokenDecimals(token:string,block:number){
+ const asset=(globalThis as any).WTDaoAssetPolicy?.asset(token);
+ if(!asset||asset.native)return {token,decimals:null,reason:'unsupported-claim-asset'};
+ if(!Number.isSafeInteger(block)||block<=0)return {token,decimals:null,reason:'invalid-claim-block'};
+ try{
+  const {data:chain,error}=await sb.from('chains').select('rpc_url,archive_rpc_url,evm_chain_id').eq('chain_key',CHAIN).maybeSingle();
+  if(error||!(chain?.archive_rpc_url||chain?.rpc_url)||!Number.isSafeInteger(Number(chain.evm_chain_id))||Number(chain.evm_chain_id)<=0)
+   return {token,decimals:null,reason:'technical-rpc-unavailable'};
+  const url=new URL(chain.archive_rpc_url||chain.rpc_url);if(url.protocol!=='https:')return {token,decimals:null,reason:'technical-rpc-unavailable'};
+  async function rpc(method:string,params:any[],id:number){
+   const abort=new AbortController();const timer=setTimeout(()=>abort.abort(),15000);
+   try{
+    const response=await fetch(url.toString(),{method:'POST',signal:abort.signal,
+     headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method,params})});
+    if(!response.ok)throw Error('rpc-unavailable');
+    const body=await response.json();if(body.error||body.id!==id||typeof body.result!=='string')throw Error('rpc-incomplete');
+    return body.result;
+   }finally{clearTimeout(timer)}
+  }
+  const chainId=await rpc('eth_chainId',[],80601);
+  if(!/^0x[0-9a-f]+$/i.test(chainId)||BigInt(chainId)!==BigInt(chain.evm_chain_id))
+   return {token,decimals:null,reason:'technical-chain-mismatch'};
+  const raw=await rpc('eth_call',[{to:token,data:'0x313ce567'},'0x'+block.toString(16)],80602);
+  if(!/^0x[0-9a-f]{64}$/i.test(raw)||BigInt(raw)>36n)return {token,decimals:null,reason:'technical-decimals-invalid'};
+  return {token,decimals:Number(BigInt(raw)),block,source:'eth_call-decimals-at-claim-block',reason:'verified'};
+ }catch{return {token,decimals:null,reason:'technical-decimals-unavailable'}}
+}
+
 // Controlled one-claim path: one import page per stream, then at most ONE
 // fresh native claim. Historical reference classifications are excluded in SQL.
-async function processSingleNativeClaim(job:any,retryBlocked=false){
+async function processSingleNativeClaim(job:any,retryBlocked=false,includeErc20=false){
  const imported=await process(job,true);
  if(!imported.transactionScan.complete||!imported.flowScan.complete||imported.referralScan?.complete===false)
   return {status:'import_partial',claimsCreated:0,imported};
@@ -780,10 +811,25 @@ async function processSingleNativeClaim(job:any,retryBlocked=false){
  }
  let payout=null;
  if(candidate.payout_status!=='verified')payout=await verifyCandidatePayouts(job,address,[candidate]);
- const {data:finalized,error:finalizeError}=await sb.rpc('wallettracking_dao_finalize_single_native_claim',{
-  p_user:job.user_id,p_wallet:job.wallet_id,p_tx:candidate.tx_hash});
+ let assetEvidence:any=null;
+ let fixedQuote:any=null;
+ if(includeErc20){
+  const {data:paid,error}=await sb.from('dao_reward_claim_candidates')
+   .select('payout_status,payout_token_address').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).maybeSingle();
+  if(error)throw error;
+  if(paid?.payout_status==='verified'&&paid.payout_token_address!=='native'){
+   assetEvidence=await verifiedClaimTokenDecimals(lower(paid.payout_token_address),Number(candidate.claim_block));
+   fixedQuote=(globalThis as any).WTDaoAssetPolicy?.fixedQuote(paid.payout_token_address)||null;
+  }
+ }
+ const rpcName=includeErc20?'wallettracking_dao_finalize_single_claim':'wallettracking_dao_finalize_single_native_claim';
+ const params:any={p_user:job.user_id,p_wallet:job.wallet_id,p_tx:candidate.tx_hash};
+ if(includeErc20)Object.assign(params,{p_verified_token:assetEvidence?.token??null,
+  p_verified_decimals:assetEvidence?.decimals??null,p_fixed_price:fixedQuote?.price??null,p_include_erc20:true});
+ const {data:finalized,error:finalizeError}=await sb.rpc(rpcName,params);
  if(finalizeError)throw finalizeError;
- return {...(finalized||{}),imported,payout};
+ return {...(finalized||{}),imported,payout,...(includeErc20?{assetEvidence}:{})};
 }
 
 // Read-only, manually enabled single-address readiness check. It never claims a
@@ -1126,6 +1172,24 @@ Deno.serve(async request=>{
    const result=await processSingleNativeClaim({user_id:selected.user_id,wallet_id:selected.id},body.retryBlocked===true);
    return Response.json({ok:true,mode:'manual-single-native-claim-pipeline',...result,
     notice:'One page per raw stream and at most one native claim. May create one proven canonical claim or fill this TX using an existing exact target anchor. Historical reference cases, existing rewards/prices and browser cursors are protected. No daily queue completion, no cron, no new price route.'});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(body?.mode==='process-next-claim-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual single-claim pipeline disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before single-claim test'},{status:409});
+  if(body.retryBlocked!==undefined&&typeof body.retryBlocked!=='boolean')
+   return Response.json({error:'retryBlocked must be boolean'},{status:400});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const result=await processSingleNativeClaim({user_id:selected.user_id,wallet_id:selected.id},body.retryBlocked===true,true);
+   return Response.json({ok:true,mode:'manual-single-claim-pipeline',...result,
+    notice:'One raw page per stream, at most one native or supported ERC20 claim. Technical decimals checked at the claim block; shared browser/worker asset policy and canonical prices. No historical reference reset, no daily queue completion and no cron.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='classify-existing-test-wallet'){

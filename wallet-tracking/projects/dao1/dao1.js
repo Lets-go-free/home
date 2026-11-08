@@ -3533,7 +3533,7 @@ window.DAO1Project = (() => {
   }
 
   function isAptmPricedAssetFlow(row){
-    return isNativeAptmAssetFlow(row) || isWrappedAptmSymbol(row?.token_symbol,row?.token_name);
+    return window.WTDaoAssetPolicy?.asset(row?.token_address)?.kind==="aptm";
   }
 
   async function getTokenFlowScanState(address){
@@ -3903,10 +3903,11 @@ window.DAO1Project = (() => {
     }
     for(const r of rows){
       const amount=Number(r.amount||0);
-      if(isStableAssetSymbol(r.token_symbol)){
-        r.price_usd=1;
-        r.value_usd=amount;
-        r.price_source="Stablecoin-Parität · 1 USD";
+      const fixedQuote=window.WTDaoAssetPolicy?.fixedQuote(r.token_address);
+      if(fixedQuote){
+        r.price_usd=fixedQuote.price;
+        r.value_usd=amount*fixedQuote.price;
+        r.price_source=fixedQuote.source;
       }else if(isAptmPricedAssetFlow(r)&&history){
         const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
         const native=isNativeAptmAssetFlow(r);
