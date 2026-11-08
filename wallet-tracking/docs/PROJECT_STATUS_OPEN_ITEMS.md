@@ -1,6 +1,6 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 11:16:25 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.02, Build 20261108-111625.
+**Dokumentationsstand:** 08.11.2026 12:41:04 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.03, Build 20261108-124104.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
@@ -13,18 +13,26 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - 3 Transaktionen mit Reward=0, Methode `0x86bb8f37`, Erfolg `status=ok`, aber **0 erfasste Asset-Flows**: Blöcke 403'915 (Bot 37174), 10'791'488 (Bot 10295), 11'254'937 (Bot 10294). **Nicht** als on-chain sicher auszahlungslos behaupten: Speicherung/Abdeckung der Flows zuerst prüfen.
 - Rohdaten-Import und Klassifikation liefen kontrolliert/manuell; produktiver DAO-Rewards-Worker und Cron bleiben deaktiviert (`DAO_REWARD_ENABLE_LIVE_WORKER=false`). Kein vollständiger End-to-End-Live-Test neuer Rewards/Referral/Bot-Zuordnung.
 
-## Phase 8.02 – implementiert, Live-Abnahme offen
+## Phase 8.03 – Internal-TX-Erfolgsprüfung korrigiert
+
+- 8.02-Migration durch User erfolgreich ausgeführt, Worker mit beiden Dateien deployt. Manueller Test `recheck-zero-payout-test-wallet`: 3 `needs_review`, 0 `verified`, 0 `no_payout_evidence`, 4 weitere pending-Payouts. Bei allen drei Prüfungen Abbruch am ersten internen Aufruf mit `internal-outcome-incomplete`.
+- Ursache anhand der vom User gelieferten vollständigen Explorer-Antwort für TX `0x62864a66dd096ddd6941a1f9c600229e52b1f10a45f93b632bb9755a3b16cbd2` belegt: 17 Aufrufe, jeweils `success=true`, `error=null`, `value=0`, kein Feld `status`, `next_page_params=null`. Der 8.02-Parser verlangte fälschlich zusätzlich einen Erfolgsstatus.
+- 8.03 akzeptiert boolesches `success=true` ohne zusätzlichen `status` oder alternativ einen expliziten Erfolgsstatus. Fehler, `success=false`, ungültige/unklare Erfolgswerte und widersprüchliche Statusfelder bleiben `needs_review`. Positiver nativer Eingang verhindert weiterhin negative Klassifikation.
+- Sechs neue Regressionstests; insgesamt 137 lokale DAO-/Reward-Tests inkl. PostgreSQL bestanden. Echte Internal-TX-Antwort als Fixture erhalten; umgebende TX-/Token-Responses im Test kontrolliert, kein neuer unabhängiger Live-End-to-End-Nachweis.
+- Änderung nur im Hilfsmodul `payout-coverage.ts`; keine Migration und kein geänderter `index.ts`. Tatsächlicher 8.03-Live-Status aller drei Fälle offen. DAO-Cron und Live-Worker bleiben aus.
+
+## Phase 8.02 – Basis implementiert, vollständige Live-Abnahme offen
 
 - Allgemeiner Auszahlungsstatus `no_payout_evidence` für beide Claim-Selektoren (DAO1/APTMDAO), strikt getrennt von NFT-Besitz, `canonical_existing_verified` und `audit_classification`. Kein Backfill der drei bekannten Fälle ohne Einzelprüfung.
 - Vor negativer Einstufung: TX-Hash/Block/Selector/Erfolg/Absender/Empfänger gegen TX-Details prüfen; sämtliche transaktionsbezogenen Token- und Internal-Seiten lesen. Maximal zehn Seiten je Strom / 5'000 Einträge; API-Fehler, ungültige oder fehlende Pagination, unbekannte Token oder unklare Internals bleiben `needs_review`. Auch fremde/proxyseitige positive Eingänge und widersprechende persistierte Flows verhindern negative Klassifikation.
 - Prüfabdeckung und zehn letzte Versuche dauerhaft am Kandidaten gespeichert. `needs_review` und `no_payout_evidence` nach mindestens 24 Stunden erneut prüfbar, neue `pending` zuerst; insgesamt maximal 20 pro Worker-Aufruf. Spätere belastbare persistierte Zahlungen können `verified` ergeben; unvollständige Nachprüfung führt zurück zu `needs_review`. Verifizierte/kanonisch markierte Kandidaten werden geschützt, Row-Lock und Zeitstempelvergleich verhindern veraltete Überschreibungen.
 - Auszahlungsprüfung funktioniert unabhängig vom NFT-Prüfstatus. Noch offene `pending`-Payouts halten die inkrementelle Queue auf `partial`, damit der nächste Abschnitt am selben Tag bearbeitbar bleibt. `staged` ist weiterhin kein abgeschlossener Reward-Job.
 - Kontrollierter Admin-Testmodus für maximal drei Null-Reward-TXs der fest hinterlegten Testwallet vorbereitet. Lokal synthetische Fixtures der drei bekannten Blöcke geprüft; **keine neue Aussage über deren Live-Status**. Vollständigkeit gilt für Explorer-Indexdaten, nicht als unabhängig verifizierter On-Chain-Negativnachweis.
-- Neue SQL-Migration: `20261108111030_dao_no_payout_evidence_802.sql`; 131 lokale DAO-/Reward-Tests einschliesslich PostgreSQL-Ausführung bestanden. Keine neue Supabase-/Explorer-Live-Prüfung. DAO-Cron und `DAO_REWARD_ENABLE_LIVE_WORKER` bleiben deaktiviert.
+- 8.02-Migration `20261108111030_dao_no_payout_evidence_802.sql` erfolgreich live ausgeführt; der erste manuelle Drei-TX-Test ist oben unter 8.03 dokumentiert. Die damaligen 131 lokalen Tests sind durch insgesamt 137 Tests in 8.03 ergänzt. DAO-Cron und `DAO_REWARD_ENABLE_LIVE_WORKER` bleiben deaktiviert.
 
 ## Unmittelbar nächster Schritt
 
-Nur die neue 8.02-Migration vollständig im Supabase SQL Editor ausführen (atomare DDL-Transaktion, keine SELECT-Resultsets). Danach Rückmeldung auswerten; weitere Test-/Deploy-Anweisung erst in der nächsten Antwort. Nicht die alten Migrationen erneut ausführen.
+In der bestehenden Edge Function `dao-reward-refresh` nur die vorhandene Datei `payout-coverage.ts` durch die ZIP-Version ersetzen und deployen. Keine neue Edge Function und keine SQL-Ausführung; `index.ts` bleibt auf 8.02. Nach Deployment Rückmeldung abwarten, erst danach erneute Drei-TX-Prüfung anleiten. DAO-Cron bleibt aus.
 
 ## Danach weiter offen – DAO-Reward-Pipeline
 

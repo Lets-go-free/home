@@ -3,6 +3,17 @@
 const addr=(v:any)=>String(v?.hash||v?.address_hash||v||'').toLowerCase();
 const validAddress=(v:string)=>/^0x[0-9a-f]{40}$/.test(v);
 const rawValue=(v:any)=>{const s=String(v?.value??v??'');if(!/^\d+$/.test(s))throw Error('invalid-transfer-value');return BigInt(s)};
+// Blockscout internal transactions expose success:boolean, often without status.
+// Accept either explicit success form, but never ignore a contradictory field.
+function internalExecutionSucceeded(item:any){
+ if(item.error!=null&&item.error!=='')return false;
+ if(item.success!=null&&typeof item.success!=='boolean')return false;
+ if(item.success===false)return false;
+ const status=String(item.status??'').trim().toLowerCase();
+ const statusSucceeded=['ok','success'].includes(status);
+ if(status&&!statusSucceeded)return false;
+ return item.success===true||statusSucceeded;
+}
 export async function inspectClaimPayoutCoverage(tx:any,address:string,readJson:(url:string)=>Promise<any>,base:string){
  const coverage:any={source:'blockscout-tx-v1',complete:false,transaction:false,
   token_transfers:false,internal_transactions:false,tx_hash:tx.tx_hash,
@@ -46,7 +57,7 @@ export async function inspectClaimPayoutCoverage(tx:any,address:string,readJson:
       const value=rawValue(item.value);
       // Unknown execution outcome is incomplete; failed traces cannot certify
       // completeness of a negative result. Keep them explicitly reviewable.
-      if(item.error||item.success===false||!['ok','success'].includes(String(item.status||'').toLowerCase()))
+      if(!internalExecutionSucceeded(item))
        throw Error('internal-outcome-incomplete');
       if(addr(item.to)===address&&value>0n)coverage.observed_incoming=true;
      }

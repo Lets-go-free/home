@@ -1,3 +1,9 @@
+## 8.03 · 08.11.2026 12:41:04 CET · Build 20261108-124104
+
+- DAO: Internal-TX-Prüfer akzeptiert Blockscout `success=true` ohne `status`; explizite Fehler, Widersprüche und fehlende Erfolgsbelege bleiben Review.
+- Echte vollständige 17-Aufrufe-Antwort als Regression-Fixture; sechs neue Tests, insgesamt 137 lokale DAO-/Reward-Tests inkl. PostgreSQL bestanden.
+- Keine SQL-Migration, index.ts unverändert; nur Hilfsmodul erneut deployen. Korrigierter Drei-TX-Live-Test steht aus, DAO-Cron bleibt deaktiviert.
+
 ## 8.02 · 08.11.2026 11:16:25 CET · Build 20261108-111625
 
 - DAO1/APTMDAO: `no_payout_evidence` als allgemeiner wiederprüfbarer Auszahlungsstatus nach vollständiger TX-lokaler Explorer-Prüfung; unbekannte/unvollständige Daten bleiben Review.
