@@ -1,6 +1,6 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 22:13:03 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.07, Build 20261108-221303.
+**Dokumentationsstand:** 08.11.2026 22:23:00 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.07, Build 20261108-221303 (unverändert; Live-Nachtrag).
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
@@ -13,7 +13,15 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - 3 Transaktionen mit Reward=0 bei Blöcken 403'915 (Bot 37174), 10'791'488 (Bot 10295), 11'254'937 (Bot 10294): nach 8.03 **live als `no_payout_evidence` klassifiziert**, TX-/Token-/Internal-Coverage vollständig, keine Token-Transfers und 17/7/7 interne Aufrufe ohne erkannten Eingang. Dauerhafte Speicherung separat per SQL bestätigt: `payout_checked_at` 08.11.2026 12:45:20–12:45:21 CET, zu diesem Zeitpunkt je zwei Protokolleinträge und passender letzter Status. Anschliessende erneute manuelle Prüfung ebenfalls erfolgreich (`noPayoutEvidenceClaims=3`, `payoutsNeedingReview=0`, `verifiedPayoutClaims=0`, `pendingPayoutChecks=4`, keine konkurrierenden Skips). Explorer-indexierter Negativbefund, kein endgültiges On-Chain-Nullurteil.
 - Rohdaten-Import und Klassifikation liefen kontrolliert/manuell; produktiver DAO-Rewards-Worker und Cron bleiben deaktiviert (`DAO_REWARD_ENABLE_LIVE_WORKER=false`). Kein vollständiger End-to-End-Live-Test neuer Rewards/Referral/Bot-Zuordnung.
 
-## Phase 8.07 – zentrale technische Dezimalstellen, Live-Abruf offen
+## Live-Nachtrag 8.07 · 08.11.2026 22:23:00 CET
+
+8.07-Migration und Edge-Deployment laut User abgeschlossen. Admin-Test refresh-apertum-token-decimals: checked=12, alle zwölf ERC20-/LP-Contracts verified, storedDecimals=observedDecimals=18, Quelle apertum-explorer-token-metadata, nextAfter=null. Zehn zuvor fehlende technische Werte ergänzt; ANOUBIS/PUGLORD vorhandene 18 bestätigt. Separate Live-SQL-Abfrage bestätigt Speicherung in predefined_tokens und unveränderte Anzeige-Dezimalstellen aller 13 Apertum-Zeilen. Prüfzeit 08.11.2026 22:20:03.874794–22:20:04.433249 CET (SQL liefert UTC). Auch gewrappte wBTC/wUSDT/wUSDC haben auf Apertum 18 technische Decimale. Natives APTM weiterhin technisch 18 / Anzeige 2; decimals_status=unverified, source/checked_at NULL, weil kein ERC20-Contract geprüft wurde. Das ist kein fehlender technischer Wert und keine negative Prüfung. Keine belegten Konflikte. Cache-Wiederverwendung ohne Explorer/RPC noch nicht separat live getestet; neue kanonische ERC20-Claim-Buchung ebenfalls weiterhin offen. DAO-Cron/Live-Worker aus.
+
+Neue Nutzer-Rückmeldung: Token anderer Chains sowie „Eigene sichere Token“ haben ebenfalls fehlende Kommastellen. 8.07 löst nur Apertum/predefined_tokens, nicht die vollständige chainübergreifende Erfassung. Codeprüfung: safe_tokens lädt/speichert bisher user_id, chain, address, label; der verifizierte Schema-Baseline-Stand enthält keine technischen oder Anzeige-Dezimalfelder. Technische Custom-Metadaten werden vor allem im Browser-Cache gehalten; eine vorhandene Live-Schema-Erweiterung ist noch nicht ausgeschlossen. Andere EVM-Pfade enthalten weiterhin angenommene 18-Fallbacks. Nächste Analyse muss technische Skalierung und persönliche Anzeige-Einstellung unterscheiden: zentral wiederverwendbare technische Metadaten nach Chain+Contract/Mint, userbezogene Safe-Listen/Anzeigepräferenzen nicht globalisieren. Chain-native Metadatenquelle je Plattform verwenden; keine EVM-Regel für Solana/Tron erzwingen und keine Werte raten. Bestehende technische Werte/Konfliktschutz und User-Isolation erhalten. Vor Umsetzung nur eine lesende Bestandsabfrage über predefined_tokens und safe_tokens zeigen; keine neue Migration/Cron-Aktivierung freigegeben.
+
+Die folgenden Release-Abschnitte beschreiben den ursprünglichen Implementierungsstand; der Live-Nachtrag oben führt den Abnahmestand.
+
+## Phase 8.07 – Apertum-Abruf und Speicherung live bestätigt
 
 Fehlende technische Apertum-Dezimalstellen werden über die Explorer-Token-Metadaten ermittelt, in predefined_tokens gespeichert und von Browser und DAO-Worker wiederverwendet. Ein vorhandener gültiger Wert benötigt keinen RPC-Aufruf pro Claim. display_decimals und summary_decimals bleiben unverändert. Kein pauschaler 18-Fallback für die geänderten Apertum-Konvertierungen. NULL, leere Werte, boolesche Werte und ungültige Skalen werden nicht als 0 akzeptiert; technische 0 ist zulässig.
 
@@ -83,7 +91,7 @@ Separate Live-SQL-Kontrolle danach bestätigt exakt: 395 Kandidaten, 388 canonic
 
 ## Unmittelbar nächster Schritt
 
-Nur `supabase/migrations/20261108220835_apertum_central_token_decimals_807.sql` vollständig im Supabase SQL Editor ausführen. Mehrere DDL-/Funktionsanweisungen in **einer Transaktion**, keine separaten SELECT-Resultsets. Die Migration legt die Metadatenfelder und Funktionen an; sie ruft den Explorer noch nicht ab und aktiviert keinen Cron. Nach Rückmeldung erst Deployment anleiten.
+Nächster Schritt: eine lesende Bestandsabfrage zu fehlenden technischen bzw. Anzeige-Dezimalstellen in predefined_tokens sowie safe_tokens auf allen Chains. Ergebnisse vor Festlegung des Folge-Releases analysieren. Kein erneuter Apertum-Batch und keine historischen DAO-Fälle zurücksetzen.
 
 ## Danach weiter offen – DAO-Reward-Pipeline
 
