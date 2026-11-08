@@ -821,7 +821,9 @@ async function verifiedClaimTokenDecimals(token:string,block:number){
  const asset=(globalThis as any).WTDaoAssetPolicy?.asset(token);
  if(!asset||asset.native)return {token,decimals:null,reason:'unsupported-claim-asset'};
  if(!Number.isSafeInteger(block)||block<=0)return {token,decimals:null,reason:'invalid-claim-block'};
- return await resolveCentralTokenDecimals(token,block);
+ const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode:'resolve',chain:CHAIN,address:token,block}});
+ if(error||!data?.ok||data.status!=='verified')return {token,decimals:null,reason:data?.reason||'central-technical-metadata-unavailable'};
+ return {token,decimals:(globalThis as any).WTDaoAssetPolicy.technicalDecimals(data.decimals),source:'central-predefined-token-decimals',metadataSource:data.source,reason:'verified'};
 }
 
 // Controlled one-claim path: one import page per stream, then at most ONE

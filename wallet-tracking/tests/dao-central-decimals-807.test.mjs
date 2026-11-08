@@ -80,14 +80,14 @@ test('PostgreSQL central metadata: fill-only, preserve display/summary, row lock
  }finally{await db.close()}
 });
 test('browser uses central zero and deduplicates concurrent metadata fills, rejects conflicts and unknown scales',async()=>{
- const app=readFileSync(new URL('js/app.js',root),'utf8'),part=app.slice(app.indexOf('const apertureDecimalsInflight='),app.indexOf('async function taxTokenDecimalsCurrent('));
- const ctx={predefinedTokenDecimals:{['apertum|'+token]:0},predefinedTokenDecimalStatuses:{},window:{},sb:{functions:{invoke:async()=>({data:{ok:true,decimals:6}})}}};
+ const app=readFileSync(new URL('js/app.js',root),'utf8'),part=app.slice(app.indexOf('const tokenTechnicalInflight='),app.indexOf('async function taxTokenDecimalsCurrent('));
+ const ctx={predefinedTokenDecimals:{['apertum|'+token]:0},predefinedTokenDecimalStatuses:{},window:{},normalizeAddress:(a)=>a.toLowerCase(),sb:{functions:{invoke:async()=>({data:{ok:true,status:'verified',decimals:6}})}}};
  vm.createContext(ctx);vm.runInContext(policy,ctx);ctx.window.WTDaoAssetPolicy=ctx.WTDaoAssetPolicy;vm.runInContext(part,ctx);
  assert.equal(await ctx.resolveApertumTokenDecimals(token),0);delete ctx.predefinedTokenDecimals['apertum|'+token];
- let count=0;ctx.sb.functions.invoke=async()=>{count++;return {data:{ok:true,decimals:6}}};
+ let count=0;ctx.sb.functions.invoke=async()=>{count++;return {data:{ok:true,status:'verified',decimals:6}}};
  const results=await Promise.all([ctx.resolveApertumTokenDecimals(token),ctx.resolveApertumTokenDecimals(token)]);assert.deepEqual(results,[6,6]);assert.equal(count,1);
  ctx.predefinedTokenDecimalStatuses['apertum|'+token]='conflict';await assert.rejects(ctx.resolveApertumTokenDecimals(token),/widersprüchlich/);
- delete ctx.predefinedTokenDecimalStatuses['apertum|'+token];delete ctx.predefinedTokenDecimals['apertum|'+token];ctx.sb.functions.invoke=async()=>({data:{ok:true,decimals:null}});await assert.rejects(ctx.resolveApertumTokenDecimals(token),/fehlen/);
+ delete ctx.predefinedTokenDecimalStatuses['apertum|'+token];delete ctx.predefinedTokenDecimals['apertum|'+token];ctx.sb.functions.invoke=async()=>({data:{ok:true,status:'verified',decimals:null}});await assert.rejects(ctx.resolveApertumTokenDecimals(token),/Ungültige|fehlen/);
 });
 test('admin refresh checks at most 20 catalog contracts with continuation, ignores caller-supplied technical values',async()=>{
  const addresses=Array.from({length:23},(_,i)=>({address:'0x'+(i+1).toString(16).padStart(40,'0')})),calls=[];

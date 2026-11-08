@@ -1155,6 +1155,7 @@ async function onLoggedIn(session) {
   applyAdminDebugMode();
   // Admin-Berechtigung steuert nur den Einstieg in den Admin-Bereich. Welche
   // Kontext-Tab-Leiste sichtbar ist, entscheidet ausschließlich updateContextNavigation().
+  const metadataRefreshBtn=document.getElementById("metadataRefreshBtn");if(metadataRefreshBtn)metadataRefreshBtn.style.display=isAdmin?"inline-block":"none";
   const adminMainNavBtn=document.getElementById("adminMainNavBtn"); if(adminMainNavBtn) adminMainNavBtn.style.display=isAdmin?"flex":"none";
   const activeTab=document.querySelector("[data-tab].active")?.dataset?.tab || "dashboard";
   updateContextNavigation(activeTab);
@@ -2004,38 +2005,62 @@ function taxTokenUniverse(chain){
   return [...m.values()];
 }
 
-// Contract metadata is shared with the DAO worker; display precision never enters raw conversion.
-const apertureDecimalsInflight=new Map();
-async function resolveApertumTokenDecimals(address){
- const token=String(address||'').toLowerCase(),key='apertum|'+token;
- if(token==='native')return 18;
- if(predefinedTokenDecimalStatuses[key]==='conflict')throw Error('Technische Dezimalstellen widersprüchlich: '+token);
- const cached=window.WTDaoAssetPolicy.technicalDecimals(predefinedTokenDecimals[key]);
- if(cached!==null)return cached;
- if(apertureDecimalsInflight.has(key))return await apertureDecimalsInflight.get(key);
+// One authenticated server resolver for all supported token platforms.
+const tokenTechnicalInflight=new Map();
+const tokenMetadataContinuation={};
+let tokenMetadataContinuationUser=null;
+async function resolveTokenTechnicalMetadata(chain,address){
+ const a=String(address||'').trim()==='native'?'native':normalizeAddress(String(address||''),chain),key=chain+'|'+a;
+ if(predefinedTokenDecimalStatuses[key]==='conflict')throw Error('Technische Dezimalstellen widersprüchlich: '+key);
+ if(predefinedTokenDecimalStatuses[key]==='not_applicable')return {status:'not_applicable',kind:'v3_pool',decimals:null};
+ const own=typeof customSafeTokens!=='undefined'?customSafeTokens.find(t=>t.chain===chain&&normalizeAddress(t.address,chain)===a):null;
+ if(own?.technicalStatus==='conflict')throw Error('Technische Dezimalstellen widersprüchlich: '+key);
+ if(own?.technicalStatus==='not_applicable')return {status:'not_applicable',kind:'v3_pool',decimals:null};
+ const valid=window.WTDaoAssetPolicy.technicalDecimals;
+ const personalCache=valid(own?.technicalDecimals),masterCache=valid(predefinedTokenDecimals[key]);
+ if(personalCache!==null&&masterCache!==null&&personalCache!==masterCache)throw Error('Technische Dezimalstellen widersprüchlich: '+key);
+ const cached=personalCache??masterCache;
+ if(cached!==null)return {status:'verified',decimals:cached,cached:true};
+ if(tokenTechnicalInflight.has(key))return await tokenTechnicalInflight.get(key);
  const work=(async()=>{
-  const {data,error}=await sb.functions.invoke('dao-reward-refresh',{body:{mode:'resolve-apertum-token-decimals',token}});
-  const d=window.WTDaoAssetPolicy.technicalDecimals(data?.decimals);
-  if(error||!data?.ok||d===null)throw Error('Technische Dezimalstellen fehlen oder sind widersprüchlich: '+token);
-  predefinedTokenDecimals[key]=d;
-  if(typeof tokenMetaCache!=='undefined'&&(data.symbol||data.name))tokenMetaCache[key]={...(tokenMetaCache[key]||{}),decimals:d,...(data.symbol?{symbol:data.symbol}:{}),...(data.name?{name:data.name}:{})};
-  return d;
- })();
- apertureDecimalsInflight.set(key,work);
- try{return await work;}finally{apertureDecimalsInflight.delete(key);}
+  const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode:'resolve',chain,address:a}});
+  if(error||!data?.ok||!['verified','not_applicable'].includes(data.status)){
+   if(data?.status==='conflict')predefinedTokenDecimalStatuses[key]='conflict';
+   throw Error('Technische Metadaten fehlen oder sind widersprüchlich: '+key);
+  }
+  predefinedTokenDecimalStatuses[key]=data.status;if(own){own.technicalStatus=data.status;own.technicalDecimals=data.decimals;}
+  if(data.status==='verified'){
+   const d=valid(data.decimals);if(d===null)throw Error('Ungültige technische Dezimalstellen: '+key);
+   predefinedTokenDecimals[key]=d;
+   if(typeof tokenMetaCache!=='undefined')tokenMetaCache[key]={...(tokenMetaCache[key]||{}),decimals:d,...(data.symbol?{symbol:data.symbol}:{}),...(data.name?{name:data.name}:{})};
+  }
+  return data;
+ })();tokenTechnicalInflight.set(key,work);try{return await work}finally{tokenTechnicalInflight.delete(key)}
+}
+async function resolveTokenTechnicalDecimals(chain,address){
+ const meta=await resolveTokenTechnicalMetadata(chain,address);
+ if(meta.status!=='verified')throw Error('Pooladresse ohne eigene Token-Dezimalstellen');
+ return meta.decimals;
+}
+async function resolveApertumTokenDecimals(address){return await resolveTokenTechnicalDecimals('apertum',address)}
+async function refreshTechnicalTokenMetadata(mode='refresh-catalog'){
+ if(tokenMetadataContinuationUser!==currentUser?.id){for(const key of Object.keys(tokenMetadataContinuation))delete tokenMetadataContinuation[key];tokenMetadataContinuationUser=currentUser?.id;}
+ const btn=document.getElementById(mode==='refresh-own'?'customMetadataRefreshBtn':'metadataRefreshBtn');
+ const status=document.getElementById(mode==='refresh-own'?'customMetadataStatus':'metadataRefreshStatus');
+ if(btn)btn.disabled=true;
+ try{
+  const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode,after:tokenMetadataContinuation[mode]||''}});
+  if(error||!data?.ok)throw Error(data?.error||error?.message||'Metadaten-Abruf fehlgeschlagen');
+  tokenMetadataContinuation[mode]=data.nextAfter||'';
+  const count=kind=>(data.results||[]).filter(r=>r.status===kind).length;
+  if(status)status.textContent=`${data.checked} geprüft · ${count('verified')} bestätigt · ${count('not_applicable')} Pooladresse(n) · ${count('conflict')} Konflikt(e) · ${count('unavailable')} offen${data.nextAfter?' · Weitere Token: nochmals klicken.':' · Liste abgeschlossen.'}`;
+  await loadPredefinedTokensFromDb();await loadCustomSafeTokensFromDb();renderSafeTokenTable();renderCustomTokenList();renderResults();
+  return data;
+ }catch(e){if(status)status.textContent=e.message;else alert(e.message)}finally{if(btn)btn.disabled=false}
 }
 
 async function taxTokenDecimalsCurrent(chain,token){
-  if(chain==="apertum")return await resolveApertumTokenDecimals(token?.address);
-  const known=Number(token?.decimals);
-  if(Number.isFinite(known) && known>=0 && known<=255)return known;
-  const key=chain+"|"+normalizeAddress(token?.address||"",chain);
-  const predefined=Number(predefinedTokenDecimals[key]);
-  if(Number.isFinite(predefined) && predefined>=0 && predefined<=255)return predefined;
-  // Avoid Routescan proxy eth_call here: some Routescan chains return HTTP 500 for proxy calls.
-  // Unknown decimals are explicitly a metadata limitation; ERC-20 default 18 is used only for
-  // the raw-unit conversion and surfaced through the balance source.
-  return 18;
+ return await resolveTokenTechnicalDecimals(chain,token?.address);
 }
 
 async function coinGeckoProxy(body){
@@ -3224,7 +3249,8 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"DB/RAM",manual:"Projektrefresh",details:[["DAO1 Übersicht/Bot-Summen","RAM nach Lazy Load","Supabase DAO1 Caches","Apertum bei Aktualisierung","Current State; eindeutige aktuelle Bots, Historie separat"]]},
   {id:"dao-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"–",open:"vorhandener Preis-Cache",manual:"zentrale Preisaktualisierung",details:[["DAO1 aktuelle Kurse/Preisrouten","RAM/zentraler Preiscache","bestehende DAO1/Apertum Preislogik","Apertum DEX nur bei zentraler Preisaktualisierung","Tab zeigt ausschließlich bereits ermittelte Preise, Routen und Pools; keine eigene Preisermittlung"]]},
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"inkrementeller Delta-Sync",open:"DB-Cache",manual:"Admin-Retry",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Cache beim Öffnen; Phase 6.62 synchronisiert neue Apertum-Transaktionen/Flows/Claims/Referral-Daten höchstens 1× täglich automatisch inkrementell; manueller Force-Refresh nur Admin"]]},
-  {id:"dao-single-token-claim",level:2,label:"Nativer / ERC20-Einzel-Claim",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"Admin-Test · ein Claim",details:[["DAO1/APTMDAO · Phase 8.07","kein Start-/Tab-Scan","bestehende TX-/Flow-/Claim-Daten; claim_pipeline_asset_evidence","zentrale technische Token-Decimale, Explorer bei fehlenden Metadaten; historischer RPC nur als Claim-Fallback; bestehende zentrale Zielanker","wAPTM/wUSDT/wUSDC anhand verifizierter Verträge, keine Symbol-Identität. Eine asset-policy.js für Browser/Worker und feste Stablecoin-Quote; exakte Raw-Summe, bis 100 gleiche Asset-Flows, keine gemischten Eingänge. Native und ERC20-Mengen/Gas getrennt. Bestehende Preise/Claims/USD-Rewards und historische 388/4/3-Fälle geschützt; DID-Identitäten keine Bot-Claims. 208 Tests plus vier Preis-/Dashboard-Skripte. 8.06-Leerlauf live bestätigt; technische NULL-Felder noch live zu ergänzen. Keine Überschreibung bei Konflikten, Anzeige-Dezimale separat. Kein Cron/Tagesqueue-Abschluss."]]},
+  {id:"token-technical-metadata",level:2,label:"Zentrale technische Token-Metadaten",status:"in_progress",start:"vorhandene Stammdaten/privater Cache",daily:"kein Metadaten-Cron",open:"fehlende aktive Token-Metadaten",manual:"12 Token pro Batch",details:[["Phase 8.08 · alle unterstützten Chains","eigene technische Cachewerte usergebunden lesen; globale Masterwerte wiederverwenden","wallettracking_internal.token_metadata; predefined_tokens; safe_tokens Anzeige-/Summary-Felder","gemeinsame Edge Function token-metadata; Explorer/EVM/Solana/Tron/Protokolleinheiten","Technische Quellen und Konfliktprotokoll zentral; keine User-/Wallet-/Privatlabel-Daten im technischen Cache. Persönliche Anzeige-Einstellungen getrennt. V3-Pools nur nach Interface-Nachweis, technische Skala dort nicht anwendbar. Browser, DAO und täglicher Bestandsjob teilen den Dienst. Neue Funktion vor abhängigen Workern/Web deployen; Live-Abnahme offen, DAO-Cron aus."]]},
+  {id:"dao-single-token-claim",level:2,label:"Nativer / ERC20-Einzel-Claim",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"Admin-Test · ein Claim",details:[["DAO1/APTMDAO · Phase 8.08","kein Start-/Tab-Scan","bestehende TX-/Flow-/Claim-Daten; claim_pipeline_asset_evidence","zentrale technische Token-Decimale, Explorer bei fehlenden Metadaten; historischer RPC nur als Claim-Fallback; bestehende zentrale Zielanker","wAPTM/wUSDT/wUSDC anhand verifizierter Verträge, keine Symbol-Identität. Eine asset-policy.js für Browser/Worker und feste Stablecoin-Quote; exakte Raw-Summe, bis 100 gleiche Asset-Flows, keine gemischten Eingänge. Native und ERC20-Mengen/Gas getrennt. Bestehende Preise/Claims/USD-Rewards und historische 388/4/3-Fälle geschützt; DID-Identitäten keine Bot-Claims. 241 relevante Tests bestanden; zwei ältere breite Testfehler dokumentiert. 8.06-Leerlauf und 8.07-Apertum-Decimale live bestätigt. 8.08 bindet den gemeinsamen token-metadata-Dienst ein; neue Claims/Metadaten anderer Chains live offen. Keine Überschreibung bei Konflikten, Anzeige-Dezimale separat. Kein Cron/Tagesqueue-Abschluss."]]},
   {id:"dao-single-native-claim",level:2,label:"Nativer Einzel-Claim-Pfad",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"Admin-Test · eine Seite/Strom, ein Claim",details:[["DAO1/APTMDAO · Phase 8.05","kein Start-/Tab-Scan","servereigene Rohcursor, dao_reward_claim_candidates.claim_pipeline_*, project_nft_claims","Blockscout-Rohimport und vorhandene historische Owner-/Payout-Prüfung; nur vorhandene zentrale exact-v13-Anker","Teilimport stoppt vor kanonischer Speicherung. Neue Kandidaten ohne kanonische/Preis-Ausnahme auswählen; 388/4/3-Referenzen schützen. Höchstens ein neuer nativer Claim, neue Miner ohne belegte ID bleiben Nicht zugeordnet. Fehlender Preis/Owner blocked mit Grund; 24h-Retry oder explizit manuell. TX-begrenzte gemeinsame Ankernutzung, kein Preis-Fallback; Neuanlage/Preisergänzung/Abschluss atomar. 173 lokale Tests; Leerlauf live bestätigt, Referenzbestand unverändert. Tatsächliche neue Claim-Neuanlage weiterhin live offen; keine Tagesqueue-Freigabe."]]},
   {id:"dao-positive-payouts",level:2,label:"Positive native Payout-Prüfung",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"Admin-Test, maximal vier",details:[["DAO1/APTMDAO · Phase 8.04","kein Start-/Tab-Scan","vorhandene project_transactions und project_transaction_asset_flows; Payout-Metadaten in dao_reward_claim_candidates","keine neue Explorer-/Preisabfrage","Feste Testwallet, Admin-JWT, Test-Import-Flag, Live-Worker aus. Service-only RPC prüft eindeutige native Auszahlung, passenden Block und Betrag mit exakt 1000 Wei Toleranz; USD NULL bleibt erlaubt und unverändert. Nur pending ohne canonical_existing; verified/negative Fälle ausgeschlossen. Kandidaten-Zeilensperren, Lese-Sperren und atomare Payout-/History-Persistenz, Batch-Rollback bei Fehler. 151 lokale Tests inkl. PostgreSQL; Vier frühe positive Claims live payout-verifiziert, SQL-Persistenz und Wiederholungsschutz bestätigt. Preis-Ausnahme und USD NULL erhalten; vollständiger inkrementeller Gesamtprozess bleibt offen."]]},
   {id:"dao-payout-evidence",level:2,label:"Serverseitige Auszahlungsprüfung",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"begrenzter Admin-Test",details:[["DAO1/APTMDAO · Phase 8.03","kein Start-/Tab-Scan","dao_reward_claim_candidates: payout_status, payout_coverage, payout_check_history","Blockscout TX-Details + vollständige Token-/Internal-Paginierung","8.03: interne Aufrufe akzeptieren success=true ohne status oder einen expliziten Erfolgsstatus; Fehler, success=false, unbekannte oder widersprüchliche Angaben bleiben offen. no_payout_evidence nur nach vollständiger transaktionsbezogener Prüfung ohne Eingang; kein endgültiger On-Chain-Nullnachweis. needs_review/no_payout_evidence nach 24h erneut prüfbar; höchstens 20 pro Worker-Aufruf, neue zuerst. NFT-Status, canonical_existing_verified und audit_classification bleiben getrennt. SQL-Zeilensperre/CAS schützt verifizierte oder parallel geänderte Fälle. Zehn letzte Prüfergebnisse gespeichert; offener pending-Payout-Rest hält Queue partial. Live-End-to-End und vollständige Referral-/Preis-Pipeline offen."]]},
@@ -3366,6 +3392,7 @@ function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
   ${window.WTAdminExports.render()}
+  <div class="custom-token-card"><h3>Technische Einheiten und eigene Anzeige · 8.08</h3><p>Technische Token-Dezimalstellen werden je Chain und Vertrag/Mint zentral ermittelt und wiederverwendet. Unklare Werte bleiben offen; widersprüchliche Angaben überschreiben vorhandene Werte nicht. Pooladressen ohne eigene fungible Token-Einheiten werden separat angezeigt. Unter „Eigene sichere Token“ kannst du persönliche Anzeige- und Summary-Kommastellen setzen. Leer übernimmt den Standard, 0 zeigt keine Nachkommastellen. Das ändert die tatsächliche Tokenmenge nicht. Metadaten-Prüfungen bearbeiten höchstens zwölf Einträge pro Klick; weitere Einträge folgen mit dem nächsten Klick. Die automatische DAO-Reward-Verarbeitung bleibt deaktiviert.</p></div>
   <div class="custom-token-card"><h3>DAO-Auszahlungsprüfung · 8.06</h3><p>„Kein Auszahlungsnachweis“ bedeutet: Die konkrete Claim-Transaktion sowie ihre Token- und internen Transfers wurden vollständig aus dem Explorer gelesen; darin ist keine Auszahlung nachweisbar. Das ist kein endgültiger Beweis für eine Auszahlung von null. Unvollständige oder widersprüchliche Daten bleiben zur Prüfung offen. Spätere Belege können den Status ändern; Preisbewertung und Bot-Zuordnung werden getrennt geprüft. 8.04 ergänzt eine kontrollierte Prüfung vorhandener positiver nativer Auszahlungen ohne USD-Voraussetzung. Sie verändert nur den Auszahlungsnachweis. 8.05 verbindet die Belege in einem kontrollierten Einzel-Claim-Test. Fehlende zentrale Preise oder Zuordnungen bleiben mit Grund offen; höchstens ein neuer nativer Claim wird angelegt. 8.06 ergänzt verifizierte ERC20-Assets mit derselben Contract-/Preisregel wie im Browser. 8.07 ergänzt technische Dezimalstellen zentral aus Explorer-Metadaten und verwendet vorhandene Werte wieder; widersprüchliche Einheiten bleiben zur Prüfung gesperrt. Anzeige-Dezimalstellen sind davon getrennt. Unbekannte oder gemischte Assets bleiben offen. Der automatische DAO-Reward-Job bleibt deaktiviert.</p></div>
   <div class="custom-token-card"><h3>Aktueller Stand · 7.56</h3><p>LP-Preise erhalten einen ausdrücklichen Hinweis „USD je 1 LP-Token“ in Token-Verwaltung, eigenen Tokens, Dashboard-Kursübersicht/Projekt-Kacheln und DAO1-Kursansicht; TLN/VOW-Poolansicht verwendet dieselbe Beschriftung. Ein hoher LP-Stückpreis ist nicht der Kurs von VOW oder einem anderen Poolbestandteil: Poolwert in USD geteilt durch die gesamte LP-Menge. Erkennung nur anhand vorhandener LP-Klassifikation/Preis-Metadaten, keine neue On-Chain-Abfrage.</p><p>Ideenliste: fünf Doppelungen zusammengeführt (XRPL, Gewinn/Verlust, Exporte, Alerts, Versionierung); zwei historische Dashboard-Einträge in den kanonischen Dashboard-Punkt integriert. Bestätigte Tests zu Kursübersicht, Bereinigung und Claims ohne NFT-ID abgeschlossen. Dashboard, Aufgaben, Personenfilter und Watch-only-Basis nicht mehr als unbegonnen dargestellt. Backup durchgeführt, Restore pausiert. Frühere Texte unverändert in docs/ideas/ARCHIVE-7.55.json erhalten. Offene Cross-User/RLS-/Admin-Tests, echte Erweiterungen und unabhängige LP-Supply-Verifikation bleiben ausdrücklich offen.</p><p><a href="./docs/ideas/ARCHIVE-7.55.json">Historischer Ideenstand vor Konsolidierung</a></p><h3>Zu testen · 7.56</h3><p>Zu testen: Vordefinierte Token → ETH → VOW/USDT-LP: unter dem Preis steht USD je 1 LP-Token. Gleiche Einheit in Dashboard und TLN/VOW-Pools, bei normalen VOW/USDT/APTM-Token kein LP-Hinweis. Beträge unverändert. Ideen/Umbau: Standardansicht enthält keine erledigten Update-Tests; Erledigte anzeigen zeigt diese. XRPL, Gewinn/Verlust, Alerts, Exporte und Versionierung je eine kanonische Idee; teilweise umgesetzte Funktionen mit konkretem Restumfang. Archiv-Link erreichbar. Wallet hinzufügen / Wallet löschen / sämtliche Daten löschen bleiben allgemeiner Regressionskatalog; gezielte Sicherheits-/Restdatenprüfungen bleiben offen. Restore weiterhin zurückgestellt.</p><h3>Vorheriger Stand · 7.55</h3><p>Admin → Vordefinierte Token: neue Option „In der Dashboard-Kursübersicht anzeigen“ je Projekt-Token, standardmäßig aktiviert. Globale Stammdateneinstellung für alle Nutzer. Projekt muss beim jeweiligen User aus Bestand oder bestätigtem Projekt-Summary vorhanden sein. Ausblenden hat Vorrang vor positivem Bestand und „Im Dashboard immer anzeigen“. Nichtprojekt-Token behalten ihre Regeln; Bestände, Vermögen, historische Bewertung und Kurse im Projekt bzw. in Projekt-Kacheln bleiben erhalten.</p><p>Zuerst SQL 093 (sql/093-project-token-dashboard-price-visible.sql) ausführen: 3 Statements in Reihenfolge, BEGIN/ALTER TABLE/COMMIT; keine SELECT-Resultsets. Webdateien übernehmen/veröffentlichen und neu laden. Kein Edge-Deployment. SQL 092 aus 7.54 bleibt Voraussetzung für belegte Claims ohne NFT-ID.</p><p>Im lokalen wallet-tracking-Ordner _wt-docs-cleanup.command einmal ausführen, bevor du commitest/veröffentlichst. Der Helfer archiviert ausschließlich die bekannten README-7.33.md bis README-7.44.md unter docs/releases/; identische Root-Duplikate werden entfernt. Abweichende Inhalte bleiben erhalten und werden gemeldet. README.md bleibt der aktuelle Einstieg; CHANGELOG.md bleibt die chronologische Kurzfassung, die archivierten Release-Berichte bleiben historische Detailstände. Ein ZIP entfernt bestehende Dateien nicht von selbst.</p><p>User bestätigt am 09.10.2026 APTM-24h und Entdecken als OK. TLN/VOW-24h, DID-/Wallet-Zuordnung, wAPTM-Nachzahlungen, Aufgaben-Namen, Kurslayout und Datenlöschung bereits bestätigt. Claims ohne NFT-ID nach SQL 092 noch nicht ausdrücklich produktiv bestätigt. LPT-Kursermittlung eingestellt, historische Bewertung erhalten. Restore zurückgestellt; Cross-User/RLS-/Admin-Negativtests offen.</p><h3>Zu testen · 7.55</h3><p>Zu testen: 1. Admin → Vordefinierte Token → Apertum: wUSDT und wAPTM/wUSDT-LP abwählen. Dashboard-Kursübersicht ohne diese Zeilen, Vermögenszahlen und Projekt-Kurse unverändert. 2. „Im Dashboard immer anzeigen“ aktiviert lassen: ausgeblendete Tokens bleiben aus der Kursübersicht weg. 3. Wieder aktivieren: bisherige Regeln Bestand > 1 USD oder immer anzeigen gelten. 4. Neu laden: Einstellung bleibt erhalten. 5. User ohne DAO1-Projekt: diese Projekt-Token trotz aktivierter Flags nicht anzeigen; Nichtprojekt-Token unverändert. 6. Cleanup-Helfer zweimal ausführen: Root bleibt frei von alten Release-READMEs, Archive vollständig, README.md bleibt; GitHub Desktop zeigt nur diese Verschiebungen plus Updatedateien. Wallet hinzufügen, Wallet löschen, sämtliche Daten löschen bleiben im Regressionskatalog; gezielte Cross-User/RLS-/Admin-Negativtests offen, Restore zurückgestellt.</p><h3>Vorheriger Stand · 7.54</h3><p>APTM/wAPTM: aufgelöste Bewertungsroute direkt übergeben, globalen Preissnapshot auf v6 erneuert. Belegte Claims ohne NFT-ID speichern und als Nicht zugeordnet anzeigen. Aktuelle LPT-Kursermittlung auf Userentscheid eingestellt; historische Bewertungen erhalten.</p><p>Installation: zuerst sql/092-claims-nullable-nft-id.sql ausführen (3 Statements: BEGIN, ALTER TABLE, COMMIT; keine SELECT-Resultsets). Danach Webdateien veröffentlichen, Seite neu laden, Daten aktualisieren und zentralen Preisrefresh ausführen. Kein neues Edge-Deployment. SQL 091 bleibt Voraussetzung für separate wAPTM-Entscheidungen.</p><p>User bestätigt am 08.10.2026: DID-/Wallet-Zuordnung, wAPTM-Nachzahlungen, Aufgaben-Namen, Kurslayout und Datenlöschung scheinen OK; TLN/VOW-24h OK. APTM/wAPTM-24h und Claims ohne NFT-ID nach 7.54 erneut testen. Entdecken Alle Wallets/Spam-Sammelaktion, Cross-User/RLS-/Admin-Negativtests weiter offen. Restore zurückgestellt.</p><h3>Vorheriger Stand · 7.53</h3><p>DEX-Kurse erhalten einen 24-Stunden-Vergleich über ihre aktuelle Bewertungsroute. Bestehende historische Preisermittlung wiederverwendet: taxEvmBlockByTime (ohne neue userbezogene Zeitcache-Schreibvorgänge), taxDirectV2Price (optionaler exakter Pool) und taxV2LpHistoricalPrice (optionaler Routenresolver). Apertum verwendet weiterhin seine bestehenden Sync-/Transfer-Event-Nachweise; V3-slot0 ergänzt nur die fehlende historische Poolabfrage. Bisherige Aufrufer und Bewertungsformeln bleiben unverändert. Der zentrale Preisjob liest historische Zustände am Vergleichsblock, teilt Block-/Pool-/Decimals-Abfragen und speichert Vergleichswerte im globalen Preissnapshot v6. Dashboard-Öffnen startet keine Historienabfrage. Konstante USD-Referenzbewertung wird als solche erläutert. Fehlende historische Daten bleiben – mit Tooltip; aktuelle Preise bleiben erhalten. Zu testen: BSC-Voucher/VOW/TLNGOLD, ETH-V2/V3, APTM/wAPTM, LP, Reload/zweiter Nutzer, Archive-Fehler und unveränderte CoinGecko-Werte. Live-RPC-Proben hier per HTTP abgewiesen; produktive Abdeckung offen.</p><p>Aktuelle Kurse nutzen die volle Dashboard-Breite. Ab 1400 px verfügbarer Innenbreite stehen zwei Kurstabellen nebeneinander; darunter eine gemeinsame Tabelle mit einem Tabellenkopf und durchgehend ausgerichteten Spalten. Contract-/Pooladressen erscheinen kleiner auf zweiter Zeile mit Kopierfunktion. Sortierung nach zentraler Chain-Reihenfolge, innerhalb der Chain alphabetisch nach Tokenname. Bei schmalen Ansichten sind alle Spalten horizontal erreichbar. Zu testen: Safari/Brave, breite/schmale Fenster, Navigation ein-/ausgeklappt, Hell-/Dunkelmodus. Preisquellen, Filter und Ladezeitpunkte unverändert.</p><p>Alle Wallet-/Partner-To-dos behalten ihre bestehenden Kennungen. Besitzername und gespeicherter Partneralias werden zusätzlich gezeigt und identische Namen dedupliziert. TLN-ID bleibt immer sichtbar. Token-/Bestandsprüfungen nennen die betroffenen Wallets, Miner-Nachzahlungen Label/Adresse/Besitzer und belegte DAO-DID-Aliase. TLN-Partneraufgaben verwenden TLN-Aliase und Walletbesitzer getrennt.</p><p>Datenquelle: Walletbesitzer aus bereits entschlüsseltem User-Kontext, Partnernamen über wallet-private/team_alias_list. Lazy ein Read beim ersten Dashboard mit Aufgaben pro User/Session, in-flight dedupliziert; Namen ausschließlich im RAM. Alias-Save aktualisiert den Cache. Fehler lassen IDs/Tasks sichtbar, erneuter Versuch frühestens nach einer Minute. Kein Team-Discovery-/RPC-Lauf für Namen; DID-/TLN-ID-Auflösung nur aus bereits geladenen Identitäten und eigenen Root-DIDs. Keine projektübergreifende Namenszuordnung bei gleichen IDs.</p><p>Legacy-LPT 0x30812dbe89b40b5b7ac1bc9134e82ebbc0b57995 auf BSC ist in vorhandenen Stammdaten deaktiviert und historical_only/legacy_staking_token (Ursprung ETH). Diese Klassifikation wird jetzt auch für deaktivierte Datensätze gelesen, ohne sie für Bestands-/Discovery-Scans zu aktivieren. Die Cross-Chain-Formel ist historisch, nicht aktuell. Die aktuelle Kursermittlung wurde in 7.54 auf Userentscheid eingestellt; auch alte aktuelle Projektpreise werden unterdrückt. Historische Bewertungen bleiben erhalten. CoinGecko/GeckoTerminal bzw. ein BSC-Dust-Pool dürfen diese historische Repräsentation nicht als aktuellen LP-Wert ersetzen. Aktueller LPT-Bewertungsnachweis wird nicht weiter verfolgt.</p><h3>Zu testen · 7.49</h3><p>TLN-IDs 17265/11674/11283 mit und ohne Partnername; Besitzer+Partner zugleich, Sonderzeichen, gleiche TLN-/DAO-ID; Token-/Bestandschecks und Miner-To-dos; Aliasänderung und Userwechsel. LPT-Hinweis nach Reload/Preisrefresh, keine Übernahme historischer oder Dust-Werte. Wallet hinzufügen/löschen, sämtliche Daten löschen und Account-/Admin-Negativtest bleiben zu prüfen; Restore zurückgestellt. Lokale Regressionen bestanden, produktiver Retest offen. Kein neues SQL/Edge-Deployment; für 7.48-Claims SQL 091 weiterhin erforderlich.</p><h3>Vorheriger Stand · 7.48</h3><h3>Miner-Nachzahlungen prüfen · 7.48</h3><p>Positive wAPTM-Eingänge (Contract 0x110ac02ba3384bc055c13a87766049a74517beda) ausschließlich vom Sender 0x6d0539de11b95e18cb202a55098e3854b0313022 erscheinen als „Vermutliche Miner-Nachzahlung in wAPTM – Bot nicht zugeordnet“. Das ist ein Prüfhinweis, kein automatischer Claim-Nachweis. Bot-Claims zeigt je Wallet Betrag, Datum und TX-Link sowie „Als Bot-Claims bestätigen“ und „Ignorieren, kein Bot-Claim“. Die Aktion gilt nur für die aktuell angezeigten offenen TXs; spätere Zahlungen bleiben prüfbar.</p><p>Offene Kandidaten erscheinen auch im Dashboard unter „Was muss ich tun?“, gemäß dem Wallet-/Personenfilter. Bestätigte Zahlungen werden im Tab Bot-Claims unter NFT „Nicht zugeordnet“ aufgeführt und in die Claim-/Dashboard-Summen aufgenommen. Unbestätigte oder ignorierte Zahlungen zählen dort nicht. Bestehende Selector-Claims und Referral-Rewards bleiben erhalten. Es wird keine einzelne Bot-ID geraten.</p><p>Die Entscheidung ist je User, Wallet und TX in dao_bot_claim_reviews gespeichert; Blockchain-Transaktionen und kanonische Asset-Flows werden nicht verändert. Laden erfolgt beim ersten History-Read je User-/Wallet-Scope, erneut beim Claims-/Referral-Öffnen und beim Dashboard-Summary-Read. Alle Reads sind cache-only ohne zusätzlichen Explorer-/RPC-Scan. Migration SQL 091 zuerst ausführen: 13 Statements in Reihenfolge, transaktional; keine SELECT-Resultsets. Authenticated-Zugriff mit RLS auth.uid(), kein anon-Zugriff und keine Klartext-Walletadresse/-namen. Bestehende Wallet-/Daten-/Kontolöschung entfernt Entscheidungen per FK-Cascade.</p><p><strong>Zu testen:</strong> Kandidaten nach Datenaktualisierung; je Wallet bestätigen oder ignorieren; Abbrechen und DB-Fehler; Reload erhält Entscheidung; neue Zahlung bleibt offen; NFT-Filter Nicht zugeordnet; Summen ohne doppelte Zählung; eigener/fremder Walletfilter; Wallet hinzufügen/löschen, sämtliche Daten löschen und Account-/Admin-Negativtest. Restore-Test bleibt zurückgestellt. Lokale Regression bestanden; Live-Supabase/RLS-Roundtrip noch offen.</p><h3>Vorheriger Stand · 7.47</h3><p>Entdecken startet mit Alle Wallets; Scans bleiben je Wallet gespeichert und gesperrt. Alle entdeckten Tokens als Spam markieren erfasst sämtliche offenen Treffer der ausgewählten Wallets und Chains, auch ohne Spam-Verdacht. Bereits sichere Tokens bleiben ausgeschlossen. Bestätigung mit Anzahl unterschiedlicher Tokens; Speicherung im jeweiligen Wallet-Cache. Die Einzelaktion Als sicher hinzufügen bleibt erhalten. Die sichere Sammelaktion aus 7.46 wurde entsprechend der korrigierten Anforderung entfernt.</p><p>DAO1/APTMDAO: Mint-Kanten und heutiger DID-Besitzer sind getrennt. Aktuelle Partnerbesitzer werden gezielt über ownerOf geprüft, fünf Minuten im RAM gehalten und bei Datenaktualisierung invalidiert. Alte Kanten-/IndexedDB-Caches bleiben als historische Fakten gültig; ihre Wallet-Adresse wird nicht mehr als aktueller Partnerbesitzer verwendet. Keine SQL-Bereinigung oder Wallet-Neuanlage nötig. Edge apertum-rpc-proxy aus 7.46 bleibt Voraussetzung; 7.47 benötigt kein zusätzliches Deployment.</p><p>7.42–7.45: endgültige Kontolöschung mit Admin-Sperre; Recovery nur für bestehende Konten; Metadaten-404 ohne falschen 502; Erwerbs-TX und abweichender Wallet-Transfer verlinkt; Mint ohne Zahlung in dieser TX setzt keinen Kaufpreis auf 0. NFT-Anzeige vom User bestätigt, externe Metadaten #120469 bleiben fehlend.</p><h3>Zu testen</h3><p>Wallet hinzufügen; Wallet vollständig löschen; sämtliche Daten löschen; normales Konto endgültig löschen und Admin-Negativtest. Monica: DAO1 #21044 unter Carmen #18438 auf 0x568281…fe4940; APTMDAO #7803 unter Chris #7315; aktueller Bestand 9 Mining-Bots und 1 Trading-Bot, Zuordnung getrennt prüfen. Besitzerwechsel und RPC-Fehler testen; Entdecken Alle/Einzelwallet, gemischte Sperren, Chainfilter und beide Sammelaktionen prüfen. Restore-Test bleibt zurückgestellt.</p><p>7.48 löst die separate wAPTM-Auszahlung durch eine ausdrückliche User-Entscheidung; automatische Company-/Bot-Zuordnung und NFT-ID bleiben unbewiesen.</p></div>
   <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.80</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Abschlussmessung:</strong> TLN/VOW-Haupttab wurde von 143 auf 42 und danach auf ca. 16 Requests reduziert. DAO-Team sank im Warm-Run von ca. 130 auf 16 Requests; Bot-Claims → Referral-Rewards verursacht in derselben Session keine zusätzlichen History-Reads. Weitere Optimierungen erfolgen nur noch bei konkretem Messbeleg.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Michaela 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
@@ -3636,7 +3663,7 @@ async function deleteDexConfig(id){
 
 const HARDCODING_AUDIT_ITEMS = [
   {severity:"open", area:"Routescan", item:"fee_api_base Fallback", detail:"Routescan darf keine Chain-URL mehr selbst konstruieren. Fehlende fee_api_base soll als Konfigurationsfehler sichtbar werden."},
-  {severity:"open", area:"Tron", item:"TRC20 Decimals", detail:"TRON_TOKEN_DECIMALS_DEFAULT=6 ist chain-/token-spezifischer Fallback. Decimals sollen aus predefined_tokens bzw. Token-Metadaten kommen."},
+  {severity:"open", area:"Tron", item:"TRC20 Decimals", detail:"8.08: TRC20-Einheiten werden zentral aus decimals() geladen und wiederverwendet; kein pauschaler 6-Fallback. Live-Abnahme offen."},
   {severity:"review", area:"Wallet-Maske", item:"EVM-Chain-Hinweis", detail:"Der sichtbare Hilfetext nennt Ethereum/BSC/Polygon/Arbitrum/Base/Avalanche/Apertum statisch. Darstellung sollte aus wallet_type=evm generiert werden."},
   {severity:"review", area:"Eigene sichere Token", item:"Chain-Auswahl", detail:"Die Auswahl enthält noch feste Chain-Optionen. Sie sollte aus public.chains erzeugt werden."},
   {severity:"review", area:"DeFi-Projekt UI", item:"Projektmodule", detail:"DAO1 und TLN/VOW besitzen jetzt eigene Unter-Tabs inklusive projektspezifischer Hilfe. Daten bleiben generisch in Supabase; die Modulnamen DAO1Project/TLNVOWProject sind bewusst projektspezifische Implementierung und können bei weiteren Projekten in ein gemeinsames Framework überführt werden."},
@@ -3829,13 +3856,9 @@ function readChainEditor(id) {
 }
 
 function inferNativeTechnicalDecimals(walletType,chainKey){
-  const t=String(walletType||"").toLowerCase();
-  if(t==="evm") return 18;
-  if(t==="sol") return 9;
-  if(t==="tron") return 6;
-  if(t==="btc") return 8;
-  if(t==="xrp") return 6;
-  return null;
+ const known={eth:['evm',18],bsc:['evm',18],matic:['evm',18],base:['evm',18],arb:['evm',18],apertum:['evm',18],avax:['evm',18],btc:['btc',8],sol:['sol',9],xrp:['xrp',6],tron:['tron',6],akash:['akash',6]};
+ const hit=known[String(chainKey||'').toLowerCase()];
+ return hit&&hit[0]===String(walletType||'').toLowerCase()?hit[1]:null;
 }
 
 async function syncNativeAssetForChain(chainKey,chainRow={}){
@@ -3848,9 +3871,10 @@ async function syncNativeAssetForChain(chainKey,chainRow={}){
     coingecko_id:chainRow.coingecko_id||CHAIN_META[chain]?.coingeckoId||null,
     decimals:inferNativeTechnicalDecimals(chainRow.wallet_type||CHAIN_CONFIG[chain]?.walletType,chain),enabled:true
   };
-  const {data,error}=await sb.from("predefined_tokens").select("chain,address").eq("chain",chain).eq("address","native").maybeSingle();
+  const {data,error}=await sb.from("predefined_tokens").select("chain,address,decimals").eq("chain",chain).eq("address","native").maybeSingle();
   if(error) throw error;
   if(data){
+    if(data.decimals!==null&&data.decimals!==undefined)payload.decimals=data.decimals;
     const {error:updateError}=await sb.from("predefined_tokens").update(payload).eq("chain",chain).eq("address","native");
     if(updateError) throw updateError;
   }else{
@@ -4418,44 +4442,13 @@ function configuredRpcUrl(chain) {
 
 // Holt Name/Dezimalstellen direkt vom Contract für vordefinierte Token, die noch nie
 // eine Wallet mit Bestand hatten (darum bisher nicht im Cache) - unabhängig vom Bestand.
-async function ensurePredefinedNames() {
-  for (const chain of Object.keys(CHAIN_CONFIG).filter(c => CHAIN_CONFIG[c]?.walletType === "evm" && CHAIN_CONFIG[c]?.rpcUrl)) {
-    const missing = (SAFE_ADDRESSES[chain] || []).filter(a =>
-      !tokenMetaCache[chain + "|" + a] && !predefinedTokenLabels[chain + "|" + a]
-    );
-    if (missing.length === 0) continue;
-
-    const calls = [];
-    const plan = [];
-    missing.forEach((addr, idx) => {
-      calls.push({ to: addr, data: "0x313ce567" }); plan.push({ idx, type: "decimals" });
-      calls.push({ to: addr, data: "0x95d89b41" }); plan.push({ idx, type: "symbol" });
-    });
-
-    let results;
-    try {
-      results = await evmRpcBatch(configuredRpcUrl(chain), calls);
-    } catch (e) {
-      continue; // Netzwerkfehler - Namen bleiben unbekannt, nächster Tab-Aufruf versucht's erneut
-    }
-
-    const perToken = missing.map(() => ({}));
-    results.forEach((hex, i) => {
-      const { idx, type } = plan[i];
-      perToken[idx][type] = hex;
-    });
-
-    missing.forEach((addr, idx) => {
-      const decHex = perToken[idx].decimals;
-      const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
-      const symbol = decodeAbiString(perToken[idx].symbol) || (addr.slice(0, 8) + "…");
-      tokenMetaCache[chain + "|" + addr] = { decimals, symbol };
-    });
-  }
-  saveTokenMetaCache();
-  renderSafeTokenTable();
+async function ensurePredefinedNames(){
+ for(const chain of Object.keys(SAFE_ADDRESSES)){
+  const addresses=(SAFE_ADDRESSES[chain]||[]).filter(a=>predefinedTokenDecimals[chain+'|'+a]==null||!predefinedTokenSymbols[chain+'|'+a]);
+  for(let i=0;i<addresses.length;i+=4)await Promise.allSettled(addresses.slice(i,i+4).map(a=>resolveTokenTechnicalMetadata(chain,a)));
+ }
+ saveTokenMetaCache();renderSafeTokenTable();
 }
-
 
 // Vordefinierte sichere Token kommen jetzt aus Supabase (Tabelle predefined_tokens),
 // nicht mehr fest im Code - siehe loadPredefinedTokensFromDb().
@@ -4537,7 +4530,7 @@ async function addPredefinedToken() {
 // (kleingeschrieben), in der DB steht teils noch die Original-Schreibweise, darum darf
 // hier kein exaktes .eq() auf die Adresse verwendet werden, sonst wird still nichts gefunden.
 function matchAddressQuery(query, chain, address) {
-  return chain === "tron" ? query.eq("address", address) : query.ilike("address", address);
+  return CHAIN_CONFIG[chain]?.walletType === "evm" ? query.ilike("address", address) : query.eq("address", address);
 }
 
 async function updatePredefinedTokenLabel(chain, address, newLabel) {
@@ -4620,6 +4613,7 @@ async function loadPredefinedTokensFromDb() {
         chain, address:"native", label:row.label || `${row.symbol||NATIVE_SYMBOL[chain]||chain.toUpperCase()} (nativ)`,
         symbol:row.symbol || NATIVE_SYMBOL[chain] || chain.toUpperCase(), name:row.name || CHAIN_META[chain]?.label || chain,
         technicalDecimals:row.decimals == null ? null : Number(row.decimals),
+        technicalStatus:row.decimals_status,
         displayDecimals:Number.isInteger(Number(row.display_decimals)) ? Number(row.display_decimals) : 6,
         summaryDecimals:row.summary_decimals == null || row.summary_decimals === "" ? null : Number(row.summary_decimals),
         dashboardVisible:row.dashboard_visible === true
@@ -4723,10 +4717,13 @@ async function refreshTokenChainTargeted(chain,{reason="Token geändert"}={}){
 // ---- Eigene sichere Token (Supabase-gestützt, an den Account gebunden) ----
 let customSafeTokens = [];
 
-async function loadCustomSafeTokensFromDb() {
-  const { data, error } = await sb.from("safe_tokens").select("*").order("created_at");
-  if (error) { console.error(error); customSafeTokens = []; return; }
-  customSafeTokens = data.map(row => ({ dbId: row.id, chain: row.chain, address: row.address, label: row.label }));
+async function loadCustomSafeTokensFromDb(){
+ const {data,error}=await sb.rpc('wallettracking_list_own_safe_tokens');
+ if(error){console.error(error);customSafeTokens=[];return;}
+ customSafeTokens=(data||[]).map(row=>({dbId:row.id,chain:row.chain,address:row.address,label:row.label,
+  displayDecimals:row.display_decimals??null,summaryDecimals:row.summary_decimals??null,
+  technicalDecimals:row.technical_decimals??null,technicalStatus:row.technical_status??null,
+  symbol:row.metadata_symbol||null,name:row.metadata_name||null}));
 }
 
 async function addCustomSafeToken() {
@@ -4764,7 +4761,8 @@ async function addCustomSafeToken() {
     return;
   }
 
-  customSafeTokens.push({ dbId: data.id, chain, address, label: label || address });
+  customSafeTokens.push({ dbId: data.id, chain, address, label: label || address, displayDecimals:null, summaryDecimals:null });
+  try{await resolveTokenTechnicalMetadata(chain,address)}catch(e){console.warn("Token-Metadaten noch offen",e.message)}
   document.getElementById("customAddress").value = "";
   document.getElementById("customLabel").value = "";
   renderCustomTokenList();
@@ -4797,6 +4795,17 @@ function renderCustomChainSelect(){
   if(chains.includes(current))el.value=current;
 }
 
+async function updateCustomSafeTokenDisplay(id,field,value){
+ if(!['display_decimals','summary_decimals'].includes(field))return;
+ const n=String(value).trim()===''?null:Number(value);
+ if(n!==null&&(!Number.isInteger(n)||n<0||n>18)){alert('Bitte 0 bis 18 oder leer eingeben.');return;}
+ const t=customSafeTokens.find(x=>x.dbId===id);if(!t||!currentUser?.id)return;
+ const {data,error}=await sb.from('safe_tokens').update({[field]:n}).eq('id',id).eq('user_id',currentUser.id).select('id').maybeSingle();
+ if(error||!data){alert('Anzeige-Einstellung konnte nicht gespeichert werden.');return;}
+ t[field==='display_decimals'?'displayDecimals':'summaryDecimals']=n;
+ rerenderAllCurrentPriceViews();
+}
+
 function renderCustomTokenList() {
   const el = document.getElementById("customTokenList");
   if (customSafeTokens.length === 0) {
@@ -4814,6 +4823,9 @@ function renderCustomTokenList() {
         <div>${escapeAttr(t.label)} <span class="badge safe">sicher</span></div>
         <div class="meta">${t.chain.toUpperCase()} · ${t.address}</div>
         ${priceHtml}
+        <div class="meta" style="margin-top:6px">Technische Dezimalstellen: ${(t.technicalStatus||predefinedTokenDecimalStatuses[t.chain+'|'+normalizeAddress(t.address,t.chain)])==='not_applicable'?'Pooladresse':(t.technicalStatus||predefinedTokenDecimalStatuses[t.chain+'|'+normalizeAddress(t.address,t.chain)])==='conflict'?'Konflikt':t.technicalDecimals??predefinedTokenDecimals[t.chain+'|'+normalizeAddress(t.address,t.chain)]??'offen'}</div>
+        <div style="margin-top:6px"><label>Anzeige <input type="number" min="0" max="18" step="1" style="width:78px" placeholder="Standard" value="${t.displayDecimals??''}" onchange="updateCustomSafeTokenDisplay('${t.dbId}','display_decimals',this.value)"></label>
+        <label>Summary <input type="number" min="0" max="18" step="1" style="width:78px" placeholder="wie Anzeige" value="${t.summaryDecimals??''}" onchange="updateCustomSafeTokenDisplay('${t.dbId}','summary_decimals',this.value)"></label></div>
       </div>
       <button class="remove" onclick="removeCustomSafeToken('${t.chain}','${t.address}')">Entfernen</button>
     </div>
@@ -4849,6 +4861,7 @@ function renderSafeTokenTable() {
         symbol:predefinedTokenSymbols[key] || "",
         name:predefinedTokenNames[key] || "",
         technicalDecimals:predefinedTokenDecimals[key],
+        technicalStatus:predefinedTokenDecimalStatuses[key],
         displayDecimals:predefinedTokenDisplayDecimals[key],
         summaryDecimals:predefinedTokenSummaryDecimals[key],
         dashboardVisible:predefinedTokenDashboardVisible[key]===true
@@ -4958,7 +4971,7 @@ function renderSafeTokenTable() {
       <td><strong>${escapeAttr(r.symbol || "–")}</strong></td>
       <td>${labelCell}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">native</span>' : r.address}</td>
-      <td style="text-align:center">${r.technicalDecimals??'<span style="color:var(--muted)">–</span>'}</td>
+      <td style="text-align:center">${r.technicalStatus==='not_applicable'?'<span title="Pooladresse ohne eigene ERC20-Einheiten">Pool</span>':r.technicalStatus==='conflict'?'<span class="badge unsafe">Konflikt</span>':r.technicalDecimals??'<span style="color:var(--muted)">offen</span>'}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--danger,#ef4444)">nicht konfiguriert</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
       <td style="text-align:center"><input type="checkbox" style="width:auto" ${r.dashboardVisible?"checked":""} ${r.nativeMissing?"disabled":""} onchange="setPredefinedTokenDashboardVisible('${r.chain}','${r.address}',this.checked)"></td>
@@ -5283,6 +5296,11 @@ function tokenDisplayMeta({chain,address,symbol}={}){
   const rawAddress=String(address||"").trim();
   const a=rawAddress.toLowerCase()==="native"?"native":(rawAddress?normalizeAddress(rawAddress,c):"");
   const direct=a?`${c}|${a}`:"";
+  const own=direct&&typeof customSafeTokens!=='undefined'?customSafeTokens.find(t=>t.chain===c&&normalizeAddress(t.address,c)===a):null;
+  if(own&&(own.displayDecimals!==null&&own.displayDecimals!==undefined||own.summaryDecimals!==null&&own.summaryDecimals!==undefined)){
+    const inherited=predefinedTokenDisplayDecimals[direct]??6;
+    return {display:own.displayDecimals??inherited,summary:own.summaryDecimals??null};
+  }
   if(direct && Object.prototype.hasOwnProperty.call(predefinedTokenDisplayDecimals,direct)){
     return {display:predefinedTokenDisplayDecimals[direct],summary:predefinedTokenSummaryDecimals[direct]};
   }
@@ -6575,113 +6593,40 @@ function saveTokenMetaCache() {
 
 // Lädt ERC-20-Metadaten auch für historisch gefundene Token ohne aktuellen Bestand.
 // Dadurch zeigt Discovery nicht nur die Contract-Adresse, sondern Symbol/Name/Decimals.
-async function fetchEvmTokenMetadata(chain, addresses) {
-  const unique=[...new Set((addresses||[]).map(a=>normalizeAddress(a,chain)).filter(a=>/^0x[0-9a-f]{40}$/i.test(a)))];
-  const out={};
-  if(chain==='apertum'){
-    await Promise.all(unique.map(async a=>{
-      const k=chain+'|'+a;
-      const decimals=await resolveApertumTokenDecimals(a),old=tokenMetaCache[k]||{};
-      out[a]={decimals,symbol:predefinedTokenSymbols[k]||old.symbol||a.slice(0,8)+'…',name:predefinedTokenNames[k]||old.name||null};
-      tokenMetaCache[k]=out[a];
-    }));saveTokenMetaCache();return out;
-  }
-  for(let start=0;start<unique.length;start+=30){
-    const chunk=unique.slice(start,start+30),calls=[],plan=[];
-    chunk.forEach((a,idx)=>{
-      const k=chain+"|"+a,cached=tokenMetaCache[k]||{};
-      if(cached.symbol&&cached.name&&Number.isFinite(Number(cached.decimals))){out[a]=cached;return;}
-      calls.push({to:a,data:"0x313ce567"});plan.push({idx,type:"decimals"});
-      calls.push({to:a,data:"0x95d89b41"});plan.push({idx,type:"symbol"});
-      calls.push({to:a,data:"0x06fdde03"});plan.push({idx,type:"name"});
-    });
-    if(!calls.length)continue;
-    try{
-      const results=await evmRpcBatch(configuredRpcUrl(chain),calls),per=chunk.map(()=>({}));
-      results.forEach((hex,i)=>{const x=plan[i];per[x.idx][x.type]=hex;});
-      chunk.forEach((a,idx)=>{
-        const k=chain+"|"+a,old=tokenMetaCache[k]||{},x=per[idx];
-        const dec=x.decimals&&x.decimals!=="0x"?parseInt(x.decimals,16):Number(old.decimals);
-        const meta={decimals:Number.isFinite(dec)?dec:(predefinedTokenDecimals[k]??18),symbol:decodeAbiString(x.symbol)||old.symbol||predefinedTokenSymbols[k]||a.slice(0,8)+"…",name:decodeAbiString(x.name)||old.name||predefinedTokenNames[k]||null};
-        tokenMetaCache[k]=meta;out[a]=meta;
-      });
-      saveTokenMetaCache();
-    }catch(e){console.warn("Token-Metadaten",chain,e);}
-  }
-  unique.forEach(a=>{if(!out[a]&&tokenMetaCache[chain+"|"+a])out[a]=tokenMetaCache[chain+"|"+a];});
-  return out;
+async function fetchEvmTokenMetadata(chain,addresses){
+ const unique=[...new Set((addresses||[]).map(a=>normalizeAddress(a,chain)).filter(a=>/^0x[0-9a-f]{40}$/i.test(a)))],out={};
+ for(let i=0;i<unique.length;i+=4)await Promise.all(unique.slice(i,i+4).map(async a=>{
+  const meta=await resolveTokenTechnicalMetadata(chain,a),k=chain+'|'+a,old=tokenMetaCache[k]||{};
+  out[a]={decimals:meta.decimals,symbol:predefinedTokenSymbols[k]||old.symbol||a.slice(0,8)+'…',name:predefinedTokenNames[k]||old.name||null,isPool:meta.status==='not_applicable'};
+  tokenMetaCache[k]=out[a];
+ }));saveTokenMetaCache();return out;
 }
 
 // Prüft gezielt die Balance der sicheren + selbst erfassten Token für eine Chain,
 // gebündelt in möglichst wenigen Anfragen (kein Auto-Discovery unbekannter Token,
 // siehe Erklärung im Chat).
-async function fetchKnownTokenBalances(rpcUrl, address, chain) {
-  const list = (SAFE_ADDRESSES[chain] || []).map(a => ({ address: a, label: null }))
-    .concat(customSafeTokens.filter(t => t.chain === chain).map(t => ({ address: t.address, label: t.label })));
-
-  const seen = new Set();
-  const unique = list.filter(t => {
-    if (seen.has(t.address)) return false;
-    seen.add(t.address);
-    return true;
-  });
-  if (unique.length === 0) return [];
-  if(chain==='apertum')await fetchEvmTokenMetadata(chain,unique.map(t=>t.address));
-
-
-  // Balance IMMER abfragen, Dezimalstellen/Symbol nur für noch nicht gecachte Token -
-  // alles zusammen in einer einzigen Anfrage (ein Netzwerk-Umlauf statt zwei).
-  const balanceData = "0x70a08231" + address.toLowerCase().replace("0x", "").padStart(64, "0");
-  const calls = [];
-  const plan = []; // parallel zu calls: was die jeweilige Antwort bedeutet
-
-  unique.forEach((t, idx) => {
-    calls.push({ to: t.address, data: balanceData });
-    plan.push({ idx, type: "balance" });
-
-    const cacheKey = chain + "|" + t.address;
-    if (!tokenMetaCache[cacheKey]) {
-      calls.push({ to: t.address, data: "0x313ce567" });
-      plan.push({ idx, type: "decimals" });
-      calls.push({ to: t.address, data: "0x95d89b41" });
-      plan.push({ idx, type: "symbol" });
-    }
-  });
-
-  const results = await evmRpcBatch(rpcUrl, calls);
-
-  const perToken = unique.map(() => ({}));
-  results.forEach((hex, i) => {
-    const { idx, type } = plan[i];
-    perToken[idx][type] = hex;
-  });
-
-  const withBalance = [];
-  let cacheChanged = false;
-  unique.forEach((t, idx) => {
-    const hex = perToken[idx].balance;
-    if (!hex || hex === "0x") return;
-    const raw = BigInt(hex);
-    if (raw <= 0n) return;
-
-    const cacheKey = chain + "|" + t.address;
-    if (!tokenMetaCache[cacheKey]) {
-      const decHex = perToken[idx].decimals;
-      const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
-      const symbol = t.label || decodeAbiString(perToken[idx].symbol) || (t.address.slice(0, 8) + "…");
-      tokenMetaCache[cacheKey] = { decimals, symbol };
-      cacheChanged = true;
-    }
-    const meta = tokenMetaCache[cacheKey];
-    withBalance.push({
-      symbol: meta.symbol,
-      address: t.address,
-      amount: Number(raw) / Math.pow(10, meta.decimals)
-    });
-  });
-  if (cacheChanged) saveTokenMetaCache();
-
-  return withBalance;
+async function fetchKnownTokenBalances(rpcUrl,address,chain){
+ const list=(SAFE_ADDRESSES[chain]||[]).map(a=>({address:a,label:null})).concat(customSafeTokens.filter(t=>t.chain===chain));
+ const seen=new Set(),unique=list.filter(t=>{
+  if(seen.has(t.address))return false;seen.add(t.address);
+  return predefinedTokenDecimalStatuses[chain+'|'+t.address]!=='not_applicable'&&t.technicalStatus!=='not_applicable';
+ });
+ if(!unique.length)return [];
+ const balanceData='0x70a08231'+address.toLowerCase().replace('0x','').padStart(64,'0');
+ const results=await evmRpcBatch(rpcUrl,unique.map(t=>({to:t.address,data:balanceData}))),withBalance=[];
+ for(let i=0;i<unique.length;i++){
+  const t=unique[i],hex=results[i];
+  if(typeof hex!=='string'||!/^0x[0-9a-f]{64}$/i.test(hex)){
+   const meta=await resolveTokenTechnicalMetadata(chain,t.address);
+   if(meta.status==='not_applicable')continue;
+   throw Error('Ungültiger Token-Bestand: '+t.address);
+  }
+  const raw=BigInt(hex);if(raw===0n)continue;
+  const metadata=await fetchEvmTokenMetadata(chain,[t.address]),meta=metadata[t.address];
+  if(meta.isPool)continue;
+  withBalance.push({symbol:t.label||meta.symbol,address:t.address,amount:Number(raw)/Math.pow(10,meta.decimals)});
+ }
+ return withBalance;
 }
 
 async function fetchEvmAddressInfo(chain, rpcUrl, address) {
@@ -6778,6 +6723,10 @@ async function fetchSolanaAddressInfo(chain, address) {
     });
   });
 
+  for(const t of byMint.values())if(isSafeTokenAddress(t.address,chain)){
+    const decimals=await resolveTokenTechnicalDecimals(chain,t.address);
+    if(decimals!==t.decimals)throw Error('Solana-Metadaten widersprechen dem Bestand');
+  }
   return { native, tokens:[...byMint.values()] };
 }
 
@@ -6788,9 +6737,7 @@ async function fetchSolanaBalance(chain, address) {
 
 // ---- Tron (native TRX, vorerst ohne TRC20-Token) ----
 // ---- Tron: nativer TRX-Bestand + sichere TRC20-Token (z.B. USDT-TRC20) ----
-// Bekannte TRC20-Dezimalstellen - TronGrid liefert nur den rohen Betrag, keine Dezimalstellen.
-// Deckt aktuell die grossen Stablecoins ab (alle 6 Dezimalstellen, Branchenstandard).
-const TRON_TOKEN_DECIMALS_DEFAULT = 6;
+// TronGrid raw balances are scaled using centrally verified TRC20 contract metadata.
 
 
 async function fetchAkashBalance(chain, address) {
@@ -6817,24 +6764,24 @@ async function fetchTronAddressInfo(chain, address) {
   // Token, siehe chainRows) als auch die "Entdecken"-Funktion (auch unsichere Token) darauf zugreifen.
   const tokens = [];
   const trc20List = (account && account.trc20) || [];
-  trc20List.forEach(entry => {
+  for(const entry of trc20List){
     const contractAddress = Object.keys(entry)[0];
     const rawStr = entry[contractAddress];
-    if (!contractAddress || !rawStr) return;
+    if (!contractAddress || !rawStr) continue;
 
     const raw = BigInt(rawStr);
-    if (raw <= 0n) return;
+    if (raw <= 0n) continue;
 
     const normalizedContract = normalizeAddress(contractAddress, "tron");
-    if (!isSafeTokenAddress(normalizedContract, "tron")) return;
+    if (!isSafeTokenAddress(normalizedContract, "tron")) continue;
     const custom = customSafeTokens.find(t => t.chain === "tron" && t.address === normalizedContract);
     const label = predefinedTokenLabels["tron|" + normalizedContract] || (custom ? custom.label : null) || (contractAddress.slice(0, 8) + "…");
     tokens.push({
       symbol: label,
       address: normalizedContract,
-      amount: Number(raw) / Math.pow(10, TRON_TOKEN_DECIMALS_DEFAULT)
+      amount: Number(raw) / Math.pow(10, await resolveTokenTechnicalDecimals(chain,normalizedContract))
     });
-  });
+  }
 
   return { native, tokens };
 }
@@ -7415,21 +7362,7 @@ const liveEthVoucherRouteMemo=new Map();
 const LIVE_ERC20_IFACE=new ethers.Interface(["function decimals() view returns (uint8)"]);
 
 async function liveTokenDecimals(chain,address,fallback){
-  if(chain==="apertum")return await resolveApertumTokenDecimals(address);
-  const a=normalizeAddress(address,chain),key=`${chain}|${a}`;
-  const known=Number(fallback ?? predefinedTokenDecimals[key]);
-  if(Number.isFinite(known)&&known>=0&&known<=255)return known;
-  if(liveErc20DecimalsMemo.has(key))return await liveErc20DecimalsMemo.get(key);
-  const work=(async()=>{
-    try{
-      const raw=await archiveRpc(chain,"eth_call",[{to:a,data:LIVE_ERC20_IFACE.encodeFunctionData("decimals",[])},"latest"]);
-      const [d]=LIVE_ERC20_IFACE.decodeFunctionResult("decimals",raw),n=Number(d);
-      if(Number.isFinite(n)&&n>=0&&n<=255){predefinedTokenDecimals[key]=n;return n;}
-    }catch(e){console.warn("ERC-20 decimals",chain,a,e);}
-    return Number.isFinite(known)?known:18;
-  })();
-  liveErc20DecimalsMemo.set(key,work);
-  try{return await work;}catch(e){liveErc20DecimalsMemo.delete(key);throw e;}
+ return await resolveTokenTechnicalDecimals(chain,address);
 }
 
 async function liveV2DirectPrice(chain,base,quote,bd,qd){
@@ -10135,7 +10068,8 @@ async function fetchAlchemyApprovalsForChain(chain, address, onProgress) {
     let raw;
     try { raw = BigInt(rawAllowance); } catch (e) { continue; }
     if (raw <= 0n) continue;
-    const decimals = meta && !meta.__error && Number.isFinite(Number(meta.decimals)) ? Number(meta.decimals) : 18;
+    const decimals = window.WTDaoAssetPolicy.technicalDecimals(meta?.decimals);
+    if(decimals===null)continue;
     const valueFormatted = Number(raw) / Math.pow(10, decimals);
     active.push({ ...pairs[i], raw, meta: meta && !meta.__error ? meta : {}, valueFormatted });
   }
@@ -12194,7 +12128,8 @@ async function discoverEvmTokens(chain, address) {
   unknown.forEach((t, i) => {
     const addr = t.contractAddress.toLowerCase();
     const meta = metas[i] && !metas[i].__error ? metas[i] : {};
-    const decimals = Number.isFinite(Number(meta.decimals)) ? Number(meta.decimals) : 18;
+    const decimals = window.WTDaoAssetPolicy.technicalDecimals(meta.decimals);
+    if(decimals===null)return;
     let raw;
     try { raw = BigInt(t.tokenBalance || "0x0"); } catch (e) { return; }
     const amount = Number(raw) / Math.pow(10, decimals);

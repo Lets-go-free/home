@@ -1,3 +1,9 @@
+## 8.08 · 08.11.2026 22:45:54 CET · Build 20261108-224554
+
+- Neue gemeinsame technische Metadaten-Funktion für alle aktuell unterstützten Chains, Master-/Custom-Token, Native-/Pool-Sonderfälle und dauerhaftes Konfliktprotokoll im internen Schema.
+- Persönliche Anzeige-/Summary-Einstellungen eigener sicherer Token, strikt eigene Lese-/Schreibpfade; Namen und bestehende globale Werte geschützt. Browser, DAO und Bestandsjob verwenden zentrale Einheiten.
+- 241 relevante lokale Tests bestanden. Breiter Lauf: 262/264, zwei bereits auf 8.07 reproduzierte alte Tests fehlerhaft; Details im Release. Kein 8.08-Live-Lauf, kein Cron.
+
 > Live-Nachtrag 8.07 · 08.11.2026 22:23:00 CET: zwölf Apertum-ERC20-/LP-Token mit 18 technischen Dezimalstellen und unveränderten Anzeige-Einstellungen per Edge-Antwort und Live-SQL bestätigt. Zehn NULL-Werte ergänzt; natives APTM bleibt 18, ERC20-Prüfstatus dort nicht anwendbar. Andere Chains/eigene sichere Token neu als offener Umfang gemeldet; Bestandsdiagnose vor weiterer Umsetzung. Kein Cron. Führend: docs/PROJECT_STATUS_OPEN_ITEMS.md.
 
 ## 8.06 · 08.11.2026 21:45:35 CET · Build 20261108-214535

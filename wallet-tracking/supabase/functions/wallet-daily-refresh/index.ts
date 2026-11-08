@@ -44,9 +44,9 @@ async function rpc(url:string,method:string,params:any[]){
 function bigAmount(raw:unknown,decimals:number){if(!Number.isInteger(decimals)||decimals<0||decimals>36)throw Error('Invalid token decimals');const s=String(raw||'0');if(!/^\d+$/.test(s))throw Error('Invalid token balance');const v=Number(BigInt(s))/10**decimals;if(!Number.isFinite(v))throw Error('Token amount overflow');return v}
 function evmHexAmount(raw:string,decimals=18){if(!/^0x[0-9a-f]+$/i.test(raw))throw Error('Invalid RPC quantity');return bigAmount(BigInt(raw).toString(),decimals)}
 function cleanAddr(a:any){return String(a||'').trim()}
-function norm(chain:string,a:string){return chain==='tron'?a.trim():a.trim().toLowerCase()}
+function norm(chain:string,a:string){const value=a.trim();return /^0x[0-9a-f]{40}$/i.test(value)?value.toLowerCase():value}
 type Entry={chain:string,symbol:string,address:string|null,is_native:boolean,amount:number,price_usd:number|null}
-type Token={chain:string,address:string,label:string,symbol:string,decimals:number|null}
+type Token={chain:string,address:string,label:string,symbol:string,decimals:number|null;metadata_status?:string;metadata_kind?:string}
 type Chain={chain_key:string,wallet_type:string,balance_provider:string,rpc_url:string|null,balance_api_base:string|null,archive_rpc_url:string|null,archive_rpc_provider:string|null,native_symbol:string}
 function priceFromCache(prices:any,chain:string,address:string|null){const p=address?prices?.tokenPrices?.[`${chain}|${norm(chain,address)}`]:prices?.nativePrices?.[chain];const n=Number(p?.price);return Number.isFinite(n)&&n>0?n:null}
 function emit(result:Entry[],prices:any,chain:Chain,symbol:string,address:string|null,amount:number){
@@ -83,6 +83,18 @@ function alchemyEvmUrl(chain:Chain){
  if(!/^https:\/\/[a-z0-9-]+\.g\.alchemy\.com\/v2$/i.test(url))return null;
  return `${url}/${encodeURIComponent(ALCHEMY)}`;
 }
+async function centralTokenMetadata(chain:string,address:string){
+ const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode:'resolve',chain,address}});
+ if(error||!data?.ok||!['verified','not_applicable'].includes(data.status))throw Error('Central technical metadata unavailable');
+ if(data.status==='verified'&&(!Number.isInteger(data.decimals)||data.decimals<0||data.decimals>36))throw Error('Invalid central technical metadata');
+ return data;
+}
+async function tokenUnits(chain:string,token:Token){
+ if(token.metadata_status==='conflict')throw Error('Conflicting technical token metadata');
+ if(token.decimals!==null)return token.decimals;
+ const meta=await centralTokenMetadata(chain,token.address);if(meta.status!=='verified')throw Error('Pool is not a fungible token');return meta.decimals;
+}
+
 async function readEvm(chain:Chain,address:string,tokens:Token[],prices:any,out:Entry[]){
  const primary=chain.rpc_url;if(!primary)throw Error('EVM RPC not configured');
  const backup=alchemyEvmUrl(chain);
@@ -104,8 +116,9 @@ async function readEvm(chain:Chain,address:string,tokens:Token[],prices:any,out:
 async function readEvmAtUrl(chain:Chain,url:string,address:string,tokens:Token[],prices:any,out:Entry[]){
  const native=await rpc(url,'eth_getBalance',[address,'latest']);emit(out,prices,chain,chain.native_symbol,null,evmHexAmount(native));
  const owner=address.slice(2).toLowerCase().padStart(64,'0');
- const eligible=tokens.filter(t=>/^0x[0-9a-f]{40}$/i.test(t.address));
- if(eligible.length!==tokens.length)throw Error('Invalid configured ERC20 contract');
+ const fungible=tokens.filter(t=>t.metadata_status!=='not_applicable');
+ const eligible=fungible.filter(t=>/^0x[0-9a-f]{40}$/i.test(t.address));
+ if(eligible.length!==fungible.length)throw Error('Invalid configured ERC20 contract');
  const balances=await evmBatch(url,eligible.map(t=>({to:t.address,data:`0x70a08231${owner}`})),true);
  // Some pool contracts return an empty `0x` instead of an RPC revert for
  // ERC-20 balanceOf(). Verify their V3 pool interface before excluding them.
@@ -132,12 +145,9 @@ async function readEvmAtUrl(chain:Chain,url:string,address:string,tokens:Token[]
  }
  const nonzero:{token:Token,balance:string}[]=[];
  balances.forEach((bal,i)=>{if(!/^0x[0-9a-f]{64}$/i.test(bal))throw Error(`Invalid ERC20 balance for ${chain.chain_key}/${eligible[i].address}`);if(BigInt(bal)>0n)nonzero.push({token:eligible[i],balance:bal})});
- const unknown=nonzero.filter(x=>x.token.decimals===null);
- const decimalsResults=await evmBatch(url,unknown.map(x=>({to:x.token.address,data:'0x313ce567'})));
- const meta=new Map<string,number>();
- unknown.forEach((x,i)=>{if(!/^0x[0-9a-f]+$/i.test(decimalsResults[i]))throw Error('Invalid ERC20 decimals');meta.set(x.token.address,Number(BigInt(decimalsResults[i])))});
- for(const item of nonzero){const d=item.token.decimals??meta.get(item.token.address);if(d===undefined)throw Error('Missing ERC20 decimals');
+ for(const item of nonzero){const d=await tokenUnits(chain.chain_key,item.token);
   emit(out,prices,chain,item.token.symbol||item.token.label||item.token.address.slice(0,8),item.token.address,evmHexAmount(item.balance,d))}
+
 }
 async function readBitcoin(chain:Chain,address:string,prices:any,out:Entry[]){
  const root=chain.balance_api_base;if(!root)throw Error('Bitcoin API not configured');
@@ -159,15 +169,16 @@ async function readSol(chain:Chain,address:string,tokens:Token[],prices:any,out:
  if(!ALCHEMY||!chain.archive_rpc_url||chain.archive_rpc_provider!=='alchemy')throw Error('Solana Alchemy RPC unavailable');
  const url=chain.archive_rpc_url.replace(/\/$/,'')+'/'+encodeURIComponent(ALCHEMY);
  const native=await rpc(url,'getBalance',[address]);if(native?.value==null)throw Error('Sol balance missing');emit(out,prices,chain,chain.native_symbol,null,Number(native.value)/1e9);
- const allow=new Map(tokens.map(t=>[t.address,t]));const sums=new Map<string,number>();
+ const allow=new Map(tokens.map(t=>[t.address,t]));const sums=new Map<string,number>();const scales=new Map<string,number>();
  for(const program of SOL_PROGRAMS){
   const result=await rpc(url,'getTokenAccountsByOwner',[address,{programId:program},{encoding:'jsonParsed',commitment:'confirmed'}]);
   if(!Array.isArray(result?.value))throw Error('Solana token result incomplete');
   for(const r of result.value){const info=r?.account?.data?.parsed?.info;const mint=info?.mint;if(!allow.has(mint))continue;
    const raw=info?.tokenAmount;if(!raw||raw.amount==null||raw.decimals==null)throw Error('Invalid Solana token amount');
-   const amount=bigAmount(raw.amount,Number(raw.decimals));sums.set(mint,(sums.get(mint)||0)+amount)}
+   const decimals=Number(raw.decimals);if(scales.has(mint)&&scales.get(mint)!==decimals)throw Error('Conflicting Solana account units');scales.set(mint,decimals);
+   const amount=bigAmount(raw.amount,decimals);sums.set(mint,(sums.get(mint)||0)+amount)}
  }
- for(const [mint,amount] of sums){const t=allow.get(mint)!;emit(out,prices,chain,t.symbol||t.label||mint.slice(0,8),mint,amount)}
+ for(const [mint,amount] of sums){const t=allow.get(mint)!;if(await tokenUnits(chain.chain_key,t)!==scales.get(mint))throw Error('Solana mint/account metadata mismatch');emit(out,prices,chain,t.symbol||t.label||mint.slice(0,8),mint,amount)}
 }
 async function readTron(chain:Chain,address:string,tokens:Token[],prices:any,out:Entry[]){
  if(!chain.balance_api_base)throw Error('Tron API missing');const x=await fetchJson(`${chain.balance_api_base}/v1/accounts/${encodeURIComponent(address)}`);
@@ -175,8 +186,8 @@ async function readTron(chain:Chain,address:string,tokens:Token[],prices:any,out
  const account=x.data[0];emit(out,prices,chain,chain.native_symbol,null,Number(account?.balance||0)/1e6);
  const allow=new Map(tokens.map(t=>[t.address,t]));
  for(const entry of account?.trc20||[]){const [addr,raw]=Object.entries(entry)[0]||[];const t=allow.get(addr||'');if(!t)continue;
-  if(t.decimals==null)throw Error(`Tron token decimals not verified: ${addr}`);
-  emit(out,prices,chain,t.symbol||t.label||addr!,addr!,bigAmount(raw,t.decimals))}
+  const decimals=await tokenUnits(chain.chain_key,t);
+  emit(out,prices,chain,t.symbol||t.label||addr!,addr!,bigAmount(raw,decimals))}
 }
 async function readApertum(chain:Chain,address:string,tokens:Token[],prices:any,out:Entry[]){
  const root=chain.balance_api_base;if(!root)throw Error('Blockscout URL missing');
@@ -186,7 +197,7 @@ async function readApertum(chain:Chain,address:string,tokens:Token[],prices:any,
  do{const q=new URL(`${root}/addresses/${address}/tokens`);q.searchParams.set('type','ERC-20');if(next)for(const [k,v] of Object.entries(next))q.searchParams.set(k,String(v));
   const r=await fetchJson(q.toString());if(!Array.isArray(r?.items))throw Error('Blockscout token list incomplete');
   for(const row of r.items){const addr=String(row?.token?.address||'').toLowerCase();const t=allow.get(addr);if(!t)continue;
-   const decimals=t.decimals??Number(row.token.decimals);if(!Number.isInteger(decimals))throw Error('Apertum decimals missing');
+   const decimals=await tokenUnits(chain.chain_key,t);
    emit(out,prices,chain,t.symbol||t.label||row.token.symbol||addr,addr,bigAmount(row.value,decimals))}
   next=r.next_page_params||null;if(++pages>50)throw Error('Apertum pagination exceeds safety limit')
  }while(next)
@@ -221,13 +232,21 @@ async function scanWallet(job:any){
  const [addresses,prices]=await Promise.all([loadWallet(job),getPriceCache()]);
  const [{data:chains,error:ce},known,safe]=await Promise.all([
   sb.from('chains').select('chain_key,wallet_type,balance_provider,rpc_url,balance_api_base,archive_rpc_url,archive_rpc_provider,native_symbol').eq('enabled',true).order('sort_order'),
-  allRows('predefined_tokens','chain,address,label,symbol,decimals,is_native,enabled,historical_only',[{column:'enabled',value:true},{column:'historical_only',value:false}]),
+  allRows('predefined_tokens','chain,address,label,symbol,decimals,decimals_status,is_native,enabled,historical_only',[{column:'enabled',value:true},{column:'historical_only',value:false}]),
   allRows('safe_tokens','id,chain,address,label,user_id',[{column:'user_id',value:job.user_id}])
  ]);
  if(ce||!chains?.length)throw Error(`Chain config failed: ${ce?.message||'no chains'}`);
  const listed:Token[]=[];for(const row of [...(known||[]),...(safe||[])]){
   if(row.is_native||String(row.address).toLowerCase()==='native'||!row.address)continue;
-  listed.push({chain:row.chain,address:norm(row.chain,row.address),label:row.label||'',symbol:row.symbol||row.label||'',decimals:Number.isInteger(row.decimals)?row.decimals:null})
+  listed.push({chain:row.chain,address:norm(row.chain,row.address),label:row.label||'',symbol:row.symbol||row.label||'',decimals:Number.isInteger(row.decimals)?row.decimals:null,metadata_status:row.decimals_status})
+ }
+ // Internal cache is read in one bounded operation per 200 contracts, including private custom-token references without publishing their labels.
+ for(let i=0;i<listed.length;i+=200){const {data:cached,error}=await sb.rpc('wallettracking_get_token_metadata_for_tokens',{p_tokens:listed.slice(i,i+200).map(t=>({chain:t.chain,address:t.address}))});
+  if(error)throw Error('Technical metadata cache unavailable');
+  for(const meta of cached||[])for(const t of listed)if(t.chain===meta.chain&&t.address===meta.address){
+   if(t.metadata_status==='conflict'||meta.status==='conflict'||(t.decimals!==null&&meta.decimals!==null&&t.decimals!==meta.decimals))t.metadata_status='conflict';
+   else{t.metadata_status=meta.status;t.metadata_kind=meta.kind;if(meta.status==='verified')t.decimals=meta.decimals;}
+  }
  }
  const entries:Entry[]=[];const failures:string[]=[];const fieldByType:Record<string,string>={evm:'evm',btc:'btc',xrp:'xrp',sol:'sol',tron:'tron',akash:'akash'};
  // At most three chains at a time to bound wall time and provider pressure.

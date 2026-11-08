@@ -1,6 +1,6 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 22:23:00 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.07, Build 20261108-221303 (unverändert; Live-Nachtrag).
+**Dokumentationsstand:** 08.11.2026 22:45:54 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.08, Build 20261108-224554.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
@@ -12,6 +12,52 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - 4 frühe positive APTM-Claims bei Blöcken 60'731, 72'665, 81'698, 81'700: `audit_classification=unpriced_before_exact_anchor` und `audit_classified_at` **dauerhaft in Supabase verifiziert**. Zentraler exakter Preisanker beginnt erst bei Block 88'356. Kein Ersatzkurs, USD-Wert bleibt `NULL`; Klassifikation ist unabhängig von Auszahlungs-Verifikation. 8.04-Live-Test und separate SQL-Abfrage bestätigen inzwischen `payout_status=verified`, exakt gespeicherte Raw-Mengen 4650944472418586884 (zweimal) und 4031915382788697322 (zweimal), je einen Protokolleintrag, unverändertes `canonical_existing_verified=false` und USD NULL. Vorhandene Claim-Mengen 4.650944472418587 / 4.031915382788697 bleiben unangetastet; Abweichungen zum Rawbetrag 116 / 322 Wei liegen innerhalb der begrenzten Toleranz. Wiederholung: checked=0, results leer, pendingPayoutChecks=0; keine erneuten Protokolleinträge laut SQL-Kontrolle.
 - 3 Transaktionen mit Reward=0 bei Blöcken 403'915 (Bot 37174), 10'791'488 (Bot 10295), 11'254'937 (Bot 10294): nach 8.03 **live als `no_payout_evidence` klassifiziert**, TX-/Token-/Internal-Coverage vollständig, keine Token-Transfers und 17/7/7 interne Aufrufe ohne erkannten Eingang. Dauerhafte Speicherung separat per SQL bestätigt: `payout_checked_at` 08.11.2026 12:45:20–12:45:21 CET, zu diesem Zeitpunkt je zwei Protokolleinträge und passender letzter Status. Anschliessende erneute manuelle Prüfung ebenfalls erfolgreich (`noPayoutEvidenceClaims=3`, `payoutsNeedingReview=0`, `verifiedPayoutClaims=0`, `pendingPayoutChecks=4`, keine konkurrierenden Skips). Explorer-indexierter Negativbefund, kein endgültiges On-Chain-Nullurteil.
 - Rohdaten-Import und Klassifikation liefen kontrolliert/manuell; produktiver DAO-Rewards-Worker und Cron bleiben deaktiviert (`DAO_REWARD_ENABLE_LIVE_WORKER=false`). Kein vollständiger End-to-End-Live-Test neuer Rewards/Referral/Bot-Zuordnung.
+
+## Phase 8.08 – chainübergreifende Metadaten und private Anzeige-Einstellungen implementiert, Live-Prüfung offen
+
+8.08 erweitert technische Metadaten auf alle zwölf aktuell unterstützten Chains und eigene sichere Token. Gemeinsame neue Edge Function token-metadata für Browser, DAO-Claim-Pfad und täglichen Bestandsjob. Globale öffentliche Contract-/Mint-Metadaten liegen in wallettracking_internal.token_metadata (nicht über die Data API exponiert, RLS aktiv, keine Client-Tabellenrechte). Keine User-ID, Wallet-Adresse oder private Safe-Token-Bezeichnung in diesem Cache. Bekannte Masterwerte in predefined_tokens werden gespiegelt; nichtleere technische Werte, Namen und Bezeichnungen bleiben geschützt. Persönliche Anzeige- und Summary-Dezimalstellen bleiben separat bei safe_tokens und werden nur für die eigene Liste geladen.
+
+## Abruf und Wiederverwendung
+
+- Neue Funktion token-metadata besteht aus index.ts und metadata.ts im selben Funktionsverzeichnis. resolve benötigt User-JWT oder den bestehenden serverseitigen Service-Key. Der Request liefert nur Chain/Adresse; technische Werte, Quelle und fremde User-IDs aus dem Request werden ignoriert. Historischer Block nur bei internem Service-Aufruf zulässig. Keine Preise, Rewards, Wallet-Entschlüsselung, Scan-Cursor oder Queue-Schreibvorgänge.
+- EVM: konfigurierte RPC-Chain-ID prüfen, decimals() strikt als 32-Byte-ABI-Wert auswerten, 0–36 zulässig. Name/Symbol optional (String oder bytes32), kein Symbol als Identitätsbeweis. Vorhandene gültige Werte werden wiederverwendet; ein fehlender Wert wird nie als 18 geraten. Archive-/Alchemy-Endpunkt nur bei vorübergehend fehlendem RPC, niemals zur Überdeckung einer falschen Chain oder widersprüchlichen Antwort. Bereits konfigurierte projektweite Alchemy-Secrets wiederverwenden.
+- Apertum: Explorer-Token-Metadaten zuerst, Antwortadresse/Token-Typ soweit geliefert prüfen; bei fehlenden Daten EVM-RPC. Zwölf Token/LPs mit 18 und unveränderte Anzeige-Werte sind aus 8.07 live bestätigt. Die alte 8.07-Apertum-Adminroute bleibt kompatibel; der neue DAO-Claim-Pfad verwendet den gemeinsamen Dienst. Aktuelle Stammdaten und zentraler Cache werden vor Wiederverwendung auf Widersprüche geprüft.
+- Solana: konfigurierte RPC bzw. Alchemy-Archive-Konfiguration (bei leerem rpc_url) verwenden, getAccountInfo/jsonParsed am initialisierten Mint. Token-Program/Token-2022-Owner und Mint-Typ prüfen. Mint-Adressen bleiben gross-/kleinschreibungssensitiv; Token-Account-Skala muss zum zentralen Mint-Wert passen. Keine EVM-Adressnormalisierung auf Solana/Tron anwenden.
+- Tron: decimals() über die konfigurierte /wallet/triggerconstantcontract-API mit sichtbaren Base58-Adressen. Erfolgsflag und ABI-Wert prüfen, kein universeller 6-Fallback bei TRC20-Beständen.
+- Native Einheiten: explizite Protokollwerte für die aktuell unterstützten Chain-/Symbol-Kombinationen (BTC 8, XRP/TRX/AKT 6, SOL 9, bekannte EVM-Coins 18). Unbekannte zukünftige Protokolle erhalten keinen Typ-Default. Insbesondere AKT/uakt erhält 6, obwohl die ursprüngliche Native-Importfunktion Akash bislang offen liess. Für benannte Cosmos-Denoms sind passende base-/display-Einheiten und Exponent aus Bank-Metadaten erforderlich.
+- V3-Pooladressen werden nur nach fehlender/revertierender decimals()-Funktion UND strukturell passenden slot0/fee/token0/token1-Antworten als not_applicable / v3_pool markiert. Technische Dezimalstellen bleiben dort NULL, UI zeigt Pool statt eines fehlenden Tokenwerts; normale ERC20-LP-Token behalten echte Contract-Decimale. Keine Erkennung allein anhand LP-Label. Pool-/Fungible-Token-Widersprüche erzeugen Konflikt.
+
+## Persistenz und Konflikte
+
+Service-only Speicher-/Lese-RPCs begrenzen technische Metadaten nach Chain+normalisierter Contract-/Mint-Adresse. Nur EVM-Adressen werden kleingeschrieben. Zeilen-/Advisory-Locks, Vergleich vorhandener Master-/Cachewerte, sticky conflict, Originalwert und beobachteter Wert sowie Quelle/Prüfzeit und zehn letzte Beobachtungen. Widersprüche werden nicht automatisch überschrieben oder aufgelöst. Fehlerhafte Providerantworten bleiben unavailable. Ein neuer Abruffehler löscht keinen bereits bestätigten Cachewert; refreshFailed weist auf den fehlgeschlagenen Refresh hin. Unmittelbare automatische Wiederholungen eines unavailable-Werts frühestens nach 60 Sekunden; manuelle Admin-Prüfung darf gezielt neu lesen. Ein bestätigter Contract-Wert braucht keinen RPC pro Claim. Zentrale aktuelle Metadaten sind keine Behauptung historisch unveränderter Contract-Eigenschaften; bestehende Payout-/Flow-Skalen müssen weiterhin übereinstimmen.
+
+predefined_tokens bekommt nur fehlende technische Werte/Namen/Bezeichnungen ergänzt. Keine Neuanlage globaler Token-Definitionen für private Custom-Token. enabled/historical_only, bestehende Anzeige-Dezimalstellen, Preise und Zuordnungen unverändert. Reine technische Cache-Ergebnisse geben einen Token nicht automatisch als DAO-Reward-Asset oder sicheren Bestand frei. Die bekannte DAO-Contract-Whitelist bleibt bestehen. Alte 8.07-Felder/Funktionen bleiben erhalten, ausgeführte Migrationen werden nicht gelöscht.
+
+## Eigene sichere Token und Browser
+
+safe_tokens erhält nullable display_decimals und summary_decimals mit 0–18-Constraints. Leere Felder erben den vorhandenen Stammdaten-/Formatstandard. Eine persönliche Anzeige-Einstellung überschreibt die globale Darstellung nur für diesen User; leere persönliche Summary folgt dann der persönlichen Anzeige. Technische Skalierung wird dadurch nie verändert. Vorhandene globale Anzeige-Werte werden nicht auf private Listen kopiert. Eigene Bezeichnungen bleiben bestehen.
+
+Neue read-only RPC wallettracking_list_own_safe_tokens bindet die interne technische Information nur an auth.uid()s eigene Einträge. Bestehende Safe-Token-RLS bleibt aktiv; Browser speichert persönliche Änderungen zusätzlich mit eigener User-ID und Datensatz-ID. Andere User-Listen werden weder enumeriert noch in den technischen Cache kopiert. Beim Accountwechsel werden manuelle Metadaten-Batch-Fortsetzungen zurückgesetzt.
+
+Unter „Eigene sichere Token“ sind technische Werte/Pool/Konflikt und persönliche Anzeige-/Summary-Eingaben sichtbar. Dort prüft ein Button nur die eigene Liste. Im vordefinierten Bereich gibt es einen Admin-Button für den Katalog. Es sind jeweils höchstens zwölf Contracts pro Aufruf und vier parallele Provider-Anfragen; nextAfter wird beim nächsten manuellen Klick fortgesetzt, keine automatische Dauer-Schleife. refresh-catalog erfordert echten Admin-JWT und verarbeitet globale Definitionen plus eigene sichere Token; refresh-own benötigt User-JWT und ist nur dessen eigene Liste. Keine Request-User-ID und kein Katalogzugriff allein durch den internen Service-Key. Ergebnisse zählen verified/not_applicable/conflict/unavailable; fehlende Providerdaten bleiben sichtbar offen.
+
+Browser-Metadaten für aktuelle/historische Preise, positive EVM-Bestände, Tron, sichere Solana-Mints und DAO-Receipt-Token verwenden den gemeinsamen Resolver. Aktuelle EVM-Nullbestände benötigen keine Metadaten. Unklare positive Bestände oder widersprüchliche Skalen führen zu einem offenen Fehler und keinem geratenen Betrag. Historische gespeicherte Flows/Rewards/Preise werden nicht umgeschrieben. Es wird keine neue Preisroute eingeführt.
+
+## Hintergrund-Integration
+
+DAO-Claim-Treiber verwendet den neuen Dienst und übergibt weiterhin die nachgewiesene technische Skala an den bestehenden 8.07-Finalizer. Auszahlungsbelege, NFT-Ownership und zentraler exakter Preisweg bleiben getrennt geprüft; kein Preis-/NFT-/Reward-Backfill in diesem Release.
+
+wallet-daily-refresh liest den internen technischen Cache in begrenzten 200er-Paketen und löst fehlende Skalen positiver sicherer Token über denselben Dienst auf. Keine separate RPC-decimals-Fallbackberechnung; Konflikte stoppen die betroffene Chain statt falsche Mengen zu speichern. Native Einheiten und vorhandene Snapshot-/Retry-Logik bleiben erhalten; Solana-Mint-/Tron-Adressen werden jetzt auch im Job korrekt case-sensitiv erhalten. Bereits verifizierte V3-Pools werden aus ERC20-Beständen ausgeschlossen. Der separat vorhandene Wallet-Bestandscron wird nicht neu konfiguriert. DAO-Cron und DAO_REWARD_ENABLE_LIVE_WORKER bleiben deaktiviert; es wird kein Metadaten-Cron angelegt.
+
+## Belegter Stand und Tests
+
+- 8.07 live: zwölf Apertum-ERC20-/LP-Contracts verified / technische 18, Quelle Explorer, zehn vorherige NULL ergänzt, alle 13 Anzeige-Einstellungen unverändert. Proof per JSON und separater SQL-Persistenz. Natives APTM war von diesem ERC20-Test ausgenommen (technisch bereits 18).
+- Nutzer-Diagnose: weitere fehlende Stammdaten auf BSC/ETH/Tron, AKT native; eigene ATOM/LPT/LCX beziehen Werte allenfalls aus Stammdaten, ZIG hat keine globale Zuordnung. Diese Werte sind vor dem Live-Abruf nicht geraten oder schon als ergänzt markiert.
+- 241 relevante lokale Tests bestanden: DAO/Rewards inklusive PostgreSQL, Provideradapter, echtes SQL für Cache/Füllung/Konflikte/Pools/History/RLS/User-Isolation, HTTP-Handler/JWT/Admin-Gates/Continuation, Browser-Konvertierung/Cache/Präferenzen und täglicher Bestandsjob. Providerantworten lokal kontrolliert; 8.08-Live-Abruf/Benutzeroberfläche/Job-Integration noch offen.
+- Breiter Lauf über alle tests/*.mjs: 264 Tests, 262 bestanden; zwei bereits vorhandene Fehler in docs-cleanup-regression.mjs (Erwartung an die historische Archivliste) und rpc-refresh-regression.mjs (veralteter Snapshot-Mock ohne sb.rpc). Beide Fehler separat mit unverändertem 8.07-app.js/alten Hilfsdateien reproduziert. createSnapshot ist bytegleich zu 8.07. Kein Snapshot-/Cleanup-Fix in diesem Release. Vier Preis-/Dashboard-Regressionsskripte sowie übrige breite Tests bestanden.
+
+
+Details/Quellen/Deployment: docs/releases/8.08-cross-chain-token-metadata.md. Historische Abschnitte darunter sind früherer Entwicklungsstand.
 
 ## Live-Nachtrag 8.07 · 08.11.2026 22:23:00 CET
 
@@ -91,7 +137,7 @@ Separate Live-SQL-Kontrolle danach bestätigt exakt: 395 Kandidaten, 388 canonic
 
 ## Unmittelbar nächster Schritt
 
-Nächster Schritt: eine lesende Bestandsabfrage zu fehlenden technischen bzw. Anzeige-Dezimalstellen in predefined_tokens sowie safe_tokens auf allen Chains. Ergebnisse vor Festlegung des Folge-Releases analysieren. Kein erneuter Apertum-Batch und keine historischen DAO-Fälle zurücksetzen.
+Nur `supabase/migrations/20261108222813_cross_chain_token_metadata_808.sql` vollständig im Supabase SQL Editor ausführen. Mehrere DDL-/Funktionsanweisungen in einer atomaren Transaktion; keine separaten SELECT-Resultsets. Keine Provider-Abfrage und kein Cron beim Ausführen. Erst nach Rückmeldung Deployment anleiten.
 
 ## Danach weiter offen – DAO-Reward-Pipeline
 
@@ -129,3 +175,7 @@ Nächster Schritt: eine lesende Bestandsabfrage zu fehlenden technischen bzw. An
 - **Pro Antwort immer nur die nächste auszuführende SQL-Abfrage oder den nächsten Test zeigen.** Auf Rückmeldung warten, erst dann Folgeschritt; keine mehrteiligen SQL-Testlisten. Bei mehreren Resultsets ausdrücklich warnen, dass Supabase eventuell nur das letzte prominent zeigt.
 - Bestehende, verifizierte Reward-Mengen, zentrale historische Preise, Bot-/NFT-Zuordnung und Bestandsdaten nicht ohne belastbaren Beleg überschreiben. Kein automatischer Cron ohne Abnahmetests. Jede Release-Dokumentation und diese Statusdatei nachführen.
 - Ein ausgeteiltes Dokumentations-ZIP aktualisiert **nicht** automatisch GitHub oder Supabase; es muss eingespielt und committed werden.
+
+## Bereits vorhandene lokale Testlücken
+
+Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock wie im 8.08-Release beschrieben korrigieren; beide Fehler bestehen bereits im 8.07-Baseline-Lauf. Keine Behauptung eines fehlerfreien kompletten tests/*.mjs-Laufs.
