@@ -1,9 +1,11 @@
-# Übergabe WalletTracking – neuer Chat
+# Übergabe WalletTracking
 
-Wir setzen **WalletTracking Phase 8.01 · Build 20261108-105729** fort. Bitte zuerst `README.md`, `docs/PROJECT_STATUS_OPEN_ITEMS.md` und die DAO-Release-Dokumentation lesen. Die Statusdatei bündelt den live bestätigten Stand und die offenen Aufgaben.
+Aktueller ausgelieferter Code: **Phase 8.02 · Build 20261108-111625**. Zuerst README.md, docs/PROJECT_STATUS_OPEN_ITEMS.md und docs/releases/8.02-dao-no-payout-evidence.md lesen.
 
-**DAO1/APTMDAO:** Der historische Einzel-Wallet-Import ist abgeschlossen. Von 395 Claim-Kandidaten sind **388** mit passendem nativen Auszahlungsnachweis als bestehende Claims gekennzeichnet, inklusive geprüftem Wiederholungsschutz. **Vier** frühere positive APTM-Claims sind dauerhaft als `unpriced_before_exact_anchor` erfasst (vor zentralem Preisanker Block 88'356, USD `NULL`). **Drei** erfolgreiche Null-Reward-TXs haben keine erfassten Asset-Flows; das ist noch kein endgültiger On-Chain-Negativbeweis.
+Live-Stand bleibt 8.01: historischer Import abgeschlossen, 388 von 395 Claims verifiziert gekennzeichnet; vier frühe positive Claims dauerhaft unpriced_before_exact_anchor, USD NULL; drei erfolgreiche Null-Reward-TXs ohne erfasste Flows weiter ungeklärt.
 
-**Als Nächstes:** Phase 8.02: `no_payout_evidence` als allgemeinen, dauerhaft nutzbaren und revalidierbaren Status für zukünftige DAO1/APTMDAO-Claims entwickeln, strikt getrennt von der USD-Preis-Klassifizierung. Die drei Null-Reward-TXs als Tests nutzen; keine kanonischen Beträge, Preise, Wallets oder NFT-Zuordnungen überschreiben. Danach inkrementelle End-to-End-Reward-Verarbeitung (Claims/Referral/Bot-Ownership) prüfen. `DAO_REWARD_ENABLE_LIVE_WORKER=false`, DAO-Cron bleibt aus. TLN/VOW-Reward-Job weiter offen.
+8.02 implementiert allgemeinen erneut prüfbaren payout_status=no_payout_evidence, TX-lokale Explorer-Coverage, geschützte Persistenz mit zehn letzten Prüfergebnissen und 24h-Revalidierung. Auszahlung, NFT-Besitz, kanonische Buchung und Preis bleiben getrennt. Die Queue setzt pending-Payout-Reste fort. Keine neuen kanonischen Rewards/Preise. 131 lokale DAO-/Reward-Tests inkl. PostgreSQL bestanden; noch keine Live-Installation/-Prüfung dieser Version belegt.
 
-**Arbeitsregeln:** Nur geänderte Dateien im `wallet-tracking/`-ZIP; Release- und Migrationsnamen mit echtem Schweizer Zeitstempel; sichtbare Phase/Build ist verbindlich. Dokumentation/offene Aufgaben fortschreiben. **Immer nur die nächste SQL-Abfrage oder den nächsten Test auf einmal senden.** Apple-Passwortmanager in Chrome/macOS bleibt ein offener Fehler (Safari funktioniert).
+**Nächster Schritt:** nur Migration 20261108111030_dao_no_payout_evidence_802.sql ausführen und Rückmeldung abwarten. Späterer Worker-Deploy muss index.ts UND payout-coverage.ts enthalten; der neue geschützte manuelle Drei-TX-Modus ist vorbereitet. Live-Worker/Cron bleiben aus. Danach inkrementelle Claim-/Referral-/Preis-Pipeline weiterentwickeln und Ende-zu-Ende testen. TLN/VOW-Job und Chrome/Apple-Passwortmanager bleiben offen.
+
+Nur nächste SQL-Abfrage oder nächsten Test auf einmal zeigen. Kleine ZIPs mit geänderten Dateien unter wallet-tracking/, echte Schweizer Zeitstempel, zentrale Dokumentation nachführen.

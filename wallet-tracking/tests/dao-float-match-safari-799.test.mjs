@@ -27,5 +27,5 @@ test('Safari login retains stable autocomplete attributes and native form semant
  assert.match(form,/type="email" id="authEmail" name="username"[^>]+autocomplete="username"[^>]+required/);
  assert.match(form,/type="password" id="authPassword" name="password"[^>]+autocomplete="current-password"[^>]+required/);
  assert.match(form,/type="submit"/);
- assert.match(html,/window\.APP_VERSION="7\.99"/);
+
 });

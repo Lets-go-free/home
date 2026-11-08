@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-const sql=readFileSync(new URL('../supabase/migrations/20261103-114841_dao_verified_legacy_claim_creation_784.sql',import.meta.url),'utf8');
+const sql=readFileSync(new URL('../supabase/migrations/20261103114841_dao_verified_legacy_claim_creation_784.sql',import.meta.url),'utf8');
 const worker=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
 test('inserts only proven legacy claims and existing historical price',()=>{
  assert.match(sql,/c.status='ownership_verified' AND c.payout_status='verified'/);

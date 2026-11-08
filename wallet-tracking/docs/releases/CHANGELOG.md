@@ -1,3 +1,10 @@
+## 8.02 · 08.11.2026 11:16:25 CET · Build 20261108-111625
+
+- DAO1/APTMDAO: `no_payout_evidence` als allgemeiner wiederprüfbarer Auszahlungsstatus nach vollständiger TX-lokaler Explorer-Prüfung; unbekannte/unvollständige Daten bleiben Review.
+- Coverage, zehn letzte Versuche, SQL-Zeilensperre/CAS, geschützte Revalidierung nach 24h und begrenzter Admin-Drei-TX-Test. Keine Änderung kanonischer Rewards/Preise/NFTs.
+- Inkrementelle Queue bleibt bei `pending`-Payout-Rest `partial`; 131 lokale DAO-/Reward-Tests inklusive PostgreSQL bestanden. Live-Abnahme offen, DAO-Cron bleibt aus.
+- Zentrale Status-/Übergabedokumentation, Admin-Systemübersicht/-Doku/Ideen und DAO-Hilfe nachgeführt; Browser-Cache-Timestamps aktualisiert.
+
 # Änderungshistorie
 
 - 7.68: Täglicher serverseitiger Wallet-Bestandsjob für alle 12 aktivierten Chains, verschlüsselte Wallet-Adressen, Service-only Job-Queue, sichere Fehlerbehandlung und atomare automatische Snapshots. Browser prüft beim ersten Öffnen pro Sitzung erneut live; LP-/Staking-Projektcaches bleiben getrennt. Handelsjob-Secret aus historischer Repository-SQL entfernt; Rotation weiterhin erforderlich. Installation mit gesonderter Freigabe nach beobachtetem manuellem Edge-Test.

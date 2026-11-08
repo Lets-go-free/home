@@ -5,7 +5,7 @@ const source=readFileSync(new URL('../supabase/functions/dao-reward-refresh/inde
 const sql=readFileSync(new URL('../supabase/migrations/20261102220424_dao_payout_evidence_778.sql',import.meta.url),'utf8');
 const unit=source.slice(source.indexOf('async function verifyCandidatePayouts('),source.indexOf('async function process('));
 test('payout verification covers proven NFTs and explicitly unassigned new miners',()=>{
- assert.match(unit,/in\('status',\['ownership_verified','unassigned_miner','unassigned_legacy'\]\)/);
+ assert.doesNotMatch(unit,/\.in\('status'/); // Payout is independent of ownership since 8.02.
  assert.match(unit,/eq\('payout_status','pending'\)/);
 });
 test('payouts require known successful transaction and on-chain flow',()=>{
@@ -14,7 +14,7 @@ test('payouts require known successful transaction and on-chain flow',()=>{
 });
 test('payout proof writes no reward sums or claim NFT fields',()=>{
  assert.doesNotMatch(unit,/\.update\(\{[^}]*claim_nft_id|\.update\(\{[^}]*claim_reward_usd|\.update\(\{[^}]*price_usd/);
- assert.match(unit,/payout_status:evidence.status/);
+ assert.match(unit,/p_status:evidence.status/);
 });
 test('migration restricts payout status and indexes pending work',()=>{
  assert.match(sql,/CHECK \(payout_status IN \('pending','verified','needs_review'\)\)/);

@@ -1,6 +1,6 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 11:05 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.01, Build 20261108-105729.
+**Dokumentationsstand:** 08.11.2026 11:16:25 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.02, Build 20261108-111625.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
@@ -13,14 +13,25 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - 3 Transaktionen mit Reward=0, Methode `0x86bb8f37`, Erfolg `status=ok`, aber **0 erfasste Asset-Flows**: Blöcke 403'915 (Bot 37174), 10'791'488 (Bot 10295), 11'254'937 (Bot 10294). **Nicht** als on-chain sicher auszahlungslos behaupten: Speicherung/Abdeckung der Flows zuerst prüfen.
 - Rohdaten-Import und Klassifikation liefen kontrolliert/manuell; produktiver DAO-Rewards-Worker und Cron bleiben deaktiviert (`DAO_REWARD_ENABLE_LIVE_WORKER=false`). Kein vollständiger End-to-End-Live-Test neuer Rewards/Referral/Bot-Zuordnung.
 
-## Nächste Entwicklung: 8.02 – allgemeiner Auszahlungsstatus
+## Phase 8.02 – implementiert, Live-Abnahme offen
 
-1. `pending` = noch nicht abschliessend geprüfter Claim; `no_payout_evidence` = nach abgeschlossener, hinreichend vollständiger Transaktions-/Transferprüfung **keine Auszahlung nachweisbar**, kein endgültiges on-chain-Negativurteil. Dieser Zustand muss für **zukünftige** neue DAO1- und APTMDAO-Claims unterstützt werden, nicht nur für die drei bekannten Fälle.
-2. Auszahlungsnachweis, bestehende kanonische Buchung und historische USD-Bewertbarkeit als **getrennte Dimensionen** modellieren. `unpriced_before_exact_anchor` nicht als Zahlungsstatus missbrauchen; `canonical_existing_verified` nicht für unbewertete Fälle ohne expliziten Nachweis setzen.
-3. Für `no_payout_evidence` nur bei tatsächlich vollständiger Belegprüfung klassifizieren; unvollständige Explorer-Paginierung/RPC, unbekannte Token-Transfers oder fehlende Internals bleiben `pending`/`needs_review`. Spätere neue Belege müssen Revalidierung ermöglichen.
-4. Die drei Null-Reward-TXs als Tests verwenden; keine Auszahlung/Rew. erfinden, keine Summen oder Preise überschreiben; negative Ergebnisse nachvollziehbar protokollieren.
-5. Danach neuen DAO1/APTMDAO-Claim-End-to-End durch serverseitigen inkrementellen Job testen: Wallet/Owner/NFT/Bot-Identität, native APTM und relevante Token (alte wAPTM, neu wUSDT/wUSDC), separate Referral-wUSDT-Evidenz, zentrale historische Preisermittlung, Dublettensicherheit, User-Isolation, Neustart nach Teilfehler und vollständige Queue-Abarbeitung.
-6. Erst nach bestandenem manuellen/Produktivnahen Test DAO-Cron zeitlich getrennt vom Wallet-Bestandsjob aktivieren. Geplante Fenster (Schweizer Zeit): Wallet-Bestände 01:00–04:00, DAO 04:05–05:30, TLN/VOW 05:35–07:00. Jobs nicht stillschweigend aktivieren.
+- Allgemeiner Auszahlungsstatus `no_payout_evidence` für beide Claim-Selektoren (DAO1/APTMDAO), strikt getrennt von NFT-Besitz, `canonical_existing_verified` und `audit_classification`. Kein Backfill der drei bekannten Fälle ohne Einzelprüfung.
+- Vor negativer Einstufung: TX-Hash/Block/Selector/Erfolg/Absender/Empfänger gegen TX-Details prüfen; sämtliche transaktionsbezogenen Token- und Internal-Seiten lesen. Maximal zehn Seiten je Strom / 5'000 Einträge; API-Fehler, ungültige oder fehlende Pagination, unbekannte Token oder unklare Internals bleiben `needs_review`. Auch fremde/proxyseitige positive Eingänge und widersprechende persistierte Flows verhindern negative Klassifikation.
+- Prüfabdeckung und zehn letzte Versuche dauerhaft am Kandidaten gespeichert. `needs_review` und `no_payout_evidence` nach mindestens 24 Stunden erneut prüfbar, neue `pending` zuerst; insgesamt maximal 20 pro Worker-Aufruf. Spätere belastbare persistierte Zahlungen können `verified` ergeben; unvollständige Nachprüfung führt zurück zu `needs_review`. Verifizierte/kanonisch markierte Kandidaten werden geschützt, Row-Lock und Zeitstempelvergleich verhindern veraltete Überschreibungen.
+- Auszahlungsprüfung funktioniert unabhängig vom NFT-Prüfstatus. Noch offene `pending`-Payouts halten die inkrementelle Queue auf `partial`, damit der nächste Abschnitt am selben Tag bearbeitbar bleibt. `staged` ist weiterhin kein abgeschlossener Reward-Job.
+- Kontrollierter Admin-Testmodus für maximal drei Null-Reward-TXs der fest hinterlegten Testwallet vorbereitet. Lokal synthetische Fixtures der drei bekannten Blöcke geprüft; **keine neue Aussage über deren Live-Status**. Vollständigkeit gilt für Explorer-Indexdaten, nicht als unabhängig verifizierter On-Chain-Negativnachweis.
+- Neue SQL-Migration: `20261108111030_dao_no_payout_evidence_802.sql`; 131 lokale DAO-/Reward-Tests einschliesslich PostgreSQL-Ausführung bestanden. Keine neue Supabase-/Explorer-Live-Prüfung. DAO-Cron und `DAO_REWARD_ENABLE_LIVE_WORKER` bleiben deaktiviert.
+
+## Unmittelbar nächster Schritt
+
+Nur die neue 8.02-Migration vollständig im Supabase SQL Editor ausführen (atomare DDL-Transaktion, keine SELECT-Resultsets). Danach Rückmeldung auswerten; weitere Test-/Deploy-Anweisung erst in der nächsten Antwort. Nicht die alten Migrationen erneut ausführen.
+
+## Danach weiter offen – DAO-Reward-Pipeline
+
+- Drei Null-Reward-TXs mit dem vorbereiteten begrenzten Admin-Modus tatsächlich prüfen; erwartete `no_payout_evidence` nur bei vollständigem Belegabruf, sonst `needs_review`. Wiederholungs-/Revalidierungsresultate live verifizieren.
+- Einen neuen DAO1/APTMDAO-Claim Ende-zu-Ende durch den serverseitigen inkrementellen Job prüfen: Wallet/Owner/NFT/Bot-Identität, native APTM und relevante Token (alte wAPTM, neue wUSDT/wUSDC), separate Referral-wUSDT-Evidenz, zentrale historische Preisermittlung, Dublettensicherheit, User-Isolation, Teilfehler und vollständige Queue-Abarbeitung.
+- Fehlende zukünftige Flows aus gezieltem TX-Nachweis kontrolliert in den bestehenden kanonischen Import übernehmen; 8.02 protokolliert solche positiven Funde zunächst als Review, statt neue Beträge zu erfinden. Atomare kanonische Verarbeitung, feste bestätigte Blockfenster/unabhängige Coverage, faire Wiederholungssteuerung und verbleibende Preis-/Referral-Schritte fehlen weiterhin.
+- Erst nach bestandenem manuellen/produktnahen Test DAO-Cron separat vom Wallet-Bestandsjob aktivieren. Geplante Fenster Schweizer Zeit: Bestände 01:00–04:00, DAO 04:05–05:30, TLN/VOW 05:35–07:00. Keine stillschweigende Aktivierung.
 
 ## Weitere offene WalletTracking-Aufgaben (nach Themen)
 

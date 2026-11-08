@@ -29,7 +29,9 @@ test('known historical payment differences all fit tolerance, larger differences
  }
  assert.ok((wei('12.011461069501031')+1001n)-wei('12.011461069501031')>1000n);
 });
-test('version and build are updated',()=>{
- assert.match(html,/window\.APP_VERSION="8\.00"/);
- assert.match(html,/Phase 8\.00 · Build/);
+test('visible phase and build match the active release metadata',()=>{
+ const version=html.match(/window\.APP_VERSION="([0-9.]+)"/)?.[1];
+ const build=html.match(/window\.BUILD_ID="([0-9-]+)"/)?.[1];
+ assert.ok(version);assert.ok(build);
+ assert.ok(html.includes(`Phase ${version} · Build ${build}`));
 });

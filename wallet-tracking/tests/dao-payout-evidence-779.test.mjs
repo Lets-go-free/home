@@ -33,5 +33,5 @@ test('migration preserves existing rewards and rechecks legacy incomplete eviden
 test('staging does not overwrite canonical valuation or claim ids',()=>{
  const section2=source.slice(source.indexOf('async function verifyCandidatePayouts('),source.indexOf('async function process('));
  assert.doesNotMatch(section2,/claim_reward_usd|claim_nft_id|price_usd|\.from\('snapshots'\)/);
- assert.match(section2,/payout_amount_raw/);
+ assert.match(section2,/p_amount:evidence.status==='verified'\?evidence.amount_raw:null/);
 });

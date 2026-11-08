@@ -38,7 +38,7 @@ test('known NFT evidence retains historical ownership verification route',async(
 });
 test('new payout verification includes explicit unassigned status without touching canonical reward fields',()=>{
  const unit=source.slice(source.indexOf('async function verifyCandidatePayouts('),source.indexOf('async function process('));
- assert.match(unit,/in\('status',\['ownership_verified','unassigned_miner','unassigned_legacy'\]\)/);
+ assert.doesNotMatch(unit,/\.in\('status'/); // Payout is independent of ownership since 8.02.
  assert.doesNotMatch(unit,/claim_reward_usd|claim_nft_id|\.from\('snapshots'\)/);
  assert.match(sql,/nft_contract DROP NOT NULL/);
  assert.match(sql,/nft_id DROP NOT NULL/);

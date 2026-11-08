@@ -27,6 +27,7 @@ test('saved oldest block is checked on resume, and persisted after each page',()
 test('never persist incomplete page or certify when incomplete',()=>{
  const body=src.slice(src.indexOf('async function paginate('),src.indexOf('// The raw staging import'));
  assert.ok(body.indexOf('await handler(rows)') < body.indexOf('await saveScan(job,kind,cursor,'));
- assert.match(body,/if\(finished\)\{\s*await saveScan\(job,kind,highest,null\)/);
+ assert.match(body,/if\(finished\)\{/);
+ assert.match(body,/if\(checkpoint\|\|advanced\|\|cursor===0\)await saveScan\(job,kind,highest,null\)/);
  assert.match(body,/Explorer empty page with continuation/);
 });

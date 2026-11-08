@@ -4,6 +4,7 @@
 // Important: NOT a complete reward worker. Candidate ownership checks are now
 // durable and incremental; confirmed claims and prices still need canonical enrichment.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
+import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-coverage.ts'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const SECRET=Deno.env.get('WALLET_DAILY_REFRESH_SECRET')||''
@@ -465,7 +466,7 @@ async function verifyPendingCandidates(job:any,address:string){
 // do not modify the canonical reward totals, historical prices or NFT fields.
 // Produce an exact, transaction-local payout proof. This is staging evidence,
 // not a canonical reward or valuation. Never infer a payout from token symbols.
-type PayoutEvidence={status:'verified'|'needs_review';reason:string;token_address?:string;amount_raw?:string;token_decimals?:number;flow_count?:number};
+type PayoutEvidence={status:'verified'|'needs_review'|'no_payout_evidence';reason:string;token_address?:string;amount_raw?:string;token_decimals?:number;flow_count?:number};
 function verifiedPayoutEvidence(tx:any,flows:any[],address:string):PayoutEvidence{
  if(!isSuccessfulClaim(tx))return {status:'needs_review',reason:'claim-not-successful'};
  const matched=(flows||[]).filter(flow=>hasVerifiedClaimPayout(tx,[flow],address));
@@ -492,53 +493,75 @@ function verifiedPayoutEvidence(tx:any,flows:any[],address:string):PayoutEvidenc
 // even if the next scan imports the missing token transfer. The 20-item budget
 // is shared across both classes; an indefinitely ambiguous claim cannot starve
 // newly discovered payouts.
-async function verifyCandidatePayouts(job:any,address:string){
- const scope=()=>sb.from('dao_reward_claim_candidates').select('tx_hash')
-  .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-  .eq('chain_key',CHAIN).in('status',['ownership_verified','unassigned_miner','unassigned_legacy']);
- const {data:pending,error:pendingError}=await scope()
-  .eq('payout_status','pending').order('claim_block',{ascending:true}).limit(20);
- if(pendingError)throw pendingError;
- const candidates=[...(pending||[])];
- if(candidates.length<20){
-  const retryBefore=new Date(Date.now()-24*60*60*1000).toISOString();
-  const {data:stale,error:staleError}=await scope()
-   .eq('payout_status','needs_review')
-   .or(`payout_checked_at.is.null,payout_checked_at.lt.${retryBefore}`)
-   .order('payout_checked_at',{ascending:true,nullsFirst:true})
-   .limit(20-candidates.length);
-  if(staleError)throw staleError;
-  candidates.push(...(stale||[]));
+async function verifyCandidatePayouts(job:any,address:string,explicitCandidates:any[]|null=null){
+ // Payout evidence is independent of NFT ownership, including pending,
+ // ownership_verified, unassigned_miner, unassigned_legacy and needs_review.
+ const scope=()=>sb.from('dao_reward_claim_candidates').select('tx_hash,payout_checked_at')
+  .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+  .eq('chain_key',CHAIN).eq('canonical_existing_verified',false);
+ const candidates:any[]=[];
+ if(explicitCandidates){candidates.push(...explicitCandidates.slice(0,3))}
+ else{
+  const {data:pending,error:pendingError}=await scope()
+   .eq('payout_status','pending').order('claim_block',{ascending:true}).limit(20);
+  if(pendingError)throw pendingError;
+  candidates.push(...(pending||[]));
+  if(candidates.length<20){
+   const retryBefore=new Date(Date.now()-24*60*60*1000).toISOString();
+   const {data:stale,error:staleError}=await scope()
+    .in('payout_status',['needs_review','no_payout_evidence'])
+    .or(`payout_checked_at.is.null,payout_checked_at.lt.${retryBefore}`)
+    .order('payout_checked_at',{ascending:true,nullsFirst:true})
+    .limit(20-candidates.length);
+   if(staleError)throw staleError;
+   candidates.push(...(stale||[]));
+  }
  }
- let verified=0,needsReview=0;
+ let verified=0,needsReview=0,noEvidence=0,concurrentSkips=0;const results=[];
  for(const candidate of candidates){
   const {data:tx,error:txError}=await sb.from('project_transactions')
-   .select('tx_hash,selector,status,to_address').eq('user_id',job.user_id)
+   .select('tx_hash,selector,status,to_address,block_number').eq('user_id',job.user_id)
    .eq('wallet_id',job.wallet_id).eq('project_key',PROJECT).eq('chain_key',CHAIN)
    .eq('tx_hash',candidate.tx_hash).maybeSingle();
   if(txError)throw txError;
   const {data:flows,error:flowError}=await sb.from('project_transaction_asset_flows')
    .select('tx_hash,direction,amount_raw,flow_key,token_address,token_decimals,counterparty_address')
    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-   .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash);
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).limit(1001);
   if(flowError)throw flowError;
-  const evidence:PayoutEvidence=tx?verifiedPayoutEvidence(tx,flows||[],address):{status:'needs_review',reason:'transaction-not-persisted'};
-  // Atomic update of evidence and status. Do not change canonical transactions,
-  // reward summaries, NFT IDs or USD prices.
-  const {error:writeError}=await sb.from('dao_reward_claim_candidates')
-   .update({payout_status:evidence.status,payout_reason:evidence.reason,
-    payout_token_address:evidence.status==='verified'?evidence.token_address:null,
-    payout_amount_raw:evidence.status==='verified'?evidence.amount_raw:null,
-    payout_token_decimals:evidence.status==='verified'?evidence.token_decimals:null,
-    payout_flow_count:evidence.status==='verified'?evidence.flow_count:null,
-    payout_checked_at:new Date().toISOString()})
-   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('chain_key',CHAIN)
-   .eq('tx_hash',candidate.tx_hash).in('status',['ownership_verified','unassigned_miner','unassigned_legacy'])
-   .in('payout_status',['pending','needs_review']);
+  let evidence:PayoutEvidence=tx?verifiedPayoutEvidence(tx,flows||[],address):{status:'needs_review',reason:'transaction-not-persisted'};
+  let coverage:any={source:'persisted-flows-v1',complete:false};
+  if((flows||[]).length>=1000)evidence={status:'needs_review',reason:'persisted-flow-limit'};
+  else if(tx&&evidence.reason==='no-verified-incoming-flow'){
+   const checked=await inspectClaimPayoutCoverage(tx,address,json,EXPLORER);
+   coverage=checked.coverage;
+   evidence={status:noPayoutEvidenceAllowed(coverage,flows||[])?'no_payout_evidence':'needs_review',reason:checked.reason};
+   if(evidence.status==='needs_review'&&coverage.complete&&!coverage.observed_incoming)
+    evidence.reason='stored-flow-conflicts-with-negative-evidence';
+  }
+  // Row lock + checked-at compare prevent concurrent stale/downgrade writes.
+  // History is bounded in SQL; only staging payout metadata is ever written.
+  const {data:applied,error:writeError}=await sb.rpc('wallettracking_dao_record_payout_check',{
+   p_user:job.user_id,p_wallet:job.wallet_id,p_tx:candidate.tx_hash,
+   p_expected_checked_at:candidate.payout_checked_at??null,
+   p_status:evidence.status,p_reason:evidence.reason,p_coverage:coverage,
+   p_token:evidence.status==='verified'?evidence.token_address:null,
+   p_amount:evidence.status==='verified'?evidence.amount_raw:null,
+   p_decimals:evidence.status==='verified'?evidence.token_decimals:null,
+   p_flow_count:evidence.status==='verified'?evidence.flow_count:null});
   if(writeError)throw writeError;
-  if(evidence.status==='verified')verified++;else needsReview++;
+  if(!applied){concurrentSkips++;continue}
+  if(evidence.status==='verified')verified++;
+  else if(evidence.status==='no_payout_evidence')noEvidence++;else needsReview++;
+  results.push({txHash:candidate.tx_hash,payout_status:evidence.status,reason:evidence.reason,coverage});
  }
- return {verifiedPayoutClaims:verified,payoutsNeedingReview:needsReview};
+ const {count:pendingCount,error:pendingCountError}=await sb.from('dao_reward_claim_candidates')
+  .select('tx_hash',{head:true,count:'exact'}).eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+  .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('canonical_existing_verified',false).eq('payout_status','pending');
+ if(pendingCountError)throw pendingCountError;
+ return {verifiedPayoutClaims:verified,payoutsNeedingReview:needsReview,
+  pendingPayoutChecks:pendingCount??0,noPayoutEvidenceClaims:noEvidence,concurrentPayoutSkips:concurrentSkips,
+  ...(explicitCandidates?{results}:{})};
 }
 
 // Explicitly reconcile already persisted and valued native Miner Claims. This
@@ -1005,6 +1028,36 @@ Deno.serve(async request=>{
     ...(data||{}),notice:'Only canonical_existing_verified and canonical_existing_checked_at were changed on strictly matched candidates. No canonical reward, price, payout, NFT, wallet, cursor or job updates.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
+ if(body?.mode==='recheck-zero-payout-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual payout recheck disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before payout recheck'},{status:409});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const {data:zeroClaims,error:zeroError}=await sb.from('project_transactions')
+    .select('tx_hash').eq('user_id',selected.user_id).eq('wallet_id',selected.id)
+    .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('claim_reward_aptm',0)
+    .in('selector',[CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR]).in('status',['ok','success'])
+    .order('block_number',{ascending:true}).limit(3);
+   if(zeroError)throw zeroError;
+   if(!zeroClaims?.length)return Response.json({ok:true,checked:0});
+   const {data:candidates,error:candidateError}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,payout_checked_at').eq('user_id',selected.user_id).eq('wallet_id',selected.id)
+    .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('canonical_existing_verified',false)
+    .in('payout_status',['pending','needs_review','no_payout_evidence'])
+    .in('tx_hash',zeroClaims.map(c=>c.tx_hash)).order('claim_block',{ascending:true}).limit(3);
+   if(candidateError)throw candidateError;
+   const result=await verifyCandidatePayouts({user_id:selected.user_id,wallet_id:selected.id},
+    await loadAddress({user_id:selected.user_id,wallet_id:selected.id}),candidates||[]);
+   return Response.json({ok:true,mode:'manual-zero-payout-recheck',...result,
+    notice:'Only staging payout evidence and its bounded history were updated. Indexed completeness is not an independent on-chain zero proof. No canonical rewards, prices, NFT ownership, cursors or queue writes.'});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
  if(body?.mode==='classify-existing-test-wallet'){
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
    return Response.json({error:'Manual staging classification disabled'},{status:403});
@@ -1049,7 +1102,7 @@ Deno.serve(async request=>{
   const result=await process(job);
   // Partial explorer pages and ownership backlog must remain claimable TODAY.
   // 'staged' is terminal for today's raw import; it is NOT reward completion.
-  const partial=!result.transactionScan.complete||!result.flowScan.complete||result.referralScan?.complete===false||result.pendingHistoricalChecks>0;
+  const partial=!result.transactionScan.complete||!result.flowScan.complete||result.referralScan?.complete===false||result.pendingHistoricalChecks>0||result.pendingPayoutChecks>0;
   const transition=await sb.rpc(partial?'wallettracking_reward_continue':'wallettracking_reward_stage',
    {p_day:day,p_project:'dao1',p_user:job.user_id,p_wallet:job.wallet_id});
   if(transition.error)throw transition.error;
