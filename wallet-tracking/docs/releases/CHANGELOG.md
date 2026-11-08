@@ -1,3 +1,9 @@
+## 8.05 · 08.11.2026 13:25:24 CET · Build 20261108-132524
+
+- Manueller Einzel-Claim-Pfad: eine Rohimport-Seite je Strom, danach höchstens ein neuer nativer Claim mit getrennten Owner-/Payout-Belegen und bestehendem zentralem Preisanker. Historische 388/4/3-Referenzen geschützt.
+- Gemeinsame TX-begrenzbare exact-v13-Ankernutzung; keine neue Preisroute. Blockierungsgründe/Prüfzeit, 24h-Retry oder explizite manuelle Neuprüfung; atomare Claim-Neuanlage/Preisergänzung/Abschluss.
+- 173 lokale Tests inkl. PostgreSQL bestanden, Live-Lauf offen. Kein Tagesqueue-Abschluss, DAO-Cron bleibt aus; Token-/Referral-/Gesamtpipeline weiter offen.
+
 ### Live-Nachtrag 8.04 · 08.11.2026 13:13:35 CET
 
 - Alle vier frühen nativen Auszahlungen live als verified bestätigt; Rawbeträge dauerhaft gespeichert, Preis-Ausnahme und USD NULL erhalten, canonical_existing_verified bleibt false.

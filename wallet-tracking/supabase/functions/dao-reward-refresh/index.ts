@@ -752,6 +752,40 @@ async function process(job:any,stageOnly=false){
   classification:'observational-only'};
 }
 
+// Controlled one-claim path: one import page per stream, then at most ONE
+// fresh native claim. Historical reference classifications are excluded in SQL.
+async function processSingleNativeClaim(job:any,retryBlocked=false){
+ const imported=await process(job,true);
+ if(!imported.transactionScan.complete||!imported.flowScan.complete||imported.referralScan?.complete===false)
+  return {status:'import_partial',claimsCreated:0,imported};
+ const {data:candidate,error:pickError}=await sb.rpc('wallettracking_dao_next_native_claim_candidate',{
+  p_user:job.user_id,p_wallet:job.wallet_id,p_retry_blocked:retryBlocked});
+ if(pickError)throw pickError;
+ if(!candidate)return {status:'no_eligible_claim',claimsCreated:0,imported};
+ const address=await loadAddress(job);
+ // Current NFT inventory was only a candidate. Reuse historical owner proof;
+ // incomplete evidence never manufactures an NFT or a positive owner decision.
+ if(['pending','needs_review'].includes(candidate.status)&&candidate.nft_contract&&candidate.nft_id!=null){
+  const proof=await historicalNftOwnership({_contract:candidate.nft_contract,tokenId:candidate.nft_id},address,Number(candidate.claim_block));
+  const temporary=['pagination-incomplete','missing-history','history-out-of-order'].includes(proof.reason);
+  if(!temporary){
+   const {error}=await sb.from('dao_reward_claim_candidates').update({
+    status:proof.verified?'ownership_verified':proof.reason==='owned-by-other-wallet'?'unverified':'needs_review',
+    proof_reason:proof.reason,checked_at:new Date().toISOString()})
+    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+    .eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).eq('canonical_existing_verified',false)
+    .in('status',['pending','needs_review']);
+   if(error)throw error;
+  }
+ }
+ let payout=null;
+ if(candidate.payout_status!=='verified')payout=await verifyCandidatePayouts(job,address,[candidate]);
+ const {data:finalized,error:finalizeError}=await sb.rpc('wallettracking_dao_finalize_single_native_claim',{
+  p_user:job.user_id,p_wallet:job.wallet_id,p_tx:candidate.tx_hash});
+ if(finalizeError)throw finalizeError;
+ return {...(finalized||{}),imported,payout};
+}
+
 // Read-only, manually enabled single-address readiness check. It never claims a
 // queue row, advances a cursor, imports an event or writes to a reward table.
 const INSPECT_ADDRESS='0x239c5822a0d2a67e629d7a3b5c8180721e228b47';
@@ -1074,6 +1108,24 @@ Deno.serve(async request=>{
    if(error)throw error;
    return Response.json({ok:true,mode:'manual-pending-native-payout-check',...(data||{}),
     notice:'Only candidate payout evidence and history were updated from existing native flows. No historical USD price was required or created. No canonical-existing flags, rewards, NFT ownership, cursors, queue or snapshots were changed.'});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(body?.mode==='process-next-native-claim-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual single-claim pipeline disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before single-claim test'},{status:409});
+  if(body.retryBlocked!==undefined&&typeof body.retryBlocked!=='boolean')
+   return Response.json({error:'retryBlocked must be boolean'},{status:400});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const result=await processSingleNativeClaim({user_id:selected.user_id,wallet_id:selected.id},body.retryBlocked===true);
+   return Response.json({ok:true,mode:'manual-single-native-claim-pipeline',...result,
+    notice:'One page per raw stream and at most one native claim. May create one proven canonical claim or fill this TX using an existing exact target anchor. Historical reference cases, existing rewards/prices and browser cursors are protected. No daily queue completion, no cron, no new price route.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='classify-existing-test-wallet'){

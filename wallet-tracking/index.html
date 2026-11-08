@@ -1,3 +1,4 @@
+<!-- Phase 8.05: Manueller Einzel-Claim-Pfad mit zentralem Preisanker; DAO-Cron aus. -->
 <!-- Phase 8.04: Kontrollierte native Payout-Prüfung ohne USD-Voraussetzung; DAO-Cron aus. -->
 <!-- Phase 8.03: Blockscout success:boolean bei internen Aufrufen korrekt auswerten; DAO-Cron aus. -->
 <!-- Phase 8.02: Erneut prüfbare DAO-Auszahlungsevidenz; DAO-Cron deaktiviert. -->
@@ -1368,7 +1369,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 08.11.2026 13:02:39 CET · Phase 8.04 · Build 20261108-130239</span><br>
+    <span id="footerVersionLine">Version: 08.11.2026 13:25:24 CET · Phase 8.05 · Build 20261108-132524</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1387,14 +1388,14 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20261108-131335"></script>
+<script src="./admin/ideas.js?v=20261108-132524"></script>
 <script src="./help/help-general.js?v=20261009-014029"></script>
 <script src="./projects/tln-vow/help.js?v=20261009-014029"></script>
-<script src="./projects/dao1/help.js?v=20261108-124104"></script>
+<script src="./projects/dao1/help.js?v=20261108-132524"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.04";window.BUILD_ID="20261108-130239";</script>
-<script src="./js/app.js?v=20261108-131335"></script>
+<script>window.APP_VERSION="8.05";window.BUILD_ID="20261108-132524";</script>
+<script src="./js/app.js?v=20261108-132524"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1413,6 +1414,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 08.11.2026 13:02:39 CET · Phase 8.04 · Build 20261108-130239</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 08.11.2026 13:25:24 CET · Phase 8.05 · Build 20261108-132524</div>
 </body>
 </html>
