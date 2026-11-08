@@ -1,3 +1,9 @@
+### Live-Nachtrag 8.05 · 08.11.2026 20:29:33 CET
+
+- Migration/Deployment erfolgt, Einzel-Claim-Aufruf meldet no_eligible_claim und keine Neuanlage. Alle drei Importströme im vollständigen Delta-Modus ohne neuere Ereignisblöcke.
+- Separate SQL-Kontrolle: Referenzbestand unverändert 395 / 388 / 4 / 3 / 0 offene zusätzliche Payouts / 0 blockierte Pipeline-Fälle. Beobachtungszähler sind keine Insert-Zahlen.
+- Neue native Claim-Neuanlage noch nicht live bewiesen. Nächste Analyse 8.06: ERC20-Payouts im begrenzten Einzelpfad, gleiche zentrale Preislogik. Tagesjob/Cron weiterhin nicht freigegeben.
+
 ## 8.05 · 08.11.2026 13:25:24 CET · Build 20261108-132524
 
 - Manueller Einzel-Claim-Pfad: eine Rohimport-Seite je Strom, danach höchstens ein neuer nativer Claim mit getrennten Owner-/Payout-Belegen und bestehendem zentralem Preisanker. Historische 388/4/3-Referenzen geschützt.

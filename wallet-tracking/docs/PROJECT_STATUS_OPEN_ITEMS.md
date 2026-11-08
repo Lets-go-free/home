@@ -1,6 +1,6 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 13:25:24 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.05, Build 20261108-132524.
+**Dokumentationsstand:** 08.11.2026 20:29:33 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.05, Build 20261108-132524 (unverändert; Live-Nachtrag).
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
@@ -13,7 +13,7 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - 3 Transaktionen mit Reward=0 bei Blöcken 403'915 (Bot 37174), 10'791'488 (Bot 10295), 11'254'937 (Bot 10294): nach 8.03 **live als `no_payout_evidence` klassifiziert**, TX-/Token-/Internal-Coverage vollständig, keine Token-Transfers und 17/7/7 interne Aufrufe ohne erkannten Eingang. Dauerhafte Speicherung separat per SQL bestätigt: `payout_checked_at` 08.11.2026 12:45:20–12:45:21 CET, zu diesem Zeitpunkt je zwei Protokolleinträge und passender letzter Status. Anschliessende erneute manuelle Prüfung ebenfalls erfolgreich (`noPayoutEvidenceClaims=3`, `payoutsNeedingReview=0`, `verifiedPayoutClaims=0`, `pendingPayoutChecks=4`, keine konkurrierenden Skips). Explorer-indexierter Negativbefund, kein endgültiges On-Chain-Nullurteil.
 - Rohdaten-Import und Klassifikation liefen kontrolliert/manuell; produktiver DAO-Rewards-Worker und Cron bleiben deaktiviert (`DAO_REWARD_ENABLE_LIVE_WORKER=false`). Kein vollständiger End-to-End-Live-Test neuer Rewards/Referral/Bot-Zuordnung.
 
-## Phase 8.05 – manueller Einzel-Claim-Pfad implementiert, Live-Lauf offen
+## Phase 8.05 – Einzel-Claim-Pfad implementiert, Leerlauf live bestätigt
 
 - Analyse: bisheriger manueller Rohimport endete vor Ownership/Payout/Preis/kanonischer Speicherung; allgemeine Worker-Prüflisten konnten alte Fälle erneut behandeln. Neue geschützte Admin-Route `process-next-native-claim-test-wallet` verbindet die vorhandenen Bausteine für genau einen neuen nativen Claim; feste Testwallet, Admin-JWT, Test-Import-Flag und deaktivierter Live-Worker bleiben Pflicht.
 - Höchstens eine Rohdaten-Seite je Strom. Bei unvollständigem TX-/Flow-/Referral-Import Status import_partial, kein kanonischer Claim. Nach vollständigem Import SQL-Auswahl höchstens eines neuen Kandidaten: canonical_existing, Preis-Ausnahmen, no_payout_evidence, bereits gespeicherte NFT-Claims und vorhandene positive Transaktions-Rewards ausgeschlossen. Kein Kandidat ergibt legitim no_eligible_claim, nicht automatisch ein Fehler.
@@ -21,7 +21,13 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - Serverseitige service-only Abschluss-RPC sperrt Kandidaten und verwendet vorhandene Locks/Unique-Keys. Eindeutige erfolgreiche Claim-TX, passender Block, genau ein belegter nativer Flow mit Originalbetrag/18 Decimals und keine zusätzlichen eingehenden Assets erforderlich. Höchstens eine neue project_nft_claims-Zeile. Native Menge exakt per Raw×10^-18 normalisieren, bestehende Preise/Rewards/NFT-Daten nicht überschreiben.
 - Bestehende exact-v13-Anker-RPC erhält eine gemeinsame scoped-Implementierung; unveränderter alter Aufruf delegiert an dieselbe Logik. Einzel-Claim-Pfad ergänzt nur fehlende Flow-Preisfelder genau dieser TX aus vorhandenem exaktem Zielanker. Keine neue Preisberechnung, keine Nachbarblock-/Predecessor-Route. Fehlender Anker, fehlende Ownership und uneindeutige Belege bleiben sichtbar blocked.
 - Drei neue interne Kandidatenfelder claim_pipeline_status/reason/checked_at; pending, blocked oder completed. Blockierte Fälle nach 24h erneut auswählbar, optional manueller retryBlocked=true ohne Wartezeit; neue pending zuerst. Wiederholung vollständiger Claims erstellt nichts erneut. Abschlussfehler rollen Preisergänzung/Claim-Neuanlage/Abschlussstatus zurück; vorgelagerte Rohdaten-/Payout-Schritte sind absichtlich separat dauerhaft und wiederholbar.
-- Migration `20261108132000_dao_single_native_claim_pipeline_805.sql`, danach index.ts aktualisieren, vorhandenes Hilfsmodul beibehalten. 173 lokale DAO-/Reward-Tests inkl. PostgreSQL bestanden. Kein 8.05-Live-Lauf. Der tägliche Job bleibt staged statt completed; neue Route verändert die Tagesqueue nicht. DAO-Cron und Live-Worker aus.
+- Migration `20261108132000_dao_single_native_claim_pipeline_805.sql`, danach index.ts aktualisieren, vorhandenes Hilfsmodul beibehalten. 173 lokale DAO-/Reward-Tests inkl. PostgreSQL bestanden. Leerlauf live bestätigt; neue native Claim-Neuanlage weiterhin nicht live geprüft. Der tägliche Job bleibt staged statt completed; neue Route verändert die Tagesqueue nicht. DAO-Cron und Live-Worker aus.
+
+### 8.05-Live-Nachtrag · 08.11.2026 20:29:33 CET
+
+8.05-Migration und index.ts-Deployment sind erfolgt. Der manuelle Einzel-Claim-Aufruf ergab no_eligible_claim / claimsCreated=0. TX-, Flow- und Referral-Import jeweils complete, incremental-delta, newBlocksObserved=false und upToDate=true bezogen auf die jeweilige Explorer-Ereignisliste. Gelesene Ereignisse: 36 TXs, 16 Flows, ein gezielter Referral-Flow und 36 beobachtete native Claim-Flows/Kandidaten; das sind Beobachtungszähler, keine bestätigten DB-Neuanlagen. Obere Ereignisblöcke unverändert 15'670'355 / 14'896'984 / 13'390'295. Kein Beweis einer unabhängigen Prüfung bis zum aktuellen Chain-Tip.
+
+Separate Live-SQL-Kontrolle danach bestätigt exakt: 395 Kandidaten, 388 canonical_existing_verified, vier frühe payout-verifizierte Preis-Ausnahmen, drei no_payout_evidence, null offene zusätzliche Payouts und null pipeline-blocked. Damit sind inkrementeller Leerlauf und Schutz des Referenzbestands live belegt. Ein tatsächlich neuer Claim inklusive kanonischer Neuanlage ist durch diesen Lauf ausdrücklich noch nicht live geprüft.
 
 ## Phase 8.04 – begrenzte positive Payout-Prüfung live bestätigt
 
@@ -49,15 +55,17 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - Kontrollierter Admin-Testmodus für maximal drei Null-Reward-TXs der fest hinterlegten Testwallet vorbereitet. Lokal synthetische Fixtures geprüft; die drei echten Fälle sind inzwischen live als no_payout_evidence geprüft und dauerhaft bestätigt (siehe oben). Vollständigkeit gilt für Explorer-Indexdaten, nicht als unabhängig verifizierter On-Chain-Negativnachweis.
 - 8.02-Migration `20261108111030_dao_no_payout_evidence_802.sql` erfolgreich live ausgeführt; der erste manuelle Drei-TX-Test ist oben unter 8.03 dokumentiert. Die damaligen 131 lokalen Tests sind durch insgesamt 137 Tests in 8.03 ergänzt. DAO-Cron und `DAO_REWARD_ENABLE_LIVE_WORKER` bleiben deaktiviert.
 
-## Unmittelbar nächster Schritt
+## Unmittelbar nächster Entwicklungsschritt
 
-Nur Migration `20261108132000_dao_single_native_claim_pipeline_805.sql` vollständig ausführen. Mehrere DDL-/Funktionsanweisungen in einer atomaren Transaktion, keine SELECT-Resultsets, keine automatische Reward-Buchung. Erst nach Rückmeldung weitere Deployment-/Testanweisung. Kein Cron und kein Live-Worker.
+Als Nächstes für 8.06 ERC20-Claim-Auszahlungen im selben begrenzten Einzel-Claim-Pfad analysieren und ergänzen: vorhandene verifizierte Contract-/Asset-Zuordnung für wAPTM, wUSDT/wUSDC, exakte Rawbeträge/Decimals, zentrale historische Bewertung und idempotente Speicherung. Keine Token-Erkennung allein per Symbol und keine neue Preisroute. Native Neuanlage live weiter offen, bis ein echter unverarbeiteter Claim vorliegt; historische Referenzfälle nicht künstlich zurücksetzen. Referral, neue-Miner-Bot-Zuordnung, bestätigte Blockfenster und vollständige Tagesqueue bleiben separat offen.
+
+DAO-Cron und DAO_REWARD_ENABLE_LIVE_WORKER bleiben deaktiviert. Für diesen Dokumentationsnachtrag keine SQL-Ausführung und kein Edge-Deployment.
 
 ## Danach weiter offen – DAO-Reward-Pipeline
 
 - Vier frühe positive Payouts mit 8.04 live, dauerhaft und wiederholungssicher bestätigt. USD bleibt NULL, Preis-Ausnahme erhalten, keine canonical_existing-Kennzeichnung. Dieser Prüfschritt ist abgeschlossen.
 - Drei Null-Reward-TXs einschliesslich dauerhaftem Status und manuell erzwungener Neuprüfung abgeschlossen. Automatische Wiederaufnahme nach echter 24h-Wartezeit sowie späterer positiver Evidenz noch nicht live getestet; lokale Tests decken diese Übergänge ab. Die vier frühen positiven Payouts sind inzwischen durch 8.04 bestätigt; weitere Zuordnungs-/Pipeline-Schritte bleiben separat zu prüfen.
-- Neuen nativen Einzel-Claim-Pfad 8.05 live prüfen; bei no_eligible_claim ist aktuell kein neuer unverarbeiteter Claim vorhanden, keine historischen Referenzfälle künstlich zurücksetzen. Fehlende zentrale Anker bleiben echte Blockierung. Anschliessend den manuellen Pfad in die vollständige inkrementelle Tagesqueue integrieren.
+- Nativer Einzel-Claim-Pfad 8.05: Leerlauf live bestätigt, tatsächliche neue Claim-Neuanlage noch live prüfen; keine historischen Referenzfälle künstlich zurücksetzen. Fehlende zentrale Anker bleiben echte Blockierung. Anschliessend den manuellen Pfad in die vollständige inkrementelle Tagesqueue integrieren.
 - Einen neuen DAO1/APTMDAO-Claim Ende-zu-Ende durch den serverseitigen inkrementellen Job prüfen: Wallet/Owner/NFT/Bot-Identität, native APTM und relevante Token (alte wAPTM, neue wUSDT/wUSDC), separate Referral-wUSDT-Evidenz, zentrale historische Preisermittlung, Dublettensicherheit, User-Isolation, Teilfehler und vollständige Queue-Abarbeitung.
 - Fehlende zukünftige Flows aus gezieltem TX-Nachweis kontrolliert in den bestehenden kanonischen Import übernehmen; 8.02 protokolliert solche positiven Funde zunächst als Review, statt neue Beträge zu erfinden. Atomare kanonische Verarbeitung, feste bestätigte Blockfenster/unabhängige Coverage, faire Wiederholungssteuerung und verbleibende Preis-/Referral-Schritte fehlen weiterhin.
 - Erst nach bestandenem manuellen/produktnahen Test DAO-Cron separat vom Wallet-Bestandsjob aktivieren. Geplante Fenster Schweizer Zeit: Bestände 01:00–04:00, DAO 04:05–05:30, TLN/VOW 05:35–07:00. Keine stillschweigende Aktivierung.
