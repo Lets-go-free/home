@@ -874,6 +874,63 @@ async function auditTestClaims(){
   notice:'Read-only categorisation. A positive canonical amount or an existing USD value alone does not verify an on-chain payout. Never backfill prices before the exact anchor window using a predecessor or guessed price. No claim, price, reward, cursor, wallet or queue writes.'};
 }
 
+// Read-only reconciliation of existing canonical amounts against raw on-chain
+// evidence. This is NOT payout verification: any missing, conflicting or
+// untrusted proof stays unclassified. Wallet is fixed server-side.
+async function reconcileTestClaims(){
+ const matches=await findInspectWalletMatches();
+ if(matches.length!==1)throw Error('Expected exactly one registered test wallet');
+ const job=matches[0], address=INSPECT_ADDRESS;
+ const {data:cs,error:ce}=await sb.from('dao_reward_claim_candidates')
+  .select('tx_hash,canonical_existing_verified')
+  .eq('user_id',job.user_id).eq('wallet_id',job.id)
+  .eq('project_key',PROJECT).eq('chain_key',CHAIN).limit(1000);
+ if(ce)throw ce;
+ if((cs||[]).length===1000)throw Error('Candidate limit reached: paginate before reconciliation');
+ const totals={candidates:(cs||[]).length,alreadyMarked:0,
+  pricedUnmarked:0,strictNativeMatches:0,strictTokenPayoutEvidence:0,
+  noVerifiedPayout:0,ambiguousOrDifferentAsset:0,otherNotEligible:0};
+ const examples:any[]=[];
+ for(let i=0;i<(cs||[]).length;i+=50){
+  const batch=(cs||[]).slice(i,i+50),hashes=batch.map(c=>c.tx_hash);
+  const [tr,fr]=await Promise.all([
+   sb.from('project_transactions').select('tx_hash,selector,status,to_address,claim_reward_aptm,claim_reward_usd')
+    .eq('user_id',job.user_id).eq('wallet_id',job.id).eq('project_key',PROJECT).eq('chain_key',CHAIN).in('tx_hash',hashes),
+   sb.from('project_transaction_asset_flows').select('tx_hash,direction,amount_raw,flow_key,token_address,token_decimals,counterparty_address')
+    .eq('user_id',job.user_id).eq('wallet_id',job.id).eq('project_key',PROJECT).eq('chain_key',CHAIN).in('tx_hash',hashes)
+  ]);
+  if(tr.error)throw tr.error;if(fr.error)throw fr.error;
+  const txs=new Map((tr.data||[]).map(t=>[lower(t.tx_hash),t]));
+  const grouped=new Map<string,any[]>();
+  for(const f of fr.data||[]){const h=lower(f.tx_hash);grouped.set(h,[...(grouped.get(h)||[]),f])}
+  for(const c of batch){
+   if(c.canonical_existing_verified===true){totals.alreadyMarked++;continue}
+   const t=txs.get(lower(c.tx_hash));
+   if(!t||!isSuccessfulClaim(t)||!(Number(t.claim_reward_aptm)>0)||!(Number(t.claim_reward_usd)>0)){
+    totals.otherNotEligible++;continue;
+   }
+   totals.pricedUnmarked++;
+   const evidence=verifiedPayoutEvidence(t,grouped.get(lower(c.tx_hash))||[],address);
+   if(evidence.status!=='verified'){
+    totals.noVerifiedPayout++;
+    if(examples.length<20)examples.push({txHash:c.tx_hash,reason:evidence.reason});
+    continue;
+   }
+   if(evidence.token_address==='native'&&evidence.token_decimals===18&&
+      Number(evidence.amount_raw)/1e18===Number(t.claim_reward_aptm)){
+    totals.strictNativeMatches++;continue;
+   }
+   if(evidence.token_address!=='native'){
+    totals.strictTokenPayoutEvidence++;
+   }else totals.ambiguousOrDifferentAsset++;
+   if(examples.length<20)examples.push({txHash:c.tx_hash,reason:'payout-not-equal-to-canonical-aptm'});
+  }
+ }
+ return {ok:true,mode:'read-only-existing-claim-reconciliation',project:PROJECT,chain:CHAIN,
+  walletAddress:INSPECT_ADDRESS,totals,examples,
+  notice:'Read-only, strict native amount match is diagnostic only; token payouts need canonical asset and ownership checks. No automatic marking or canonical reward modification.'};
+}
+
 // The manual inspector uses a logged-in ADMIN account, never the daily job secret.
 // Its fixed-address scope is enforced server-side and its body cannot select a wallet.
 async function authenticateInspectAdmin(request:Request){
@@ -911,6 +968,15 @@ Deno.serve(async request=>{
    const permission=await authenticateInspectAdmin(request);
    if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
    return Response.json(await auditTestClaims());
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(body?.mode==='reconcile-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_INSPECT')!=='true')
+   return Response.json({error:'Manual read-only reconciliation disabled'},{status:403});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   return Response.json(await reconcileTestClaims());
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='classify-existing-test-wallet'){

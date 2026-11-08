@@ -179,3 +179,8 @@ Diese README.md wird künftig aktualisiert. Ältere README-7.xx.md sind Release-
 - Wichtig: `canonical_existing_verified` ist eine **separate boolesche Spalte**, nicht `status='canonical_existing'`. Positive `claim_reward_aptm` und vorhandene USD-Bewertung sind noch kein gesonderter Auszahlungsnachweis.
 - Die bestehende zentral verwendete `wallettracking_dao_apply_exact_target_anchors`-Funktion verlangt `block_number >= 88356`. Vier positiv bezifferte historische Claims (Blöcke 60731, 72665, 81698, 81700) liegen darunter. Keine neue/fiktive Preisquelle, kein Predecessor-Fallback, kein Umbewerten.
 - Keine Datenmigration, keine automatischen Änderungen. DAO-Live-Worker und Cron bleiben aus.
+
+### 7.97 · DAO-Claim-Abgleich vor Kennzeichnung
+- Neuer nur lesender Admin-Testmodus `reconcile-test-wallet` trennt bestehende Markierungen, exakte Native-Payout-Nachweise, Token-Auszahlungen und fehlende Blockchain-Auszahlungsbelege. Kein automatisches Markieren der 288 USD-bewerteten Claims.
+- Migration erweitert bestehende Klassifizierungs-RPC kontrolliert auf ältere Claim-Selektoren, **nur** bei exakter nativer Zahlung mit identischem Betrag und eindeutiger Transaktion. ERC20 und unvollständige Belege bleiben offen.
+- `DAO_REWARD_ENABLE_LIVE_WORKER=false`, Cron aus. Keine Änderung der kanonischen Rewards, USD-Preise, NFT-Zuordnung und Wallet-Snapshots.
