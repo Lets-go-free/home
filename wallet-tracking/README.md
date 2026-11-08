@@ -172,3 +172,10 @@ Diese README.md wird künftig aktualisiert. Ältere README-7.xx.md sind Release-
 - Abgeschlossene Referral-/Flow-Scans werden als `incremental-delta` ausgewiesen. Ohne neuere Blocks (`upToDate: true`) wird der verifizierte Cursor nicht erneut geschrieben. Der erste Explorer-Seitenaufruf bleibt für den Sicherheits-Overlap notwendig.
 - Historisch unvollständige Transaktionen bleiben im Modus `resume-history`; ein manueller Import verarbeitet weiterhin maximal eine Seite je Datenstrom.
 - Kein Cron und keine automatische Reward-Freigabe.
+
+### 7.96 · DAO-Reward-Bestandsaudit (nur lesend)
+- Neuer manuell geschützter Edge-Function-Modus `audit-test-wallet` für die feste DAO1-Testwallet. Nur Benutzer mit Admin-UUID und `DAO_REWARD_ENABLE_TEST_INSPECT=true`.
+- 395 Claim-Kandidaten (bzw. aktuelle tatsächliche Anzahl) nach tatsächlichem DB-Stand in getrennte Klassen: bereits kanonisch markiert, bewertet ohne separate Kennzeichnung, Null-/fehlende Rewards, fehlende historische Bewertung unter/über der exact-v13-Untergrenze. Ergebnis enthält Methodenverteilung und einzelne Ausnahmen.
+- Wichtig: `canonical_existing_verified` ist eine **separate boolesche Spalte**, nicht `status='canonical_existing'`. Positive `claim_reward_aptm` und vorhandene USD-Bewertung sind noch kein gesonderter Auszahlungsnachweis.
+- Die bestehende zentral verwendete `wallettracking_dao_apply_exact_target_anchors`-Funktion verlangt `block_number >= 88356`. Vier positiv bezifferte historische Claims (Blöcke 60731, 72665, 81698, 81700) liegen darunter. Keine neue/fiktive Preisquelle, kein Predecessor-Fallback, kein Umbewerten.
+- Keine Datenmigration, keine automatischen Änderungen. DAO-Live-Worker und Cron bleiben aus.

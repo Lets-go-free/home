@@ -802,6 +802,78 @@ async function inspectTestAddress(){
   walletAddress:INSPECT_ADDRESS,matchingWallets:matches.length,wallets,
   notice:'No wallet data, reward sum, snapshot, scan cursor or queue row was modified.'};
 }
+// Read-only reconciliation audit: never infer an actual payout from a positive
+// canonical claim amount alone. The first eligible exact-v13 APTM price block
+// in migration 7.88 is 88356, so earlier blocks cannot be filled by fallback.
+// This audit is deliberately restricted to the single already-registered test
+// wallet and returns no raw wallet identifiers or arbitrary user records.
+const APTM_EXACT_ANCHOR_MIN_BLOCK=88356;
+async function auditTestClaims(){
+ const matches=await findInspectWalletMatches();
+ if(matches.length!==1)throw Error('Expected exactly one registered test wallet');
+ const job=matches[0];
+ const {data:candidates,error:ce}=await sb.from('dao_reward_claim_candidates')
+  .select('tx_hash,claim_block,status,payout_status,canonical_existing_verified')
+  .eq('user_id',job.user_id).eq('wallet_id',job.id)
+  .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+  .order('claim_block',{ascending:true}).limit(1000);
+ if(ce)throw ce;
+ const rows=candidates||[];
+ if(rows.length===1000)throw Error('Audit exceeds 999 claim candidates; paginate instead of returning a partial result');
+ const known=new Map<string,any>();
+ for(let i=0;i<rows.length;i+=80){
+  const hashes=rows.slice(i,i+80).map(c=>c.tx_hash);
+  const {data:txs,error:te}=await sb.from('project_transactions')
+   .select('tx_hash,block_number,selector,claim_reward_aptm,claim_reward_usd,claim_nft_id,price_source')
+   .eq('user_id',job.user_id).eq('wallet_id',job.id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+   .in('tx_hash',hashes);
+  if(te)throw te;
+  for(const tx of txs||[])known.set(lower(tx.tx_hash),tx);
+ }
+ const buckets=new Map<string,{category:string;count:number}>();
+ const selectors=new Map<string,number>();
+ const exceptions:any[]=[];
+ const totals={candidates:rows.length,canonicalExistingVerified:0,
+  pending:0,payoutVerified:0,positiveAptm:0,pricedUsd:0,botAssigned:0,
+  noTransaction:0,zeroOrMissingReward:0,positiveUnpricedBeforeExactAnchor:0,
+  positiveUnpricedAfterExactAnchor:0,pricedButNotMarkedExisting:0};
+ for(const c of rows){
+  const t=known.get(lower(c.tx_hash));
+  const verified=c.canonical_existing_verified===true;
+  if(verified)totals.canonicalExistingVerified++;
+  if(c.status==='pending')totals.pending++;
+  if(c.payout_status==='verified')totals.payoutVerified++;
+  const selector=String(t?.selector||'missing');
+  selectors.set(selector,(selectors.get(selector)||0)+1);
+  const reward=Number(t?.claim_reward_aptm||0);
+  const priced=t?.claim_reward_usd!==null&&t?.claim_reward_usd!==undefined;
+  const block=Number(t?.block_number??c.claim_block);
+  if(t&&reward>0)totals.positiveAptm++;
+  if(t&&priced)totals.pricedUsd++;
+  if(t&&t.claim_nft_id!==null&&t.claim_nft_id!==undefined)totals.botAssigned++;
+  let category:string;
+  if(!t){category='transaction_missing';totals.noTransaction++}
+  else if(!(reward>0)){category='zero_or_missing_reward';totals.zeroOrMissingReward++}
+  else if(!priced&&block<APTM_EXACT_ANCHOR_MIN_BLOCK){category='unpriced_before_exact_anchor';totals.positiveUnpricedBeforeExactAnchor++}
+  else if(!priced){category='unpriced_requires_exact_anchor_review';totals.positiveUnpricedAfterExactAnchor++}
+  else if(verified){category='priced_and_existing_verified'}
+  else {category='priced_not_marked_existing';totals.pricedButNotMarkedExisting++}
+  const entry=buckets.get(category)||{category,count:0};entry.count++;buckets.set(category,entry);
+  if(!t||!(reward>0)||!priced){
+   exceptions.push({txHash:c.tx_hash,block,selector,aptmReward:t?.claim_reward_aptm??null,
+    usdReward:t?.claim_reward_usd??null,botId:t?.claim_nft_id??null,
+    priceSource:t?.price_source??null,category});
+  }
+ }
+ return {ok:true,mode:'read-only-reward-audit',project:PROJECT,chain:CHAIN,
+  walletAddress:INSPECT_ADDRESS,exactAnchorMinimumBlock:APTM_EXACT_ANCHOR_MIN_BLOCK,
+  totals,categories:[...buckets.values()].sort((a,b)=>a.category.localeCompare(b.category)),
+  bySelector:[...selectors].map(([selector,count])=>({selector,count})),
+  exceptions:exceptions.slice(0,100),exceptionsTruncated:exceptions.length>100,
+  notice:'Read-only categorisation. A positive canonical amount or an existing USD value alone does not verify an on-chain payout. Never backfill prices before the exact anchor window using a predecessor or guessed price. No claim, price, reward, cursor, wallet or queue writes.'};
+}
+
 // The manual inspector uses a logged-in ADMIN account, never the daily job secret.
 // Its fixed-address scope is enforced server-side and its body cannot select a wallet.
 async function authenticateInspectAdmin(request:Request){
@@ -830,6 +902,15 @@ Deno.serve(async request=>{
    const permission=await authenticateInspectAdmin(request);
    if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
    return Response.json(await inspectTestAddress());
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(body?.mode==='audit-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_INSPECT')!=='true')
+   return Response.json({error:'Manual read-only audit disabled'},{status:403});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   return Response.json(await auditTestClaims());
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='classify-existing-test-wallet'){
