@@ -1,3 +1,9 @@
+## 8.04 · 08.11.2026 13:02:39 CET · Build 20261108-130239
+
+- Kontrollierter Admin-Test für maximal vier offene native Payouts: bestehende TX-/Flow-/Betragsevidenz unabhängig vom USD-Kurs, atomar und wiederholbar. Keine neuen Rewards/Preise oder canonical_existing-Kennzeichnungen.
+- Exakte Grenze 1'000 Wei ohne rundende Division; fehlende/mehrdeutige Belege bleiben Review, negative und bereits verifizierte Fälle geschützt.
+- Neue service-only SQL-Funktion, später index.ts deployen; Helper aus 8.03 unverändert. 151 lokale Tests inkl. PostgreSQL bestanden, Live-Test offen. DAO-Cron bleibt aus.
+
 ### Live-Nachtrag 8.03 · 08.11.2026 12:49:07 CET
 
 - Drei Null-Reward-TXs vollständig geprüft und dauerhaft als no_payout_evidence bestätigt; SQL-Persistenz und erneute manuelle Prüfung erfolgreich. Automatischer 24h-Wiederanlauf bleibt separat offen.

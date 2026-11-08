@@ -1058,6 +1058,24 @@ Deno.serve(async request=>{
     notice:'Only staging payout evidence and its bounded history were updated. Indexed completeness is not an independent on-chain zero proof. No canonical rewards, prices, NFT ownership, cursors or queue writes.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
+ if(body?.mode==='check-pending-native-payouts-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual positive payout check disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before positive payout check'},{status:409});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const {data,error}=await sb.rpc('wallettracking_dao_check_pending_native_payouts',{
+    p_user:selected.user_id,p_wallet:selected.id,p_limit:4});
+   if(error)throw error;
+   return Response.json({ok:true,mode:'manual-pending-native-payout-check',...(data||{}),
+    notice:'Only candidate payout evidence and history were updated from existing native flows. No historical USD price was required or created. No canonical-existing flags, rewards, NFT ownership, cursors, queue or snapshots were changed.'});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
  if(body?.mode==='classify-existing-test-wallet'){
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
    return Response.json({error:'Manual staging classification disabled'},{status:403});

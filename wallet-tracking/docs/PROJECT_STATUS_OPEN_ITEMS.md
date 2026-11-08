@@ -1,6 +1,6 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 12:49:07 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.03, Build 20261108-124104 (unverändert; Dokumentationsnachtrag).
+**Dokumentationsstand:** 08.11.2026 13:02:39 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.04, Build 20261108-130239.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
@@ -12,6 +12,15 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - 4 frühe positive APTM-Claims bei Blöcken 60'731, 72'665, 81'698, 81'700: `audit_classification=unpriced_before_exact_anchor` und `audit_classified_at` **dauerhaft in Supabase verifiziert**. Zentraler exakter Preisanker beginnt erst bei Block 88'356. Kein Ersatzkurs, USD-Wert bleibt `NULL`; Klassifikation ist unabhängig von Auszahlungs-Verifikation. Aktuelle Live-SQL-Abfrage bestätigt diese vier als die verbleibenden `payout_status=pending`-Fälle: APTM-Mengen 4.650944472418587, 4.650944472418587, 4.031915382788697 und 4.031915382788697. Ihre Auszahlung ist damit noch nicht verifiziert.
 - 3 Transaktionen mit Reward=0 bei Blöcken 403'915 (Bot 37174), 10'791'488 (Bot 10295), 11'254'937 (Bot 10294): nach 8.03 **live als `no_payout_evidence` klassifiziert**, TX-/Token-/Internal-Coverage vollständig, keine Token-Transfers und 17/7/7 interne Aufrufe ohne erkannten Eingang. Dauerhafte Speicherung separat per SQL bestätigt: `payout_checked_at` 08.11.2026 12:45:20–12:45:21 CET, zu diesem Zeitpunkt je zwei Protokolleinträge und passender letzter Status. Anschliessende erneute manuelle Prüfung ebenfalls erfolgreich (`noPayoutEvidenceClaims=3`, `payoutsNeedingReview=0`, `verifiedPayoutClaims=0`, `pendingPayoutChecks=4`, keine konkurrierenden Skips). Explorer-indexierter Negativbefund, kein endgültiges On-Chain-Nullurteil.
 - Rohdaten-Import und Klassifikation liefen kontrolliert/manuell; produktiver DAO-Rewards-Worker und Cron bleiben deaktiviert (`DAO_REWARD_ENABLE_LIVE_WORKER=false`). Kein vollständiger End-to-End-Live-Test neuer Rewards/Referral/Bot-Zuordnung.
+
+## Phase 8.04 – begrenzte positive Payout-Prüfung implementiert, Live-Test offen
+
+- Neuer Admin-Modus `check-pending-native-payouts-test-wallet`: echter Admin-JWT, `DAO_REWARD_ENABLE_TEST_IMPORT=true`, Live-Worker aus und genau eine serverseitig festgelegte registrierte Testwallet. Keine vom Request wählbaren User, Wallets, TXs oder Batchgrössen; maximal vier Kandidaten.
+- Service-only RPC `wallettracking_dao_check_pending_native_payouts` prüft nur `payout_status=pending` und nicht kanonisch gekennzeichnete Kandidaten. Beide Claim-Selektoren unterstützt; bei New-Miner-Selector nur der bereits im bisherigen Abgleich verifizierte Miner-Vertrag. Eindeutige erfolgreiche TX, gleicher Block, genau ein positiver nativer `claim-native:<tx>`-Flow mit 18 Decimals und keine widersprüchlichen/zusätzlichen eingehenden Assets.
+- Bestehende positive APTM-Menge mit Original-Wei vergleichen. Dieselbe fachliche Toleranz von 1e-15 APTM = 1'000 Wei, als exakte Ganzzahl-/Dezimaldifferenz ohne potenziell rundende Division. 1'000 Wei akzeptiert, 1'001 Wei abgelehnt. Historische Preise bleiben unabhängig; USD NULL blockiert keine Payout-Verifikation.
+- Atomare Ausführung mit Kandidaten-Zeilensperren, Lese-Sperren der geprüften vorhandenen TX-/Flow-Zeilen und Wiederverwendung der 8.02-Persistenz-/History-RPC. Fehler im Batch rollen alle Payout-Schreibvorgänge dieses Aufrufs zurück. Wiederholungen prüfen nur verbleibende pending-Fälle; verified, no_payout_evidence und canonical_existing bleiben unangetastet. Review-Fälle werden von diesem speziellen Modus nicht automatisch wiederholt.
+- Fehlende/ungültige/mehrdeutige Belege: needs_review mit Grund und Protokoll. Dieser Pass schreibt keine Flows/Claims/Preise/NFTs, keine canonical_existing-Kennzeichnung, keine Scan-Cursor oder Queue; nur Payout-Kandidaten-Metadaten. Positive Existenzprüfung ist nicht vollständige neue TX-Coverage; `payout_coverage.complete=false` bleibt dafür ehrlich.
+- Migration `20261108125822_dao_pending_native_payout_checks_804.sql`, danach später nur `index.ts` deployen; vorhandenes 8.03-Hilfsmodul bleibt. 151 lokale DAO-/Reward-Tests inkl. PostgreSQL bestanden. **Keine 8.04-Live-Klassifikation bestätigt.** DAO-Cron bleibt aus.
 
 ## Phase 8.03 – Internal-TX-Erfolgsprüfung korrigiert
 
@@ -30,12 +39,13 @@ Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status h
 - Kontrollierter Admin-Testmodus für maximal drei Null-Reward-TXs der fest hinterlegten Testwallet vorbereitet. Lokal synthetische Fixtures geprüft; die drei echten Fälle sind inzwischen live als no_payout_evidence geprüft und dauerhaft bestätigt (siehe oben). Vollständigkeit gilt für Explorer-Indexdaten, nicht als unabhängig verifizierter On-Chain-Negativnachweis.
 - 8.02-Migration `20261108111030_dao_no_payout_evidence_802.sql` erfolgreich live ausgeführt; der erste manuelle Drei-TX-Test ist oben unter 8.03 dokumentiert. Die damaligen 131 lokalen Tests sind durch insgesamt 137 Tests in 8.03 ergänzt. DAO-Cron und `DAO_REWARD_ENABLE_LIVE_WORKER` bleiben deaktiviert.
 
-## Unmittelbar nächster Entwicklungsschritt
+## Unmittelbar nächster Schritt
 
-8.04 vorbereiten: kontrollierten, begrenzten Admin-Pfad für die noch offenen positiven Payout-Kandidaten entwickeln und vorhandene native/Token-Flows gegen die vier frühen Claims prüfen, unabhängig von fehlenden USD-Kursen. Zuerst vorhandene Evidenz verwenden; keine neue Reward-Buchung, Preisannahme oder kanonische Kennzeichnung ohne Nachweis. Fehlende/mehrdeutige Auszahlungen bleiben offen. Erst Analyse/Freigabe, danach Umsetzung; DAO-Cron bleibt aus.
+Nur die neue 8.04-Migration `20261108125822_dao_pending_native_payout_checks_804.sql` vollständig ausführen (Funktionsdefinition in einer DDL-Transaktion, keine SELECT-Resultsets). Rückmeldung abwarten; dann erst Deployment/Test konkret anleiten. Kein Cron und kein Live-Worker.
 
 ## Danach weiter offen – DAO-Reward-Pipeline
 
+- Die vier frühen positiven Payouts mit 8.04 live prüfen und separat Persistenz/Wiederholung nachweisen. Kein USD-Ersatzkurs und keine automatische canonical_existing-Kennzeichnung.
 - Drei Null-Reward-TXs einschliesslich dauerhaftem Status und manuell erzwungener Neuprüfung abgeschlossen. Automatische Wiederaufnahme nach echter 24h-Wartezeit sowie späterer positiver Evidenz noch nicht live getestet; lokale Tests decken diese Übergänge ab. Vier frühe positive Payouts weiterhin separat offen.
 - Einen neuen DAO1/APTMDAO-Claim Ende-zu-Ende durch den serverseitigen inkrementellen Job prüfen: Wallet/Owner/NFT/Bot-Identität, native APTM und relevante Token (alte wAPTM, neue wUSDT/wUSDC), separate Referral-wUSDT-Evidenz, zentrale historische Preisermittlung, Dublettensicherheit, User-Isolation, Teilfehler und vollständige Queue-Abarbeitung.
 - Fehlende zukünftige Flows aus gezieltem TX-Nachweis kontrolliert in den bestehenden kanonischen Import übernehmen; 8.02 protokolliert solche positiven Funde zunächst als Review, statt neue Beträge zu erfinden. Atomare kanonische Verarbeitung, feste bestätigte Blockfenster/unabhängige Coverage, faire Wiederholungssteuerung und verbleibende Preis-/Referral-Schritte fehlen weiterhin.

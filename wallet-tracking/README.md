@@ -1,12 +1,14 @@
-**WalletTracking Phase 8.03 · Build 20261108-124104 · 08.11.2026 12:41:04 CET**
+**WalletTracking Phase 8.04 · Build 20261108-130239 · 08.11.2026 13:02:39 CET**
 
-DAO-Auszahlungsprüfung korrigiert: Blockscout liefert interne Aufrufe mit `success: true`, häufig ohne `status`. Dies wird jetzt als Erfolgsnachweis akzeptiert; ein expliziter Erfolgsstatus bleibt ebenfalls unterstützt. `success: false`, Fehler, widersprüchliche/ungeklärte Angaben oder fehlende Erfolgsnachweise bleiben `needs_review`.
+Neuer kontrollierter Admin-Prüfpfad für maximal vier offene native Auszahlungen der bestehenden DAO-Testwallet. Er prüft erfolgreiche DAO1-/APTMDAO-Claim-TXs, den eindeutigen positiven nativen Flow, Block-/Asset-/Decimal-Zuordnung und den Betrag gegen den vorhandenen Claim. USD-Bewertung ist keine Voraussetzung. Die bisherige Toleranz von 0.000000000000001 APTM wird als exakt 1'000 Wei geprüft, ohne rundende Division. Fehlende, gemischte, ungültige oder abweichende Belege bleiben `needs_review`.
 
-**Live-Stand (Nachtrag 08.11.2026 12:49:07 CET):** Migration und Deployment erfolgreich. Alle drei Null-Reward-TXs live und dauerhaft als `no_payout_evidence` bestätigt, vollständige Explorer-Coverage (17/7/7 interne Aufrufe, keine erkennbaren Eingänge), SQL-Persistenz und anschliessende erneute manuelle Prüfung erfolgreich. Die vier verbleibenden `pending`-Payouts sind genau die frühen positiven Claims mit `unpriced_before_exact_anchor`, USD NULL. Deren Auszahlungs-Verifikation bleibt offen; Preis-Ausnahme und Zahlung sind unabhängig.
+Es werden ausschliesslich Payout-Metadaten und Prüfprotokolle in der Kandidatenliste geschrieben. `audit_classification`, `canonical_existing_verified`, historische Preise, Rewards, NFT-Zuordnungen und Snapshots bleiben erhalten. Bereits verifizierte/kanonisch gekennzeichnete Fälle und die drei `no_payout_evidence`-Fälle sind vom neuen Pfad ausgeschlossen. Wiederholung ohne noch offene Kandidaten: `checked=0`, keine erneuten Prüfprotokolle.
 
-**Als Nächstes:** kontrollierten begrenzten Admin-Pfad für offene positive Payouts vorbereiten, danach inkrementelle DAO-Reward-Pipeline weiterentwickeln. Keine erneute SQL-Migration oder Neuveröffentlichung der Edge Function für diesen Dokumentationsnachtrag. DAO-Cron und `DAO_REWARD_ENABLE_LIVE_WORKER=false` bleiben unverändert.
+**Nächster Installationsschritt:** `supabase/migrations/20261108125822_dao_pending_native_payout_checks_804.sql` vollständig im Supabase SQL Editor ausführen. Eine atomare Funktionsdefinition in BEGIN/COMMIT, keine SELECT-Resultsets und keine automatische Klassifizierung. Nach Rückmeldung erst weiteres Deployment/Test anleiten. Später muss nur `dao-reward-refresh/index.ts` ersetzt werden; vorhandenes `payout-coverage.ts` aus 8.03 beibehalten. DAO-Cron und `DAO_REWARD_ENABLE_LIVE_WORKER=false` bleiben unverändert.
 
-137 lokale DAO-/Reward-Tests bestanden, einschliesslich sechs neuer Regressionstests mit der gelieferten Explorer-Antwort sowie PostgreSQL-Ausführung der vorhandenen Migration. Aktueller Arbeitsstand: [`docs/PROJECT_STATUS_OPEN_ITEMS.md`](docs/PROJECT_STATUS_OPEN_ITEMS.md). Details: [`docs/releases/8.03-dao-internal-success.md`](docs/releases/8.03-dao-internal-success.md). Vollständige inkrementelle DAO-Reward-Pipeline und TLN/VOW-Job bleiben offen.
+151 lokale DAO-/Reward-Tests inklusive PostgreSQL bestanden. **Keine Live-Ausführung von 8.04**. Bisheriger Live-Stand: 388 kanonische Kennzeichnungen, drei dauerhaft und erneut geprüfte `no_payout_evidence`-Fälle und vier frühe positive Claims mit `unpriced_before_exact_anchor`, USD NULL und noch offenem Auszahlungsstatus. Vollständige inkrementelle Claim-/Referral-/Bot-/Preis-Pipeline und TLN/VOW-Job weiter offen.
+
+Aktueller Status: [`docs/PROJECT_STATUS_OPEN_ITEMS.md`](docs/PROJECT_STATUS_OPEN_ITEMS.md). Details: [`docs/releases/8.04-dao-pending-native-payouts.md`](docs/releases/8.04-dao-pending-native-payouts.md).
 
 ---
 
