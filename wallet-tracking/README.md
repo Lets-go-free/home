@@ -184,3 +184,9 @@ Diese README.md wird künftig aktualisiert. Ältere README-7.xx.md sind Release-
 - Neuer nur lesender Admin-Testmodus `reconcile-test-wallet` trennt bestehende Markierungen, exakte Native-Payout-Nachweise, Token-Auszahlungen und fehlende Blockchain-Auszahlungsbelege. Kein automatisches Markieren der 288 USD-bewerteten Claims.
 - Migration erweitert bestehende Klassifizierungs-RPC kontrolliert auf ältere Claim-Selektoren, **nur** bei exakter nativer Zahlung mit identischem Betrag und eindeutiger Transaktion. ERC20 und unvollständige Belege bleiben offen.
 - `DAO_REWARD_ENABLE_LIVE_WORKER=false`, Cron aus. Keine Änderung der kanonischen Rewards, USD-Preise, NFT-Zuordnung und Wallet-Snapshots.
+
+### 7.98 · Guarded DAO-Kennzeichnung (nur feste Testwallet)
+- `mark-matched-existing-test-wallet` verlangt einen echten Admin-JWT, `DAO_REWARD_ENABLE_TEST_IMPORT=true`, deaktivierten Live-Worker und die erwarteten Zähler `expectedAlreadyMarked` / `expectedStrictMatches`.
+- Neue DB-RPC zählt die tatsächlich streng belegten nativen Zahlungen innerhalb einer Transaktion, verlangt exakt die erwartete Anzahl und markiert nur bislang unmarkierte Kandidaten. Zählabweichungen verursachen kompletten Rollback; wiederholter Aufruf mit neuen Sollzahlen ist idempotent.
+- Bei Ergebnis 284/100: `markedAfter=384`; die vier abweichenden sowie vier frühen unbewerteten und drei Null-Rewards bleiben unverändert. Kein Freigeben neuer Rewards.
+- Automatischer DAO-Cron und Live-Worker bleiben deaktiviert.
