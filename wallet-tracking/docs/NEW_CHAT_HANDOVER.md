@@ -1,13 +1,13 @@
 # Übergabe WalletTracking
 
-Aktueller Code: **Phase 8.03 · Build 20261108-124104**. Zuerst README.md, docs/PROJECT_STATUS_OPEN_ITEMS.md und docs/releases/8.03-dao-internal-success.md lesen.
+Phase 8.03 · Build 20261108-124104; Dokumentationsnachtrag 08.11.2026 12:49:07 CET. README.md und docs/PROJECT_STATUS_OPEN_ITEMS.md zuerst lesen.
 
-Historie unverändert: 388 von 395 Claims kanonisch gekennzeichnet, vier frühe positive Claims dauerhaft unpriced_before_exact_anchor, drei Null-Reward-TXs offen.
+Live bestätigt: historischer Import mit 395 Kandidaten, 388 kanonisch gekennzeichnete Claims. Drei erfolgreiche Null-Reward-TXs wurden nach Parserfix vollständig geprüft (17/7/7 interne Aufrufe, keine Token-Transfers, kein erkennbarer Eingang) und als no_payout_evidence gespeichert. Separate SQL-Abfrage bestätigte vollständige Coverage, Prüfzeitpunkte und je zwei Protokolleinträge; anschliessende erneute manuelle Prüfung wieder erfolgreich mit 3 no_payout_evidence / 0 needs_review / 4 pending. Kein endgültiges On-Chain-Nullurteil.
 
-8.02-SQL erfolgreich ausgeführt; Worker mit index.ts und payout-coverage.ts deployt. Drei-TX-Test ergab 3 needs_review mit internal-outcome-incomplete und 4 pending-Payouts. Ursache anhand echter vollständiger 17-Aufrufe-Antwort der ersten TX belegt: Blockscout sendet success=true und error=null, aber keinen status.
+Vier verbleibende payout_status=pending sind laut Live-SQL genau die positiven frühen Claims in Blöcken 60731, 72665, 81698, 81700. audit_classification=unpriced_before_exact_anchor, USD NULL. Mengen unverändert; Auszahlung noch nicht unabhängig verifiziert. Nicht wegen fehlenden USD-Kurses überspringen und nicht als canonical_existing_verified markieren.
 
-8.03 korrigiert ausschliesslich diese Erfolgsprüfung in payout-coverage.ts. Fehler, false, widersprüchliche oder fehlende Erfolgsnachweise bleiben offen. 137 lokale Tests inkl. realer Internal-Antwort-Fixture und PostgreSQL bestanden; korrigierter Live-Test aller drei TXs noch offen. Keine Migration, index.ts unverändert.
+8.02-Migration und Worker-Deployment inklusive beider Dateien erfolgreich. 8.03-Hilfsmodul deployt und live geprüft. 137 lokale DAO-/Reward-Tests inkl. PostgreSQL erfolgreich. Echter automatischer 24h-Recheck und spätere positive Evidenz noch nicht live geprüft; kein vollständiger End-to-End-Nachweis des Tagesjobs.
 
-Nächster Schritt: vorhandenes Hilfsmodul in bestehender Edge Function ersetzen und deployen. Erst nach Rückmeldung nächsten Test zeigen. DAO_REWARD_ENABLE_LIVE_WORKER=false, kein DAO-Cron; TLN/VOW-Job und vollständige inkrementelle Reward-Verarbeitung weiter offen. Chrome/Apple-Passwortmanager offen.
+Nächste Entwicklung 8.04: kontrollierter begrenzter Admin-Pfad für offene positive Payout-Kandidaten, vorhandene Evidenz der vier frühen Claims ohne neue Rewards/Preise prüfen. Danach komplette inkrementelle Claim-/Referral-/Bot-/Preis-Verarbeitung und Ende-zu-Ende-Abnahme. Erst Analyse/Freigabe, dann Code. DAO-Cron bleibt deaktiviert und DAO_REWARD_ENABLE_LIVE_WORKER=false. TLN/VOW-Reward-Job und Chrome/Apple-Passwortmanager offen.
 
-Nur geänderte Dateien, echte Schweizer Zeitstempel; pro Antwort nur nächste SQL-Abfrage oder nächsten Test.
+Pro Antwort nur nächste SQL-Abfrage oder nächsten Test zeigen, kleine Update-ZIPs mit geänderten Dateien, echte Schweizer Zeitstempel, zentrale Doku nachführen.

@@ -1,3 +1,9 @@
+### Live-Nachtrag 8.03 · 08.11.2026 12:49:07 CET
+
+- Drei Null-Reward-TXs vollständig geprüft und dauerhaft als no_payout_evidence bestätigt; SQL-Persistenz und erneute manuelle Prüfung erfolgreich. Automatischer 24h-Wiederanlauf bleibt separat offen.
+- Vier pending-Payouts live den frühen positiven unpriced_before_exact_anchor-Claims zugeordnet; USD NULL, Auszahlung noch nicht verifiziert.
+- Nächste Entwicklung: kontrollierter positiver Payout-Prüfpfad, danach inkrementelle Gesamtpipeline. DAO-Cron bleibt aus; Phase/Build unverändert.
+
 ## 8.03 · 08.11.2026 12:41:04 CET · Build 20261108-124104
 
 - DAO: Internal-TX-Prüfer akzeptiert Blockscout `success=true` ohne `status`; explizite Fehler, Widersprüche und fehlende Erfolgsbelege bleiben Review.
