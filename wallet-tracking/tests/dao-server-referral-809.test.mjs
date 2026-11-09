@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
 const src=fs.readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
 const ast=ts.createSourceFile('worker.ts',src,ts.ScriptTarget.Latest,true);
-const wanted=new Set(['verifiedReferralSummary','addDecimalStrings','isVerifiedReferralTransaction','lower']);
+const wanted=new Set(['referralAuditRows','verifiedReferralSummary','addDecimalStrings','isVerifiedReferralTransaction','lower']);
 const nodes=ast.statements.filter(n=>ts.isFunctionDeclaration(n)&&wanted.has(n.name?.text));
 assert.equal(nodes.length,wanted.size);
 const text=nodes.map(n=>src.slice(n.pos,n.end)).join('\n');
@@ -30,11 +30,13 @@ const flows=[
  {flow_key:'e',tx_hash:'0x05',direction:'eingang',token_address:'native',counterparty_address:'0xother',token_symbol:'APTM',amount:'0.000000000000000001',value_usd:null},
 ];
 function query(table){
- const filters=[];let hashes=null;let offset=[0,Infinity];
- const q={select(){return q},eq(k,v){filters.push([k,v]);return q},in(k,v){if(k==='tx_hash')hashes=v;return q},order(){return q},range(a,b){offset=[a,b];return Promise.resolve({data:txs.filter(t=>filters.every(([k,v])=>t[k]===undefined||t[k]===v)).slice(a,b+1),error:null})},limit(n){return Promise.resolve({data:flows.filter(f=>hashes.includes(f.tx_hash)&&filters.every(([k,v])=>f[k]===undefined||f[k]===v)).slice(0,n),error:null})}};
+ const all=table==='project_transactions'?txs:flows;
+ const filters=[];
+ const q={select(){return q},eq(k,v){filters.push([k,v]);return q},order(){return q},abortSignal(){return q},
+  range(a,b){return {abortSignal(){return Promise.resolve({data:all.filter(t=>filters.every(([k,v])=>t[k]===undefined||t[k]===v)).slice(a,b+1),error:null})}}}};
  return q;
 }
-const context={sb:{from:query},REFERRAL_WALLET:wallet,REFERRAL_REWARD_CONTRACT:contract,REFERRAL_WUSDT_TOKEN:token,CLAIM_SELECTOR:'0x86bb8f37',NEW_MINER_CLAIM_SELECTOR:'0x19da4078',PROJECT:'dao1',CHAIN:'apertum'};
+const context={AbortSignal:{timeout:()=>({})},sb:{from:query},REFERRAL_WALLET:wallet,REFERRAL_REWARD_CONTRACT:contract,REFERRAL_WUSDT_TOKEN:token,CLAIM_SELECTOR:'0x86bb8f37',NEW_MINER_CLAIM_SELECTOR:'0x19da4078',PROJECT:'dao1',CHAIN:'apertum'};
 vm.runInNewContext(compiled+'\nthis.summarize=verifiedReferralSummary;this.add=addDecimalStrings;',context);
 test('confirmed contract withdrawals and DID are classified; swaps and unrelated flows excluded',async()=>{
  const result=await context.summarize({user_id:'test',wallet_id:'test'},wallet);

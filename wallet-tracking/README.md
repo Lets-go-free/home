@@ -1,3 +1,6 @@
+## Release 8.11 · 09.11.2026 17:12:22 CET · 20261109-171222
+Historische DAO1-NFT-Zuordnung in gemeinsame SQL-RPC für Browser und Edge Function überführt; 125 Fälle als Prüfziel, Live-Backfill noch offen. Beträge, Preise und Rewards unverändert. DAO-Cron bleibt deaktiviert. Siehe `docs/releases/8.11-historical-nft-claims.md`.
+
 **WalletTracking Phase 8.10 · Build 20261109-161726 · 09.11.2026 16:17:26 CET**
 
 8.10: Referral-Audit 504-Timeout: DB-Abfragen von N×40-TX-Reads auf zwei parallel paginierte Datenströme reduziert, gemeinsames 30s-Abbruchsignal pro Datenstrom, harte Seitenbegrenzung und explizite Fehler bei unvollständigen Daten. Geschäftsregeln, Rewards und NFT-Zuordnung unverändert. 27 DAO-/Reward-Regressionstests lokal bestanden. Kein SQL, kein Cron. Edge Function `dao-reward-refresh` neu deployen.

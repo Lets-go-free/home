@@ -4775,6 +4775,18 @@ window.DAO1Project = (() => {
           if(job!==transactionJobToken)return;
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} · NFTs werden aktualisiert…`,"Apertum NFT-Bestand wird live abgeglichen; Besitzerhistorien werden nur bei tatsächlichen Besitzänderungen neu aufgebaut.");
           await refreshWalletNftsAndOwnership(w,`Wallet ${i+1}/${targets.length} · `,{useCachedCurrentNfts:!!options?.useCachedCurrentNfts});
+          // 8.11: Same proof-based DB reconciliation as the DAO server. Only
+          // existing identity columns are filled; the original reward and USD
+          // valuations are never recomputed here. Refresh cached rows for UI.
+          const {data:nftReconciled,error:nftReconcileError}=await sb.rpc('wallettracking_dao_reconcile_nft_claims',{
+            p_user:getContext?.().currentUser.id,p_wallet:walletIdForAddress(address),p_limit:200
+          });
+          if(nftReconcileError)throw new Error('Historische NFT-Zuordnung: '+nftReconcileError.message);
+          if(Number(nftReconciled?.transactionsAssigned||0)>0){
+            daoHistoryTxCache.delete(`wallet:${walletIdForAddress(address)}`);
+            daoHistoryTxCache.delete('all');
+          }
+          if(job!==transactionJobToken)return;
         }
         if(job!==transactionJobToken)return;
         transactionRows=selectedAll?await loadAllApertumTransactionRows(targets,document.getElementById("dao1TransactionStatus")):await loadTransactionRows(walletAddress(targets[0]),null);

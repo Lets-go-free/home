@@ -1,3 +1,6 @@
+## Release 8.11 · 09.11.2026 17:12:22 CET · 20261109-171222
+Historische DAO1-NFT-Zuordnung in gemeinsame SQL-RPC für Browser und Edge Function überführt; 125 Fälle als Prüfziel, Live-Backfill noch offen. Beträge, Preise und Rewards unverändert. DAO-Cron bleibt deaktiviert. Siehe `docs/releases/8.11-historical-nft-claims.md`.
+
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
 **Dokumentationsstand:** 09.11.2026 16:17:26 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.10, Build 20261109-161726.

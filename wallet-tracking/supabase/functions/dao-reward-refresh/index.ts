@@ -1245,6 +1245,27 @@ Deno.serve(async request=>{
    const result=await resolveCentralTokenDecimals(String(body.token||''));return reply({ok:result.decimals!==null,...result});
   }catch{return reply({ok:false,error:'Technical metadata request failed'},500)}
  }
+ // 8.11: Restricted, idempotent historical NFT identity backfill.
+ // No generic user- or wallet-supplied arguments and no live worker execution.
+ if(body?.mode==='reconcile-nft-test-wallet'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual NFT reconciliation disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before NFT reconciliation'},{status:409});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const {data,error}=await sb.rpc('wallettracking_dao_reconcile_nft_claims',{
+    p_user:selected.user_id,p_wallet:selected.id,p_limit:200
+   });
+   if(error)throw Error('NFT reconciliation failed: '+error.message);
+   return Response.json({ok:true,mode:'manual-historical-nft-reconciliation',project:PROJECT,chain:CHAIN,
+    walletAddress:INSPECT_ADDRESS,...data});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
  if(body?.mode==='audit-nft-candidates-test-wallet'){
   try{
    const permission=await authenticateInspectAdmin(request);
