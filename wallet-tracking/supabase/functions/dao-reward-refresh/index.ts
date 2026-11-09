@@ -36,6 +36,86 @@ function isVerifiedReferralTransaction(address:string,tx:any,flows:any[]){
   && (!method||method==='withdraw'||method==='contract call'||method.startsWith('0x'))
   && flows.some(f=>f.direction==='eingang'&&lower(f.token_address)===REFERRAL_WUSDT_TOKEN&&lower(f.counterparty_address)===REFERRAL_REWARD_CONTRACT)
 }
+// Server-side DAO referral classification mirrors verifiedReferralRewards() in
+// projects/dao1/dao1.js. The canonical asset flows are the source of truth:
+// no separate reward posting, token valuation, or inferred DID is created.
+// TX + flow key is the identity (one withdrawal can have several assets).
+async function verifiedReferralSummary(job:any,address:string){
+ const empty={verifiedTransactions:0,verifiedFlows:0,byAsset:[] as any[],unverifiedIncomingWusdt:0};
+ if(address!==REFERRAL_WALLET)return {...empty,skipped:'no-verified-referral-wallet'};
+ const assets=new Map<string,{tokenAddress:string,symbol:string,amount:string,flows:number,pricedFlows:number}>();
+ let verifiedTransactions=0,verifiedFlows=0,unverifiedIncomingWusdt=0;
+ const seen=new Set<string>();
+ // Paged TX reads; never silently classify only the first Supabase page.
+ for(let start=0;;start+=200){
+  const {data:transactions,error}=await sb.from('project_transactions')
+   .select('tx_hash,to_address,method,selector,claim_nft_subtype')
+   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+   .order('id',{ascending:true}).range(start,start+199);
+  if(error)throw Error('Referral transaction scan: '+error.message);
+  const batch=transactions||[];
+  // Only DID-labelled records and verified contract withdrawals are eligible.
+  const relevant=batch.filter((t:any)=>
+   String(t.claim_nft_subtype||'').toUpperCase()==='DID' ||
+   lower(t.to_address)===REFERRAL_REWARD_CONTRACT);
+  for(let i=0;i<relevant.length;i+=40){
+   const group=relevant.slice(i,i+40);
+   const hashes=[...new Set(group.map((t:any)=>lower(t.tx_hash)))];
+   if(!hashes.length)continue;
+   const {data:flows,error:flowError}=await sb.from('project_transaction_asset_flows')
+    .select('tx_hash,flow_key,direction,token_address,token_symbol,amount,token_decimals,amount_raw,counterparty_address,value_usd')
+    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+    .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+    .in('tx_hash',hashes).eq('direction','eingang').limit(1000);
+   if(flowError)throw Error('Referral flow scan: '+flowError.message);
+   if((flows||[]).length===1000)throw Error('Referral flow page limit reached; cannot classify incomplete evidence');
+   const byTx=new Map<string,any[]>();
+   for(const flow of flows||[]){const key=lower(flow.tx_hash);if(!byTx.has(key))byTx.set(key,[]);byTx.get(key)!.push(flow)}
+   for(const tx of group){
+    const key=lower(tx.tx_hash);if(seen.has(key))continue;seen.add(key);
+    const incoming=byTx.get(key)||[];
+    const isDid=String(tx.claim_nft_subtype||'').toUpperCase()==='DID';
+    // The browser excludes mining bot claims from contract-based referrals.
+    const isClaim=[CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(String(tx.selector||'').toLowerCase());
+    const eligible=isDid?incoming:
+      !isClaim&&isVerifiedReferralTransaction(address,tx,incoming)
+       ?incoming.filter((f:any)=>f.direction==='eingang'&&lower(f.token_address)===REFERRAL_WUSDT_TOKEN&&lower(f.counterparty_address)===REFERRAL_REWARD_CONTRACT):[];
+    if(!eligible.length){
+     if(!isDid)unverifiedIncomingWusdt+=incoming.filter((f:any)=>lower(f.token_address)===REFERRAL_WUSDT_TOKEN).length;
+     continue;
+    }
+    verifiedTransactions++;
+    const flowSeen=new Set<string>();
+    for(const f of eligible){
+     const identity=String(f.flow_key||'');
+     if(flowSeen.has(identity))continue;flowSeen.add(identity);
+     // Never invent a technical scale or convert amounts through Number.
+     const contract=lower(f.token_address);const symbol=String(f.token_symbol||'TOKEN');
+     const assetKey=contract||'symbol:'+symbol.toLowerCase();
+     let entry=assets.get(assetKey);
+     if(!entry){entry={tokenAddress:contract,symbol,amount:'0',flows:0,pricedFlows:0};assets.set(assetKey,entry)}
+     entry.amount=addDecimalStrings(entry.amount,String(f.amount??'0'));
+     entry.flows++;verifiedFlows++;
+     if(f.value_usd!==null&&f.value_usd!==undefined)entry.pricedFlows++;
+    }
+   }
+  }
+  if(batch.length<200)break;
+ }
+ return {verifiedTransactions,verifiedFlows,unverifiedIncomingWusdt,
+  byAsset:[...assets.values()].sort((a,b)=>a.tokenAddress.localeCompare(b.tokenAddress)),
+  notice:'Read-only server-side classification of persisted payouts. No reward posting or NFT assignment; historical values remain canonical.'};
+}
+function addDecimalStrings(a:string,b:string){
+ const decimal=/^-?\d+(?:\.\d+)?$/;
+ if(!decimal.test(a)||!decimal.test(b))throw Error('Invalid canonical referral amount');
+ const scale=Math.max((a.split('.')[1]||'').length,(b.split('.')[1]||'').length);
+ const n=(s:string)=>{const sign=s.startsWith('-')?-1n:1n;const parts=s.replace('-','').split('.');return sign*BigInt(parts[0]+(parts[1]||'').padEnd(scale,'0'))};
+ const sum=n(a)+n(b),negative=sum<0n,raw=(negative?-sum:sum).toString().padStart(scale+1,'0');
+ return (negative?'-':'')+(scale?raw.slice(0,-scale)+'.'+raw.slice(-scale):raw);
+}
+
 // Do not advance the canonical browser/claim cursors until reward enrichment is implemented.
 const RAW_TX_SCAN='reward_server_raw_transactions_v1'
 const RAW_FLOW_SCAN='reward_server_raw_flows_v1'
@@ -693,6 +773,7 @@ async function process(job:any,stageOnly=false){
    notice:'Only insert-if-absent raw events, claim candidates and separate scan cursors were written. No canonical claim, reward total, price, NFT ownership verification, snapshot, or job queue was modified.'};
  }
 
+ const referrals=await verifiedReferralSummary(job,address);
  // Separate verification budget: unprocessed candidates stay persisted and are
  // retried independently of the raw block cursors on subsequent invocations.
  const verification=await verifyPendingCandidates(job,address);
@@ -748,7 +829,7 @@ async function process(job:any,stageOnly=false){
   if(error)throw error;
   canonicallyCreatedUnassignedMinerClaims=Number(data||0);
  }
- return {...payoutVerification,exactAnchorPricedFlows,canonicallyPricedFlows,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,targetedReferralFlows,referralScan:referralProgress,nativeClaimFlows,
+ return {...payoutVerification,referrals,exactAnchorPricedFlows,canonicallyPricedFlows,canonicallyCreatedLegacyClaims,canonicallyReconciledClaims,canonicallyCreatedUnassignedMinerClaims,transactions:txCount,flows:flowCount,targetedReferralFlows,referralScan:referralProgress,nativeClaimFlows,
   claimNftCandidatesObserved:claimNftCandidates,transactionScan:txProgress,flowScan:flowProgress,...verification,
   classification:'observational-only'};
 }
@@ -1077,6 +1158,44 @@ async function reconcileTestClaims(){
   notice:'Read-only, strict native amount match is diagnostic only; token payouts need canonical asset and ownership checks. No automatic marking or canonical reward modification.'};
 }
 
+// Diagnostic only: pin down why the server has no eligible NFT for a bot
+// claim. A candidate from calldata is NOT an ownership proof and is never
+// written to the canonical claim. This is intentionally read-only.
+async function auditTestWalletNftCandidates(job:any){
+ const known=await knownWalletNfts(job);
+ const totals={knownIds:known.size,ambiguousKnownIds:0,claimTransactions:0,
+  withCanonicalNft:0,missingCanonicalNft:0,uniqueCalldataCandidate:0,
+  noUniqueCalldataCandidate:0,alreadyStagedWithNft:0};
+ for(const nft of known.values())if(nft===null)totals.ambiguousKnownIds++;
+ const examples:any[]=[];
+ for(let start=0;;start+=200){
+  const {data,error}=await sb.from('project_transactions')
+   .select('tx_hash,selector,block_number,raw_input,claim_nft_id')
+   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+   .in('selector',[CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR])
+   .order('id',{ascending:true}).range(start,start+199);
+  if(error)throw Error('NFT audit transactions: '+error.message);
+  for(const tx of data||[]){
+   totals.claimTransactions++;
+   if(tx.claim_nft_id!==null){totals.withCanonicalNft++;continue}
+   totals.missingCanonicalNft++;
+   const match=unequivocalClaimNft(String(tx.raw_input||''),known);
+   if(match)totals.uniqueCalldataCandidate++;else totals.noUniqueCalldataCandidate++;
+   if(examples.length<12)examples.push({txHash:tx.tx_hash,block:tx.block_number,
+    selector:tx.selector,calldataCandidate:match?.id||null,
+    reason:match?'candidate-only-needs-historical-ownership':'no-unique-known-nft-id-in-calldata'});
+  }
+  if((data||[]).length<200)break;
+ }
+ const {count,error:stagedError}=await sb.from('dao_reward_claim_candidates')
+  .select('tx_hash',{count:'exact',head:true}).eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+  .eq('project_key',PROJECT).eq('chain_key',CHAIN).not('nft_id','is',null);
+ if(stagedError)throw Error('NFT audit candidates: '+stagedError.message);
+ totals.alreadyStagedWithNft=count||0;
+ return {totals,examples,notice:'Read-only diagnostic. Calldata candidate is not historical NFT ownership; no claim assignment or reward change.'};
+}
+
 // The manual inspector uses a logged-in ADMIN account, never the daily job secret.
 // Its fixed-address scope is enforced server-side and its body cannot select a wallet.
 async function authenticateInspectAdmin(request:Request){
@@ -1126,6 +1245,30 @@ Deno.serve(async request=>{
    const {data:session,error}=await sb.auth.getUser(match[1]);if(error||!session?.user?.id)return reply({error:'Invalid user JWT'},401);
    const result=await resolveCentralTokenDecimals(String(body.token||''));return reply({ok:result.decimals!==null,...result});
   }catch{return reply({ok:false,error:'Technical metadata request failed'},500)}
+ }
+ if(body?.mode==='audit-nft-candidates-test-wallet'){
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const result=await auditTestWalletNftCandidates({user_id:selected.user_id,wallet_id:selected.id});
+   return Response.json({ok:true,mode:'read-only-nft-candidate-audit',project:PROJECT,chain:CHAIN,
+    walletAddress:INSPECT_ADDRESS,...result});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
+ if(body?.mode==='audit-referrals-test-wallet'){
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   const summary=await verifiedReferralSummary({user_id:selected.user_id,wallet_id:selected.id},INSPECT_ADDRESS);
+   return Response.json({ok:true,mode:'read-only-referral-audit',project:PROJECT,chain:CHAIN,
+    walletAddress:INSPECT_ADDRESS,...summary});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='inspect-test-wallet'){
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_INSPECT')!=='true')

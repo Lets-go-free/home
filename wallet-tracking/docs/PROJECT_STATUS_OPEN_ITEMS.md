@@ -1,8 +1,12 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 08.11.2026 22:45:54 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.08, Build 20261108-224554.
+**Dokumentationsstand:** 09.11.2026 13:29:34 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.09, Build 20261109-132934.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
+
+## Phase 8.09 – DAO1-Referral serverseitig / NFT-Zuordnung Diagnose (lokal implementiert, Live-Test offen)
+
+Die bereits vorhandene Browser-Klassifikation verifizierter DID-/Contract-Referral-Auszahlungen ist serverseitig jetzt als **lesende Auswertung aus kanonischen Transaktionen/Flows** in `dao-reward-refresh` implementiert. Kein neuer Reward-Post, kein eigener Summen-Speicher, keine Änderung der bestehenden Werte. Zusätzlicher Admin-Audit `audit-referrals-test-wallet`. Für nicht zugeordnete Bot-Claims ist der lesende `audit-nft-candidates-test-wallet` ergänzt. Die tatsächliche Ursache der fehlenden NFT-Zuordnung bleibt bis zum Live-Diagnoseergebnis offen; historische NFT-Ownership darf nicht durch aktuelle Inventardaten ersetzt werden. DAO-Cron/Live-Worker **bleiben aus**. Keine SQL-Migration. 16 gezielte Tests bestanden. Details `docs/releases/8.09-dao-server-referrals-nft-audit.md`.
 
 ## DAO1/APTMDAO – zuletzt live bestätigt
 

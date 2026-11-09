@@ -1,3 +1,7 @@
+**WalletTracking Phase 8.09 · Build 20261109-132934 · 09.11.2026 13:29:34 CET**
+
+8.09: DAO1-Referral-Rewards serverseitig aus bereits vorhandenen verifizierten Transaktionen und Asset-Flows auswerten; keine zweite Reward-Buchung. Admin-Read-only-Audits für Referral-Zuordnung und fehlende NFT-Claim-Zuordnung. 16 gezielte lokale Tests bestanden. Kein SQL, kein Cron, Live-Worker deaktiviert. Nach ZIP-Installation `dao-reward-refresh` neu deployen. Details: [8.09](docs/releases/8.09-dao-server-referrals-nft-audit.md).
+
 **WalletTracking Phase 8.08 · Build 20261108-224554 · 08.11.2026 22:45:54 CET**
 
 8.08 erweitert technische Metadaten auf alle zwölf aktuell unterstützten Chains und eigene sichere Token. Gemeinsame neue Edge Function token-metadata für Browser, DAO-Claim-Pfad und täglichen Bestandsjob. Globale öffentliche Contract-/Mint-Metadaten liegen in wallettracking_internal.token_metadata (nicht über die Data API exponiert, RLS aktiv, keine Client-Tabellenrechte). Keine User-ID, Wallet-Adresse oder private Safe-Token-Bezeichnung in diesem Cache. Bekannte Masterwerte in predefined_tokens werden gespiegelt; nichtleere technische Werte, Namen und Bezeichnungen bleiben geschützt. Persönliche Anzeige- und Summary-Dezimalstellen bleiben separat bei safe_tokens und werden nur für die eigene Liste geladen.
