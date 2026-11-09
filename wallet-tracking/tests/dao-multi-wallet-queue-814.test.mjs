@@ -29,8 +29,8 @@ test('manually gated mode only, with no arbitrary wallet selection',()=>{
  assert.doesNotMatch(route,/processSingleNativeClaim/);
  assert.match(route,/wallettracking_dao_reward_transition_v2/);
 });
-test('preview reads only and version/build reflect 8.14',()=>{
+test('preview reads only and build is at least 8.14',()=>{
  assert.match(src,/cron-multi-wallet-preview/);
- assert.match(html,/window.APP_VERSION="8\.14"/);
- assert.match(html,/Phase 8\.14 · Build/);
+ assert.match(html,/window.APP_VERSION="8\.(?:14|15)"/);
+ assert.match(html,/Phase 8\.(?:14|15) · Build/);
 });

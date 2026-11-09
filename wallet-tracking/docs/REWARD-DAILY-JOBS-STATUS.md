@@ -1,3 +1,6 @@
+## Release 8.15 · 09.11.2026 21:38:12 CET · 20261109-213812
+Staging-Guard für validierte leere Blockchain-Historien; Null-Block-Scans werden zweifach bestätigt, explizit als `empty_verified` markiert und nur bei nachgewiesener Coverage als `staged` übernommen. Live-Worker und Cron bleiben deaktiviert. Siehe `docs/releases/8.15-dao-empty-history-proof.md`.
+
 ## Release 8.14 · 09.11.2026 21:18:27 CET · 20261109-211827
 Geschützte DAO1-Multi-Wallet-Staging-Queue: Lease-Token, begrenzte Schritte und Fehlversuche, nur manueller Test. Keine automatische Reward-Verbuchung oder Cron-Aktivierung. Siehe `docs/releases/8.14-dao-multi-wallet-queue.md`.
 

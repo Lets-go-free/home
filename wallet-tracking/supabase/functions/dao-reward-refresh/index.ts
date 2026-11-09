@@ -201,12 +201,13 @@ async function state(job:any,kind:string):Promise<RawScanState>{
  }
  return {block:Number(data?.last_scanned_block||0),checkpoint};
 }
-async function saveScan(job:any,kind:string,block:number,checkpoint:any|null){
+async function saveScan(job:any,kind:string,block:number,checkpoint:any|null,verifiedEmpty=false){
+ const result=checkpoint?'partial':verifiedEmpty?'empty_verified':'complete';
  const {error}=await sb.from('project_scan_state').upsert({user_id:job.user_id,
   wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,scan_type:kind,
   last_scanned_block:block,last_scanned_at:new Date().toISOString(),updated_at:new Date().toISOString(),
   last_scan_message:checkpoint?JSON.stringify(checkpoint):null,
-  last_scan_result:checkpoint?'partial':'complete'},
+  last_scan_result:result},
   {onConflict:'user_id,project_key,chain_key,wallet_id,scan_type'});
  if(error)throw error;
  // A successful upsert response alone is insufficient for manual diagnostics:
@@ -218,7 +219,7 @@ async function saveScan(job:any,kind:string,block:number,checkpoint:any|null){
  if(readError||!stored)throw Error('Reward checkpoint read-back failed');
  if(Number(stored.last_scanned_block)!==block||
     (stored.last_scan_message??null)!==(checkpoint?JSON.stringify(checkpoint):null)||
-    stored.last_scan_result!==(checkpoint?'partial':'complete'))
+    stored.last_scan_result!==result)
   throw Error('Reward checkpoint write not confirmed');
 }
 function explorerPageUrl(path:string,params:Record<string,unknown>|null){
@@ -263,6 +264,16 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
   if(!Array.isArray(response.items))throw Error('Explorer missing items');
   let oldest=Infinity;let previousBlock=previousOldest;const rows=[];
   if(!response.items.length&&response.next_page_params)throw Error('Explorer empty page with continuation');
+  // A zero-block initial scan is NOT a verified chain tip. Distinguish an
+  // explicit successful empty history from an upstream 200/empty anomaly:
+  // repeat the query and require the same well-formed terminal empty page.
+  // HTTP errors, malformed responses or unexpected continuations fail closed.
+  const emptyInitial=cursor===0&&!checkpoint&&page===0&&!response.items.length&&!response.next_page_params;
+  if(emptyInitial){
+   const confirmation=await json(url);
+   if(!confirmation||!Array.isArray(confirmation.items)||confirmation.items.length||confirmation.next_page_params)
+    throw Error('Empty Explorer history could not be confirmed');
+  }
   for(const item of response.items){
    const block=await itemBlock(item);
    assertDescendingBlock(previousBlock,block);
@@ -279,9 +290,9 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
    // In incremental mode the first page can be entirely old history.
    // Report this as a successful no-change check, not historical progress.
    const advanced=highest>cursor;
-   if(checkpoint||advanced||cursor===0)await saveScan(job,kind,highest,null);
-   return {complete:true,block:highest,pages:page+1,observedItems,
-    scanMode,newBlocksObserved:advanced,upToDate:cursor>0&&!advanced,
+   if(checkpoint||advanced||cursor===0)await saveScan(job,kind,highest,null,emptyInitial);
+   return {complete:true,coverageVerified:true,verifiedEmpty:emptyInitial,block:highest,pages:page+1,observedItems,
+    scanMode,newBlocksObserved:advanced,upToDate:emptyInitial||(cursor>0&&!advanced),
     checkpointProgress:{hadCheckpoint:!!checkpoint,startOldest:startingOldest,
      endOldest:Number.isFinite(oldest)?oldest:null,advanced:!!checkpoint||advanced}};
   }
@@ -297,7 +308,7 @@ async function paginate(job:any,kind:string,path:string,scan:RawScanState,
    oldestBlock:Number.isFinite(oldest)?oldest:previousOldest,next:nextParams});
   previousOldest=oldest;next=nextParams;
  }
- return {complete:false,block:cursor,pages:pageLimit,observedItems,
+ return {complete:false,coverageVerified:false,verifiedEmpty:false,block:cursor,pages:pageLimit,observedItems,
   scanMode,newBlocksObserved:highest>cursor,upToDate:false,
   checkpointProgress:{hadCheckpoint:!!checkpoint,startOldest:startingOldest,
    endOldest:Number.isFinite(previousOldest)?previousOldest:null,
@@ -1514,7 +1525,13 @@ Deno.serve(async request=>{
    if(!job)return Response.json({ok:true,mode:'cron-multi-wallet-one',status:'no_eligible_wallet',queueTouched:false});
    // All address decryption is scoped to user_id + wallet_id and never returned.
    const imported=await process({user_id:job.user_id,wallet_id:job.wallet_id},true);
-   const partial=!imported.transactionScan.complete||!imported.flowScan.complete||imported.referralScan?.complete===false;
+   // Stage only with affirmative provider coverage evidence for BOTH streams.
+   // Zero-block cursors are allowed solely when a repeated successful empty
+   // Explorer response was persisted as 'empty_verified'.
+   const proved=(scan:any)=>!!scan&&scan.complete===true&&scan.coverageVerified===true
+    &&(scan.block>0||scan.verifiedEmpty===true);
+   const partial=!proved(imported.transactionScan)||!proved(imported.flowScan)
+    ||(imported.referralScan!==null&&!proved(imported.referralScan));
    const target=partial?'partial':'staged';
    const transition=await sb.rpc('wallettracking_dao_reward_transition_v2',{
     p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:target,p_error:null});

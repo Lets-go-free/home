@@ -7,7 +7,7 @@ test('explicit modes distinguish history, resume and delta',()=>{
 });
 test('completed no-change delta does not rewrite verified cursor',()=>{
  assert.match(src,/if\(checkpoint\|\|advanced\|\|cursor===0\)await saveScan/);
- assert.match(src,/upToDate:cursor>0&&!advanced/);
+ assert.match(src,/upToDate:emptyInitial\|\|\(cursor>0&&!advanced\)/);
 });
 test('overlap is still handled; no silent newer event loss',()=>{
  assert.match(src,/if\(block>=Math.max\(0,cursor-OVERLAP\)\)rows.push/);

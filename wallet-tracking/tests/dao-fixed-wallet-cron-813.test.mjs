@@ -25,7 +25,7 @@ test('no arbitrary wallet, no forced retries, one-claim canonical pipeline only'
 });
 test('version and safe installation docs',()=>{
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
- assert.match(html,/window\.APP_VERSION="8\.(?:13|14)"/);
+ assert.match(html,/window\.APP_VERSION="8\.(?:13|14|15)"/);
  const doc=readFileSync(new URL('../docs/releases/8.13-dao-fixed-wallet-cron-rehearsal.md',import.meta.url),'utf8');
  assert.match(doc,/schreibend/);
  assert.match(doc,/kein automatischer Job/i);
