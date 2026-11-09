@@ -1472,12 +1472,37 @@ Deno.serve(async request=>{
  }
  // Only explicit DAO cron routes are accepted, never an implicit default request.
  // Read-only authentication probe is safe even when the live worker is disabled.
- if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one')
+ if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one')
   return Response.json({error:'Unsupported DAO cron mode'},{status:400});
  if(!await authorizedDaoCron(request))return Response.json({error:'Unauthorized DAO cron request'},{status:401});
  if(body.mode==='cron-auth-check')return Response.json({ok:true,mode:'cron-auth-check',authenticated:true,
   liveWorkerEnabled:Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true',
   notice:'Authentication check only. No queue, rewards, snapshot or cursor changed.'});
+ // 8.13: explicit single-wallet integration rehearsal, NEVER a scheduled job.
+ // The wallet is fixed server-side; a request cannot select a wallet/user or
+ // raise the one-claim limit. This path does not depend on enabling live mode.
+ if(body.mode==='cron-test-wallet-one'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'DAO single-wallet rehearsal disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable DAO live worker for rehearsal'},{status:409});
+  if(body.retryBlocked!==undefined||body.walletId!==undefined||body.userId!==undefined||body.address!==undefined)
+   return Response.json({error:'Only the registered fixed test wallet and default retry policy are supported'},{status:400});
+  try{
+   const matches=await findInspectWalletMatches();
+   if(matches.length!==1)return Response.json({error:'Expected exactly one registered test wallet',matchingWallets:matches.length},{status:409});
+   const selected=matches[0];
+   // Existing safe path: one import page per stream, at most one eligible
+   // canonical claim; no daily queue/finish transition. Referral classification
+   // is an independent, read-only audit and is not posted as a second reward.
+   const result=await processSingleNativeClaim({user_id:selected.user_id,wallet_id:selected.id},false,true);
+   return Response.json({ok:true,mode:'cron-test-wallet-one',project:PROJECT,chain:CHAIN,
+    walletAddress:INSPECT_ADDRESS,...result,
+    referralPosting:'disabled-existing-flow-classification-only',
+    queueTouched:false,dailyCompletion:false,
+    notice:'Manual fixed-wallet integration rehearsal. Can import raw rows, advance isolated scan cursors and create at most one proven canonical claim. No automatic job, no referral reposting, no daily queue completion.'});
+  }catch(e){return Response.json({ok:false,mode:'cron-test-wallet-one',error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')!=='true')
   return Response.json({ok:true,mode:'cron-stage-one',skipped:'DAO staging worker disabled; no queue or raw import performed'});
  // This is a staging-only worker, NOT a completed daily rewards pipeline.

@@ -1,3 +1,6 @@
+## Release 8.13 · 09.11.2026 20:53:16 CET · 20261109-205316
+Einzelwallet-Cron-Probelauf `cron-test-wallet-one` mit eigenem DAO-Secret, nur bei Testimport-Freigabe und deaktiviertem Live-Worker. Schreibt optional Rohdaten und höchstens einen belegten Claim; keine Reward-Doppelbuchung oder Queue-Abschluss. Kein Cron aktiviert. Siehe `docs/releases/8.13-dao-fixed-wallet-cron-rehearsal.md`.
+
 ## Release 8.12 · 09.11.2026 20:19:02 CET · 20261109-201902
 Dedicated DAO cron secret `DAO_REWARD_CRON_SECRET` replaces the previous accidental reuse of the wallet-daily-refresh credential. New fixed modes `cron-auth-check` (read-only) and `cron-stage-one` (single bounded raw staging pass, only after explicit `DAO_REWARD_ENABLE_LIVE_WORKER=true`). All other cron modes denied. No SQL migration; no cron or secrets created automatically. DAO canonical claim/Referral finalization and end-to-end completion are **not** production-ready. See `docs/releases/8.12-dao-cron-auth-preparation.md`.
 
@@ -6,7 +9,7 @@ Historische DAO1-NFT-Zuordnung in gemeinsame SQL-RPC für Browser und Edge Funct
 
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 09.11.2026 16:17:26 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.10, Build 20261109-161726.
+**Dokumentationsstand:** 09.11.2026 20:53:16 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.13, Build 20261109-205316.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
 
