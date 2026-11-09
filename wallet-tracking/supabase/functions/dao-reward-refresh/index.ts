@@ -1472,12 +1472,66 @@ Deno.serve(async request=>{
  }
  // Only explicit DAO cron routes are accepted, never an implicit default request.
  // Read-only authentication probe is safe even when the live worker is disabled.
- if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one')
+ if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one'&&body?.mode!=='cron-multi-wallet-preview'&&body?.mode!=='cron-multi-wallet-one')
   return Response.json({error:'Unsupported DAO cron mode'},{status:400});
  if(!await authorizedDaoCron(request))return Response.json({error:'Unauthorized DAO cron request'},{status:401});
  if(body.mode==='cron-auth-check')return Response.json({ok:true,mode:'cron-auth-check',authenticated:true,
   liveWorkerEnabled:Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true',
   notice:'Authentication check only. No queue, rewards, snapshot or cursor changed.'});
+ // 8.14: read-only preview of eligible encrypted EVM wallets and DAO queue.
+ // No address decryption, no queue reservation or writes.
+ if(body.mode==='cron-multi-wallet-preview'){
+  if(Object.keys(body).some(k=>k!=='mode'))return Response.json({error:'No preview parameters supported'},{status:400});
+  const {count:eligible,error:walletError}=await sb.from('wallets').select('id',{count:'exact',head:true})
+   .not('evm_address_ciphertext','is',null).eq('encryption_version',1).eq('key_version',1);
+  if(walletError)return Response.json({error:'Wallet preview failed'},{status:500});
+  const {data:queued,error:queueError}=await sb.from('wallet_reward_refresh_attempts')
+   .select('state,step_count,failure_count').eq('project_key',PROJECT).eq('scan_day',localDay())
+   .limit(1000);
+  if(queueError)return Response.json({error:'Queue preview failed'},{status:500});
+  const rows=queued||[];
+  if(rows.length===1000)return Response.json({error:'Queue preview exceeds safe bound'},{status:409});
+  const byState:Record<string,number>={};for(const r of rows)byState[r.state]=(byState[r.state]||0)+1;
+  return Response.json({ok:true,mode:'cron-multi-wallet-preview',project:PROJECT,day:localDay(),
+   eligibleEncryptedEvmWallets:eligible||0,queueRows:rows.length,byState,
+   liveWorkerEnabled:Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true',
+   multiWalletTestEnabled:Deno.env.get('DAO_REWARD_ENABLE_MULTI_WALLET_TEST')==='true',
+   notice:'Read-only. No address values, imports, reservations, cursors, rewards or queue writes.'});
+ }
+ // 8.14: manually authorized, exactly one encrypted wallet per invocation.
+ // Staging only: never finalize a canonical claim or post a referral reward.
+ if(body.mode==='cron-multi-wallet-one'){
+  if(Object.keys(body).some(k=>k!=='mode'))return Response.json({error:'No wallet selection or batch overrides supported'},{status:400});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live worker during multi-wallet rehearsal'},{status:409});
+  if(Deno.env.get('DAO_REWARD_ENABLE_MULTI_WALLET_TEST')!=='true')
+   return Response.json({error:'Multi-wallet rehearsal not enabled'},{status:403});
+  const day=localDay();let job:any=null;
+  try{
+   const picked=await sb.rpc('wallettracking_dao_reward_claim_v2',{p_day:day});
+   if(picked.error)throw picked.error;
+   job=picked.data?.[0];
+   if(!job)return Response.json({ok:true,mode:'cron-multi-wallet-one',status:'no_eligible_wallet',queueTouched:false});
+   // All address decryption is scoped to user_id + wallet_id and never returned.
+   const imported=await process({user_id:job.user_id,wallet_id:job.wallet_id},true);
+   const partial=!imported.transactionScan.complete||!imported.flowScan.complete||imported.referralScan?.complete===false;
+   const target=partial?'partial':'staged';
+   const transition=await sb.rpc('wallettracking_dao_reward_transition_v2',{
+    p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:target,p_error:null});
+   if(transition.error)throw transition.error;
+   return Response.json({ok:true,mode:'cron-multi-wallet-one',status:target,project:PROJECT,
+    queueStep:job.step_count,imported,claimsCreated:0,referralPosting:'disabled',
+    notice:'Staging only, one encrypted wallet. No canonical claim/price/NFT/reward writes or daily completion.'});
+  }catch(e){
+   const error=String(e instanceof Error?e.message:e);
+   if(job){
+    const failed=await sb.rpc('wallettracking_dao_reward_transition_v2',{
+     p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:'failed',p_error:error});
+    if(failed.error)return Response.json({ok:false,error:'Staging failed; lease transition failed; inspect logs',leaseError:failed.error.message},{status:500});
+   }
+   return Response.json({ok:false,mode:'cron-multi-wallet-one',error},{status:500});
+  }
+ }
  // 8.13: explicit single-wallet integration rehearsal, NEVER a scheduled job.
  // The wallet is fixed server-side; a request cannot select a wallet/user or
  // raise the one-claim limit. This path does not depend on enabling live mode.
