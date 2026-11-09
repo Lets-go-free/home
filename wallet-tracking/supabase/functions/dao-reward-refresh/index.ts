@@ -8,7 +8,7 @@ import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-co
 import './asset-policy.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
-const SECRET=Deno.env.get('WALLET_DAILY_REFRESH_SECRET')||''
+const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
 const MASTER=Deno.env.get('WALLET_ENCRYPTION_MASTER_KEY_V1')||''
 const sb=createClient(DB_URL,SERVICE_KEY,{auth:{persistSession:false,autoRefreshToken:false}})
 const enc=new TextEncoder(),dec=new TextDecoder()
@@ -1210,6 +1210,16 @@ async function authenticateInspectAdmin(request:Request){
  if(!admin)return {ok:false,status:403,error:'Administrator access required'};
  return {ok:true,status:200};
 }
+// Separate DAO cron credential. Do not reuse the wallet-daily-refresh credential.
+// Compare digests in constant work; a missing or weak secret never authorizes anything.
+async function authorizedDaoCron(request:Request){
+ const supplied=request.headers.get('x-dao-reward-cron-secret')||'';
+ if(CRON_SECRET.length<32||supplied.length<32||supplied.length>256)return false;
+ const hash=async(value:string)=>new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(value)));
+ const [actual,expected]=await Promise.all([hash(supplied),hash(CRON_SECRET)]);
+ let diff=0;for(let i=0;i<expected.length;i++)diff|=actual[i]^expected[i];
+ return diff===0;
+}
 const metadataCors={'access-control-allow-origin':'*','access-control-allow-headers':'authorization, apikey, content-type, x-client-info','access-control-allow-methods':'POST, OPTIONS'};
 Deno.serve(async request=>{
  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:metadataCors});
@@ -1460,10 +1470,18 @@ Deno.serve(async request=>{
    return Response.json({ok:true,project:PROJECT,chain:CHAIN,walletAddress:INSPECT_ADDRESS,...result});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
- if(!SECRET||request.headers.get('x-wallet-refresh-secret')!==SECRET)
-  return Response.json({error:'Unauthorized'},{status:401});
+ // Only explicit DAO cron routes are accepted, never an implicit default request.
+ // Read-only authentication probe is safe even when the live worker is disabled.
+ if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one')
+  return Response.json({error:'Unsupported DAO cron mode'},{status:400});
+ if(!await authorizedDaoCron(request))return Response.json({error:'Unauthorized DAO cron request'},{status:401});
+ if(body.mode==='cron-auth-check')return Response.json({ok:true,mode:'cron-auth-check',authenticated:true,
+  liveWorkerEnabled:Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true',
+  notice:'Authentication check only. No queue, rewards, snapshot or cursor changed.'});
  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')!=='true')
-  return Response.json({ok:true,skipped:'DAO worker disabled; only manual read-only inspection allowed'});
+  return Response.json({ok:true,mode:'cron-stage-one',skipped:'DAO staging worker disabled; no queue or raw import performed'});
+ // This is a staging-only worker, NOT a completed daily rewards pipeline.
+ // No cron schedule is created by 8.12; activation requires separate approval.
  const minute=localMinute();if(minute<245||minute>=330)return Response.json({ok:true,skipped:'Outside DAO window'});
  const day=localDay();let job:any=null;
  try{const claim=await sb.rpc('wallettracking_reward_claim',{p_day:day,p_project:'dao1'});if(claim.error)throw claim.error;

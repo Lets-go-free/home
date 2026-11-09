@@ -9,9 +9,9 @@ test('test mode uses real auth user and existing UUID-bound admin record',()=>{
  assert.match(code,/\.eq\('user_id',session\.user\.id\)/);
  assert.match(route,/authenticateInspectAdmin\(request\)/);
 });
-test('test mode precedes shared daily secret; other modes remain secret protected',()=>{
- assert.ok(route.indexOf("body?.mode==='inspect-test-wallet'")<route.indexOf("request.headers.get('x-wallet-refresh-secret')"));
- assert.ok(route.indexOf("request.headers.get('x-wallet-refresh-secret')")<route.indexOf("if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')!=='true')"));
+test('admin test precedes dedicated DAO cron guard; cron requires separate secret',()=>{
+ assert.ok(route.indexOf("body?.mode==='inspect-test-wallet'")<route.indexOf('authorizedDaoCron(request)'));
+ assert.ok(route.indexOf('authorizedDaoCron(request)')<route.indexOf("if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')!=='true')"));
 });
 test('inspector is fixed, read only, and opt in',()=>{
  assert.match(code,/const INSPECT_ADDRESS='0x239c5822a0d2a67e629d7a3b5c8180721e228b47'/);

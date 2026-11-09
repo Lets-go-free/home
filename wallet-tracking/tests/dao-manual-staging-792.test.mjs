@@ -14,7 +14,7 @@ test('manual import requires both JWT admin and separate opt-in flag',()=>{
  assert.match(serve,/DAO_REWARD_ENABLE_TEST_IMPORT/);
  assert.match(serve,/authenticateInspectAdmin\(request\)/);
  assert.match(serve,/DAO_REWARD_ENABLE_LIVE_WORKER'\)==='true'/);
- assert.ok(serve.indexOf("body?.mode==='import-test-wallet'")<serve.indexOf("request.headers.get('x-wallet-refresh-secret')"));
+ assert.ok(serve.indexOf("body?.mode==='import-test-wallet'")<serve.indexOf('authorizedDaoCron(request)'));
 });
 test('manual import uses one explorer page per stream',()=>{
  assert.match(staging,/const pageLimit=stageOnly\?1:MAX_PAGES_PER_INVOCATION/);
@@ -29,6 +29,6 @@ test('staging exits before candidate verification and all canonical valuation ca
  assert.ok(rest.indexOf('return {mode:')<rest.indexOf('wallettracking_dao_create_verified_legacy_claims'));
 });
 test('existing scheduled flow stays secret protected and disabled',()=>{
- assert.match(serve,/x-wallet-refresh-secret/);
+ assert.match(serve,/authorizedDaoCron\(request\)/);
  assert.match(serve,/DAO_REWARD_ENABLE_LIVE_WORKER'\)!=='true'/);
 });
