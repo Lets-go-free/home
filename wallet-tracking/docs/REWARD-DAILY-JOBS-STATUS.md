@@ -1,3 +1,5 @@
+> Phase 8.10 · 09.11.2026 16:17:26 CET: Referral-Audit-Lesepfad optimiert; zuvor 150s-HTTP-504, jetzt zwei paginierte Datenströme mit hartem 30s-Abbruchbudget pro Strom. Live-Retest offen; keine Reward-Schreiboperation, DAO-Live-Worker/Cron bleiben deaktiviert.
+
 > Phase 8.09 · 09.11.2026 13:29:34 CET: verifizierte DAO-Referral-Flows sind im Server aus vorhandenen kanonischen TX/Flows klassifizierbar. Nur lesender Audit der Referral-Zuordnung und NFT-Kandidaten; keine doppelte Buchung, keine automatische Bot-ID. DAO-Live-Worker und Cron bleiben aus.
 
 > Aktuell 8.08 · 08.11.2026 22:45:54 CET: gemeinsamer token-metadata-Dienst und interner technischer Cache für Browser/DAO/Bestandsjob; eigene Anzeige-/Summary-Dezimalstellen benutzerbezogen in safe_tokens. Kein 18-/TRC20-6-Fallback bei fehlender Token-Skala; Pool-Ausnahmen nur mit Interface-Nachweis. 241 relevante Tests bestanden, zwei ältere breite Testfehler dokumentiert. Live-Abnahme offen; neue Funktion vor abhängigen Workern/Web deployen. Kein neuer Cron, DAO aus. Führend: docs/PROJECT_STATUS_OPEN_ITEMS.md und docs/releases/8.08-cross-chain-token-metadata.md.

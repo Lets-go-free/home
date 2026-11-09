@@ -1,3 +1,7 @@
+**WalletTracking Phase 8.10 · Build 20261109-161726 · 09.11.2026 16:17:26 CET**
+
+8.10: Referral-Audit 504-Timeout: DB-Abfragen von N×40-TX-Reads auf zwei parallel paginierte Datenströme reduziert, gemeinsames 30s-Abbruchsignal pro Datenstrom, harte Seitenbegrenzung und explizite Fehler bei unvollständigen Daten. Geschäftsregeln, Rewards und NFT-Zuordnung unverändert. 27 DAO-/Reward-Regressionstests lokal bestanden. Kein SQL, kein Cron. Edge Function `dao-reward-refresh` neu deployen.
+
 **WalletTracking Phase 8.09 · Build 20261109-132934 · 09.11.2026 13:29:34 CET**
 
 8.09: DAO1-Referral-Rewards serverseitig aus bereits vorhandenen verifizierten Transaktionen und Asset-Flows auswerten; keine zweite Reward-Buchung. Admin-Read-only-Audits für Referral-Zuordnung und fehlende NFT-Claim-Zuordnung. 16 gezielte lokale Tests bestanden. Kein SQL, kein Cron, Live-Worker deaktiviert. Nach ZIP-Installation `dao-reward-refresh` neu deployen. Details: [8.09](docs/releases/8.09-dao-server-referrals-nft-audit.md).

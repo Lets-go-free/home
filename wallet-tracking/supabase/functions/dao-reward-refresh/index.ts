@@ -40,72 +40,71 @@ function isVerifiedReferralTransaction(address:string,tx:any,flows:any[]){
 // projects/dao1/dao1.js. The canonical asset flows are the source of truth:
 // no separate reward posting, token valuation, or inferred DID is created.
 // TX + flow key is the identity (one withdrawal can have several assets).
+// Fetch each persisted stream once per page. The earlier implementation did an
+// extra SQL request for every 40 relevant transactions and could time out.
+// Fetch bounds are intentional: an incomplete audit must fail, not silently
+// return a partial reward total.
+async function referralAuditRows(table:string,columns:string,job:any,onlyIncoming=false){
+ const pageSize=500,maxPages=20,rows:any[]=[];
+ const deadline=AbortSignal.timeout(30000);
+ for(let page=0;page<maxPages;page++){
+  let query=sb.from(table).select(columns)
+   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN);
+  if(onlyIncoming)query=query.eq('direction','eingang');
+  const {data,error}=await query.order('id',{ascending:true})
+   .range(page*pageSize,(page+1)*pageSize-1)
+   .abortSignal(deadline);
+  if(error)throw Error('Referral audit '+table+': '+error.message);
+  const batch=data||[];rows.push(...batch);
+  if(batch.length<pageSize)return rows;
+ }
+ throw Error('Referral audit '+table+': page safety limit reached; complete scan required');
+}
 async function verifiedReferralSummary(job:any,address:string){
  const empty={verifiedTransactions:0,verifiedFlows:0,byAsset:[] as any[],unverifiedIncomingWusdt:0};
  if(address!==REFERRAL_WALLET)return {...empty,skipped:'no-verified-referral-wallet'};
+ // Two streams in parallel, at most two pages each for the current test wallet.
+ // No external explorer call, no writes, and no per-transaction DB requests.
+ const [transactions,flows]=await Promise.all([
+  referralAuditRows('project_transactions','tx_hash,to_address,method,selector,claim_nft_subtype',job),
+  referralAuditRows('project_transaction_asset_flows','tx_hash,flow_key,direction,token_address,token_symbol,amount,counterparty_address,value_usd',job,true)
+ ]);
+ const byTx=new Map<string,any[]>();
+ for(const f of flows){const key=lower(f.tx_hash);if(!byTx.has(key))byTx.set(key,[]);byTx.get(key)!.push(f)}
  const assets=new Map<string,{tokenAddress:string,symbol:string,amount:string,flows:number,pricedFlows:number}>();
  let verifiedTransactions=0,verifiedFlows=0,unverifiedIncomingWusdt=0;
  const seen=new Set<string>();
- // Paged TX reads; never silently classify only the first Supabase page.
- for(let start=0;;start+=200){
-  const {data:transactions,error}=await sb.from('project_transactions')
-   .select('tx_hash,to_address,method,selector,claim_nft_subtype')
-   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-   .eq('project_key',PROJECT).eq('chain_key',CHAIN)
-   .order('id',{ascending:true}).range(start,start+199);
-  if(error)throw Error('Referral transaction scan: '+error.message);
-  const batch=transactions||[];
-  // Only DID-labelled records and verified contract withdrawals are eligible.
-  const relevant=batch.filter((t:any)=>
-   String(t.claim_nft_subtype||'').toUpperCase()==='DID' ||
-   lower(t.to_address)===REFERRAL_REWARD_CONTRACT);
-  for(let i=0;i<relevant.length;i+=40){
-   const group=relevant.slice(i,i+40);
-   const hashes=[...new Set(group.map((t:any)=>lower(t.tx_hash)))];
-   if(!hashes.length)continue;
-   const {data:flows,error:flowError}=await sb.from('project_transaction_asset_flows')
-    .select('tx_hash,flow_key,direction,token_address,token_symbol,amount,token_decimals,amount_raw,counterparty_address,value_usd')
-    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-    .eq('project_key',PROJECT).eq('chain_key',CHAIN)
-    .in('tx_hash',hashes).eq('direction','eingang').limit(1000);
-   if(flowError)throw Error('Referral flow scan: '+flowError.message);
-   if((flows||[]).length===1000)throw Error('Referral flow page limit reached; cannot classify incomplete evidence');
-   const byTx=new Map<string,any[]>();
-   for(const flow of flows||[]){const key=lower(flow.tx_hash);if(!byTx.has(key))byTx.set(key,[]);byTx.get(key)!.push(flow)}
-   for(const tx of group){
-    const key=lower(tx.tx_hash);if(seen.has(key))continue;seen.add(key);
-    const incoming=byTx.get(key)||[];
-    const isDid=String(tx.claim_nft_subtype||'').toUpperCase()==='DID';
-    // The browser excludes mining bot claims from contract-based referrals.
-    const isClaim=[CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(String(tx.selector||'').toLowerCase());
-    const eligible=isDid?incoming:
-      !isClaim&&isVerifiedReferralTransaction(address,tx,incoming)
-       ?incoming.filter((f:any)=>f.direction==='eingang'&&lower(f.token_address)===REFERRAL_WUSDT_TOKEN&&lower(f.counterparty_address)===REFERRAL_REWARD_CONTRACT):[];
-    if(!eligible.length){
-     if(!isDid)unverifiedIncomingWusdt+=incoming.filter((f:any)=>lower(f.token_address)===REFERRAL_WUSDT_TOKEN).length;
-     continue;
-    }
-    verifiedTransactions++;
-    const flowSeen=new Set<string>();
-    for(const f of eligible){
-     const identity=String(f.flow_key||'');
-     if(flowSeen.has(identity))continue;flowSeen.add(identity);
-     // Never invent a technical scale or convert amounts through Number.
-     const contract=lower(f.token_address);const symbol=String(f.token_symbol||'TOKEN');
-     const assetKey=contract||'symbol:'+symbol.toLowerCase();
-     let entry=assets.get(assetKey);
-     if(!entry){entry={tokenAddress:contract,symbol,amount:'0',flows:0,pricedFlows:0};assets.set(assetKey,entry)}
-     entry.amount=addDecimalStrings(entry.amount,String(f.amount??'0'));
-     entry.flows++;verifiedFlows++;
-     if(f.value_usd!==null&&f.value_usd!==undefined)entry.pricedFlows++;
-    }
-   }
+ for(const tx of transactions){
+  const key=lower(tx.tx_hash);if(seen.has(key))continue;seen.add(key);
+  const incoming=byTx.get(key)||[];
+  const isDid=String(tx.claim_nft_subtype||'').toUpperCase()==='DID';
+  const isClaim=[CLAIM_SELECTOR,NEW_MINER_CLAIM_SELECTOR].includes(String(tx.selector||'').toLowerCase());
+  const eligible=isDid?incoming:
+   !isClaim&&isVerifiedReferralTransaction(address,tx,incoming)
+    ?incoming.filter((f:any)=>f.direction==='eingang'&&lower(f.token_address)===REFERRAL_WUSDT_TOKEN&&lower(f.counterparty_address)===REFERRAL_REWARD_CONTRACT):[];
+  if(!eligible.length){
+   if(!isDid)unverifiedIncomingWusdt+=incoming.filter((f:any)=>lower(f.token_address)===REFERRAL_WUSDT_TOKEN).length;
+   continue;
   }
-  if(batch.length<200)break;
+  verifiedTransactions++;
+  const flowSeen=new Set<string>();
+  for(const f of eligible){
+   const identity=String(f.flow_key||'')||[lower(f.tx_hash),lower(f.token_address),String(f.amount),lower(f.counterparty_address)].join(':');
+   if(flowSeen.has(identity))continue;flowSeen.add(identity);
+   const contract=lower(f.token_address),symbol=String(f.token_symbol||'TOKEN');
+   const assetKey=contract||'symbol:'+symbol.toLowerCase();
+   let entry=assets.get(assetKey);
+   if(!entry){entry={tokenAddress:contract,symbol,amount:'0',flows:0,pricedFlows:0};assets.set(assetKey,entry)}
+   entry.amount=addDecimalStrings(entry.amount,String(f.amount??'0'));
+   entry.flows++;verifiedFlows++;
+   if(f.value_usd!==null&&f.value_usd!==undefined)entry.pricedFlows++;
+  }
  }
  return {verifiedTransactions,verifiedFlows,unverifiedIncomingWusdt,
+  scannedTransactions:transactions.length,scannedIncomingFlows:flows.length,
   byAsset:[...assets.values()].sort((a,b)=>a.tokenAddress.localeCompare(b.tokenAddress)),
-  notice:'Read-only server-side classification of persisted payouts. No reward posting or NFT assignment; historical values remain canonical.'};
+  notice:'Read-only server-side classification of persisted payouts. Bounded paginated queries; no reward posting or NFT assignment; historical values remain canonical.'};
 }
 function addDecimalStrings(a:string,b:string){
  const decimal=/^-?\d+(?:\.\d+)?$/;

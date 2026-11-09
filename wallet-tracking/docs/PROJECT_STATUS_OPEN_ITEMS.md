@@ -1,8 +1,12 @@
 # WalletTracking – verbindlicher Entwicklungsstatus und offene Punkte
 
-**Dokumentationsstand:** 09.11.2026 13:29:34 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.09, Build 20261109-132934.
+**Dokumentationsstand:** 09.11.2026 16:17:26 CET (Europe/Zurich) · **aktuelle sichtbare App-Phase:** 8.10, Build 20261109-161726.
 
 Diese Datei ist die zusammengeführte Arbeits- und Übergabeübersicht. Status hier beschreibt belegte Live-Tests, nicht eine pauschale Produktivfreigabe. Bestehende Fach- und Release-Dokumentation bleibt gültig.
+
+## Phase 8.10 – Referral-Audit Timeout-Korrektur (Live-Abnahme offen)
+
+Die 8.09-Audit-Auswertung lief auf HTTP 504 nach 150 Sekunden. In `dao-reward-refresh` wurden die mehrfachen per-TX-Batch-Queries durch zwei parallel und vollständig seitenweise eingelesene Ströme ersetzt (Transaktionen und eingehende Token-Flows). Beide Datenstromabfragen haben ein 30-Sekunden-Budget, unvollständige Ergebnisse werden als Fehler gemeldet statt als Teilsumme. Die Klassifikation, Reward-Werte und NFT-Ownership-Logik bleiben unverändert. DAO-Live-Worker und Cron bleiben deaktiviert. Live-Audit muss nach Deployment erneut ausgeführt werden.
 
 ## Phase 8.09 – DAO1-Referral serverseitig / NFT-Zuordnung Diagnose (lokal implementiert, Live-Test offen)
 
