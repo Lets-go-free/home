@@ -8,10 +8,10 @@ assert.ok(migration);
 const sql=readFileSync(new URL('supabase/migrations/'+migration,base),'utf8');
 const html=readFileSync(new URL('index.html',base),'utf8');
 const route=src.slice(src.indexOf("if(body.mode==='cron-staged-one')"),src.indexOf('// 8.14: manually authorized'));
-test('version is 8.16 and index footer/build consistent',()=>{
- assert.match(html,/window.APP_VERSION="8\.16"/);
+test('version is at least 8.16 and index footer/build consistent',()=>{
+ assert.match(html,/window.APP_VERSION="8\.(?:16|17)"/);
  const build=html.match(/window.BUILD_ID="([\d-]+)"/)?.[1];assert.ok(build);
- assert.ok(html.includes('Phase 8.16 · Build '+build));
+ assert.ok(html.includes('Phase '+html.match(/window.APP_VERSION="([^"]+)/)?.[1]+' · Build '+build));
 });
 test('staged mode remains manual, fixed shape, disabled if live worker enabled',()=>{
  assert.match(route,/DAO_REWARD_ENABLE_MULTI_WALLET_TEST/);

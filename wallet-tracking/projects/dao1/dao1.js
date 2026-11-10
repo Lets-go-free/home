@@ -8181,7 +8181,7 @@ window.DAO1Project = (() => {
         : `Neue Wallet-Daten ab Block ${fromBlock} werden geladen… Seite ${page}`;
       const j=await fetchJson(url,"Apertum Explorer · Wallet-Transaktionen");
       const items=j.items||[];
-      fetched+=items.length;
+      // Kein separater Zähler nötig; nur die gefilterten Transaktionen werden gesammelt.
       let oldest=Infinity;
       for(const t of items){
         const block=Number(t.block_number??t.block??0);

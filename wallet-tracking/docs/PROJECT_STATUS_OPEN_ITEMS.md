@@ -1,3 +1,6 @@
+## Release 8.17 · 10.11.2026 20:03:18 CET · 20261110-200318
+Bestätigter 8.16-HTTP-500: `reward_running` fehlte in DB-CHECK; manuell live bereits behoben, jetzt als reproduzierbare Migration enthalten. Strukturierte Supabase-Fehler erscheinen nicht mehr als `[object Object]`; ungenutzte, nicht deklarierte Browser-Variable `fetched` im DAO1-Inkrementalscan entfernt. Historische DAO-Server-Cursor werden in `project_scan_state.last_scan_message` persistiert; neuer Tageslauf noch nicht live verifiziert. Raw-Staging- und Staged-Claim-Phase für leeres Wallet manuell geprüft; reale Claim-/Referral-Fälle und APTMDAO weiter offen. Keine Preise, NFT-Klassifikation, Rewards oder TLN/VOW geändert. Cron und Live-Worker aus.
+
 ## Release 8.16 · 10.11.2026 06:41:13 CET · 20261110-064113
 DAO1 staged-Reward-Einzelphase implementiert. Live-Abnahme offen: erst Preview, dann einmaliger schreibender Test. APTMDAO und vollständige Referral-E2E-Verarbeitung nicht freigegeben, Cron und Live-Worker aus.
 

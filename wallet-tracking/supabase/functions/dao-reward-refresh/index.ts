@@ -120,6 +120,22 @@ const RAW_TX_SCAN='reward_server_raw_transactions_v1'
 const RAW_FLOW_SCAN='reward_server_raw_flows_v1'
 // Independent targeted scan: a token transfer may not be listed in the wallet's address transactions.
 const REFERRAL_FLOW_SCAN='reward_server_referral_wusdt_v1'
+// Preserve structured PostgREST/PostgreSQL errors instead of rendering '[object Object]'.
+// Response remains bounded and contains no credentials, wallet plaintext or request headers.
+function daoErrorSummary(e:unknown):string{
+ if(e instanceof Error)return e.message||e.name||'Unknown error';
+ if(typeof e==='string')return e||'Unknown error';
+ if(e&&typeof e==='object'){
+  const o=e as Record<string,unknown>;
+  const parts=[typeof o.code==='string'?`SQL ${o.code}`:null,
+   typeof o.message==='string'?o.message:null,
+   typeof o.details==='string'?o.details:null,
+   typeof o.hint==='string'?o.hint:null].filter(Boolean);
+  if(parts.length)return parts.join(' | ').slice(0,1200);
+  return 'Unbekannter strukturierter Fehler (Details im Server-Log prüfen)';
+ }
+ return String(e??'Unknown error').slice(0,1200);
+}
 function localDay(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Zurich',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}
 function localMinute(){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Zurich',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());return Number(parts.find(x=>x.type==='hour')?.value)*60+Number(parts.find(x=>x.type==='minute')?.value)}
 function bytesFromMaster(){
@@ -1569,7 +1585,7 @@ Deno.serve(async request=>{
     referralFlowsVerified:referral?.verifiedFlows??null,unreviewedWusdt:referral?referral.unverifiedIncomingWusdt:null,
     referralCoverage,notice:'One previously staged wallet. At most one canonical claim with existing strict guards. No new referral postings or raw cursor updates. Completed only after conservative candidate and referral checks.'});
   }catch(e){
-   const error=String(e instanceof Error?e.message:e);
+   const error=daoErrorSummary(e);
    if(job){const failed=await sb.rpc('wallettracking_dao_reward_finish_staged_v3',{
     p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:'failed',p_error:error});
     if(failed.error)return Response.json({ok:false,error:'Reward phase failed; lease transition failed; inspect logs',leaseError:failed.error.message},{status:500});}
@@ -1607,7 +1623,7 @@ Deno.serve(async request=>{
     queueStep:job.step_count,imported,claimsCreated:0,referralPosting:'disabled',
     notice:'Staging only, one encrypted wallet. No canonical claim/price/NFT/reward writes or daily completion.'});
   }catch(e){
-   const error=String(e instanceof Error?e.message:e);
+   const error=daoErrorSummary(e);
    if(job){
     const failed=await sb.rpc('wallettracking_dao_reward_transition_v2',{
      p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:'failed',p_error:error});

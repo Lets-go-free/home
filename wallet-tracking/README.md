@@ -1,3 +1,6 @@
+## WalletTracking 8.17 · 10.11.2026 20:03:18 CET · 20261110-200318
+Constraint-Hotfix für `reward_running` als eigene idempotente Migration, DAO-Edge-Fehlerformatierung und Korrektur des ungenutzten Browser-Zählers; siehe `docs/releases/8.17-dao-scan-hardening.md`. Cron und Live-Worker bleiben deaktiviert.
+
 ## WalletTracking 8.16 · 10.11.2026 06:41:13 CET · 20261110-064113
 Geschützte DAO1-Staged-Reward-Phase ohne Cron-Aktivierung; siehe `docs/releases/8.16-dao-staged-reward-phase.md`.
 
