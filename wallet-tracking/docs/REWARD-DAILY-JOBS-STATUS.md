@@ -1,3 +1,6 @@
+## Release 8.16 · 10.11.2026 06:41:13 CET · 20261110-064113
+Gesonderte, manuell geschützte staged-Reward-Phase mit einmaliger kanonischer Claim-Verarbeitung, konservativem Queue-Abschluss und Referral-Prüfung. Keine automatischen Crons. Weitere APTMDAO- und mehrwalletige Referral-End-to-End-Abnahme offen. Siehe `docs/releases/8.16-dao-staged-reward-phase.md`.
+
 ## Release 8.15 · 09.11.2026 21:38:12 CET · 20261109-213812
 Staging-Guard für validierte leere Blockchain-Historien; Null-Block-Scans werden zweifach bestätigt, explizit als `empty_verified` markiert und nur bei nachgewiesener Coverage als `staged` übernommen. Live-Worker und Cron bleiben deaktiviert. Siehe `docs/releases/8.15-dao-empty-history-proof.md`.
 

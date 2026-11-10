@@ -26,7 +26,7 @@ test('staging requires positive full coverage and cannot silently stage block ze
 test('fallback returns explicit incomplete coverage and never stages',()=>{
  assert.match(src,/complete:false,coverageVerified:false,verifiedEmpty:false/);
 });
-test('build reflects 8.15',()=>{
- assert.match(html,/window.APP_VERSION="8\.15"/);
- assert.match(html,/Phase 8\.15 · Build/);
+test('build reflects 8.15 or newer',()=>{
+ assert.match(html,/window.APP_VERSION="8\.(?:15|16)"/);
+ assert.match(html,/Phase 8\.(?:15|16) · Build/);
 });

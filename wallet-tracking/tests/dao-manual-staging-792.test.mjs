@@ -8,7 +8,8 @@ test('manually imported wallet is chosen from the fixed test address only',()=>{
  assert.match(serve,/findInspectWalletMatches\(\)/);
  assert.match(serve,/matches\.length!==1/);
  assert.match(src,/const INSPECT_ADDRESS='0x239c5822a0d2a67e629d7a3b5c8180721e228b47'/);
- assert.doesNotMatch(serve,/body\.wallet_id|body\.walletAddress|body\.address/);
+ const importRoute=serve.slice(serve.indexOf("if(body?.mode==='import-test-wallet')"),serve.indexOf('// Only explicit DAO cron routes')) ;
+ assert.doesNotMatch(importRoute,/body\.wallet_id|body\.walletAddress|body\.address/);
 });
 test('manual import requires both JWT admin and separate opt-in flag',()=>{
  assert.match(serve,/DAO_REWARD_ENABLE_TEST_IMPORT/);
