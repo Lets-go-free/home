@@ -6,6 +6,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-coverage.ts'
 import './asset-policy.js'
+import { rewardFlowCounterparty } from './counterparty-policy.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
@@ -178,6 +179,31 @@ async function loadAddress(job:any){
  if(error||!data||data.encryption_version!==1||data.key_version!==1)throw Error('Wallet decryption metadata unavailable');
  const a=await decryptWalletField(await userKey(job.user_id),job.user_id,job.wallet_id,data.evm_address_ciphertext,'evm_address');
  if(!/^0x[0-9a-f]{40}$/i.test(a))throw Error('Wallet has no valid EVM address');return a.toLowerCase()
+}
+// Decrypt only addresses owned by the current queue user in memory; never return
+// addresses, keys or this set to the client. A failed decryption must abort the
+// staging step rather than accidentally persist an internal wallet counterparty.
+async function ownAddressesForJob(job:any):Promise<Set<string>> {
+ const user=String(job.user_id);
+ const addresses=new Set<string>();
+ const key=await userKey(user);
+ const pageSize=200;
+ for(let offset=0;offset<2000;offset+=pageSize){
+  const {data,error}=await sb.from('wallets')
+   .select('id,user_id,evm_address_ciphertext,encryption_version,key_version')
+   .eq('user_id',user).not('evm_address_ciphertext','is',null)
+   .order('id').range(offset,offset+pageSize-1);
+  if(error)throw error;
+  for(const wallet of data||[]){
+   if(wallet.encryption_version!==1||wallet.key_version!==1)
+    throw Error('Unsupported own-wallet encryption metadata');
+   const address=await decryptWalletField(key,user,wallet.id,wallet.evm_address_ciphertext,'evm_address');
+   if(!/^0x[0-9a-f]{40}$/i.test(address))throw Error('Invalid decrypted own-wallet address');
+   addresses.add(address.toLowerCase());
+  }
+  if((data||[]).length<pageSize)return addresses;
+ }
+ throw Error('Own-wallet scope exceeds safe bound');
 }
 async function json(url:string){const abort=new AbortController();const t=setTimeout(()=>abort.abort(),15000);try{const r=await fetch(url,{signal:abort.signal,headers:{accept:'application/json'}});if(!r.ok)throw Error('Explorer status '+r.status);return await r.json()}finally{clearTimeout(t)}}
 // Blockscout-compatible explorers do not consistently include block_number
@@ -684,7 +710,7 @@ async function process(job:any,stageOnly=false){
  // Manual staging: one Explorer page per stream, no ownership/payout verification,
  // no price or canonical Claim RPCs. Still persist raw events and durable scan cursors.
  const pageLimit=stageOnly?1:MAX_PAGES_PER_INVOCATION;
- const address=await loadAddress(job);const knownNfts=await knownWalletNfts(job);
+ const address=await loadAddress(job);const ownAddresses=await ownAddressesForJob(job);const knownNfts=await knownWalletNfts(job);
  let txCount=0,flowCount=0,nativeClaimFlows=0,claimNftCandidates=0;
  const tc=await state(job,RAW_TX_SCAN);
  const txProgress=await paginate(job,RAW_TX_SCAN,`/addresses/${address}/transactions`,tc,async items=>{
@@ -728,7 +754,7 @@ async function process(job:any,stageOnly=false){
     log_index:log,token_address:token,token_symbol:String(t.token?.symbol||''),
     token_name:String(t.token?.name||''),token_decimals:decimals,amount_raw:raw,
     amount:decimalAmount(raw,decimals),
-    counterparty_address:direction==='eingang'?from:direction==='ausgang'?to:null,
+    counterparty_address:rewardFlowCounterparty(direction,from,to,address,ownAddresses),
     direction,updated_at:new Date().toISOString()};
   });
  }

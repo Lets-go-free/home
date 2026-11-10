@@ -8,9 +8,9 @@ const migration=readdirSync(new URL('supabase/migrations/',root)).find(f=>f.ends
 const sql=readFileSync(new URL('supabase/migrations/'+migration,root),'utf8');
 const html=readFileSync(new URL('index.html',root),'utf8');
 test('8.17 version and build visible consistently',()=>{
- assert.match(html,/window.APP_VERSION="8\.17"/);
+ assert.match(html,/window.APP_VERSION="8\.(?:17|18)"/);
  const build=html.match(/window.BUILD_ID="([\d-]+)"/)?.[1];assert.ok(build);
- assert.ok(html.includes('Phase 8.17 · Build '+build));
+ assert.ok(html.includes('Phase '+(html.match(/window.APP_VERSION="([^"]+)"/)?.[1])+' · Build '+build));
 });
 test('migration captures reward_running without mutating claims or wallets',()=>{
  for(const state of ['pending','running','partial','staged','reward_running','failed','completed'])assert.match(sql,new RegExp("'"+state+"'"));

@@ -1,3 +1,6 @@
+## WalletTracking 8.18 · 10.11.2026 22:33:32 CET · 20261110-223332
+Bei DAO1-Rohimporten werden Gegenparteien anderer eigener Wallets wie im Browser nicht erneut als Klartext gespeichert. Externe Contract-/Null-Adressen bleiben für Nachweise erhalten. Keine historischen Daten oder Rewards umgeschrieben; siehe `docs/releases/8.18-dao-internal-transfer-privacy.md`. DAO-Cron und Live-Worker bleiben aus.
+
 ## WalletTracking 8.17 · 10.11.2026 20:03:18 CET · 20261110-200318
 Constraint-Hotfix für `reward_running` als eigene idempotente Migration, DAO-Edge-Fehlerformatierung und Korrektur des ungenutzten Browser-Zählers; siehe `docs/releases/8.17-dao-scan-hardening.md`. Cron und Live-Worker bleiben deaktiviert.
 

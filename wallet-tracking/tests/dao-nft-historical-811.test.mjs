@@ -25,7 +25,7 @@ test('migration requires strict history and immutable financial fields',()=>{
  assert.doesNotMatch(sql,/INSERT INTO public\.project_nft_claims/i);
 });
 test('version and cache invalidation are updated',()=>{
- assert.match(index,/window.APP_VERSION="8\.(?:11|12|13|14|15|16|17)"/);
+ assert.match(index,/window.APP_VERSION="8\.(?:11|12|13|14|15|16|17|18)"/);
  assert.match(index,/projects\/dao1\/dao1.js\?v=20261109-(?:171222|211827)/);
  assert.match(browser,/daoHistoryTxCache\.delete\(`wallet:\$\{walletIdForAddress\(address\)\}`\)/);
 });
