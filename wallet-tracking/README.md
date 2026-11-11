@@ -1,3 +1,6 @@
+## WalletTracking 8.19 · 11.11.2026 06:37:58 CET · 20261111-063758
+Manuell autorisierter DAO1-Rohdaten-Batch `cron-multi-wallet-batch`: hoechstens zehn Schritte, 65-Sekunden-Startbudget, Einzelwallet-Leases und Fehlerisolierung. Kein Reward-Posting, kein Cron, keine SQL-Migration. Siehe `docs/releases/8.19-dao-manual-staging-batch.md`. DAO-Live-Worker bleibt deaktiviert.
+
 ## WalletTracking 8.18 · 10.11.2026 22:33:32 CET · 20261110-223332
 Bei DAO1-Rohimporten werden Gegenparteien anderer eigener Wallets wie im Browser nicht erneut als Klartext gespeichert. Externe Contract-/Null-Adressen bleiben für Nachweise erhalten. Keine historischen Daten oder Rewards umgeschrieben; siehe `docs/releases/8.18-dao-internal-transfer-privacy.md`. DAO-Cron und Live-Worker bleiben aus.
 

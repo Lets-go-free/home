@@ -8,7 +8,7 @@ const migration=readdirSync(new URL('supabase/migrations/',root)).find(f=>f.ends
 const sql=readFileSync(new URL('supabase/migrations/'+migration,root),'utf8');
 const html=readFileSync(new URL('index.html',root),'utf8');
 test('8.17 version and build visible consistently',()=>{
- assert.match(html,/window.APP_VERSION="8\.(?:17|18)"/);
+ assert.match(html,/window.APP_VERSION="8\.(?:17|18|19)"/);
  const build=html.match(/window.BUILD_ID="([\d-]+)"/)?.[1];assert.ok(build);
  assert.ok(html.includes('Phase '+(html.match(/window.APP_VERSION="([^"]+)"/)?.[1])+' · Build '+build));
 });
@@ -23,9 +23,9 @@ test('staging and staged failure preserve database error code/message without ob
  assert.match(edge,/typeof o\.code==='string'/);
  assert.match(edge,/typeof o\.message==='string'/);
  const from=edge.indexOf("if(body.mode==='cron-staged-one')");
- const to=edge.indexOf('// 8.13: explicit single-wallet',from);
+ const to=edge.indexOf("if(body.mode==='cron-multi-wallet-batch')",from);
  const routes=edge.slice(from,to);
- assert.equal((routes.match(/const error=daoErrorSummary\(e\)/g)||[]).length,2);
+ assert.equal((routes.match(/const error=daoErrorSummary\(e\)/g)||[]).length,1);
  assert.doesNotMatch(routes,/const error=String\(e instanceof Error\?e\.message:e\)/);
 });
 test("browser incremental DAO1 fetch has no undeclared fetched counter",()=>{

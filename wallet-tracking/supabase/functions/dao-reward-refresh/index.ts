@@ -1527,7 +1527,7 @@ Deno.serve(async request=>{
  }
  // Only explicit DAO cron routes are accepted, never an implicit default request.
  // Read-only authentication probe is safe even when the live worker is disabled.
- if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one'&&body?.mode!=='cron-multi-wallet-preview'&&body?.mode!=='cron-multi-wallet-one'&&body?.mode!=='cron-staged-preview'&&body?.mode!=='cron-staged-one')
+ if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one'&&body?.mode!=='cron-multi-wallet-preview'&&body?.mode!=='cron-multi-wallet-one'&&body?.mode!=='cron-multi-wallet-batch'&&body?.mode!=='cron-staged-preview'&&body?.mode!=='cron-staged-one')
   return Response.json({error:'Unsupported DAO cron mode'},{status:400});
  if(!await authorizedDaoCron(request))return Response.json({error:'Unauthorized DAO cron request'},{status:401});
  if(body.mode==='cron-auth-check')return Response.json({ok:true,mode:'cron-auth-check',authenticated:true,
@@ -1617,6 +1617,71 @@ Deno.serve(async request=>{
     if(failed.error)return Response.json({ok:false,error:'Reward phase failed; lease transition failed; inspect logs',leaseError:failed.error.message},{status:500});}
    return Response.json({ok:false,mode:'cron-staged-one',error},{status:500});
   }
+ }
+ // 8.19: manual bounded batch of the SAME staging-only v2 queue used by
+ // cron-multi-wallet-one. No body-supplied wallet, count, cursor or time limit.
+ // Every step owns its own SQL lease; failed steps are individually finalized.
+ if(body.mode==='cron-multi-wallet-batch'){
+  if(Object.keys(body).some(k=>k!=='mode'))return Response.json({error:'Batch does not accept parameters'},{status:400});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before manual batch'},{status:409});
+  if(Deno.env.get('DAO_REWARD_ENABLE_MULTI_WALLET_TEST')!=='true')
+   return Response.json({error:'Multi-wallet rehearsal not enabled'},{status:403});
+  const day=localDay(),MAX_BATCH_STEPS=10,MAX_BATCH_ELAPSED_MS=65000;
+  const started=Date.now(),steps:any[]=[];
+  let stopped='max_steps',failed=0,staged=0,partial=0;
+  for(let i=0;i<MAX_BATCH_STEPS;i++){
+   // Bound work on a request. A single Explorer call may still overrun this
+   // budget; it is not an abort signal or a guarantee against platform timeout.
+   if(Date.now()-started>=MAX_BATCH_ELAPSED_MS){stopped='time_budget';break;}
+   let job:any=null;
+   try{
+    const picked=await sb.rpc('wallettracking_dao_reward_claim_v2',{p_day:day});
+    if(picked.error)throw picked.error;
+    job=picked.data?.[0];
+    if(!job){stopped='no_eligible_wallet';break;}
+    const imported=await process({user_id:job.user_id,wallet_id:job.wallet_id},true);
+    const proved=(scan:any)=>!!scan&&scan.complete===true&&scan.coverageVerified===true
+     &&(scan.block>0||scan.verifiedEmpty===true);
+    const incomplete=!proved(imported.transactionScan)||!proved(imported.flowScan)
+     ||(imported.referralScan!==null&&!proved(imported.referralScan));
+    const state=incomplete?'partial':'staged';
+    const transition=await sb.rpc('wallettracking_dao_reward_transition_v2',{
+     p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:state,p_error:null});
+    if(transition.error)throw transition.error;
+    if(incomplete)partial++;else staged++;
+    steps.push({walletId:job.wallet_id,queueStep:job.step_count,status:state,
+     transactionsObserved:imported.transactionsObserved,flowsObserved:imported.flowsObserved,
+     claimCandidatesObserved:imported.claimCandidatesObserved,
+     transactionScanMode:imported.transactionScan?.scanMode??null,
+     flowScanMode:imported.flowScan?.scanMode??null,
+     transactionCheckpointAdvanced:imported.transactionScan?.checkpointProgress?.advanced===true,
+     flowCheckpointAdvanced:imported.flowScan?.checkpointProgress?.advanced===true});
+   }catch(e){
+    const error=daoErrorSummary(e);
+    if(!job){
+     // No lease to release: the queue/DB itself failed. Stop the batch.
+     return Response.json({ok:false,mode:'cron-multi-wallet-batch',day,
+      stopped:'queue_error',stepsCompleted:steps.length,failed,staged,partial,steps,error},{status:500});
+    }
+    const transition=await sb.rpc('wallettracking_dao_reward_transition_v2',{
+     p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:'failed',p_error:error});
+    if(transition.error){
+     // Do not continue when an outstanding lease could remain behind.
+     return Response.json({ok:false,mode:'cron-multi-wallet-batch',day,
+      stopped:'lease_transition_error',stepsCompleted:steps.length,failed,staged,partial,steps,
+      walletId:job.wallet_id,error,leaseError:daoErrorSummary(transition.error)},{status:500});
+    }
+    failed++;
+    steps.push({walletId:job.wallet_id,queueStep:job.step_count,status:'failed',error});
+    // This wallet is bounded by the existing failure_count < 3 SQL guard.
+    // Continue with another eligible wallet rather than blocking the batch.
+   }
+  }
+  return Response.json({ok:failed===0,mode:'cron-multi-wallet-batch',project:PROJECT,day,
+   maxSteps:MAX_BATCH_STEPS,stepsCompleted:steps.length,staged,partial,failed,stopped,steps,
+   claimsCreated:0,referralPosting:'disabled',liveWorkerEnabled:false,
+   notice:'Manual bounded staging only. Same guarded v2 leases and per-wallet error limits as single-step mode. No canonical claims, prices, NFT, reward postings or cron scheduling. A timed-out individual Explorer request may still hit the platform limit.'});
  }
  // 8.14: manually authorized, exactly one encrypted wallet per invocation.
  // Staging only: never finalize a canonical claim or post a referral reward.

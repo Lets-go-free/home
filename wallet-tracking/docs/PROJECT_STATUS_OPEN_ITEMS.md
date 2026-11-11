@@ -1,3 +1,6 @@
+## Release 8.19 · 11.11.2026 06:37:58 CET · 20261111-063758
+Manueller DAO1-Queue-Batch: fest maximal zehn Staging-Schritte mit 65-Sekunden-Startbudget, gleicher `v2`-Lease/Checkpoint-Logik wie Einzelmodus, Fehler pro Wallet sicher abschliessen und ggf. weiteren Schritt bearbeiten. Keine kanonischen Claim-/Referral-Buchungen, keine SQL-Migration, kein Cron. Tageswechsel-Fortsetzung (`resume-history`) am 11.11.2026 live bestaetigt, Batch-Livetest offen. Interne Gegenparteien weiterhin nur fuer **neue** Imports datensparsam behandelt. DAO-Live-Worker aus.
+
 ## Release 8.18 · 10.11.2026 22:33:32 CET · 20261110-223332
 Browser und Edge Function verwenden für neue DAO1-ERC20-Rohflows nun dieselbe Regel zur Gegenpartei: Eigene Wallet-zu-Wallet-Transfers speichern `counterparty_address=NULL`, externe Absender/Empfänger (einschliesslich Null-Adresse) bleiben für Audit und Referral-Nachweis erhalten. Alle weiteren Scan-, Claim-, NFT- und Reward-Regeln unverändert. Bestandsdaten nicht umgeschrieben; 29 bestehende NULL-Fälle nicht pauschal reparieren. Weitere offene Prüfung: Nachweis der 13 eingehenden Transfers über ERC20-Logs, Echt-Test neuer Cross-Wallet-Flows und historische Fortsetzung am Tageswechsel. Keine Aktivierung automatischer DAO-Jobs.
 
