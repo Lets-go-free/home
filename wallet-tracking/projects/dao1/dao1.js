@@ -2518,14 +2518,28 @@ window.DAO1Project = (() => {
     return 0;
   }
   function topicAddr(t) { return "0x" + String(t || "").replace(/^0x/, "").slice(-40); }
-  function rewardFromLogs(logs, wallet) {
+  // Exact on-chain native payout wei, stored only after an Explorer/trace proof.
+  // Never reconstruct this from a binary64 APTM amount.
+  const exactNativeClaimWeiByHash = new Map();
+  function storeExactNativeWei(txHash,wallet,raw){
+    const key=String(txHash||"").toLowerCase();
+    const owner=lower(wallet);
+    if(!/^0x[0-9a-f]{64}$/.test(key)||!/^0x[0-9a-f]{40}$/.test(owner)||typeof raw!=="bigint"||raw<=0n)return;
+    exactNativeClaimWeiByHash.set(`${key}|${owner}`,raw.toString());
+  }
+  function rewardFromLogs(logs, wallet, txHash=null) {
     let total = 0;
+    let exactWei = 0n;
     for (const l of logs || []) {
       if (lower(H(l.address)) !== lower(SYSTEM_ADDRESS)) continue;
       const targets = (l.topics || []).slice(1).map(topicAddr);
       if (!targets.some(a => lower(a) === lower(wallet))) continue;
-      try { total += Number(BigInt(l.data || "0"))/1e18; } catch {}
+      try {
+        const raw=BigInt(l.data||"0");
+        if(raw>0n){total+=Number(raw)/1e18;exactWei+=raw;}
+      } catch {}
     }
+    if(exactWei>0n)storeExactNativeWei(txHash,wallet,exactWei);
     return total;
   }
 
@@ -2616,7 +2630,7 @@ window.DAO1Project = (() => {
         try{
           const raw=r?.value?.value ?? r?.value ?? "0";
           const amount=Number(BigInt(String(raw)))/1e18;
-          if(amount>0)valid.push({from,amount});
+          if(amount>0)valid.push({from,amount,raw:BigInt(String(raw))});
         }catch{}
       }
       if(valid.length){
@@ -2627,7 +2641,10 @@ window.DAO1Project = (() => {
         const direct=source?valid.filter(x=>x.from===source):valid;
         const chosen=direct.length?direct:valid;
         const sum=chosen.reduce((total,x)=>total+x.amount,0);
-        if(sum>0)return sum;
+        if(sum>0){
+          storeExactNativeWei(hash,wallet,chosen.reduce((total,x)=>total+x.raw,0n));
+          return sum;
+        }
       }
       // Blockscout liefert bei historischen Apertum-Claims teilweise eine leere
       // Internal-Transaction-Liste. Dann gezielt den RPC-Trace derselben Tx prüfen.
@@ -3696,19 +3713,17 @@ window.DAO1Project = (() => {
     return `claim-native:${String(txHash||"").toLowerCase()}`;
   }
 
-  function nativeClaimAmountRaw(amount){
-    const n=Number(amount);
-    if(!Number.isFinite(n)||n<=0)return "0";
-    const fixed=n.toFixed(18);
-    const [whole,frac=""]=fixed.split(".");
-    try{return BigInt(`${whole}${frac.padEnd(18,"0").slice(0,18)}`).toString();}catch{return "0";}
-  }
-
+  // An amount derived through Number/toFixed is NOT a blockchain raw amount.
+  // Legacy cached claims stay in the canonical claim table; never fabricate
+  // a claim-native payout proof in project_transaction_asset_flows.
   function nativeClaimAssetFlowRow(address,tx,amount,{priceUsd=null,valueUsd=null,priceSource=null,counterparty=null}={}){
     const ctx=getContext?.();
     const txHash=String(tx?.tx_hash||"").toLowerCase();
-    const numericAmount=Number(amount||0);
+    const wei=exactNativeClaimWeiByHash.get(`${txHash}|${lower(address)}`);
+    if(!wei || !/^\d+$/.test(wei) || BigInt(wei)<=0n)return null;
+    const numericAmount=Number(BigInt(wei))/1e18; // display/legacy valuation only
     if(!ctx?.currentUser?.id||!address||!txHash||!Number.isFinite(numericAmount)||numericAmount<=0)return null;
+    // An old backfill value is not proof of the amount. Use the actual raw wei.
     const px=priceUsd==null?null:Number(priceUsd);
     const usd=valueUsd==null?(Number.isFinite(px)?numericAmount*px:null):Number(valueUsd);
     return {
@@ -3716,11 +3731,16 @@ window.DAO1Project = (() => {
       wallet_id:walletIdForAddress(address),flow_key:nativeClaimFlowKey(txHash),
       tx_hash:txHash,block_number:Number(tx?.block_number||0),tx_timestamp:tx?.tx_timestamp||null,
       log_index:-1,token_address:"native",token_symbol:"APTM",token_name:"Apertum",token_decimals:18,
-      amount_raw:nativeClaimAmountRaw(numericAmount),amount:numericAmount,
+      amount_raw:wei,amount:decimalAmountFromRawWei(wei),
       counterparty_address:counterparty||tx?.to_address||null,direction:"eingang",
       price_usd:Number.isFinite(px)?px:null,value_usd:Number.isFinite(usd)?usd:null,
       price_source:priceSource||null,updated_at:new Date().toISOString()
     };
+  }
+
+  function decimalAmountFromRawWei(raw){
+    const digits=BigInt(raw).toString().padStart(19,"0");
+    return (digits.slice(0,-18)+"."+digits.slice(-18).replace(/0+$/,"" )).replace(/\.$/,"");
   }
 
   async function backfillNativeClaimAssetFlows(targetWallets=null){
@@ -4968,7 +4988,7 @@ window.DAO1Project = (() => {
           amount=await rewardFromInternalTransactions(t.tx_hash,address,t.to_address||DEFAULT_MINER_NFT_CONTRACT);
         }else{
           const logs=await fetchClaimTransferLogs(t.tx_hash);
-          amount=rewardFromLogs(logs,address);
+          amount=rewardFromLogs(logs,address,t.tx_hash);
         }
         nativeFallbackByHash.set(h,Number(amount||0));
         if((idx+1)%25===0 || idx+1===nativeTargets.length){
@@ -8399,7 +8419,7 @@ window.DAO1Project = (() => {
             console.warn("Claim-Logs übersprungen:",c.t.hash,e);
             continue;
           }
-          const reward=rewardFromLogs(logs,address);
+          const reward=rewardFromLogs(logs,address,c.t.hash);
           const gas=feeAptm(c.t);
           const block=Number(c.t.block_number??c.t.block);
           const px=await priceForTransaction(block,c.t.timestamp,history);

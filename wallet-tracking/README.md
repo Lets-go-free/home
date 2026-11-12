@@ -1,3 +1,6 @@
+## WalletTracking 8.20 · 12.11.2026 07:59:11 CET · 20261112-075911
+DAO1-Browser speichert neue native Claim-Asset-Flows nur mit aus Explorer-Logs oder erfolgreichen internen Transfers belegtem originalem Wei-Betrag. Kein synthetischer `amount_raw` mehr; fehlende Rohbelege bleiben offen statt vorgetäuschter Auszahlung. Bestehende Claims/Preise/Buchungen und SQL unverändert; siehe `docs/releases/8.20-dao-native-wei-provenance.md`. DAO-Live-Worker/Cron aus.
+
 ## WalletTracking 8.19 · 11.11.2026 06:37:58 CET · 20261111-063758
 Manuell autorisierter DAO1-Rohdaten-Batch `cron-multi-wallet-batch`: hoechstens zehn Schritte, 65-Sekunden-Startbudget, Einzelwallet-Leases und Fehlerisolierung. Kein Reward-Posting, kein Cron, keine SQL-Migration. Siehe `docs/releases/8.19-dao-manual-staging-batch.md`. DAO-Live-Worker bleibt deaktiviert.
 
