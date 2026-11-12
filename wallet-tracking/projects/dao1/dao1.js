@@ -500,7 +500,7 @@ window.DAO1Project = (() => {
       transactionRows=await loadAllApertumTransactionRows(wallets,null);
       transactionAssetFlows=await loadAllAssetFlowRows(wallets);
       if(name==="claims")renderClaimsTab();
-      if(name==="referrals"){if(!dao1TeamAliasesLoaded)await loadDAO1TeamAliases();await loadDAO1OwnedDidRoots(false);renderReferralRewardsTab();}
+      if(name==="referrals"){if(!dao1TeamAliasesLoaded)await loadDAO1TeamAliases();await loadDAO1OwnedDidRoots(false);await loadReferralHistoricDidEvidence();renderReferralRewardsTab();}
     }
   }
 
@@ -7677,23 +7677,66 @@ window.DAO1Project = (() => {
     return scanAptmdaoTree({checkChain:true});
   }
 
+  // Nur fuer die Anzeige: keine Migration, keine Claim-/Reward-Aenderung.
+  // Der Transfer-Cache liefert die historische DID-Besitzfolge statt der
+  // (ggf. bereits geaenderten) heutigen Wallet-Zuordnung.
+  let referralHistoricDidEvidence=new Map();
+  let referralHistoricDidCoverage="not_loaded";
+  async function loadReferralHistoricDidEvidence(){
+    referralHistoricDidEvidence=new Map();
+    referralHistoricDidCoverage="not_loaded";
+    const roots=dao1AllOwnedDidRoots().filter(x=>x.system==="legacy"&&Number(x.did)>0);
+    const ids=[...new Set(roots.map(x=>String(x.did)))];
+    if(!ids.length){referralHistoricDidCoverage="no_candidate_dids";return;}
+    try{
+      const batches=[];
+      for(let i=0;i<ids.length;i+=30)batches.push(ids.slice(i,i+30));
+      for(const batch of batches){
+        const histories=await fetchCachedNftHistories(DAO1_OLD_DID_CONTRACT,batch);
+        for(const id of batch){
+          const events=(histories.get(id)||[]).filter(x=>lower(tokenTransferAddress(x))===DAO1_OLD_DID_CONTRACT&&transferTokenIds(x).includes(id))
+            .map(x=>({block:Number(x.block_number||0),index:Number(x.log_index||0),from:transferFromAddress(x),to:transferToAddress(x)}))
+            .filter(x=>x.block>0&&/^0x[0-9a-f]{40}$/.test(x.to))
+            .sort((a,b)=>a.block-b.block||a.index-b.index);
+          // Eine fehlerhafte/teilweise Transferkette darf nie als Beweis dienen.
+          const zero="0x0000000000000000000000000000000000000000";
+          const valid=events.length>0&&events[0].from===zero&&events.every((e,i)=>i===0||e.from===events[i-1].to);
+          if(valid)referralHistoricDidEvidence.set(id,events);
+        }
+      }
+      referralHistoricDidCoverage="loaded";
+    }catch(e){
+      referralHistoricDidEvidence.clear();
+      referralHistoricDidCoverage="unavailable";
+      console.warn("DAO1 historische Referral-DID nicht geladen",e);
+    }
+  }
+  function referralHistoricDidMatches(r){
+    const address=rowWalletAddress(r),block=Number(r?.block_number||0);
+    if(!/^0x[0-9a-f]{40}$/.test(address)||!(block>0))return [];
+    const matches=[];
+    for(const [id,events] of referralHistoricDidEvidence){
+      // Auch spaetere Transfers werden beachtet: letztes Event <= Auszahlungsblock.
+      const prior=events.filter(x=>x.block<=block);
+      if(prior.length&&prior[prior.length-1].to===address)matches.push(id);
+    }
+    return matches;
+  }
   function referralDidIdentityHtml(r){
     const d=transactionClaimDescriptor(r);
-    if(d?.id && String(d.subtype||"").toUpperCase()==="DID"){
+    if(d?.id&&String(d.subtype||"").toUpperCase()==="DID"){
       const mode=String(r.claim_nft_name||"").toUpperCase().includes("APTMDAO")?"aptmdao":"legacy";
       const alias=dao1TeamAliasFor(d.id,mode);
       return `<strong>${escapeHtml(alias||d.name||`${mode==="aptmdao"?"APTMDAO":"DAO1"} DID #${d.id}`)}</strong><div class="meta">${mode==="aptmdao"?"APTMDAO":"DAO1"} · DID #${escapeHtml(String(d.id))} · Tx-belegt</div>`;
     }
-    const address=rowWalletAddress(r);
-    const matches=dao1AllOwnedDidRoots().filter(x=>lower(x.wallet_address||"")===address);
-    // Aktuelle Wallet-Ownership ist kein historischer Tx/DID-Nachweis.
+    const matches=referralHistoricDidMatches(r);
     if(matches.length===1){
-      const x=matches[0],mode=x.system,id=String(x.did);
-      const alias=dao1TeamAliasFor(id,mode);
-      return `<strong>${escapeHtml(alias||x.name||`${mode==="aptmdao"?"APTMDAO":"DAO1"} DID #${id}`)}</strong><div class="meta">${mode==="aptmdao"?"APTMDAO":"DAO1"} · DID #${escapeHtml(id)} · aktuelle Wallet-DID (nicht Tx-belegt)</div>`;
+      const id=matches[0],alias=dao1TeamAliasFor(id,"legacy");
+      return `<strong>${escapeHtml(alias||`DID #${id}`)}</strong><div class="meta">DAO1 · DID #${escapeHtml(id)} · historischer NFT-Besitz am Auszahlungsblock</div>`;
     }
-    if(matches.length>1)return `<strong>DID nicht eindeutig</strong><div class="meta">${matches.length} Wallet-DIDs · Zuordnung zu dieser Auszahlung nicht belegt</div>`;
-    return `<strong>DID nicht ermittelt</strong><div class="meta">Keine eindeutige DID-Zuordnung zu dieser Auszahlung</div>`;
+    if(matches.length>1)return `<strong>DID nicht eindeutig</strong><div class="meta">${matches.length} DIDs zum Auszahlungsblock · keine eindeutige Zuordnung</div>`;
+    if(referralHistoricDidCoverage==="unavailable")return `<strong>DID nicht ermittelt</strong><div class="meta">Transferhistorie nicht verfügbar · keine Zuordnung geraten</div>`;
+    return `<strong>DID nicht ermittelt</strong><div class="meta">Kein eindeutiger historischer DID-Besitznachweis</div>`;
   }
 
   function renderReferralRewardsTab(){

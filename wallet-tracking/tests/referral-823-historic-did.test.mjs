@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const source=fs.readFileSync(new URL('../projects/dao1/dao1.js',import.meta.url),'utf8');
+assert(source.includes('await loadReferralHistoricDidEvidence();renderReferralRewardsTab();'));
+assert(source.includes('fetchCachedNftHistories(DAO1_OLD_DID_CONTRACT,batch)'));
+assert(source.includes('events.every((e,i)=>i===0||e.from===events[i-1].to)'));
+assert(source.includes('prior[prior.length-1].to===address'));
+assert(source.includes('if(matches.length===1)'));
+assert(source.includes('if(matches.length>1)'));
+assert(!source.includes('const REFERRAL_WALLET ='));
+console.log('Referral 8.23 history-source and ambiguity guard: OK');
