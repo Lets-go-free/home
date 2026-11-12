@@ -1,0 +1,16 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const browser=readFileSync(new URL('../projects/dao1/dao1.js',import.meta.url),'utf8');
+const server=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.doesNotMatch(browser,/REFERRAL_WALLET/);
+assert.doesNotMatch(server,/REFERRAL_WALLET/);
+assert.match(browser,/function isVerifiedReferralTx\(r\)/);
+assert.match(browser,/incomingAssetFlowsForTx\(r\)\.some\(isVerifiedReferralFlow\)/);
+assert.match(server,/lower\(tx\?\.to_address\)===REFERRAL_REWARD_CONTRACT/);
+assert.match(server,/lower\(f\.counterparty_address\)===REFERRAL_REWARD_CONTRACT/);
+assert.match(server,/\['complete','empty_verified'\]/);
+assert.match(browser,/DID nicht eindeutig/);
+assert.match(browser,/aktuelle Wallet-DID \(nicht Tx-belegt\)/);
+assert.match(browser,/await loadDAO1OwnedDidRoots\(false\);renderReferralRewardsTab\(\)/);
+assert.match(browser,/verified\?\.to_address\|\|null/);
+console.log('8.22 Referral-Regression: Kerninvarianten bestanden');

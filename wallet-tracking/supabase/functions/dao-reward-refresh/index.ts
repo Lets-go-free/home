@@ -27,7 +27,6 @@ function canonicalMethod(input:string,explorerMethod:unknown){
 }
 // Contract evidence must match the canonical DAO browser rules; never infer
 // rewards from a token symbol or an unverified incoming transfer alone.
-const REFERRAL_WALLET='0x239c5822a0d2a67e629d7a3b5c8180721e228b47'
 const REFERRAL_REWARD_CONTRACT='0xcd40d3bcfc29c51edb1fdd78580578362366f856'
 const REFERRAL_WUSDT_TOKEN='0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f'
 // Verified wAPTM backpayments from the known legacy MineBot migration payout wallet.
@@ -36,7 +35,7 @@ const LEGACY_MINER_PAYOUT_SENDER='0x6d0539de11b95e18cb202a55098e3854b0313022'
 const LEGACY_MINER_WAPTM='0x110ac02ba3384bc055c13a87766049a74517beda'
 function isVerifiedReferralTransaction(address:string,tx:any,flows:any[]){
  const method=String(tx?.method||'').toLowerCase()
- return address===REFERRAL_WALLET
+ return /^0x[0-9a-f]{40}$/.test(address)
   && lower(tx?.to_address)===REFERRAL_REWARD_CONTRACT
   && (!method||method==='withdraw'||method==='contract call'||method.startsWith('0x'))
   && flows.some(f=>f.direction==='eingang'&&lower(f.token_address)===REFERRAL_WUSDT_TOKEN&&lower(f.counterparty_address)===REFERRAL_REWARD_CONTRACT)
@@ -68,8 +67,8 @@ async function referralAuditRows(table:string,columns:string,job:any,onlyIncomin
 }
 async function verifiedReferralSummary(job:any,address:string){
  const empty={verifiedTransactions:0,verifiedFlows:0,byAsset:[] as any[],unverifiedIncomingWusdt:0};
- if(address!==REFERRAL_WALLET)return {...empty,skipped:'no-verified-referral-wallet'};
- // Two streams in parallel, at most two pages each for the current test wallet.
+
+ // Bounded streams for any eligible wallet; no external explorer calls.
  // No external explorer call, no writes, and no per-transaction DB requests.
  const [transactions,flows]=await Promise.all([
   referralAuditRows('project_transactions','tx_hash,to_address,method,selector,claim_nft_subtype',job),
@@ -811,13 +810,12 @@ async function process(job:any,stageOnly=false){
    'user_id,project_key,chain_key,wallet_id,tx_hash');
   stagedLegacyMinerPayouts=verifiedLegacyPayoutRows.size;
  }
- // Match the browser's targeted referral wUSDT import. Only the historically
- // documented referral wallet is eligible; every other wallet skips this scan.
+ // Match the browser's targeted referral wUSDT import for each wallet.
  // A targeted transfer is evidence of payment, NOT automatically a referral:
  // the canonical UI also requires the qualifying contract transaction.
  let targetedReferralFlows=0;
  let referralProgress:{complete:boolean;block:number;pages:number}|null=null;
- if(address===REFERRAL_WALLET){
+ {
   const rc=await state(job,REFERRAL_FLOW_SCAN);
   referralProgress=await paginate(job,REFERRAL_FLOW_SCAN,
    `/addresses/${address}/token-transfers?type=ERC-20&filter=to&token=${REFERRAL_WUSDT_TOKEN}`,
@@ -1638,11 +1636,14 @@ Deno.serve(async request=>{
     .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('direction','eingang')
     .eq('token_address',REFERRAL_WUSDT_TOKEN);
    if(incomingError)throw incomingError;
-   // The browser's DID/referral rules have been verified only for the registered
-   // referral wallet. Other wallets with incoming wUSDT remain staged pending
-   // general on-chain contract-level proof; they must not be silently completed.
-   const referral=address===REFERRAL_WALLET?await verifiedReferralSummary(job,address):null;
-   const referralCoverage=address===REFERRAL_WALLET||Number(incomingWusdt||0)===0;
+   // Coverage must be based on an actually completed referral scan, not on
+   // the wallet address or on the absence of already-staged wUSDT flows.
+   const referral=await verifiedReferralSummary(job,address);
+   const {data:referralCursor,error:referralCursorError}=await sb.from('project_scan_state')
+    .select('last_scan_result').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+    .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('scan_type',REFERRAL_FLOW_SCAN).maybeSingle();
+   if(referralCursorError)throw referralCursorError;
+   const referralCoverage=['complete','empty_verified'].includes(String(referralCursor?.last_scan_result||''));
    const unresolved=Number(readiness?.unresolved??-1);
    const exceptionCount=Number(readiness?.unrecognizedExceptions??-1);
    // If one claim was created, leave staged for a fresh isolated pass. A missing

@@ -171,11 +171,8 @@ window.DAO1Project = (() => {
     window.showTab?.("dao1");await ensureLoaded();await switchSubtab("claims",document.getElementById("dao1BotClaimsTabBtn"));setResultWalletFilter("claims",walletId);
   }
 
-  // Verifizierter DAO1-Referral-Kontrollfall vom 24.02.2025:
-  // Nur dieses DAO1-Wallet hatte Referral-Partner. Ein Referral Reward ist ein
-  // withdraw/Contract-Call an den Referral-Contract mit tatsächlichem wUSDT-
-  // Rückfluss aus demselben Contract an dasselbe Wallet.
-  const REFERRAL_WALLET = "0x239c5822a0d2a67e629d7a3b5c8180721e228b47";
+  // 8.22: Kein Wallet-Allowlisting. Vertragsaufruf + echter passender
+  // Token-Eingang sind bei jeder Wallet zwingend; DID-Claims separat.
   const REFERRAL_REWARD_CONTRACT = "0xcd40d3bcfc29c51edb1fdd78580578362366f856";
   const REFERRAL_WUSDT_TOKEN = "0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f";
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
@@ -503,7 +500,7 @@ window.DAO1Project = (() => {
       transactionRows=await loadAllApertumTransactionRows(wallets,null);
       transactionAssetFlows=await loadAllAssetFlowRows(wallets);
       if(name==="claims")renderClaimsTab();
-      if(name==="referrals"){if(!dao1TeamAliasesLoaded)await loadDAO1TeamAliases();renderReferralRewardsTab();}
+      if(name==="referrals"){if(!dao1TeamAliasesLoaded)await loadDAO1TeamAliases();await loadDAO1OwnedDidRoots(false);renderReferralRewardsTab();}
     }
   }
 
@@ -4148,7 +4145,7 @@ window.DAO1Project = (() => {
   // Blockscout unterstützt beim Address-Token-Transfer Endpoint sowohl filter=to
   // als auch token=<contract>. Damit laden wir nur eingehendes DAO1-wUSDT.
   async function syncTargetedReferralWusdt(address){
-    if(lower(address)!==REFERRAL_WALLET)return {flows:0,synthetic:0,skipped:true};
+    if(!/^0x[0-9a-f]{40}$/.test(lower(address)))throw new Error("Ungültige Referral-Wallet-Adresse");
     const base=`${EXPLORER_API}/addresses/${address}/token-transfers?type=ERC-20&filter=to&token=${encodeURIComponent(REFERRAL_WUSDT_TOKEN)}`;
     setTransactionStatus("loading","Referral Rewards werden gezielt geprüft…","Nur eingehende wUSDT-Transfers werden geladen; kein ERC-20-Wallet-Vollscan.");
     const transfers=await fetchPagedUrl(base,100);
@@ -4170,13 +4167,33 @@ window.DAO1Project = (() => {
       const h=String(f.tx_hash||"").toLowerCase();
       if(!hashes.has(h)&&!byTx.has(h))byTx.set(h,f);
     }
-    const synthetic=[...byTx.values()].map(f=>({
-      user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-      wallet_id:walletIdForAddress(address),tx_hash:f.tx_hash,block_number:Number(f.block_number||0),
-      tx_timestamp:f.tx_timestamp,from_address:f.counterparty_address||null,to_address:null,
-      direction:"eingang",method:"ERC-20 Transfer",selector:"",status:"token-flow",
-      value_aptm:0,gas_aptm:0,raw_input:"",updated_at:new Date().toISOString()
-    }));
+    const synthetic=[];
+    // Für verifizierte Contract-Auszahlungen reale TX-Details nachladen.
+    // Nur echte, erfolgreiche on-chain Transaktionen dürfen klassifiziert werden.
+    // Andere Token-Eingänge bleiben neutrale, ausdrücklich nicht verifizierte Events.
+    for(const f of byTx.values()){
+      let verified=null;
+      if(lower(f.counterparty_address||"")===REFERRAL_REWARD_CONTRACT){
+        const tx=await fetchJson(`${EXPLORER_API}/transactions/${f.tx_hash}`,"DAO1 · Referral-Transaktionsnachweis");
+        const to=lower(tx?.to?.hash||tx?.to||"");
+        const status=String(tx?.status||tx?.result||"").toLowerCase();
+        const block=Number(tx?.block_number??tx?.block);
+        const method=String(tx?.method||"withdraw");
+        if(to===REFERRAL_REWARD_CONTRACT && ["ok","success"].includes(status)
+          && block===Number(f.block_number) && (method.toLowerCase()==="withdraw"||method.toLowerCase()==="contract call"||method.startsWith("0x"))){
+          verified={to_address:to,method,status,selector:String(tx.raw_input||tx.input||"").slice(0,10).toLowerCase(),raw_input:String(tx.raw_input||tx.input||""),from_address:lower(tx?.from?.hash||tx?.from||"")||null};
+        }
+      }
+      synthetic.push({
+        user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+        wallet_id:walletIdForAddress(address),tx_hash:f.tx_hash,block_number:Number(f.block_number||0),
+        tx_timestamp:f.tx_timestamp,from_address:verified?.from_address||f.counterparty_address||null,
+        to_address:verified?.to_address||null,direction:"eingang",
+        method:verified?.method||"ERC-20 Transfer",selector:verified?.selector||"",
+        status:verified?.status||"token-flow",value_aptm:0,gas_aptm:0,
+        raw_input:verified?.raw_input||"",updated_at:new Date().toISOString()
+      });
+    }
     if(synthetic.length)await saveTransactionRows(synthetic);
     return {flows:rows.length,synthetic:synthetic.length};
   }
@@ -5163,7 +5180,6 @@ window.DAO1Project = (() => {
   }
 
   function isDidReferralRow(r){
-    if(rowWalletAddress(r)!==REFERRAL_WALLET)return false;
     const d=transactionClaimDescriptor(r);
     return !!d && String(d.subtype||"").toUpperCase()==="DID";
   }
@@ -5196,7 +5212,6 @@ window.DAO1Project = (() => {
   }
 
   function isVerifiedReferralTx(r){
-    if(rowWalletAddress(r)!==REFERRAL_WALLET)return false;
     if(lower(r?.to_address||"")!==REFERRAL_REWARD_CONTRACT)return false;
     const method=String(r?.method||"").toLowerCase();
     // Der verifizierte Kontrollfall ist withdraw. Falls der Explorer die Methode
@@ -5211,7 +5226,6 @@ window.DAO1Project = (() => {
 
   function unverifiedReferralCandidateFlowsForTx(r){
     const own=new Set(allProjectWalletOptions().map(w=>lower(walletAddress(w))).filter(Boolean));
-    if(rowWalletAddress(r)!==REFERRAL_WALLET)return [];
     return incomingAssetFlowsForTx(r).filter(f=>
       String(f?.token_symbol||"").toUpperCase()==="WUSDT"
       && !own.has(lower(f?.counterparty_address||""))
@@ -7663,15 +7677,34 @@ window.DAO1Project = (() => {
     return scanAptmdaoTree({checkChain:true});
   }
 
+  function referralDidIdentityHtml(r){
+    const d=transactionClaimDescriptor(r);
+    if(d?.id && String(d.subtype||"").toUpperCase()==="DID"){
+      const mode=String(r.claim_nft_name||"").toUpperCase().includes("APTMDAO")?"aptmdao":"legacy";
+      const alias=dao1TeamAliasFor(d.id,mode);
+      return `<strong>${escapeHtml(alias||d.name||`${mode==="aptmdao"?"APTMDAO":"DAO1"} DID #${d.id}`)}</strong><div class="meta">${mode==="aptmdao"?"APTMDAO":"DAO1"} · DID #${escapeHtml(String(d.id))} · Tx-belegt</div>`;
+    }
+    const address=rowWalletAddress(r);
+    const matches=dao1AllOwnedDidRoots().filter(x=>lower(x.wallet_address||"")===address);
+    // Aktuelle Wallet-Ownership ist kein historischer Tx/DID-Nachweis.
+    if(matches.length===1){
+      const x=matches[0],mode=x.system,id=String(x.did);
+      const alias=dao1TeamAliasFor(id,mode);
+      return `<strong>${escapeHtml(alias||x.name||`${mode==="aptmdao"?"APTMDAO":"DAO1"} DID #${id}`)}</strong><div class="meta">${mode==="aptmdao"?"APTMDAO":"DAO1"} · DID #${escapeHtml(id)} · aktuelle Wallet-DID (nicht Tx-belegt)</div>`;
+    }
+    if(matches.length>1)return `<strong>DID nicht eindeutig</strong><div class="meta">${matches.length} Wallet-DIDs · Zuordnung zu dieser Auszahlung nicht belegt</div>`;
+    return `<strong>DID nicht ermittelt</strong><div class="meta">Keine eindeutige DID-Zuordnung zu dieser Auszahlung</div>`;
+  }
+
   function renderReferralRewardsTab(){
     const el=document.getElementById("dao1ReferralContent");if(!el)return;
     const sourceRows=tabWalletFilteredRows(transactionRows,referralFilterWallet);
     const rows=verifiedReferralRewards(sourceRows);
     const candidates=referralRewardCandidates(sourceRows);
     const payoutSummary=referralPayoutSummary(rows);
-    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">🤝 Referral Rewards</div><div class="note">Fachregel: Alle Auszahlungen, die dem DID zugeordnet sind, sind Referral Rewards. Sie werden ausschließlich für Wallet 0x239c…B47 ausgewertet und nicht mehr als Bot-Claims gezählt. Das Auszahlungsasset kann z. B. wUSDT oder wSOL sein. Ein gespeicherter DID-Name wird angezeigt; der verursachende Partner wird nur ergänzt, wenn er on-chain eindeutig belegt werden kann.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("referrals",referralFilterWallet)}</div></div>
+    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">🤝 Referral Rewards</div><div class="note">Fachregel: Alle Auszahlungen, die dem DID zugeordnet sind, sind Referral Rewards. Sie werden für alle DAO-Wallets anhand von DID- oder verifizierter Contract-Evidenz geprüft und nicht als Bot-Claims doppelt gezählt. Das Auszahlungsasset kann z. B. wUSDT oder wSOL sein. Ein gespeicherter DID-Name wird angezeigt; der verursachende Partner wird nur ergänzt, wenn er on-chain eindeutig belegt werden kann.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("referrals",referralFilterWallet)}</div></div>
       <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,"","Referral Rewards",rows.length)}</div>
-      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>DID / Name</th><th>Auszahlung</th><th>Wert USD<div class="meta">historisch</div></th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.length?rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=r._referralFlows||[];const value=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);const aliasMode=String(d?.subtype||"").toUpperCase().includes("APTMDAO")?"aptmdao":"legacy";const didAlias=d?.id?dao1TeamAliasFor(d.id,aliasMode):"";return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td><strong>Referral Reward</strong></td><td><strong>${didAlias?escapeHtml(didAlias):(d?.name||"DID")}</strong>${d?.id?`<div class="meta">#${d.id} · ${escapeHtml(d?.name||"DID")}</div>`:""}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):"–"}</td><td>${value?usd(value):"–"}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join(""):`<tr><td colspan="8"><div class="empty">Keine Referral Rewards im geladenen Zeitraum gefunden.</div></td></tr>`}</tbody></table></div></div>
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>DID / Name</th><th>Auszahlung</th><th>Wert USD<div class="meta">historisch</div></th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.length?rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=r._referralFlows||[];const value=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td><strong>Referral Reward</strong></td><td>${referralDidIdentityHtml(r)}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):"–"}</td><td>${value?usd(value):"–"}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join(""):`<tr><td colspan="8"><div class="empty">Keine Referral Rewards im geladenen Zeitraum gefunden.</div></td></tr>`}</tbody></table></div></div>
       ${candidates.length?`<div class="custom-token-card debug-frame"><strong>DEBUG / DEV · weitere wUSDT-Kandidaten (${candidates.length})</strong><div class="note">Nur Diagnose: Diese Zeilen sind keinem DID zugeordnet und werden nicht als Referral Reward summiert.</div></div>`:""}`;
     window.applyDebugModeVisibility?.();
   }
@@ -8833,7 +8866,7 @@ window.DAO1Project = (() => {
     }),{
       successStatus:r=>Number(r?.failed||0)>0?"partial":"complete"
     });
-    const projectRelevant=Number(ownership?.nfts||0)>0 || Number(ownership?.historicalCandidates||0)>0 || lower(address)===REFERRAL_WALLET;
+    const projectRelevant=Number(ownership?.nfts||0)>0 || Number(ownership?.historicalCandidates||0)>0;
 
     const txSync=await dao1RunLifecyclePart(parts,"transactions",()=>syncApertumTransactionCache(address,null));
 
@@ -8851,11 +8884,9 @@ window.DAO1Project = (() => {
     }
 
     let referralSync={skipped:true,flows:0,synthetic:0};
-    if(lower(address)===REFERRAL_WALLET){
-      referralSync=await dao1RunLifecyclePart(parts,"referralRewards",()=>syncTargetedReferralWusdt(address));
-    }else{
-      parts.referralRewards=dao1LifecyclePart("deferred","Kein DAO1-Referral-Wallet.",{required:false});
-    }
+    // Der gezielte Transfer-Import läuft für jede registrierte Apertum-Wallet.
+    // Er klassifiziert ohne passenden Contract-Call niemals allein anhand des Tokens.
+    referralSync=await dao1RunLifecyclePart(parts,"referralRewards",()=>syncTargetedReferralWusdt(address),{required:false});
 
     await dao1RunLifecyclePart(parts,"transactionReadModel",()=>loadTransactionRows(address,null),{required:projectRelevant});
     let claimSync={skipped:!projectRelevant};
@@ -9004,8 +9035,8 @@ window.DAO1Project = (() => {
     for(const r of (rows||[])){
       const dt=new Date(r.tx_timestamp||0);if(!Number.isFinite(dt.getTime()))continue;const keys=keysFor(dt);
       const txKey=`${String(r.wallet_id||"")}::${String(r.tx_hash||"").toLowerCase()}`,incoming=(flowByTx.get(txKey)||[]).filter(f=>f.direction==="eingang");
-      const wallet=rowWalletAddress(r),isDid=wallet===REFERRAL_WALLET&&String(r.claim_nft_subtype||"").toUpperCase()==="DID";
-      const isVerifiedReferral=wallet===REFERRAL_WALLET&&lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT&&incoming.some(isVerifiedReferralFlow);
+      const isDid=isDidReferralRow(r);
+      const isVerifiedReferral=lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT&&incoming.some(isVerifiedReferralFlow);
       if(isDid){for(const f of incoming)addAsset(referral,keys,f);continue;}
       if(isVerifiedReferral&&!isClaimTxRow(r)){for(const f of incoming.filter(isVerifiedReferralFlow))addAsset(referral,keys,f);continue;}
       if(isConfirmedSeparateBotClaim(r,flows)){for(const f of separateBotPayoutFlows(r,flows))addAsset(bot,keys,f);}
