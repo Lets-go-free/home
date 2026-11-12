@@ -1,3 +1,5 @@
+**DAO-Übergabe (Stand 12.11.2026 13:17:11 CET):** Neue Live-Tests und aktuelle offenen Aufgaben in [docs/NEW_CHAT_HANDOVER.md](docs/NEW_CHAT_HANDOVER.md) und [docs/PROJECT_STATUS_OPEN_ITEMS.md](docs/PROJECT_STATUS_OPEN_ITEMS.md). Version 8.21 unverändert; DAO-Automatik aus.
+
 ## WalletTracking 8.21 · 12.11.2026 10:05:13 CET · 20261112-100513
 DAO1 Legacy-MineBot-Nachzahlungen vom belegten wAPTM-Absender werden auch beim serverseitigen Staging-Scan pro Wallet als prüfbare ERC-20-Transaktion sichtbar. Bestehende Token-Flows werden ohne neue Blockchain-Abfrage beim folgenden Staging-Lauf nachgezogen (paginierter, insert-only Abgleich). Manuelle Aktualisierung hatte bereits den entsprechenden Transaktionsdatensatz erzeugt. Bestätigte Auszahlungen werden als „Miner-Nachzahlung (bestätigt) · Alte MineBots“ angezeigt; NFT-ID bleibt unbestimmt. Bestehende Bestätigungen, Beträge, Preise und Rewards werden nicht geändert. DAO-Cron weiterhin AUS. **Für den Serverpfad ist ein erneutes Deployment der geänderten Edge Function nötig.** Details: `docs/releases/8.21-dao-legacy-miner-payouts.md`.
 
