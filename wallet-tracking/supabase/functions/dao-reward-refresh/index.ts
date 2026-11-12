@@ -30,6 +30,10 @@ function canonicalMethod(input:string,explorerMethod:unknown){
 const REFERRAL_WALLET='0x239c5822a0d2a67e629d7a3b5c8180721e228b47'
 const REFERRAL_REWARD_CONTRACT='0xcd40d3bcfc29c51edb1fdd78580578362366f856'
 const REFERRAL_WUSDT_TOKEN='0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f'
+// Verified wAPTM backpayments from the known legacy MineBot migration payout wallet.
+// A transfer is an unreviewed candidate, never an automatic confirmed claim.
+const LEGACY_MINER_PAYOUT_SENDER='0x6d0539de11b95e18cb202a55098e3854b0313022'
+const LEGACY_MINER_WAPTM='0x110ac02ba3384bc055c13a87766049a74517beda'
 function isVerifiedReferralTransaction(address:string,tx:any,flows:any[]){
  const method=String(tx?.method||'').toLowerCase()
  return address===REFERRAL_WALLET
@@ -764,6 +768,49 @@ async function process(job:any,stageOnly=false){
   await insertRawWithoutReplacing('project_transaction_asset_flows',rows,
    'user_id,project_key,chain_key,wallet_id,flow_key');flowCount+=rows.length;
  },pageLimit);
+ // The recipient's normal address TX stream does not necessarily contain ERC-20
+ // transfers initiated by the payer. The browser creates a synthetic TX identity
+ // for these flow events; the server staging job must do the same, otherwise
+ // the existing manual review, DAO1 Bot-Claims and dashboard cannot see them.
+ // This does NOT approve a payout or assign a MineBot NFT. Insert-only means
+ // the real on-chain TX row (if already present) always wins.
+ let stagedLegacyMinerPayouts=0;
+ const verifiedLegacyPayoutRows=new Map<string,any>();
+ const addLegacyPayout=(f:any)=>{
+  if(f.direction!=='eingang'||lower(f.token_address)!==LEGACY_MINER_WAPTM||
+     lower(f.counterparty_address)!==LEGACY_MINER_PAYOUT_SENDER||
+     !/^[0-9]+$/.test(String(f.amount_raw||''))||BigInt(f.amount_raw)<=0n||
+     !/^0x[0-9a-f]{64}$/.test(lower(f.tx_hash)))return;
+  const key=lower(f.tx_hash);
+  if(verifiedLegacyPayoutRows.has(key))return;
+  verifiedLegacyPayoutRows.set(key,{
+   user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,
+   tx_hash:key,block_number:f.block_number,tx_timestamp:f.tx_timestamp,
+   from_address:LEGACY_MINER_PAYOUT_SENDER,to_address:null,
+   direction:'eingang',method:'ERC-20 Transfer',selector:'',status:'token-flow',
+   value_aptm:'0',gas_aptm:'0',raw_input:'',updated_at:new Date().toISOString()
+  });
+ };
+ // Pick up already-stored payouts too: a previous worker may have advanced its
+ // token-transfer cursor without materialising the corresponding TX identity.
+ for(let offset=0;offset<100000;offset+=500){
+  const {data,error}=await sb.from('project_transaction_asset_flows')
+   .select('tx_hash,block_number,tx_timestamp,direction,token_address,counterparty_address,amount_raw')
+   .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+   .eq('direction','eingang').eq('token_address',LEGACY_MINER_WAPTM)
+   .eq('counterparty_address',LEGACY_MINER_PAYOUT_SENDER)
+   .order('flow_key',{ascending:true}).range(offset,offset+499);
+  if(error)throw error;
+  for(const f of data||[])addLegacyPayout(f);
+  if((data||[]).length<500)break;
+  if(offset===99500)throw Error('Legacy payout scan pagination safety limit');
+ }
+ if(verifiedLegacyPayoutRows.size){
+  await insertRawWithoutReplacing('project_transactions',[...verifiedLegacyPayoutRows.values()],
+   'user_id,project_key,chain_key,wallet_id,tx_hash');
+  stagedLegacyMinerPayouts=verifiedLegacyPayoutRows.size;
+ }
  // Match the browser's targeted referral wUSDT import. Only the historically
  // documented referral wallet is eligible; every other wallet skips this scan.
  // A targeted transfer is evidence of payment, NOT automatically a referral:

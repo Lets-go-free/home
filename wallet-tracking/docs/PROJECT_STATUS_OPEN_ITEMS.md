@@ -1,3 +1,9 @@
+## Release 8.21 · 12.11.2026 10:05:13 CET · 20261112-100513
+- Legacy-MineBot-Nachzahlungen: Server-Staging stellt für positive wAPTM-Eingänge vom bekannten Absender eine fehlende Transaction-ID insert-only bereit. Vorhandene ältere Flows werden beim nächsten Staging-Lauf ebenfalls erkannt. Browser-Vollrefresh bestehendes Verhalten beibehalten. Beliebige Nutzer-/Wallet-ID, keine Wallet-Whitelist.
+- Bestätigte Einträge als „Miner-Nachzahlung (bestätigt) · Alte MineBots“ bezeichnet, ohne behauptete NFT-ID. Erst manuell bestätigte Zahlungen zählen als Claims; ignorierte bleiben ignoriert.
+- Edge Function muss für die Job-Verarbeitung neu deployed werden; DAO Live/Auto-Cron bleibt OFF. Funktion ist kein produktionsreifer vollständiger Reward-Worker.
+- Validierung gegen reale Supabase-/Explorer-Daten nach Deployment offen. Keine Migration erforderlich.
+
 ## Release 8.20 · 12.11.2026 07:59:11 CET · 20261112-075911
 Browser-seitige DAO1-Native-Claim-Flows erhalten den Rohbetrag direkt aus der ursprünglichen erfolgreichen Explorer-Internal-Transaction bzw. Wallet-Receipt-Log; exakte `BigInt`-Werte für `amount_raw` und `amount` (Dezimalstring). Ohne Originalrohbeleg kein neuer nativer Flow aus gerundetem Legacy-Claim. Historische 164 bereits kanonische Claims wurden vom User in Supabase ergänzt (APTM/native/18, Mengen/Preise unverändert und geprüft), unabhängig von diesem Release. 231 Staged-Kandidaten weiterhin nicht synchronisiert; bei `d82b6059…` 17 Rohbetrags-/Legacy-Number-Abweichungen. Die drei Staged-Wallets nicht automatisch vollenden; vor Markierung unabhängige On-Chain-Provenienz, eindeutige Claim-/NFT-Zuordnung und gesonderte Prüfung des Null-Reward-Claims erforderlich. Keine SQL-Migration; DAO-Cron/Live-Worker aus.
 

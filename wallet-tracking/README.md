@@ -1,3 +1,6 @@
+## WalletTracking 8.21 · 12.11.2026 10:05:13 CET · 20261112-100513
+DAO1 Legacy-MineBot-Nachzahlungen vom belegten wAPTM-Absender werden auch beim serverseitigen Staging-Scan pro Wallet als prüfbare ERC-20-Transaktion sichtbar. Bestehende Token-Flows werden ohne neue Blockchain-Abfrage beim folgenden Staging-Lauf nachgezogen (paginierter, insert-only Abgleich). Manuelle Aktualisierung hatte bereits den entsprechenden Transaktionsdatensatz erzeugt. Bestätigte Auszahlungen werden als „Miner-Nachzahlung (bestätigt) · Alte MineBots“ angezeigt; NFT-ID bleibt unbestimmt. Bestehende Bestätigungen, Beträge, Preise und Rewards werden nicht geändert. DAO-Cron weiterhin AUS. **Für den Serverpfad ist ein erneutes Deployment der geänderten Edge Function nötig.** Details: `docs/releases/8.21-dao-legacy-miner-payouts.md`.
+
 ## WalletTracking 8.20 · 12.11.2026 07:59:11 CET · 20261112-075911
 DAO1-Browser speichert neue native Claim-Asset-Flows nur mit aus Explorer-Logs oder erfolgreichen internen Transfers belegtem originalem Wei-Betrag. Kein synthetischer `amount_raw` mehr; fehlende Rohbelege bleiben offen statt vorgetäuschter Auszahlung. Bestehende Claims/Preise/Buchungen und SQL unverändert; siehe `docs/releases/8.20-dao-native-wei-provenance.md`. DAO-Live-Worker/Cron aus.
 
