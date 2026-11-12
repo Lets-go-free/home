@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const code=fs.readFileSync(new URL('../projects/dao1/dao1.js',import.meta.url),'utf8');
+assert.match(code,/referralHistoricDidLoadedIds=new Set\(\)/);
+assert.match(code,/if\(!missing.length && referralHistoricDidCoverage==="loaded"\)return;/);
+assert.match(code,/referralHistoricDidLoadPromise/);
+assert.match(code,/ownershipRows.filter\(x=>lower\(x.nft_contract\)===DAO1_OLD_DID_CONTRACT\)/);
+assert.match(code,/referralHistoricDidEvidence.clear\(\)/);
+assert.match(code,/prior\[prior.length-1\].to===address/);
+console.log('Referral 8.24 cache-first guards: OK');

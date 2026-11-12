@@ -7680,36 +7680,59 @@ window.DAO1Project = (() => {
   // Nur fuer die Anzeige: keine Migration, keine Claim-/Reward-Aenderung.
   // Der Transfer-Cache liefert die historische DID-Besitzfolge statt der
   // (ggf. bereits geaenderten) heutigen Wallet-Zuordnung.
+  // Phase 8.24: Die serverseitige NFT-Transferhistorie ist persistent. Pro
+  // Seiteninstanz laden wir sie nur einmal je DID-Menge (Cache-first). Es werden
+  // keine Wallet-Adressen oder privaten DID-Namen im localStorage persistiert.
+  // Beim neuen Seitenaufruf wird der bestehende Server-Cache wieder abgefragt;
+  // fuer ein echtes inkrementelles On-Chain-Refresh ist die Edge Function zustaendig.
   let referralHistoricDidEvidence=new Map();
   let referralHistoricDidCoverage="not_loaded";
+  let referralHistoricDidLoadedIds=new Set();
+  let referralHistoricDidLoadPromise=null;
   async function loadReferralHistoricDidEvidence(){
-    referralHistoricDidEvidence=new Map();
-    referralHistoricDidCoverage="not_loaded";
+    // Historisch besessene DIDs mit einschliessen: eine heute andere Wallet
+    // darf die damals gueltige DID nicht aus dem Kandidatenbestand entfernen.
     const roots=dao1AllOwnedDidRoots().filter(x=>x.system==="legacy"&&Number(x.did)>0);
-    const ids=[...new Set(roots.map(x=>String(x.did)))];
+    const ids=[...new Set([
+      ...roots.map(x=>String(x.did)),
+      ...ownershipRows.filter(x=>lower(x.nft_contract)===DAO1_OLD_DID_CONTRACT)
+        .map(x=>String(x.nft_id||""))
+    ])].filter(id=>/^\d+$/.test(id));
     if(!ids.length){referralHistoricDidCoverage="no_candidate_dids";return;}
-    try{
-      const batches=[];
-      for(let i=0;i<ids.length;i+=30)batches.push(ids.slice(i,i+30));
-      for(const batch of batches){
-        const histories=await fetchCachedNftHistories(DAO1_OLD_DID_CONTRACT,batch);
-        for(const id of batch){
-          const events=(histories.get(id)||[]).filter(x=>lower(tokenTransferAddress(x))===DAO1_OLD_DID_CONTRACT&&transferTokenIds(x).includes(id))
-            .map(x=>({block:Number(x.block_number||0),index:Number(x.log_index||0),from:transferFromAddress(x),to:transferToAddress(x)}))
-            .filter(x=>x.block>0&&/^0x[0-9a-f]{40}$/.test(x.to))
-            .sort((a,b)=>a.block-b.block||a.index-b.index);
-          // Eine fehlerhafte/teilweise Transferkette darf nie als Beweis dienen.
-          const zero="0x0000000000000000000000000000000000000000";
-          const valid=events.length>0&&events[0].from===zero&&events.every((e,i)=>i===0||e.from===events[i-1].to);
-          if(valid)referralHistoricDidEvidence.set(id,events);
-        }
-      }
-      referralHistoricDidCoverage="loaded";
-    }catch(e){
-      referralHistoricDidEvidence.clear();
-      referralHistoricDidCoverage="unavailable";
-      console.warn("DAO1 historische Referral-DID nicht geladen",e);
+    const missing=ids.filter(id=>!referralHistoricDidLoadedIds.has(id));
+    if(!missing.length && referralHistoricDidCoverage==="loaded")return;
+    if(referralHistoricDidLoadPromise){
+      await referralHistoricDidLoadPromise;
+      return loadReferralHistoricDidEvidence();
     }
+    referralHistoricDidLoadPromise=(async()=>{
+      try{
+        for(let i=0;i<missing.length;i+=30){
+          const batch=missing.slice(i,i+30);
+          const histories=await fetchCachedNftHistories(DAO1_OLD_DID_CONTRACT,batch);
+          for(const id of batch){
+            const events=(histories.get(id)||[]).filter(x=>lower(tokenTransferAddress(x))===DAO1_OLD_DID_CONTRACT&&transferTokenIds(x).includes(id))
+              .map(x=>({block:Number(x.block_number||0),index:Number(x.log_index||0),from:transferFromAddress(x),to:transferToAddress(x)}))
+              .filter(x=>x.block>0&&/^0x[0-9a-f]{40}$/.test(x.to))
+              .sort((a,b)=>a.block-b.block||a.index-b.index);
+            const zero="0x0000000000000000000000000000000000000000";
+            const valid=events.length>0&&events[0].from===zero&&events.every((e,i)=>i===0||e.from===events[i-1].to);
+            if(valid)referralHistoricDidEvidence.set(id,events);
+            else referralHistoricDidEvidence.delete(id);
+            referralHistoricDidLoadedIds.add(id);
+          }
+        }
+        referralHistoricDidCoverage="loaded";
+      }catch(e){
+        // Fehlgeschlagene/teilweise Abfragen nie als vollstaendigen Nachweis behandeln.
+        referralHistoricDidEvidence.clear();
+        referralHistoricDidLoadedIds.clear();
+        referralHistoricDidCoverage="unavailable";
+        console.warn("DAO1 historische Referral-DID nicht geladen",e);
+      }
+    })();
+    try{await referralHistoricDidLoadPromise;}
+    finally{referralHistoricDidLoadPromise=null;}
   }
   function referralHistoricDidMatches(r){
     const address=rowWalletAddress(r),block=Number(r?.block_number||0);
