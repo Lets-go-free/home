@@ -149,11 +149,48 @@ async function readEvmAtUrl(chain:Chain,url:string,address:string,tokens:Token[]
   emit(out,prices,chain,item.token.symbol||item.token.label||item.token.address.slice(0,8),item.token.address,evmHexAmount(item.balance,d))}
 
 }
+// BTC: switch provider once on transient network/rate-limit errors; never treat an
+// invalid balance payload as zero and never retry indefinitely within a cron run.
+function isTransientBitcoinApiError(error:unknown){
+ const message=String(error instanceof Error?error.message:error);
+ return /HTTP (?:408|429|500|502|503|504)\b|AbortError|aborted|timed out|timeout|fetch failed|network error/i.test(message);
+}
+function bitcoinSatoshis(payload:any,address:string){
+ if(payload?.address!==address)throw Error('Bitcoin provider returned wrong address');
+ let sats=0n;
+ for(const kind of ['chain_stats','mempool_stats']){
+  const part=payload?.[kind];
+  if(!part)throw Error(`Bitcoin provider missing ${kind}`);
+  for(const key of ['funded_txo_sum','spent_txo_sum']){
+   if(!Number.isSafeInteger(part[key])||part[key]<0)throw Error(`Bitcoin provider invalid ${kind}.${key}`);
+  }
+  sats+=BigInt(part.funded_txo_sum)-BigInt(part.spent_txo_sum);
+ }
+ if(sats<0n)throw Error('Invalid BTC amount');
+ const amount=Number(sats)/1e8;
+ if(!Number.isFinite(amount))throw Error('BTC amount overflow');
+ return amount;
+}
 async function readBitcoin(chain:Chain,address:string,prices:any,out:Entry[]){
  const root=chain.balance_api_base;if(!root)throw Error('Bitcoin API not configured');
- const x=await fetchJson(`${root.replace(/\/$/,'')}/address/${encodeURIComponent(address)}`);
- const n=['chain_stats','mempool_stats'].reduce((sum,key)=>sum+Number(x?.[key]?.funded_txo_sum)-Number(x?.[key]?.spent_txo_sum),0);
- if(!Number.isFinite(n)||n<0)throw Error('Invalid BTC amount');emit(out,prices,chain,chain.native_symbol,null,n/1e8)
+ const primary=`${root.replace(/\/$/,'')}/address/${encodeURIComponent(address)}`;
+ let payload:any;
+ try{payload=await fetchJson(primary)}
+ catch(error){
+  if(!isTransientBitcoinApiError(error))throw error;
+  // Mempool's Esplora address endpoint has the same balance fields as Blockstream.
+  // One fallback request only; preserve provider failures if both are unavailable.
+  const backup=`https://mempool.space/api/address/${encodeURIComponent(address)}`;
+  if(primary===backup)throw error;
+  console.warn(`Daily refresh: ${chain.chain_key} primary Bitcoin API unavailable; trying mempool.space once`);
+  try{payload=await fetchJson(backup)}
+  catch(backupError){
+   const first=error instanceof Error?error.message:String(error);
+   const second=backupError instanceof Error?backupError.message:String(backupError);
+   throw Error(`Bitcoin primary failed (${first}); mempool.space fallback failed (${second})`);
+  }
+ }
+ emit(out,prices,chain,chain.native_symbol,null,bitcoinSatoshis(payload,address));
 }
 async function readXrp(chain:Chain,address:string,prices:any,out:Entry[]){
  if(!chain.balance_api_base)throw Error('XRP API missing');const x=await fetchJson(`${chain.balance_api_base}/account/${encodeURIComponent(address)}`);

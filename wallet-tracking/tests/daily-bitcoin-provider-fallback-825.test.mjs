@@ -1,0 +1,14 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const code=readFileSync(new URL('../supabase/functions/wallet-daily-refresh/index.ts',import.meta.url),'utf8');
+const btc=code.slice(code.indexOf('// BTC: switch provider once'),code.indexOf('async function readXrp('));
+assert(btc.includes('https://mempool.space/api/address/'));
+assert(btc.includes('if(!isTransientBitcoinApiError(error))throw error'));
+assert(btc.includes('if(primary===backup)throw error'));
+assert(btc.includes('bitcoinSatoshis(payload,address)'));
+assert(btc.includes("for(const kind of ['chain_stats','mempool_stats'])"));
+assert(btc.includes('Number.isSafeInteger(part[key])'));
+assert(btc.includes('BigInt(part.funded_txo_sum)-BigInt(part.spent_txo_sum)'));
+assert(btc.includes('throw Error(`Bitcoin primary failed'));
+assert(!btc.includes('while('));
+console.log('Bitcoin fallback: 9 source-level regression checks passed');

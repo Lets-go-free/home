@@ -240,6 +240,7 @@ Nur `supabase/migrations/20261108222813_cross_chain_token_metadata_808.sql` voll
 - XRPL-Unterstützung über XRP-Bestand hinaus: Trustlines/issued currencies via `account_lines` offen.
 
 ### Wallet-Bestände / Betrieb
+- **8.25 Bitcoin-Fallback lokal vorbereitet (Deployment/Live-Test offen):** täglicher BTC-Bestandsjob verwendet bei transienten Blockstream-Fehlern einmalig mempool.space; SQL-Archivierungsfehler `pg_catalog.coalesce` am 12.11. live behoben, am 13.11. vier von sechs Usern mit Abschluss. Ein User mit BTC HTTP 429 nach drei Versuchen, anderer User nach dem Job um drei Wallets erweitert. Historische Lücken / Retention weiterhin separat prüfen.
 - Nächtlichen Wallet-Bestandsjob inklusive Fehlertransparenz, Retry, vollständigen Snapshots und Mehrbenutzer-/Cold-Start-Fällen produktiv nachtesten (früher 5 Wallets veraltet/fehlende Snapshots). `wallet_daily_balance_history` und Snapshot-Retention prüfen: letzte 7 Tage täglich, Tage 8–365 wöchentlich, ältere monatlich; manuelle Snapshots dauerhaft und unverändert.
 - Fresh-User/Wallet: initiale TLN/VOW-Discovery serverseitig/kontrolliert statt grossem Browser-Scan; rein on-chain globale Caches wiederverwenden.
 - Server-Jobs/Preis- und Cache-Synchronisation über Laufgrenzen, Fehlerfälle und Lösch-/RLS-Szenarien prüfen; Preisfindung muss applikationsweit dieselbe zentrale Logik verwenden.

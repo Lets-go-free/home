@@ -1,3 +1,5 @@
+> Phase 8.25 (13.11.2026): Bitcoin-Fallback in `supabase/functions/wallet-daily-refresh/index.ts` ergänzt. Edge Function nach ZIP-Installation **separat neu deployen**. Keine SQL-Migration; Live-Test offen. Details: `docs/releases/8.25-bitcoin-daily-provider-fallback.md`.
+
 **DAO-Übergabe (Stand 12.11.2026 13:17:11 CET):** Neue Live-Tests und aktuelle offenen Aufgaben in [docs/NEW_CHAT_HANDOVER.md](docs/NEW_CHAT_HANDOVER.md) und [docs/PROJECT_STATUS_OPEN_ITEMS.md](docs/PROJECT_STATUS_OPEN_ITEMS.md). Version 8.21 unverändert; DAO-Automatik aus.
 
 ## WalletTracking 8.21 · 12.11.2026 10:05:13 CET · 20261112-100513
