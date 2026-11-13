@@ -1,3 +1,11 @@
+## Phase 8.28 – Token-Promotion / Dashboard-Kursflag (13.11.2026 10:19:50 CET)
+
+- Sichere Token werden beim Übernehmen in `predefined_tokens` umgehend zur technischen ERC20-Metadatenauflösung an den vorhandenen Dienst `token-metadata` gegeben. Bei nicht erreichbarem Provider bleibt die Übernahme bestehen und ein Hinweis erklärt den manuellen Admin-Nachtest.
+- «In der Dashboard-Kursübersicht anzeigen» auch für allgemeine, nicht projektgebundene Token aktivierbar/deaktivierbar. Gehaltene allgemeine Token sind bei vorhandenem Preis und Bestand > 1 USD oder explizitem «immer anzeigen» weiterhin sichtbar, sofern das Kurs-Flag eingeschaltet ist.
+- Projekt-Token benötigen unverändert eine Beteiligung am betreffenden Projekt. Keine erfundenen Preise oder Dezimalstellen.
+- Live-Abnahme: Ethereum XAUD und DSYNC auf technisches Dezimalstellenresultat und Flag-Persistenz prüfen. Der bestehende `token-metadata`-Dienst muss installiert sein.
+- Nach Abschluss wieder zu Bitcoin-Fallback-Livetest und Snapshot-Kontrolle zurückkehren.
+
 ## Phase 8.27 – Aufbewahrung automatischer Bestandsverläufe (13.11.2026 09:59:58 CET)
 
 - SQL-Korrektur für `wallettracking_compact_balance_history(date)` am 13.11.2026 vom Benutzer bereits erfolgreich in Supabase ausgeführt; Migration für Git-Projekt nachgeliefert.

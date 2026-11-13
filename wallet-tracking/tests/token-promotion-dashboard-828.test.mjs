@@ -1,0 +1,13 @@
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const s=readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
+const promotion=s.slice(s.indexOf('async function adminPromoteToken('),s.indexOf('// ---- Alchemy:',s.indexOf('async function adminPromoteToken(')));
+assert.match(promotion,/sb\.functions\.invoke\('token-metadata'/);
+assert.match(promotion,/await loadPredefinedTokensFromDb\(\)/);
+assert.match(promotion,/if \(metadataWarning\) alert/);
+const f=s.slice(s.indexOf('async function setPredefinedTokenDashboardPriceVisible('),s.indexOf('async function setPredefinedTokenDefi('));
+assert.doesNotMatch(f,/if\(!predefinedTokenProject\[key\]\)return/);
+assert.match(s,/const prices=projectPriceRows\.filter\(r=>predefinedTokenDashboardPriceVisible\[r\.key\]!==false\)/);
+assert.match(s,/if\(!includeHiddenProjectTokens && predefinedTokenDashboardPriceVisible\[key\]===false\)continue/);
+assert.match(s,/if\(project && !involvedProjects\.has\(project\)\)continue/);
+console.log('8.28 Token-Promotion/Dashboard-Flag: 7 Prüfungen erfolgreich');

@@ -3984,9 +3984,28 @@ async function adminPromoteToken(id, chain, address) {
   const { error: updateError } = await sb.from("safe_tokens").update({ admin_status: "promoted" }).eq("id", id);
   if (updateError) { alert("Fehler beim Markieren: " + updateError.message); return; }
 
-  await loadPredefinedTokensFromDb(); // damit die neue Liste sofort überall greift
+  // Die Promotion schreibt nur den Stammdatensatz. Technische ERC20-Einheiten
+  // werden explizit und asynchron ueber den gemeinsamen Metadaten-Dienst geprueft.
+  // Provider-Ausfaelle duerfen die erfolgreiche Uebernahme nicht rueckgaengig machen.
+  let metadataWarning = "";
+  try {
+    // Direkt über den Server auflösen: persönliche Safe-Token-Caches
+    // dürfen eine Speicherung im globalen Stammdatensatz nicht überspringen.
+    const {data: result, error: metadataError} = await sb.functions.invoke('token-metadata', {
+      body: {mode: 'resolve', chain, address: normalizeAddress(address, chain)}
+    });
+    if (metadataError || !result?.ok) throw Error(result?.error || metadataError?.message || 'Technische Metadaten fehlen');
+    if (result.status !== "verified" && result.status !== "not_applicable") {
+      metadataWarning = "Technische Metadaten noch offen. Bitte «Technische Metadaten ergänzen (Admin)» ausführen.";
+    }
+  } catch (e) {
+    metadataWarning = "Technische Metadaten noch offen. Bitte «Technische Metadaten ergänzen (Admin)» ausführen.";
+    console.warn("Metadaten nach Token-Übernahme", e);
+  }
+  await loadPredefinedTokensFromDb(); // persistierte Metadaten neu einlesen
   renderSafeTokenTable();
   renderAdminCustomTokens();
+  if (metadataWarning) alert("Token übernommen. " + metadataWarning);
 }
 
 // ---- Alchemy: EVM-Daten (ersetzt Moralis) ----
@@ -4975,7 +4994,7 @@ function renderSafeTokenTable() {
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--danger,#ef4444)">nicht konfiguriert</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
       <td style="text-align:center"><input type="checkbox" style="width:auto" ${r.dashboardVisible?"checked":""} ${r.nativeMissing?"disabled":""} onchange="setPredefinedTokenDashboardVisible('${r.chain}','${r.address}',this.checked)"></td>
-      <td style="text-align:center">${projectKey?`<input type="checkbox" style="width:auto" aria-label="In der Dashboard-Kursübersicht anzeigen" title="Gilt für alle Nutzer mit diesem Projekt. Bestand und Projektanzeige bleiben erhalten." ${predefinedTokenDashboardPriceVisible[categoryKey]!==false?"checked":""} onchange="setPredefinedTokenDashboardPriceVisible('${r.chain}','${r.address}',this.checked)">`:'<span class="meta">–</span>'}</td>
+      <td style="text-align:center"><input type="checkbox" style="width:auto" aria-label="In der Dashboard-Kursübersicht anzeigen" title="Gilt auch für allgemeine Token. Ein Projekt-Token benötigt weiterhin ein vorhandenes Projekt; für die Anzeige gelten ausserdem die bestehenden Bestands-/Immer-anzeigen-Regeln." ${predefinedTokenDashboardPriceVisible[categoryKey]!==false?"checked":""} onchange="setPredefinedTokenDashboardPriceVisible('${r.chain}','${r.address}',this.checked)"></td>
       <td style="text-align:right">${priceCell}</td>
       <td>${projectCell}</td>
       <td>${categoryCell}</td>
@@ -5000,7 +5019,6 @@ async function setPredefinedTokenDashboardPriceVisible(chain,address,visible){
   if(!isAdmin)return;
   const normalized=String(address||"").toLowerCase()==="native"?"native":normalizeAddress(address,chain);
   const key=chain+"|"+normalized;
-  if(!predefinedTokenProject[key])return;
   try{
     const {data,error}=await matchAddressQuery(sb.from("predefined_tokens").update({dashboard_price_visible:!!visible}).eq("chain",chain),chain,normalized).select("chain,address,dashboard_price_visible");
     if(error)throw error;
@@ -7700,7 +7718,7 @@ function dashboardPriceRows(targetWallets=walletsForCurrentView(),involvedProjec
     if(!always&&!autoHeld)continue;
     const project=predefinedTokenProject[key]||null;
     if(project && !involvedProjects.has(project))continue;
-    if(project && !includeHiddenProjectTokens && predefinedTokenDashboardPriceVisible[key]===false)continue;
+    if(!includeHiddenProjectTokens && predefinedTokenDashboardPriceVisible[key]===false)continue;
     const native=address==="native",meta=native?predefinedNativeAssets[chain]:null;
     const symbol=meta?.symbol||predefinedTokenSymbols[key]||predefinedTokenLabels[key]||h.symbol||address;
     const price=native?nativePrices[chain]:priceForToken(chain,address);
@@ -7960,7 +7978,7 @@ function renderDashboard(){
   const involvedProjects=new Set([...portfolio.projects.entries()].filter(([,p])=>p.assets>0).map(([key])=>key));
   for(const key of ["tln_vow","dao1"])if(dashboardProjectHasSummaryEvidence(key))involvedProjects.add(key);
   const projectPriceRows=dashboardPriceRows(targetWallets,involvedProjects,{includeHiddenProjectTokens:true});
-  const prices=projectPriceRows.filter(r=>!r.project || predefinedTokenDashboardPriceVisible[r.key]!==false);
+  const prices=projectPriceRows.filter(r=>predefinedTokenDashboardPriceVisible[r.key]!==false);
   if(wallets.length===0){
     root.innerHTML=`<div class="dashboard-heading"><div><h2>Willkommen bei WalletTracking</h2><p>Dein Dashboard wird automatisch aufgebaut, sobald du deine erste Wallet erfasst hast.</p></div></div><section class="dashboard-empty-onboarding"><article class="dashboard-card dashboard-onboarding-card"><div class="dashboard-onboarding-icon">＋</div><h3>Noch keine Wallet erfasst</h3><p>Erfasse zuerst eine oder mehrere Wallets. Danach lädt WalletTracking die benötigten Grunddaten automatisch im Hintergrund und aktualisiert dieses Dashboard. Für Detailanalysen kannst du später die einzelnen Projektbereiche öffnen.</p><button onclick="dashboardAddFirstWallet()">Erste Wallet erfassen</button><div class="dashboard-onboarding-steps"><span><b>1</b> Wallet erfassen</span><span><b>2</b> Grunddaten werden geladen</span><span><b>3</b> Dashboard füllt sich automatisch</span></div></article></section>`;
     setWtDataStatus("dashboard",{source:"local",label:"Dashboard · noch keine Wallet"});return;

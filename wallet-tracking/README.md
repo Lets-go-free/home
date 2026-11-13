@@ -1,3 +1,5 @@
+> **Phase 8.28 (13.11.2026 10:19:50 CET):** Beim Übernehmen eigener sicherer Token in die vordefinierte Liste werden die technischen Dezimalstellen unmittelbar über den gemeinsamen Metadaten-Dienst aufgelöst. Das Dashboard-Kursübersicht-Flag ist auch bei allgemeinen Token (ohne DeFi-Projekt) bedienbar; bestehende Bestands-/Preis- und Projekt-Zugehörigkeitsregeln bleiben gültig. Keine SQL-Migration, kein Edge-Deployment. Siehe `docs/releases/8.28-token-promotion-dashboard-flag.md`.
+
 > **Phase 8.27 (13.11.2026 09:59:58 CET):** SQL-Retention für automatischen Bestandsverlauf korrigiert: 7 Kalendertage inklusive heute, danach ISO-wöchentlich bis 365 Tage, danach monatlich. Bereits am 13.11.2026 in Supabase manuell installiert; Migration ist die verbindliche nachgelieferte Projektdatei und muss **nicht nochmals ausgeführt** werden. Keine Edge-Funktion verändert. Siehe `docs/releases/8.27-balance-history-retention.md`.
 
 > Phase 8.26 (13.11.2026 08:11:57 CET): Wallet-Verwaltung standardmaessig geschlossen, je Wallet sowie alle auf-/zuklappen. Nur Browser-UI; keine Migration oder Edge-Deploy. Siehe `docs/releases/8.26-wallet-collapsible-editor.md`.
