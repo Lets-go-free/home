@@ -1,3 +1,7 @@
+## Phase 8.26 – Wallet-Verwaltung kompakt (13.11.2026 08:11:57 CET)
+
+Wallet-Eingaben standardmaessig eingeklappt, nur Wallet-Namen sichtbar; je Wallet und alle gemeinsam auf-/zuklappbar. Keine SQL-/Edge-Änderungen. Browser-Livetest offen.
+
 ## Phase 8.24 – Referral-DID Cache-first (12.11.2026 17:02:17 CET)
 
 Historische DID-Transferdaten werden je DID innerhalb einer Seiteninstanz nur einmal geladen; weitere Tab-Wechsel verwenden die vorhandenen Daten. Historisch gehaltene DIDs aus `project_nft_ownership` bleiben Kandidaten, selbst wenn die DID inzwischen umgezogen ist. Die persistente NFT-Transferhistorie liegt weiterhin serverseitig; keine Klartext-Wallet-Adressen oder DID-Namen im Browser-Storage. Neue Seiteninstanzen fragen den Server-Cache erneut ab. Vollstaendiges inkrementelles On-Chain-Nachladen ist damit **nicht** neu implementiert und bleibt an die bestehende Edge-Cache-Strategie gebunden. Keine SQL-Migration, kein Eingriff in Reward-Betraege, NFT-Zuordnungen oder historische Preise. DAO-Cron und Live-Worker bleiben deaktiviert. Live-Retest der DID-Anzeige offen.

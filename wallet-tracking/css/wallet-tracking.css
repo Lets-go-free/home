@@ -1679,3 +1679,19 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-price-table-compact td:last-child{white-space:normal;overflow-wrap:anywhere}
 .dashboard-price-table-compact .dashboard-token-address code{font-size:inherit}
 @container(min-width:1400px){.dashboard-price-layout:has(.dashboard-price-dual) .dashboard-price-single{display:none}.dashboard-price-dual{display:grid}}
+
+/* Phase 8.26 – platzsparende Walletverwaltung, standardmaessig geschlossen. */
+.wallet-input-toolbar{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.wallet-input-toolbar button{padding:7px 11px;font-size:.8rem}
+#walletInputsContainer .wallet-input-card{padding:0;margin-bottom:8px;overflow:hidden}
+#walletInputsContainer .wallet-input-head{margin:0}
+.wallet-input-toggle{display:flex;align-items:center;gap:10px;min-width:0;width:100%;border:0;border-radius:0;background:transparent;color:var(--text);font-size:.9rem;font-weight:700;text-align:left;padding:13px 15px;cursor:pointer}
+.wallet-input-toggle:hover{background:var(--card2);color:var(--text)}
+.wallet-input-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.wallet-toggle-icon{flex:none;width:14px;color:var(--muted);font-size:1.1rem}
+.wallet-input-title{min-width:0;overflow-wrap:anywhere}
+.wallet-input-body{padding:4px 14px 14px;border-top:1px solid var(--border)}
+.wallet-input-body[hidden]{display:none!important}
+.wallet-input-name-row{margin:8px 0 12px}
+.wallet-input-name-row input{width:100%;box-sizing:border-box;font-weight:600}
+.wallet-remove-button{margin-left:auto}

@@ -6067,6 +6067,10 @@ async function removeWallet(id) {
 function updateWalletField(id, field, value) {
   const w = wallets.find(w => w.id === id);
   if (w) w[field] = value;
+  if (field === "label") {
+    const title = document.getElementById(`wallet-title-${id}`);
+    if (title) title.textContent = value || "Unbenanntes Wallet";
+  }
   updateAllValidationIcons();
 }
 function setWalletOwnership(id,isOwn){
@@ -6379,13 +6383,42 @@ function renderEvmWalletChainsNote(){
     : "Aktuell sind keine EVM-Chains konfiguriert.";
 }
 
+// Phase 8.26: Kompakte Walletverwaltung; Zustand nur fuer die aktuelle Seiteninstanz.
+// Neue Wallets und Seitenneustarts beginnen immer geschlossen.
+const expandedWalletInputIds = new Set();
+function toggleWalletInput(id, expanded) {
+  if (expanded) expandedWalletInputIds.add(id);
+  else expandedWalletInputIds.delete(id);
+  const card = Array.from(document.querySelectorAll("#walletInputsContainer .wallet-input-card"))
+    .find(el => el.dataset.walletId === id);
+  if (!card) return;
+  const body = card.querySelector(".wallet-input-body");
+  const button = card.querySelector(".wallet-input-toggle");
+  if (body) body.hidden = !expanded;
+  if (button) {
+    button.setAttribute("aria-expanded", String(expanded));
+    button.querySelector(".wallet-toggle-icon").textContent = expanded ? "▾" : "▸";
+  }
+  card.classList.toggle("is-expanded", expanded);
+}
+function toggleAllWalletInputs(expanded) {
+  wallets.forEach(w => toggleWalletInput(w.id, expanded));
+}
+
 function renderWalletInputs() {
   const container = document.getElementById("walletInputsContainer");
   container.innerHTML = wallets.map(w => `
-    <div class="wallet-input-card">
+    <div class="wallet-input-card${expandedWalletInputIds.has(w.id)?" is-expanded":""}" data-wallet-id="${escapeAttr(w.id)}">
       <div class="wallet-input-head">
-        <input type="text" value="${escapeAttr(w.label)}" oninput="updateWalletField('${w.id}','label',this.value)" />
-        <button class="remove" onclick="removeWallet('${w.id}')">Entfernen</button>
+        <button type="button" class="wallet-input-toggle" aria-expanded="${expandedWalletInputIds.has(w.id)}" aria-controls="wallet-body-${escapeAttr(w.id)}" onclick="toggleWalletInput('${w.id}', !expandedWalletInputIds.has('${w.id}'))">
+          <span class="wallet-toggle-icon" aria-hidden="true">${expandedWalletInputIds.has(w.id)?"▾":"▸"}</span>
+          <span class="wallet-input-title" id="wallet-title-${escapeAttr(w.id)}">${escapeAttr(w.label)||"Unbenanntes Wallet"}</span>
+        </button>
+      </div>
+      <div class="wallet-input-body" id="wallet-body-${escapeAttr(w.id)}" ${expandedWalletInputIds.has(w.id)?"":"hidden"}>
+      <div class="wallet-input-name-row">
+        <label class="field-label" for="wallet-name-${escapeAttr(w.id)}">Wallet-Name</label>
+        <input id="wallet-name-${escapeAttr(w.id)}" type="text" value="${escapeAttr(w.label)}" oninput="updateWalletField('${w.id}','label',this.value)" />
       </div>
       <div class="field-grid">
         <div class="wallet-owner-fields">
@@ -6429,6 +6462,8 @@ function renderWalletInputs() {
       <div class="action-row" style="margin:10px 0 0;align-items:center">
         <button onclick="saveWallet('${w.id}')">Speichern</button>
         <span id="saveStatus-${w.id}" class="note" style="margin:0"></span>
+        <button class="remove wallet-remove-button" onclick="removeWallet('${w.id}')">Entfernen</button>
+      </div>
       </div>
     </div>
   `).join("");
