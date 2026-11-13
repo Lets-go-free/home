@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const base=new URL('../',import.meta.url);
+const load=p=>readFileSync(new URL(p,base),'utf8');
+const browser=load('js/app.js'),risk=load('supabase/functions/token-risk/index.ts'),meta=load('supabase/functions/token-metadata/index.ts'),md=load('supabase/functions/token-metadata/metadata.ts');
+assert.match(risk,/Fake_Phishing1123827/);
+assert.match(risk,/auth\.getUser/);
+assert.match(risk,/addrs\.length>10/);
+assert.match(risk,/GoPlus nicht verfügbar/);
+assert.match(browser,/isKnownExplorerFraudContract\(f\)/);
+assert.match(browser,/Sicherheitsprüfung nicht verfügbar/);
+assert.match(browser,/functions\.invoke\('token-risk'/);
+assert.match(browser,/BscScan kennzeichnet diesen Contract/);
+assert.match(meta,/arb1\.arbitrum\.io\/rpc/);
+assert.match(meta,/status:'unavailable',reason/);
+assert.match(md,/eth_chainId/);
+assert.ok(!meta.includes('WETH_DECIMALS=18'));
+console.log('8.31: 12 statische Risiko-/Metadatenprüfungen erfolgreich');

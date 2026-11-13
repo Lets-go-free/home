@@ -1,3 +1,8 @@
+### Phase 8.31 – Risikosignale und Metadaten-Diagnose (13.11.2026)
+- Neue authentifizierte `token-risk` Edge Function (GoPlus, bei BSC best-effort Explorer-Label, fehlende Prüfbarkeit sichtbar); dokumentierter BSC `Fake_Phishing1123827`-Contract als Verdacht. Technische Dezimalstellen ≠ Sicherheitsfreigabe.
+- `token-metadata` liefert verständliche Diagnose beim Einzelaufruf und lesenden Arbitrum-RPC-Fallback. Beide Edge Functions nach ZIP-Installation neu deployen. Keine SQL.
+- Details, Grenzen, Tests: `docs/releases/8.31-token-risk-metadata-diagnostics.md`. Danach Bitcoin-Fallback und Snapshot-Historie prüfen.
+
 ### Phase 8.30 – Automatische Batch-Verarbeitung technischer Token-Metadaten (13.11.2026)
 - Admin → Vordefinierte Token: Der bestehende Sammel-Button prüft nach einem Klick alle Token in seriellen, vom vorhandenen `token-metadata`-Dienst gelieferten Batches zu je maximal zwölf Einträgen; kein erneutes Klicken pro Batch mehr nötig.
 - Laufende Zähler für geprüft, bestätigt, Pooladressen, Konflikte und offene/fehlgeschlagene Ergebnisse, dazu verarbeitete Batches; Abschlussmeldung.

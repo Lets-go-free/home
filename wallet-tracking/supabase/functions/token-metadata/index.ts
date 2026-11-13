@@ -37,7 +37,11 @@ async function resolveMetadata(chainKey:string,address:string,refresh=false,bloc
     if(chain.archive_rpc_provider==='alchemy'&&alchemy&&/^https:\/\/[a-z0-9-]+\.g\.alchemy\.com\/v2\/?$/i.test(backup||''))backup=backup.replace(/\/$/,'')+'/'+encodeURIComponent(alchemy);
     // Chain mismatch and contradictory Explorer metadata must not be hidden by retries.
     const reason=String(first instanceof Error?first.message:first);
-    if(!['evm','sol'].includes(chain.wallet_type)||!backup||backup===chain.rpc_url||! /provider-|fetch|aborted|timeout|network|rpc-missing|rpc-error/i.test(reason))throw first;
+    if(!['evm','sol'].includes(chain.wallet_type)||! /provider-|fetch|aborted|timeout|network|rpc-missing|rpc-error/i.test(reason))throw first;
+    // Arbitrum One: offizieller öffentlicher RPC als letzter lesender Fallback;
+    // providerMetadata prüft die Chain-ID vor jedem eth_call erneut.
+    if((!backup||backup===chain.rpc_url)&&chainKey==='arbitrum')backup='https://arb1.arbitrum.io/rpc';
+    if(!backup||backup===chain.rpc_url)throw first;
     observed=await providerMetadata({...chain,rpc_url:backup},a,json,block);
    }
    return await record(observed);
@@ -67,8 +71,16 @@ Deno.serve(async request=>{
      forceRefresh=true;
     }
    }
-   const result=await resolveMetadata(body.chain,body.address,forceRefresh,block);
-   return reply({ok:['verified','not_applicable'].includes(result.status),...result});
+   try{
+    const result=await resolveMetadata(body.chain,body.address,forceRefresh,block);
+    return reply({ok:['verified','not_applicable'].includes(result.status),...result});
+   }catch(e){
+    const raw=String(e instanceof Error?e.message:e);
+    const reason=/^[a-z0-9-]{1,100}$/.test(raw)?raw:'metadata-service-error';
+    // Fachliche Prüfung fehlgeschlagen != Transportfehler; detaillierte, aber
+    // nicht-sensitive Diagnose an den Browser liefern.
+    return reply({ok:false,chain:body.chain,address:body.address,status:'unavailable',reason});
+   }
   }
   if(body.mode!=='refresh-catalog'&&body.mode!=='refresh-own')return reply({ok:false,error:'Unknown mode'},400);
   if(service)return reply({ok:false,error:'User JWT required for catalog'},403);

@@ -2098,7 +2098,12 @@ async function checkPredefinedTokenMetadata(chain,address){
  if(btn){btn.disabled=true;btn.textContent='Prüfe …';}
  try{
   const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode:'resolve',chain,address:a,refresh:true}});
-  if(error)throw Error(error.message||'Edge-Aufruf fehlgeschlagen');
+  if(error){
+   let detail='';
+   try{const response=error.context;if(response&&typeof response.clone==='function'){const body=await response.clone().json();detail=String(body?.reason||body?.error||'').slice(0,150)}}catch{}
+   const code=error.context?.status?`HTTP ${error.context.status}`:'HTTP-/Netzwerkfehler';
+   throw Error(`${code}${detail?' · '+detail:''}. Prüfe die token-metadata Edge-Logs.`);
+  }
   if(!data)throw Error('Leere Antwort des Metadaten-Dienstes');
   const status=String(data.status||'unbekannt');
   const reason=String(data.reason||data.error||data.source||'keine Anbieterdiagnose');
@@ -12265,17 +12270,23 @@ async function discoverEvmTokens(chain, address) {
 // GoPlus Security: kostenlose Risiko-Einschätzung für EVM-Token (kein Key nötig).
 // Kein hartes Urteil, nur Signale - Apertum/Tron werden von GoPlus nicht abgedeckt.
 
+// 8.31: technische Metadaten sind keine Sicherheitsfreigabe. Kein stilles "sicher"
+// bei nicht erreichbaren Sicherheitsanbietern. Ausschliesslich öffentliche Contract-Adressen.
 async function checkGoPlusRisk(chain, addresses) {
-  const chainId = CHAIN_CONFIG[chain]?.evmChainId ? String(CHAIN_CONFIG[chain].evmChainId) : null;
-  if (!chainId || addresses.length === 0) return {};
-  try {
-    const res = await fetch(`https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${addresses.join(",")}`);
-    if (!res.ok) return {};
-    const data = await res.json();
-    return data.result || {};
-  } catch (e) {
-    return {};
+  const unique=[...new Set(addresses.map(a=>String(a||'').toLowerCase()).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
+  const result={};
+  for(let i=0;i<unique.length;i+=10){
+    const chunk=unique.slice(i,i+10);
+    try {
+      const {data,error}=await sb.functions.invoke('token-risk',{body:{chain,addresses:chunk}});
+      if(error||!data?.ok)throw Error(data?.error||error?.message||'Security provider unavailable');
+      for(const addr of chunk){
+        const item=data.results?.[addr];
+        result[addr]=item||{checked:false,flags:[],reason:'Keine Sicherheitsantwort'};
+      }
+    }catch(e){for(const addr of chunk)result[addr]={checked:false,flags:[],reason:'Sicherheitsdienst nicht erreichbar'};}
   }
+  return result;
 }
 
 function riskFlags(info) {
@@ -12650,9 +12661,11 @@ async function scanDiscoveryForWallet(w,{chains=null}={}) {
     const addrs = [...byChain[chain]];
     const result = await checkGoPlusRisk(chain, addrs);
     allFindings.forEach(f => {
-      if (f.chain === chain && result[f.address.toLowerCase()]) {
-        f.risk = riskFlags(result[f.address.toLowerCase()]);
-      }
+      if(f.chain!==chain)return;
+      const check=result[String(f.address||'').toLowerCase()];
+      f.risk=check?.checked?Array.isArray(check.flags)?check.flags:[]:null;
+      f.riskCheckStatus=check?.checked?'checked':'unavailable';
+      f.riskCheckReason=String(check?.reason||'');
     });
   }
 
@@ -12739,7 +12752,13 @@ function openDiscoveryReview(walletId=""){
 window.openDiscoveryReview=openDiscoveryReview;
 
 // Fasst GoPlus-Risiko-Flags + Namens-Heuristik zu einer einzigen Scam-Einschätzung zusammen
+function isKnownExplorerFraudContract(f){
+  // Verifizierter, konkreter Warnfall; nicht als allgemeine Explorer-Live-Prüfung ausgeben.
+  return String(f?.chain||'').toLowerCase()==='bsc' &&
+    String(f?.address||'').toLowerCase()==='0xa2afaf65004551ad9c11f8b68d72d63980fd9b62';
+}
 function isFindingScamSuspect(f) {
+  if (isKnownExplorerFraudContract(f)) return true;
   if (f.nameScamFlag) return true;
   if (f.risk && f.risk.length > 0) return true;
   if (discoveryPredefinedIdentityMismatch(f)) return true;
@@ -12832,6 +12851,7 @@ function renderDiscoveryResults(findings) {
     if (scam) {
       const reasons = [];
       if (f.userMarkedScam) reasons.push("vom Benutzer als Spam markiert");
+      if (isKnownExplorerFraudContract(f)) reasons.push("BscScan: Fake_Phishing1123827 (bekannte Contract-Warnung)");
       if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       const identityMismatch=discoveryPredefinedIdentityMismatch(f);
       if(identityMismatch){
@@ -12840,11 +12860,12 @@ function renderDiscoveryResults(findings) {
         reasons.push(`Name/Symbol imitiert ${officialLabel}, Contract-Adresse weicht ab`);
       }
       if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
-      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ SPAM-VERDACHT: ${reasons.join(", ")}</span>`;
+      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ SPAM-VERDACHT: ${reasons.map(escapeAttr).join(", ")}</span>`;
+      if(f.risk===null)riskHtml+=` <span class="badge">Sicherheitsdienst nicht verfügbar</span>`;
     } else if (f.risk === null) {
-      riskHtml = `<span class="badge unsafe">kein Risiko-Check verfügbar</span>`;
+      riskHtml = `<span class="badge unsafe">Sicherheitsprüfung nicht verfügbar – kein Sicherheitsurteil</span>`;
     } else {
-      riskHtml = `<span class="badge safe">keine Warnung</span>`;
+      riskHtml = `<span class="badge">Keine Warnsignale aus den verfügbaren Prüfungen – keine Sicherheitsgarantie</span>`;
     }
     return `<div class="custom-token-row" style="align-items:flex-start;${scam ? 'border-color:var(--danger)' : ''}">
       <div>
@@ -12859,7 +12880,7 @@ function renderDiscoveryResults(findings) {
         ${scam && f.userMarkedScam
           ? `<button class="secondary" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',false)">Spam-Markierung entfernen</button>`
           : `<button class="remove" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',true)">Als Spam markieren</button>`}
-        ${!f.userMarkedScam ? `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>` : ''}
+        ${!f.userMarkedScam&&!isKnownExplorerFraudContract(f) ? `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>` : ''}
       </div>
     </div>`;
   }).join("");
@@ -12884,6 +12905,7 @@ async function addDiscoveredToken(chain, address, symbol) {
   document.getElementById("customChain").value = chain;
   document.getElementById("customAddress").value = address;
   document.getElementById("customLabel").value = symbol;
+  if(isKnownExplorerFraudContract({chain,address})){alert('BscScan kennzeichnet diesen Contract als Fake_Phishing. Eine Übernahme als sicher ist gesperrt.');return;}
   await addCustomSafeToken();
 
   // Aus der lokalen Discovery-Anzeige entfernen; der gespeicherte Monats-Scan bleibt
