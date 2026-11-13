@@ -1,3 +1,10 @@
+### Phase 8.32 – Arbitrum-Metadaten-Alias (13.11.2026 14:49:48 CET)
+- Ursache `unknown-chain`: UI-/Token-Key `arbitrum`, Datenbank-Registry `public.chains.chain_key = arb` (EVM Chain-ID 42161).
+- Edge Function `token-metadata/index.ts` liest Konfiguration über `arb`, behält `arbitrum` für vorhandene Stammdaten und Metadaten-Cache bei. Die Chain-ID wird vor `eth_call` verifiziert; Arbitrum-RPC-Fallback verwendet den registrierten Key.
+- SQL-Migration: `wallettracking_metadata_address` erkennt den Alias, ohne `chains`, `predefined_tokens` oder historische Werte umzubenennen.
+- Deployment: **zuerst SQL-Migration einmalig ausführen**, danach `token-metadata/index.ts` neu deployen. Test: Arbitrum WETH `0x82af49447d8a07e3bd95bd0d56f35241523fbab1` via Admin → Vordefinierte Token → Prüfen. Erwartete technische Dezimalstellen: 18, verifiziert on-chain.
+- Kein Eingriff in Preise, Wallet-Bestände, Rewards, DAO-Jobs oder Cron. Token-Sicherheitsprüfung bleibt getrennt. Danach Bitcoin-Fallback- und Snapshot-Retest fortsetzen.
+
 ### Phase 8.31 – Risikosignale und Metadaten-Diagnose (13.11.2026)
 - Neue authentifizierte `token-risk` Edge Function (GoPlus, bei BSC best-effort Explorer-Label, fehlende Prüfbarkeit sichtbar); dokumentierter BSC `Fake_Phishing1123827`-Contract als Verdacht. Technische Dezimalstellen ≠ Sicherheitsfreigabe.
 - `token-metadata` liefert verständliche Diagnose beim Einzelaufruf und lesenden Arbitrum-RPC-Fallback. Beide Edge Functions nach ZIP-Installation neu deployen. Keine SQL.

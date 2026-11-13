@@ -7,7 +7,10 @@ const cors={'access-control-allow-origin':'*','access-control-allow-headers':'au
 async function json(url:string,options:any={}){const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),10000);try{const r=await fetch(url,{...options,signal:abort.signal});if(!r.ok)throw Error('provider-http-unavailable');return await r.json()}finally{clearTimeout(timer)}}
 const inflight=new Map<string,Promise<any>>();
 async function resolveMetadata(chainKey:string,address:string,refresh=false,block:number|null=null){
- const {data:chain,error}=await sb.from('chains').select('chain_key,wallet_type,native_symbol,evm_chain_id,rpc_url,balance_api_base,archive_rpc_url,archive_rpc_provider').eq('chain_key',chainKey).maybeSingle();
+ // The UI/predefined token key is 'arbitrum'; the chains registry uses 'arb'.
+ // Keep the original token key for metadata cache and predefined-token writes.
+ const configKey=chainKey==='arbitrum'?'arb':chainKey;
+ const {data:chain,error}=await sb.from('chains').select('chain_key,wallet_type,native_symbol,evm_chain_id,rpc_url,balance_api_base,archive_rpc_url,archive_rpc_provider').eq('chain_key',configKey).maybeSingle();
  if(error||!chain)throw Error('unknown-chain');
  const alchemy=Deno.env.get('ALCHEMY_API_KEY')||'';
  const expandRpc=(raw:any)=>{
@@ -40,7 +43,7 @@ async function resolveMetadata(chainKey:string,address:string,refresh=false,bloc
     if(!['evm','sol'].includes(chain.wallet_type)||! /provider-|fetch|aborted|timeout|network|rpc-missing|rpc-error/i.test(reason))throw first;
     // Arbitrum One: offizieller öffentlicher RPC als letzter lesender Fallback;
     // providerMetadata prüft die Chain-ID vor jedem eth_call erneut.
-    if((!backup||backup===chain.rpc_url)&&chainKey==='arbitrum')backup='https://arb1.arbitrum.io/rpc';
+    if((!backup||backup===chain.rpc_url)&&configKey==='arb')backup='https://arb1.arbitrum.io/rpc';
     if(!backup||backup===chain.rpc_url)throw first;
     observed=await providerMetadata({...chain,rpc_url:backup},a,json,block);
    }
