@@ -1,3 +1,5 @@
+> **Phase 8.27 (13.11.2026 09:59:58 CET):** SQL-Retention für automatischen Bestandsverlauf korrigiert: 7 Kalendertage inklusive heute, danach ISO-wöchentlich bis 365 Tage, danach monatlich. Bereits am 13.11.2026 in Supabase manuell installiert; Migration ist die verbindliche nachgelieferte Projektdatei und muss **nicht nochmals ausgeführt** werden. Keine Edge-Funktion verändert. Siehe `docs/releases/8.27-balance-history-retention.md`.
+
 > Phase 8.26 (13.11.2026 08:11:57 CET): Wallet-Verwaltung standardmaessig geschlossen, je Wallet sowie alle auf-/zuklappen. Nur Browser-UI; keine Migration oder Edge-Deploy. Siehe `docs/releases/8.26-wallet-collapsible-editor.md`.
 
 > Phase 8.25 (13.11.2026): Bitcoin-Fallback in `supabase/functions/wallet-daily-refresh/index.ts` ergänzt. Edge Function nach ZIP-Installation **separat neu deployen**. Keine SQL-Migration; Live-Test offen. Details: `docs/releases/8.25-bitcoin-daily-provider-fallback.md`.

@@ -1,6 +1,14 @@
+## Phase 8.27 – Aufbewahrung automatischer Bestandsverläufe (13.11.2026 09:59:58 CET)
+
+- SQL-Korrektur für `wallettracking_compact_balance_history(date)` am 13.11.2026 vom Benutzer bereits erfolgreich in Supabase ausgeführt; Migration für Git-Projekt nachgeliefert.
+- **Retention:** Alter 0–6 Tage täglich, Alter 7–365 Tage neuester Wert je ISO-Woche, ab 366 Tagen neuester Wert je Kalendermonat. Manuelle Snapshots unangetastet.
+- **Live:** Snapshot-/Archivierungs-Trigger nach Fix am 13.11. wieder aktiv; frühere Bestandsverlaufslücke 02.–12.11.2026 bleibt, keine künstliche Rekonstruktion aus aktuellen Beständen.
+- **Offen:** Bitcoin-Fallback Phase 8.25 bei realem 429 kontrollieren; tägliche Archivierung künftig weiter beobachten; Verdichtung langfristig anhand echter historischer Daten verifizieren.
+- **Arbeitsregel:** Jede Scriptänderung ausschliesslich als versioniertes ZIP mit geänderten Projektdateien ausliefern, auch wenn SQL zuvor direkt in Supabase getestet wurde.
+
 ## Phase 8.26 – Wallet-Verwaltung kompakt (13.11.2026 08:11:57 CET)
 
-Wallet-Eingaben standardmaessig eingeklappt, nur Wallet-Namen sichtbar; je Wallet und alle gemeinsam auf-/zuklappbar. Keine SQL-/Edge-Änderungen. Browser-Livetest offen.
+Wallet-Eingaben standardmaessig eingeklappt, nur Wallet-Namen sichtbar; je Wallet und alle gemeinsam auf-/zuklappbar. Keine SQL-/Edge-Änderungen. Browser-Livetest am 13.11.2026 bestätigt.
 
 ## Phase 8.24 – Referral-DID Cache-first (12.11.2026 17:02:17 CET)
 
