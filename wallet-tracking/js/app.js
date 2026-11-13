@@ -2047,16 +2047,45 @@ async function refreshTechnicalTokenMetadata(mode='refresh-catalog'){
  if(tokenMetadataContinuationUser!==currentUser?.id){for(const key of Object.keys(tokenMetadataContinuation))delete tokenMetadataContinuation[key];tokenMetadataContinuationUser=currentUser?.id;}
  const btn=document.getElementById(mode==='refresh-own'?'customMetadataRefreshBtn':'metadataRefreshBtn');
  const status=document.getElementById(mode==='refresh-own'?'customMetadataStatus':'metadataRefreshStatus');
+ if(btn?.disabled)return;
  if(btn)btn.disabled=true;
+ const totals={checked:0,verified:0,not_applicable:0,conflict:0,unavailable:0,other:0};
+ const seen=new Set();
+ let batches=0,complete=false;
+ const message=(suffix='')=>`${totals.checked} geprüft · ${totals.verified} bestätigt · ${totals.not_applicable} Pooladresse(n) · ${totals.conflict} Konflikt(e) · ${totals.unavailable+totals.other} offen · ${batches} Durchlauf/Durchläufe${suffix}`;
  try{
-  const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode,after:tokenMetadataContinuation[mode]||''}});
-  if(error||!data?.ok)throw Error(data?.error||error?.message||'Metadaten-Abruf fehlgeschlagen');
-  tokenMetadataContinuation[mode]=data.nextAfter||'';
-  const count=kind=>(data.results||[]).filter(r=>r.status===kind).length;
-  if(status)status.textContent=`${data.checked} geprüft · ${count('verified')} bestätigt · ${count('not_applicable')} Pooladresse(n) · ${count('conflict')} Konflikt(e) · ${count('unavailable')} offen${data.nextAfter?' · Weitere Token: nochmals klicken.':' · Liste abgeschlossen.'}`;
-  await loadPredefinedTokensFromDb();await loadCustomSafeTokensFromDb();renderSafeTokenTable();renderCustomTokenList();renderResults();
-  return data;
- }catch(e){if(status)status.textContent=e.message;else alert(e.message)}finally{if(btn)btn.disabled=false}
+  // Cursorbasiert und seriell: keine unkontrollierten parallelen Edge-Aufrufe.
+  // Der Server bearbeitet pro Aufruf maximal 12 Token in kleinen Gruppen.
+  for(;batches<200;){
+   const after=tokenMetadataContinuation[mode]||'';
+   if(seen.has(after))throw Error('Fortsetzungscursor wiederholt sich; Prüfung sicherheitshalber angehalten.');
+   seen.add(after);
+   if(status)status.textContent=message(' · Verarbeitung läuft …');
+   const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode,after}});
+   if(error||!data?.ok)throw Error(data?.error||error?.message||'Metadaten-Abruf fehlgeschlagen');
+   const results=Array.isArray(data.results)?data.results:[];
+   if(!Number.isInteger(data.checked)||data.checked!==results.length||data.checked<0||data.checked>12)throw Error('Ungültige Metadaten-Batchantwort');
+   for(const r of results){const kind=String(r?.status||'other');totals[kind in totals?kind:'other']++;}
+   totals.checked+=results.length;
+   batches++;
+   const next=typeof data.nextAfter==='string'?data.nextAfter:'';
+   if(next&&(next===after||results.length===0))throw Error('Ungültiger Fortsetzungscursor; Prüfung angehalten.');
+   tokenMetadataContinuation[mode]=next;
+   if(status)status.textContent=message(next?' · Weitere Token werden geprüft …':' · Liste abgeschlossen.');
+   if(!next){complete=true;break;}
+  }
+  if(!complete)throw Error('Sicherheitsgrenze von 200 Durchläufen erreicht. Weitere Prüfung kann fortgesetzt werden.');
+  return totals;
+ }catch(e){
+  const reason=String(e?.message||e);
+  if(status)status.textContent=message(' · Unterbrochen: '+reason+' · Erneut klicken zum Fortsetzen.');
+  else alert(reason);
+  return null;
+ }finally{
+  try{await loadPredefinedTokensFromDb();await loadCustomSafeTokensFromDb();renderSafeTokenTable();renderCustomTokenList();renderResults();}
+  catch(e){if(status)status.textContent=message(' · Anzeigeaktualisierung fehlgeschlagen: '+(e?.message||e));}
+  if(btn)btn.disabled=false;
+ }
 }
 
 // Gezielte technische Pruefung eines einzelnen Stammdaten-Tokens: umgeht die
@@ -3281,7 +3310,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"DB/RAM",manual:"Projektrefresh",details:[["DAO1 Übersicht/Bot-Summen","RAM nach Lazy Load","Supabase DAO1 Caches","Apertum bei Aktualisierung","Current State; eindeutige aktuelle Bots, Historie separat"]]},
   {id:"dao-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"–",open:"vorhandener Preis-Cache",manual:"zentrale Preisaktualisierung",details:[["DAO1 aktuelle Kurse/Preisrouten","RAM/zentraler Preiscache","bestehende DAO1/Apertum Preislogik","Apertum DEX nur bei zentraler Preisaktualisierung","Tab zeigt ausschließlich bereits ermittelte Preise, Routen und Pools; keine eigene Preisermittlung"]]},
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"inkrementeller Delta-Sync",open:"DB-Cache",manual:"Admin-Retry",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Cache beim Öffnen; Phase 6.62 synchronisiert neue Apertum-Transaktionen/Flows/Claims/Referral-Daten höchstens 1× täglich automatisch inkrementell; manueller Force-Refresh nur Admin"]]},
-  {id:"token-technical-metadata",level:2,label:"Zentrale technische Token-Metadaten",status:"in_progress",start:"vorhandene Stammdaten/privater Cache",daily:"kein Metadaten-Cron",open:"fehlende aktive Token-Metadaten",manual:"12 Token pro Batch",details:[["Phase 8.08 · alle unterstützten Chains","eigene technische Cachewerte usergebunden lesen; globale Masterwerte wiederverwenden","wallettracking_internal.token_metadata; predefined_tokens; safe_tokens Anzeige-/Summary-Felder","gemeinsame Edge Function token-metadata; Explorer/EVM/Solana/Tron/Protokolleinheiten","Technische Quellen und Konfliktprotokoll zentral; keine User-/Wallet-/Privatlabel-Daten im technischen Cache. Persönliche Anzeige-Einstellungen getrennt. V3-Pools nur nach Interface-Nachweis, technische Skala dort nicht anwendbar. Browser, DAO und täglicher Bestandsjob teilen den Dienst. Neue Funktion vor abhängigen Workern/Web deployen; Live-Abnahme offen, DAO-Cron aus."]]},
+  {id:"token-technical-metadata",level:2,label:"Zentrale technische Token-Metadaten",status:"in_progress",start:"vorhandene Stammdaten/privater Cache",daily:"kein Metadaten-Cron",open:"fehlende aktive Token-Metadaten",manual:"Alle offenen/gelisteten Token automatisch in 12er-Batches; Fortschritt und Fortsetzung bei Abbruch",details:[["Phase 8.08 · alle unterstützten Chains","eigene technische Cachewerte usergebunden lesen; globale Masterwerte wiederverwenden","wallettracking_internal.token_metadata; predefined_tokens; safe_tokens Anzeige-/Summary-Felder","gemeinsame Edge Function token-metadata; Explorer/EVM/Solana/Tron/Protokolleinheiten","Technische Quellen und Konfliktprotokoll zentral; keine User-/Wallet-/Privatlabel-Daten im technischen Cache. Persönliche Anzeige-Einstellungen getrennt. V3-Pools nur nach Interface-Nachweis, technische Skala dort nicht anwendbar. Browser, DAO und täglicher Bestandsjob teilen den Dienst. Neue Funktion vor abhängigen Workern/Web deployen; Live-Abnahme offen, DAO-Cron aus."]]},
   {id:"dao-single-token-claim",level:2,label:"Nativer / ERC20-Einzel-Claim",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"Admin-Test · ein Claim",details:[["DAO1/APTMDAO · Phase 8.08","kein Start-/Tab-Scan","bestehende TX-/Flow-/Claim-Daten; claim_pipeline_asset_evidence","zentrale technische Token-Decimale, Explorer bei fehlenden Metadaten; historischer RPC nur als Claim-Fallback; bestehende zentrale Zielanker","wAPTM/wUSDT/wUSDC anhand verifizierter Verträge, keine Symbol-Identität. Eine asset-policy.js für Browser/Worker und feste Stablecoin-Quote; exakte Raw-Summe, bis 100 gleiche Asset-Flows, keine gemischten Eingänge. Native und ERC20-Mengen/Gas getrennt. Bestehende Preise/Claims/USD-Rewards und historische 388/4/3-Fälle geschützt; DID-Identitäten keine Bot-Claims. 241 relevante Tests bestanden; zwei ältere breite Testfehler dokumentiert. 8.06-Leerlauf und 8.07-Apertum-Decimale live bestätigt. 8.08 bindet den gemeinsamen token-metadata-Dienst ein; neue Claims/Metadaten anderer Chains live offen. Keine Überschreibung bei Konflikten, Anzeige-Dezimale separat. Kein Cron/Tagesqueue-Abschluss."]]},
   {id:"dao-single-native-claim",level:2,label:"Nativer Einzel-Claim-Pfad",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"Admin-Test · eine Seite/Strom, ein Claim",details:[["DAO1/APTMDAO · Phase 8.05","kein Start-/Tab-Scan","servereigene Rohcursor, dao_reward_claim_candidates.claim_pipeline_*, project_nft_claims","Blockscout-Rohimport und vorhandene historische Owner-/Payout-Prüfung; nur vorhandene zentrale exact-v13-Anker","Teilimport stoppt vor kanonischer Speicherung. Neue Kandidaten ohne kanonische/Preis-Ausnahme auswählen; 388/4/3-Referenzen schützen. Höchstens ein neuer nativer Claim, neue Miner ohne belegte ID bleiben Nicht zugeordnet. Fehlender Preis/Owner blocked mit Grund; 24h-Retry oder explizit manuell. TX-begrenzte gemeinsame Ankernutzung, kein Preis-Fallback; Neuanlage/Preisergänzung/Abschluss atomar. 173 lokale Tests; Leerlauf live bestätigt, Referenzbestand unverändert. Tatsächliche neue Claim-Neuanlage weiterhin live offen; keine Tagesqueue-Freigabe."]]},
   {id:"dao-positive-payouts",level:2,label:"Positive native Payout-Prüfung",status:"in_progress",start:"–",daily:"Cron deaktiviert",open:"–",manual:"Admin-Test, maximal vier",details:[["DAO1/APTMDAO · Phase 8.04","kein Start-/Tab-Scan","vorhandene project_transactions und project_transaction_asset_flows; Payout-Metadaten in dao_reward_claim_candidates","keine neue Explorer-/Preisabfrage","Feste Testwallet, Admin-JWT, Test-Import-Flag, Live-Worker aus. Service-only RPC prüft eindeutige native Auszahlung, passenden Block und Betrag mit exakt 1000 Wei Toleranz; USD NULL bleibt erlaubt und unverändert. Nur pending ohne canonical_existing; verified/negative Fälle ausgeschlossen. Kandidaten-Zeilensperren, Lese-Sperren und atomare Payout-/History-Persistenz, Batch-Rollback bei Fehler. 151 lokale Tests inkl. PostgreSQL; Vier frühe positive Claims live payout-verifiziert, SQL-Persistenz und Wiederholungsschutz bestätigt. Preis-Ausnahme und USD NULL erhalten; vollständiger inkrementeller Gesamtprozess bleibt offen."]]},
