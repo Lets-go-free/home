@@ -1,3 +1,11 @@
+
+### Phase 8.29 – Token-Metadaten gezielt prüfen (13.11.2026)
+- In Admin → Vordefinierte Token erscheint bei technischen Dezimalstellen „offen“/„Konflikt“ ein Knopf **Prüfen** pro Token.
+- Umgeht die 12er-Paginierung des Sammelimports und fordert eine erneute serverseitige Prüfung des konkreten Contracts an.
+- `token-metadata` akzeptiert `refresh:true` nur mit Admin-JWT oder Service-Role und meldet Status/Grund zurück. Keine geratenen Token-Dezimalstellen, kein Schreiben von Kursen oder Beständen.
+- Diagnose XAUt (`0x68749665ff8d2d112fa859aa293f07a622782f38`) und DSYNC (`0xf94e7d0710709388bce3161c32b4eea56d3f91cc`): technische Werte derzeit unverified; Live-Bestätigung nach Deployment offen.
+- **Deployment nötig:** `supabase/functions/token-metadata`; reine ZIP-Installation aktualisiert diese Funktion nicht.
+
 > **Phase 8.28 (13.11.2026 10:19:50 CET):** Beim Übernehmen eigener sicherer Token in die vordefinierte Liste werden die technischen Dezimalstellen unmittelbar über den gemeinsamen Metadaten-Dienst aufgelöst. Das Dashboard-Kursübersicht-Flag ist auch bei allgemeinen Token (ohne DeFi-Projekt) bedienbar; bestehende Bestands-/Preis- und Projekt-Zugehörigkeitsregeln bleiben gültig. Keine SQL-Migration, kein Edge-Deployment. Siehe `docs/releases/8.28-token-promotion-dashboard-flag.md`.
 
 > **Phase 8.27 (13.11.2026 09:59:58 CET):** SQL-Retention für automatischen Bestandsverlauf korrigiert: 7 Kalendertage inklusive heute, danach ISO-wöchentlich bis 365 Tage, danach monatlich. Bereits am 13.11.2026 in Supabase manuell installiert; Migration ist die verbindliche nachgelieferte Projektdatei und muss **nicht nochmals ausgeführt** werden. Keine Edge-Funktion verändert. Siehe `docs/releases/8.27-balance-history-retention.md`.

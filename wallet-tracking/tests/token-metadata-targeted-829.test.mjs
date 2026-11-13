@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const app=fs.readFileSync('wallet-tracking/js/app.js','utf8');
+const edge=fs.readFileSync('wallet-tracking/supabase/functions/token-metadata/index.ts','utf8');
+assert.match(app,/async function checkPredefinedTokenMetadata\(chain,address\)/);
+assert.match(app,/mode:'resolve',chain,address:a,refresh:true/);
+assert.match(app,/token-metadata-check-\$\{r.chain\}-\$\{r.address\}/);
+assert.match(edge,/if\(body.refresh===true\)/);
+assert.match(edge,/Admin access required for refresh/);
+assert.match(edge,/resolveMetadata\(body.chain,body.address,forceRefresh,block\)/);
+console.log('8.29 targeted metadata checks OK');

@@ -2059,6 +2059,38 @@ async function refreshTechnicalTokenMetadata(mode='refresh-catalog'){
  }catch(e){if(status)status.textContent=e.message;else alert(e.message)}finally{if(btn)btn.disabled=false}
 }
 
+// Gezielte technische Pruefung eines einzelnen Stammdaten-Tokens: umgeht die
+// 12er-Batch-Paginierung. Die Quelle bleibt ausschliesslich der zentrale Dienst.
+async function checkPredefinedTokenMetadata(chain,address){
+ if(!isAdmin)return;
+ const a=address==='native'?'native':normalizeAddress(address,chain);
+ const key=chain+'|'+a;
+ const btn=document.getElementById('token-metadata-check-'+chain+'-'+a);
+ if(btn){btn.disabled=true;btn.textContent='Prüfe …';}
+ try{
+  const {data,error}=await sb.functions.invoke('token-metadata',{body:{mode:'resolve',chain,address:a,refresh:true}});
+  if(error)throw Error(error.message||'Edge-Aufruf fehlgeschlagen');
+  if(!data)throw Error('Leere Antwort des Metadaten-Dienstes');
+  const status=String(data.status||'unbekannt');
+  const reason=String(data.reason||data.error||data.source||'keine Anbieterdiagnose');
+  await loadPredefinedTokensFromDb();
+  renderSafeTokenTable();
+  if(data.ok===true&&status==='verified'){
+   alert(`${chain.toUpperCase()} ${a}: ${data.decimals} technische Dezimalstellen bestätigt (${data.source||'On-Chain'}).`);
+  }else if(data.ok===true&&status==='not_applicable'){
+   alert(`${chain.toUpperCase()} ${a}: Bestätigte Pooladresse – eigene Token-Dezimalstellen nicht anwendbar.`);
+  }else{
+   alert(`${chain.toUpperCase()} ${a}: Metadaten weiterhin offen (Status: ${status}; Grund: ${reason}). Bitte diese Meldung für die Diagnose weitergeben.`);
+  }
+ }catch(e){
+  alert(`${chain.toUpperCase()} ${a}: Metadatenprüfung fehlgeschlagen: ${e?.message||e}`);
+ }finally{
+  const live=document.getElementById('token-metadata-check-'+chain+'-'+a);
+  if(live){live.disabled=false;live.textContent='Prüfen';}
+ }
+}
+window.checkPredefinedTokenMetadata=checkPredefinedTokenMetadata;
+
 async function taxTokenDecimalsCurrent(chain,token){
  return await resolveTokenTechnicalDecimals(chain,token?.address);
 }
@@ -4990,7 +5022,7 @@ function renderSafeTokenTable() {
       <td><strong>${escapeAttr(r.symbol || "–")}</strong></td>
       <td>${labelCell}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">native</span>' : r.address}</td>
-      <td style="text-align:center">${r.technicalStatus==='not_applicable'?'<span title="Pooladresse ohne eigene ERC20-Einheiten">Pool</span>':r.technicalStatus==='conflict'?'<span class="badge unsafe">Konflikt</span>':r.technicalDecimals??'<span style="color:var(--muted)">offen</span>'}</td>
+      <td style="text-align:center">${r.technicalStatus==='not_applicable'?'<span title="Pooladresse ohne eigene ERC20-Einheiten">Pool</span>':r.technicalStatus==='conflict'?'<span class="badge unsafe">Konflikt</span>':r.technicalDecimals??'<span style="color:var(--muted)">offen</span>'}${!r.isNative&&r.technicalStatus!=='verified'&&r.technicalStatus!=='not_applicable'?`<div style="margin-top:4px"><button type="button" id="token-metadata-check-${r.chain}-${r.address}" onclick="checkPredefinedTokenMetadata('${r.chain}','${r.address}')" title="Diesen Token einzeln und direkt auf der Chain prüfen">Prüfen</button></div>`:''}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--danger,#ef4444)">nicht konfiguriert</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
       <td style="text-align:center"><input type="checkbox" style="width:auto" ${r.dashboardVisible?"checked":""} ${r.nativeMissing?"disabled":""} onchange="setPredefinedTokenDashboardVisible('${r.chain}','${r.address}',this.checked)"></td>

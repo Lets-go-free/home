@@ -57,7 +57,18 @@ Deno.serve(async request=>{
   if(body.mode==='resolve'){
    if(typeof body.chain!=='string'||typeof body.address!=='string')return reply({ok:false,error:'Chain and address required'},400);
    const block=service&&Number.isSafeInteger(body.block)&&body.block>0?body.block:null;
-   const result=await resolveMetadata(body.chain,body.address,false,block);return reply({ok:['verified','not_applicable'].includes(result.status),...result});
+   // Refresh ist nur für Admins bzw. interne Service-Aufrufe erlaubt.
+   let forceRefresh=false;
+   if(body.refresh===true){
+    if(service)forceRefresh=true;
+    else{
+     const {data:admin,error:adminError}=await sb.from('admins').select('user_id').eq('user_id',user.id).maybeSingle();
+     if(adminError||!admin)return reply({ok:false,error:'Admin access required for refresh'},403);
+     forceRefresh=true;
+    }
+   }
+   const result=await resolveMetadata(body.chain,body.address,forceRefresh,block);
+   return reply({ok:['verified','not_applicable'].includes(result.status),...result});
   }
   if(body.mode!=='refresh-catalog'&&body.mode!=='refresh-own')return reply({ok:false,error:'Unknown mode'},400);
   if(service)return reply({ok:false,error:'User JWT required for catalog'},403);
