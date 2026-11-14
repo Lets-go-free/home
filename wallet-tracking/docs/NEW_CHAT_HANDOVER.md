@@ -1,3 +1,11 @@
+## 8.49 – 14.11.2026 19:52:27 CET
+
+Phase 8.49 vorbereitet: 377 verified exact-v13 APTM-Flows, fünf historisch verifizierte NFTs. Bestehende kanonische Claim-Funktion für verifizierte Mining-Bots erweitert. SQL, Edge Deploy, 1-Claim-Preview und 1-Claim-Test stehen aus; nur einen nächsten Schritt pro Antwort. DAO-Cron und Live-Worker bleiben aus. Details: `docs/releases/8.49-verified-historical-miner-claims.md`.
+
+## 8.49 – 14.11.2026 19:52:00 CET
+
+Phase 8.49 vorbereitet: 377 verified exact-v13 APTM-Flows, fünf historisch verifizierte NFTs. Bestehende kanonische Claim-Funktion für verifizierte Mining-Bots erweitert. SQL, Edge Deploy, 1-Claim-Preview und 1-Claim-Test stehen aus; nur einen nächsten Schritt pro Antwort. DAO-Cron und Live-Worker bleiben aus. Details: `docs/releases/8.49-verified-historical-miner-claims.md`.
+
 ## Phase 8.48 – Zentraler DAO1/APTM-Preisnachlauf (noch nicht installiert)
 
 Stand 14.11.2026 18:22:40 CET. Der Browser-Backfill ist auf den angemeldeten Benutzer beschränkt; der serverseitige DAO-Worker konnte bisher nur vorhandene exakte Anker anwenden. Neue service-role-only Auswahl über alle Benutzer (`wallettracking_dao_next_price_targets_848`) plus serverseitiger, begrenzter `exact-v13`-Preisnachlauf (bis vier Zielblöcke). Read-only Admin-Preview, manueller Admin-Batch und separat per Secret/Flag gesperrte Cron-Route. Die 316 bereits bewerteten APTM-Auszahlungsflows bleiben unverändert; 61 fehlende Zielblock-Anker bei Retos Wallet müssen nachgezogen werden. **Keine kanonische Reward-, Claim-, Bot- oder NFT-Änderung.** Migration, Edge-Deployment und Live-Test stehen aus; DAO-Cron/Live-Worker bleiben aus. Details und Einzel-Schritt-Abnahme: `docs/releases/8.48-dao-global-exact-pricing.md`.

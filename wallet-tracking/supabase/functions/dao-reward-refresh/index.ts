@@ -1329,6 +1329,62 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // Phase 8.49: one-at-a-time admin-only, cross-user historical NFT miner
+ // finalization. Preview never mutates; commit requires the exact preview TX.
+ if(body?.mode==='admin-miner-claim-preview-849'||body?.mode==='admin-miner-claim-single-849'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const preview=body.mode==='admin-miner-claim-preview-849';
+  if(Object.keys(body).some(k=>!['mode','walletId','txHash'].includes(k)) ||
+    typeof body.walletId!=='string'||! /^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(body.walletId) ||
+    (preview&&body.txHash!==undefined) || (!preview&&(typeof body.txHash!=='string'||!/^0x[0-9a-f]{64}$/.test(body.txHash))))
+   return reply({ok:false,error:'Invalid preview/commit request'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({error:'Manual claim test disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({error:'Disable live DAO worker'},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({error:permission.error},permission.status);
+   const {data:target,error:targetError}=await sb.rpc('wallettracking_dao_preview_verified_miner_849',{p_wallet:body.walletId});
+   if(targetError)throw targetError;
+   if(preview)return reply({ok:true,mode:body.mode,...target,
+     notice:'Read-only, one selected verified historical miner candidate; no claims/rewards/prices changed.'});
+   if(target?.selected!==1||target.walletId!==body.walletId||target.txHash!==body.txHash)
+    return reply({ok:false,error:'Preview target changed; obtain a new preview before finalization'},409);
+   const {data:finalized,error:finalizeError}=await sb.rpc('wallettracking_dao_finalize_single_native_claim',{
+    p_user:target.userId,p_wallet:target.walletId,p_tx:target.txHash});
+   if(finalizeError)throw finalizeError;
+   return reply({ok:true,mode:body.mode,selected:1,txHash:target.txHash,
+    walletId:target.walletId,finalized,
+    notice:'At most one canonical NFT claim via existing guarded finalizer. No DAO cron or batch activated.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},500)}
+ }
+ // Phase 8.49: one-at-a-time admin-only, cross-user historical NFT miner
+ // finalization. Preview never mutates; commit requires the exact preview TX.
+ if(body?.mode==='admin-miner-claim-preview-849'||body?.mode==='admin-miner-claim-single-849'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const preview=body.mode==='admin-miner-claim-preview-849';
+  if(Object.keys(body).some(k=>!['mode','walletId','txHash'].includes(k)) ||
+    typeof body.walletId!=='string'||! /^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(body.walletId) ||
+    (preview&&body.txHash!==undefined) || (!preview&&(typeof body.txHash!=='string'||!/^0x[0-9a-f]{64}$/.test(body.txHash))))
+   return reply({ok:false,error:'Invalid preview/commit request'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({error:'Manual claim test disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({error:'Disable live DAO worker'},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({error:permission.error},permission.status);
+   const {data:target,error:targetError}=await sb.rpc('wallettracking_dao_preview_verified_miner_849',{p_wallet:body.walletId});
+   if(targetError)throw targetError;
+   if(preview)return reply({ok:true,mode:body.mode,...target,
+     notice:'Read-only, one selected verified historical miner candidate; no claims/rewards/prices changed.'});
+   if(target?.selected!==1||target.walletId!==body.walletId||target.txHash!==body.txHash)
+    return reply({ok:false,error:'Preview target changed; obtain a new preview before finalization'},409);
+   const {data:finalized,error:finalizeError}=await sb.rpc('wallettracking_dao_finalize_single_native_claim',{
+    p_user:target.userId,p_wallet:target.walletId,p_tx:target.txHash});
+   if(finalizeError)throw finalizeError;
+   return reply({ok:true,mode:body.mode,selected:1,txHash:target.txHash,
+    walletId:target.walletId,finalized,
+    notice:'At most one canonical NFT claim via existing guarded finalizer. No DAO cron or batch activated.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},500)}
+ }
  // Phase 8.48: historical APTM price-only pipeline runs server-side across
  // all users. Manual admin preview/step and independently gated cron step.
  // Neither path invokes process() or canonical claim/NFT/reward posting.
