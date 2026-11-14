@@ -1,3 +1,9 @@
+## Phase 8.34 – Token-Risiko-Chain-Aliase (14.11.2026 10:34:28 CET)
+- `token-risk`: `arb`/`arbitrum`, `avax`/`avalanche`, `matic`/`polygon`/`pol` korrekt zugeordnet; Fehlerantworten für Adressen, unbekannte Chains und nicht unterstützte Non-EVM-Prüfungen getrennt.
+- Manuelle Spam-Bestätigung unverändert; GoPlus-Ausfall ist weiterhin keine Freigabe.
+- Edge-Deployment `token-risk/index.ts` erforderlich. Keine SQL-Migration. Tests lokal; authentifizierter Live-Retest offen.
+- Danach offener Bitcoin-Fallback-Livetest und historische Snapshot-Kontrolle.
+
 #### Phase 8.33 – Vereinheitlichte Chain-Aliase (14.11.2026 10:04:32 CET)
 - Technische Token-Metadaten: UI-Schlüssel `arbitrum`, `avalanche`, `polygon`, `solana` werden nur für `public.chains` zu `arb`, `avax`, `matic`, `sol` normalisiert; Original-Keys in Token-/Cache-Tabellen bleiben erhalten.
 - SQL-Migration und `token-metadata/index.ts` erforderlich. Live-Tests Polygon WETH, Avalanche WETH.e und Solana-Mint offen. Sicherheits-/Bitcoin-Fallback-Retest weiterhin offen.

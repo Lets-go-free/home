@@ -1,9 +1,14 @@
-// WalletTracking 8.31 – öffentliches Contract-Risikosignal; kein Sicherheitszertifikat.
+// WalletTracking 8.34 – öffentliches Contract-Risikosignal; kein Sicherheitszertifikat.
 // Keine Wallet-Adressen, Benutzerlisten oder private Token-Namen an Dritte senden.
 import {createClient} from 'npm:@supabase/supabase-js@^2';
 const URL=Deno.env.get('SUPABASE_URL')||'',KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'';
 const cors={'access-control-allow-origin':'*','access-control-allow-headers':'authorization, apikey, content-type, x-client-info','access-control-allow-methods':'POST, OPTIONS'};
-const chainIds:Record<string,string>={eth:'1',bsc:'56',matic:'137',polygon:'137',arbitrum:'42161',base:'8453',avalanche:'43114'};
+// UI-/Registry-Schlüssel verweisen auf dieselbe EVM-Chain. Keine Änderung der DB-Keys.
+const chainIds:Record<string,string>={
+ eth:'1',bsc:'56',matic:'137',polygon:'137',pol:'137',
+ arb:'42161',arbitrum:'42161',base:'8453',avax:'43114',avalanche:'43114'
+};
+const nonEvmChains=new Set(['sol','solana','btc','bitcoin','xrp','tron','akash']);
 const flaggedBsc='0xa2afaf65004551ad9c11f8b68d72d63980fd9b62';
 const fraudLabel='Fake_Phishing1123827';
 const timeoutFetch=async(url:string,ms=6500)=>{
@@ -42,10 +47,15 @@ Deno.serve(async request=>{
  const {data:auth,error:authError}=await sb.auth.getUser(bearer[1]);
  if(authError||!auth?.user?.id)return reply({ok:false,error:'Invalid user token'},401);
  let body:any;try{body=await request.json()}catch{return reply({ok:false,error:'Invalid JSON'},400)}
- const chain=String(body?.chain||'').toLowerCase(),id=chainIds[chain];
+ const chain=String(body?.chain||'').trim().toLowerCase(),id=chainIds[chain];
  const addrs=body?.addresses;
- if(!id||!Array.isArray(addrs)||addrs.length<1||addrs.length>10||addrs.some((a:any)=>typeof a!=='string'||!/^0x[0-9a-f]{40}$/i.test(a)))
-  return reply({ok:false,error:'Invalid chain or addresses'},400);
+ if(!Array.isArray(addrs)||addrs.length<1||addrs.length>10||addrs.some((a:any)=>typeof a!=='string'||!a.trim()))
+  return reply({ok:false,error:'Invalid addresses',reason:'expected 1–10 non-empty addresses'},400);
+ // Nicht unterstützte Chains sind keine Sicherheitsfreigabe und kein Provider-Ausfall.
+ if(nonEvmChains.has(chain))return reply({ok:true,chain,status:'unsupported',reason:'No GoPlus ERC-20 check for this chain',results:{}});
+ if(!id)return reply({ok:false,error:'Unsupported chain',reason:'unknown-chain',chain},422);
+ if(addrs.some((a:string)=>!/^0x[0-9a-f]{40}$/i.test(a)))
+  return reply({ok:false,error:'Invalid addresses',reason:'expected 0x + 40 hexadecimal characters'},400);
  const addresses=[...new Set((addrs as string[]).map(a=>a.toLowerCase()))];
  let security:any=null;
  try{

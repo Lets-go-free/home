@@ -12282,7 +12282,7 @@ async function checkGoPlusRisk(chain, addresses) {
       if(error||!data?.ok)throw Error(data?.error||error?.message||'Security provider unavailable');
       for(const addr of chunk){
         const item=data.results?.[addr];
-        result[addr]=item||{checked:false,flags:[],reason:'Keine Sicherheitsantwort'};
+        result[addr]=item||{checked:false,flags:[],reason:data.status==='unsupported'?'Sicherheitsprüfung für diese Chain nicht unterstützt':'Keine Sicherheitsantwort'};
       }
     }catch(e){for(const addr of chunk)result[addr]={checked:false,flags:[],reason:'Sicherheitsdienst nicht erreichbar'};}
   }
@@ -12861,7 +12861,7 @@ function renderDiscoveryResults(findings) {
       }
       if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
       riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ SPAM-VERDACHT: ${reasons.map(escapeAttr).join(", ")}</span>`;
-      if(f.risk===null)riskHtml+=` <span class="badge">Sicherheitsdienst nicht verfügbar</span>`;
+      if(f.risk===null)riskHtml+=` <span class="badge">${f.riskCheckReason==='Sicherheitsprüfung für diese Chain nicht unterstützt'?'Sicherheitsprüfung für diese Chain nicht unterstützt':'Sicherheitsdienst nicht verfügbar'}</span>`;
     } else if (f.risk === null) {
       riskHtml = `<span class="badge unsafe">Sicherheitsprüfung nicht verfügbar – kein Sicherheitsurteil</span>`;
     } else {
