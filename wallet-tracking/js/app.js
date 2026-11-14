@@ -1,3 +1,4 @@
+// Phase 8.40: Snapshot-Nullpositionen ohne jemals positiven Bestand ausblenden.
 // Phase 8.39: fünf jüngste automatische Bestandsverläufe immer als Spalten; optional sämtliche Stichtage.
 // Phase 7.75: Password recovery gate vor App-Initialisierung.
 // Phase 7.68 · 29.10.2026 11:15:30 CET: Atomare Speicherung automatischer Snapshots per user-gebundener SQL-Transaktion.
@@ -8720,8 +8721,14 @@ function snapshotItemBelongsToWallet(it, matchWallet) {
   return String(it.wallet_id||"") === String(matchWallet.dbId||matchWallet.id||"");
 }
 
+// Nur Positionen mit nachgewiesen positivem Bestand zählen als historische
+// Token-Präsenz. Reine Nullpositionen in Snapshots erzeugen keine Chain-Karten.
 function hasVisibleSnapshotDataForChain(chain, matchWallet) {
-  return visibleSnapshots().some(s => s.items.some(it => historyChainKey(it.chain) === historyChainKey(chain) && snapshotItemBelongsToWallet(it, matchWallet)));
+  return visibleSnapshots().some(s => s.items.some(it =>
+    historyChainKey(it.chain) === historyChainKey(chain) &&
+    snapshotItemBelongsToWallet(it, matchWallet) &&
+    Number(it.amount) > 0
+  ));
 }
 
 // ---- Bestands-Tabelle. wallet+chain optional: nur bei Angabe werden Snapshot-Spalten
@@ -8760,6 +8767,13 @@ function snapshotPriceForKey(snap, chain, key, matchWallet) {
 // matchWallet: ein Wallet-Objekt (Einzelwallet-Ansicht) oder null (Summary, über alle Wallets).
 function attachSnapshotColumns(rows, chain, matchWallet) {
   const snaps = visibleSnapshots();
+  // Token ohne nachgewiesenen Bestand nicht anzeigen: ein gespeicherter Kurs
+  // oder eine Nullposition ist noch kein historisch gehaltener Token.
+  // Bei einer fehlenden Snapshot-Position bleibt die Spalte weiterhin «–».
+  const hadPositiveBalance = r =>
+    Number(r.amount) > 0 || Number(r.lpInfo?.stakedBalance) > 0 ||
+    snaps.some(s => (snapshotValueForKey(s, chain, rowKey(r), matchWallet) ?? 0) > 0);
+  rows = rows.filter(hadPositiveBalance);
   if (snaps.length === 0) return rows;
 
   rows.forEach(r => {
@@ -8779,7 +8793,9 @@ function attachSnapshotColumns(rows, chain, matchWallet) {
       .filter(it => historyChainKey(it.chain) === historyChainKey(chain) && snapshotItemBelongsToWallet(it, matchWallet))
       .forEach(it => {
         const key = it.is_native ? "native" : (it.address || "").toLowerCase();
-        if (presentKeys.has(key) || extraKeys.has(key)) return;
+        // Nur historische positive Positionen ergänzen; Nullbestände dürfen
+        // auch dann keine Zeile erzeugen, wenn ein Kurs gespeichert ist.
+        if (!(Number(it.amount) > 0) || presentKeys.has(key) || extraKeys.has(key)) return;
         extraKeys.add(key);
         const p = it.is_native ? nativePrices[chain] : priceForToken(chain, it.address);
         const extraRow = {
@@ -9012,6 +9028,7 @@ function renderResults() {
         }
 
         if (!result.error && result.rows.length === 0 && !hasSnapshotData) return "";
+        if (!result.error && attachSnapshotColumns(result.rows, chain, w).length === 0) return "";
 
         let body;
         if (result.error) {
@@ -9087,7 +9104,9 @@ function renderResults() {
     if (rows.length === 0 && !hadError && !hasVisibleSnapshotDataForChain(chain, visibleWallets)) return ""; // keine Bestände -> gar nicht anzeigen
 
     const sortedRows = rows.sort((a, b) => b.amount - a.amount);
-    let body = renderTable(attachSnapshotColumns(sortedRows, chain, visibleWallets)) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
+    const displayedRows = attachSnapshotColumns(sortedRows, chain, visibleWallets);
+    if (displayedRows.length === 0 && !hadError) return "";
+    let body = renderTable(displayedRows) || '<div class="empty">Keine Bestände vorhanden.</div>';
     if (hadError) {
       body += `<div class="error" style="margin-top:6px">Hinweis: Bei mindestens einem Wallet trat auf dieser Chain ein Fehler auf — Summe ist unvollständig.</div>`;
     }
