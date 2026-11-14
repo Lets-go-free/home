@@ -1,3 +1,9 @@
+## 8.52 · Live-Abnahme-Nachtrag 14.11.2026 21:39:51 CET (Dokumentation, kein neuer Build)
+- 8.52-Migration installiert, kanonischen Erstclaim repariert und neu angelegten Claim mit exact-v13 bestätigt.
+- 125 historische NFT-ID-Lücken (1+124) nach Gleichheits-/Wallet-Guards behoben; 2'078/2'078 damals konsistent.
+- 377/377 verifizierte native APTM-Reto-Claims kanonisch übernommen. Abschlussaudit: 393 Kandidaten, 377 abgeschlossen, 16 nicht verifiziert, 0 verifizierte ohne Claim, 0 kanonische Abweichungen. DAO-Cron/Live-Worker bleiben deaktiviert.
+- Kein weiterer App-Build, kein neuer Produktiv-SQL-Deploy. Details in 8.52-Release-Dokument und Status/TODO.
+
 ## 8.52 · 14.11.2026 20:49:27 CET
 - DAO1 kanonische Reward-Felder bei neuen Claims atomar vervollständigt; bewachte Einzel-Reparatur ergänzt. Installation und Live-Test offen.
 

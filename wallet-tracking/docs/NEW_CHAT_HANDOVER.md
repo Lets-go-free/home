@@ -1,7 +1,9 @@
-### Phase 8.52 – DAO1 kanonische Reward-Konsistenz (Installation und Einzeltest offen)
-- Stand bis Schritt 66: 377 Reto-Auszahlungen verifiziert (`exact-v13`); erster Claim erstellt, 376 offen. 2241 Alt-Claims konsistent, ein neuer Claim mit leeren TX-Reward-/NFT-Feldern und `project_nft_claims.reward_usd`.
-- 8.52: Finalizer schreibt Begleitfelder atomar bei neuen Claims; separate streng bewachte Einzel-Reparatur für den bereits erstellten Claim. Kein automatischer Backfill. Details: `docs/releases/8.52-dao-canonical-reward-consistency.md`.
-- **Nächster Schritt:** 8.52-Migration installieren, danach genau einen Repair und genau einen neuen Claim getrennt testen. DAO-Cron und Live-Worker deaktiviert.
+### Phase 8.52 – Reto-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
+- Live-Migration 8.52 installiert, ursprünglichen unvollständigen Claim #21 repariert; zweiter Claim erfolgreich atomar angelegt, `exact-v13` bestätigt.
+- Historische NFT-ID-Lücken (125 Claims einer anderen Wallet) sicher behoben: erst 1, dann 124; keine Rewardwerte verändert; 2'078/2'078 konsistent.
+- Reto: **377/377 verifizierte Auszahlungen kanonisch übernommen**, 16 Kandidaten ohne verifizierte Auszahlung unangetastet. Schritt-52-Audit: 393 gesamt, 377 abgeschlossen, 16 unverified, 0 verifiziert ohne Claim, 0 Abweichungen.
+- **Nächster konkreter Schritt:** globale `exact-v13`-Konsistenz nach letztem Batch erneut prüfen, danach die 16 ungeprüften Kandidaten diagnostizieren. DAO-Cron/Live-Worker AUS. Detailprotokoll: `docs/releases/8.52-dao-canonical-reward-consistency.md`.
+- Dokumentationsnachtrag zur weiterhin angezeigten **Phase 8.52**, kein weiterer SQL-/Code-Deploy.
 
 
 ### Phase 8.51 – DAO1 historischer NFT-Eigentumsnachweis (Installation offen)
