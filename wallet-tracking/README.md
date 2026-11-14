@@ -1,3 +1,13 @@
+## Phase 8.37 – GoPlus-Cache und Rate-Limit-Steuerung (14.11.2026 11:16:58 CET)
+- Ursache: GoPlus meldete `api-code-4029` (Anfragelimit erreicht); bisherige Einzel-Fallbacks erzeugten zusätzliche Requests.
+- `token-risk` verwendet einen gemeinsamen, benutzerunabhängigen Cache pro EVM-Chain-ID und öffentlicher Contract-Adresse: erfolgreiche GoPlus-Bewertung 24 Stunden; nicht verfügbare Einzelergebnisse 15 Minuten (ausser bei 4029). Cachewerte sind Risikosignale, keine Freigabe.
+- Serverseitige, transaktionsgesperrte GoPlus-Anfragefreigabe: mindestens 3 Sekunden Abstand zwischen Freigaben, 60 Minuten Cooldown bei `api-code-4029` oder HTTP 429. Maximal ein GoPlus-Batch pro Edge-Aufruf, keine automatischen Einzel-Retries bei Teilergebnissen. Die tatsächliche Verarbeitung kann bei hoher Last gedrosselt sein; nicht geprüfte Contracts bleiben als solche gekennzeichnet.
+- Diagnose: `providerStatus` unterscheidet `ok`, `api-code-4029`, `api-code-4029-cooldown`, `request-throttled` und sonstige Providerfehler; Cache-Treffer `cacheStatus: hit`. Bekannter BscScan-Phishing-Contract bleibt als Warnsignal. Manuelle Spam-Bestätigung unverändert.
+- Zugriff: JWT weiterhin Pflicht, Cache speichert ausschliesslich öffentliche Contract-Daten; Tabellen mit RLS ohne `anon`/`authenticated`-Zugriff, RPC nur für `service_role`. Bei Cache-/Gate-DB-Fehler keine unkontrollierten GoPlus-Anfragen.
+- **Installation in dieser Reihenfolge:** SQL-Migration `20261114111546_token_risk_goplus_cache_837.sql` einmalig in Supabase ausführen, ZIP einspielen, anschliessend `token-risk/index.ts` neu deployen. Kein anderer Edge-Worker und keine Änderung an Wallets/DAO/Cron.
+- Lokale Tests: Cache-Hit ohne zweiten Provider-Aufruf, API-Code 4029 und Abkühlzeit, Fail-Closed-Verhalten bestanden. Live-Abnahme offen (GoPlus-Limit kann noch aktiv sein).
+- Danach: Bitcoin-Fallback 8.25 unter realem HTTP 429 prüfen, Snapshot-Betrieb weiter beobachten.
+
 ## Phase 8.36 – GoPlus-Provider-Diagnose (14.11.2026 11:05:55 CET)
 - Live-Retest 8.35: Zwei BSC-Contracts lieferten `checked:false`, obwohl einer zuvor geprueft wurde und die direkte Browser-Abfrage fuer den zweiten `code=1` lieferte. Die Ursache ist noch nicht identifiziert; Netzwerkfehler, Rate-Limits, Zeitueberschreitungen und fehlende Datensaetze wurden bisher gleich behandelt.
 - `token-risk` liefert nun `providerStatus` pro Contract (`http-429`, `http-403`, `timeout`, `network-error`, `invalid-json`, `api-code-*`, `missing-contract-result`, `ok`) ohne Geheimnisse oder unkontrollierte Provider-Nachrichten. Bei nicht verfuegbaren Daten bleibt `checked:false` und die manuelle Spam-Kennzeichnung unveraendert.
