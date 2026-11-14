@@ -1,3 +1,12 @@
+## Phase 8.41 – DAO1 Tageslimit geschuetzter Verarbeitungs-Schritte ( 14.11.2026 12:29:07 CET )
+
+- Die beiden service-role-geschuetzten RPCs `wallettracking_dao_reward_claim_v2(date)` und `wallettracking_dao_reward_claim_staged_v3(date)` reservieren nun **höchstens 32 statt 8 Schritte pro Wallet und Schweizer Kalendertag** (`step_count < 32`).
+- **Keine Änderung** an der Fehlergrenze von 3, Leasing/Lease-Token, SKIP LOCKED, Queue-Auswahl, Batch-Limit (10), individuellem Explorer-Zeitbudget oder den historischen Checkpoints.
+- Die Grenze gilt gemeinsam über beide Phasen, da `wallet_reward_refresh_attempts.step_count` pro Wallet/Tag geführt wird. Bereits auf 8 stehende Wallets können nach Installation der SQL-Migration am selben Tag kontrolliert weiterlaufen; Zähler werden nicht zurückgesetzt.
+- **Keine** Aktivierung von Cron oder DAO-Live-Worker. Keine Änderungen an kanonischen Claims, Reward-Beträgen, Preisen oder NFT-Zuordnungen. Migration muss erst manuell in Supabase installiert und lesend verifiziert werden. Noch nicht live getestet.
+- Vor der Freigabe der automatischen DAO-Verarbeitung weiterhin historische `partial`-Scans, Claim-/Reward-, Preis- und Referral-Prüfungen abschliessen.
+
+
 ## Phase 8.24 – Referral-DID Cache-first (12.11.2026 17:02:17 CET)
 
 Historische DID-Transferdaten werden je DID innerhalb einer Seiteninstanz nur einmal geladen; weitere Tab-Wechsel verwenden die vorhandenen Daten. Historisch gehaltene DIDs aus `project_nft_ownership` bleiben Kandidaten, selbst wenn die DID inzwischen umgezogen ist. Die persistente NFT-Transferhistorie liegt weiterhin serverseitig; keine Klartext-Wallet-Adressen oder DID-Namen im Browser-Storage. Neue Seiteninstanzen fragen den Server-Cache erneut ab. Vollstaendiges inkrementelles On-Chain-Nachladen ist damit **nicht** neu implementiert und bleibt an die bestehende Edge-Cache-Strategie gebunden. Keine SQL-Migration, kein Eingriff in Reward-Betraege, NFT-Zuordnungen oder historische Preise. DAO-Cron und Live-Worker bleiben deaktiviert. Live-Retest der DID-Anzeige offen.
