@@ -1,4 +1,4 @@
-// WalletTracking 8.35 – öffentliches Contract-Risikosignal; kein Sicherheitszertifikat.
+// WalletTracking 8.36 – öffentliches Contract-Risikosignal; kein Sicherheitszertifikat.
 // Keine Wallet-Adressen, Benutzerlisten oder private Token-Namen an Dritte senden.
 import {createClient} from 'npm:@supabase/supabase-js@^2';
 const URL=Deno.env.get('SUPABASE_URL')||'',KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'';
@@ -60,20 +60,35 @@ Deno.serve(async request=>{
  // GoPlus gibt bei mehreren Adressen gelegentlich nur eine Teilmenge zurueck.
  // Fehlende Datensaetze deshalb einmal gezielt einzeln abfragen; keine Sicherheitsfreigabe bei Luecken.
  const security:Record<string,any>={};
+ const providerDiagnostics:Record<string,string>={};
+ // Pro angefragtem Contract nur kurze Statuscodes, keine Auth-Daten oder Fremdantworten.
+ const mark=(requested:string[],reason:string)=>{for(const addr of requested){if(!security[addr])providerDiagnostics[addr]=reason}};
  const endpoint='https://api.gopluslabs.io/api/v1/token_security/'+id+'?contract_addresses=';
  async function fetchSecurity(requested:string[]){
   try{
    const response=await timeoutFetch(endpoint+requested.join(','),6500);
-   if(!response.ok)return;
-   const payload=await response.json();
-   if(String(payload?.code)!=='1'||!payload?.result||typeof payload.result!=='object'||Array.isArray(payload.result))return;
+   if(!response.ok){mark(requested,'http-'+response.status);return}
+   let payload:any;
+   try{payload=await response.json()}catch{mark(requested,'invalid-json');return}
+   if(String(payload?.code)!=='1'){
+    // Nur einen begrenzten Provider-Code ausgeben, niemals ungefilterte Provider-Meldungen.
+    const code=String(payload?.code??'missing').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,24);
+    mark(requested,'api-code-'+(code||'unknown'));return;
+   }
+   if(!payload?.result||typeof payload.result!=='object'||Array.isArray(payload.result)){
+    mark(requested,'invalid-result');return;
+   }
    for(const [key,value] of Object.entries(payload.result)){
     const addr=key.toLowerCase();
-    // Nur angefragte Contracts uebernehmen; ein leeres Objekt ist kein gueltiger Befund.
-    if(requested.includes(addr)&&value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length>0)
+    if(requested.includes(addr)&&value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length>0){
      security[addr]=value;
+     delete providerDiagnostics[addr];
+    }
    }
-  }catch{/* Timeout, Rate-Limit oder ungueltige Antwort: weiterhin nicht geprueft. */}
+   mark(requested,'missing-contract-result');
+  }catch(e){
+   mark(requested,e instanceof Error&&e.name==='AbortError'?'timeout':'network-error');
+  }
  }
  await fetchSecurity(addresses);
  const missing=addresses.filter(a=>!security[a]);
@@ -86,7 +101,7 @@ Deno.serve(async request=>{
   const gp=security[a]||null;
   results[a]={checked:!!gp||known,flags:[...new Set([
    ...(known?['BscScan: '+fraudLabel+' (bekannter dokumentierter Fall)']:[]),...goPlusFlags(gp)
-  ])],reason:gp?'GoPlus geprüft':known?'Dokumentierte BscScan-Kennzeichnung':'GoPlus nicht verfügbar'};
+  ])],reason:gp?'GoPlus geprüft':known?'Dokumentierte BscScan-Kennzeichnung':'GoPlus nicht verfügbar',providerStatus:gp?'ok':providerDiagnostics[a]||'unknown'};
  }
  if(chain==='bsc'){
   // Kleiner, begrenzter Best-effort-Abgleich gegen Explorer; keine false-safe-Freigabe.
