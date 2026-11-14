@@ -1,3 +1,4 @@
+// Phase 8.38: historische automatisierte Stichtags-Snapshots als auswählbare Spalten in Wallet-/Summary-Beständen.
 // Phase 7.75: Password recovery gate vor App-Initialisierung.
 // Phase 7.68 · 29.10.2026 11:15:30 CET: Atomare Speicherung automatischer Snapshots per user-gebundener SQL-Transaktion.
 // Phase 7.66 · 28.10.2026: Erster Browser-Login pro Sitzung prüft Wallet-Bestände erneut; bestehende Projekt-/Discovery-Jobs unverändert. Basis 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
@@ -8330,31 +8331,99 @@ function renderSnapshotManager() {
 
 // Phase 7.74: Historischer automatischer Bestandsverlauf; unabhängig von manuellen Snapshots.
 let dailyBalanceHistoryLoaded = null;
-async function loadDailyBalanceHistory(force = false) {
-  const el = document.getElementById("dailyBalanceHistoryList");
-  if (!el || !currentUser) return;
-  if (dailyBalanceHistoryLoaded === currentUser.id && !force) return;
-  el.textContent = "Bestandsverlauf wird geladen …";
-  const { data, error } = await sb.from("wallet_daily_balance_history")
-    .select("sample_day,captured_at,wallet_count,position_count,total_usd,unpriced_positions")
-    .eq("user_id", currentUser.id)
-    .order("sample_day", { ascending: false }).limit(500);
-  if (error) {
-    el.textContent = "Bestandsverlauf nicht verfügbar: " + error.message;
-    return;
+let dailyBalanceHistoryRows = [];
+const selectedDailyBalanceDays = new Map(); // day -> {id, createdAt, items}
+let dailyBalanceHistoryRequest = null;
+
+// Die historischen Positionen werden erst bei Auswahl eines Stichtags geladen.
+// Sie sind unveraenderliche Archivdaten und werden nie aus dem heutigen Cache rekonstruiert.
+const DAILY_HISTORY_CHAIN_ALIASES = Object.freeze({arb:"arbitrum",avax:"avalanche",matic:"polygon",sol:"solana"});
+function historyChainKey(chain) {
+  return DAILY_HISTORY_CHAIN_ALIASES[String(chain||"").toLowerCase()] || String(chain||"").toLowerCase();
+}
+function historyPositionItems(positions) {
+  if(!Array.isArray(positions)) return [];
+  return positions.filter(it=>it && it.wallet_id && it.chain && it.symbol && it.amount!==null && it.amount!==undefined)
+    .map(it=>({
+      wallet_id:String(it.wallet_id),chain:String(it.chain),symbol:String(it.symbol),
+      address:it.address||null,is_native:!!it.is_native,
+      amount:Number(it.amount),price_usd:it.price_usd===null||it.price_usd===undefined?null:Number(it.price_usd)
+    })).filter(it=>Number.isFinite(it.amount));
+}
+async function toggleDailyBalanceSnapshot(day, selected) {
+  const date=String(day||"");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  const el=document.getElementById("dailyBalanceHistoryList");
+  if(!selected) {
+    selectedDailyBalanceDays.delete(date);
+    renderDailyBalanceHistoryList();renderResults();return;
   }
-  dailyBalanceHistoryLoaded = currentUser.id;
-  const rows = data || [];
-  if (!rows.length) { el.textContent = "Noch keine nächtlichen Bestandsaufnahmen vorhanden."; return; }
-  el.innerHTML = `<div style="overflow-x:auto"><table class="data-table" style="width:100%">
-    <thead><tr><th>Stichtag</th><th>Auflösung</th><th>Wallets</th><th>Positionen</th><th style="text-align:right">Wert in USD</th><th>Ohne Kurs</th></tr></thead>
-    <tbody>${rows.map(r => {
+  if(selectedDailyBalanceDays.has(date) && selectedDailyBalanceDays.get(date)?.userId===currentUser?.id) return;
+  selectedDailyBalanceDays.delete(date);
+  // Maximal vier zusaetzliche Tages-Spalten zugleich, damit Tabellen benutzbar bleiben.
+  if(selectedDailyBalanceDays.size>=4) {
+    alert("Bitte höchstens vier automatische Stichtage gleichzeitig auswählen.");
+    renderDailyBalanceHistoryList();return;
+  }
+  const row=dailyBalanceHistoryRows.find(r=>r.sample_day===date);
+  if(!row) return;
+  if(el)el.setAttribute("aria-busy","true");
+  try {
+    const userId=currentUser?.id;
+    const {data,error}=await sb.from("wallet_daily_balance_history")
+      .select("sample_day,captured_at,positions")
+      .eq("user_id",userId).eq("sample_day",date).single();
+    if(error)throw error;
+    if(currentUser?.id!==userId)return;
+    const items=historyPositionItems(data?.positions);
+    if(!items.length)throw new Error("Keine historischen Token-Positionen vorhanden.");
+    selectedDailyBalanceDays.set(date,{
+      id:`daily:${date}`,createdAt:data.captured_at || `${date}T12:00:00Z`,
+      label:`${date.split("-").reverse().join(".")} · automatisch`,
+      source:"daily",userId,items,visible:true
+    });
+    renderDailyBalanceHistoryList();renderResults();
+  } catch(e) {
+    alert("Automatischen Stichtag nicht laden: "+(e?.message||String(e)));
+    renderDailyBalanceHistoryList();
+  } finally {if(el)el.removeAttribute("aria-busy");}
+}
+function renderDailyBalanceHistoryList() {
+  const el=document.getElementById("dailyBalanceHistoryList");
+  if(!el)return;
+  if(!dailyBalanceHistoryRows.length){el.textContent="Noch keine nächtlichen Bestandsaufnahmen vorhanden.";return;}
+  el.innerHTML=`<div class="muted" style="margin:8px 0">Stichtage auswählen, um die damaligen Token-Mengen als zusätzliche Spalten in den Wallet-Beständen und der Summary zu vergleichen (maximal vier). Nicht erfasste Wallets erscheinen als –.</div>
+    <div style="overflow-x:auto"><table class="data-table" style="width:100%">
+    <thead><tr><th>Einblenden</th><th>Stichtag</th><th>Auflösung</th><th>Wallets</th><th>Positionen</th><th style="text-align:right">Wert in USD</th><th>Ohne Kurs</th></tr></thead>
+    <tbody>${dailyBalanceHistoryRows.map(r=>{
       const age=Math.floor((new Date().setHours(0,0,0,0)-new Date(String(r.sample_day)+"T00:00:00").getTime())/86400000);
-      const resolution=age<=7?"Täglich":age<=365?"Wöchentlich":"Monatlich";
+      const resolution=age<=6?"Täglich":age<=365?"Wöchentlich":"Monatlich";
       const stamp=String(r.sample_day).split("-").reverse().join(".");
       const value=Number(r.total_usd);
-      return `<tr><td>${stamp}</td><td>${resolution}</td><td>${Number(r.wallet_count)||0}</td><td>${Number(r.position_count)||0}</td><td style="text-align:right">${Number.isFinite(value)?value.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}):"–"}</td><td>${Number(r.unpriced_positions)||0}</td></tr>`;
+      return `<tr><td><input type="checkbox" aria-label="Stichtag ${stamp} einblenden" style="width:auto" ${selectedDailyBalanceDays.get(r.sample_day)?.userId===currentUser?.id?"checked":""} onchange="toggleDailyBalanceSnapshot('${r.sample_day}',this.checked)"></td><td>${stamp}</td><td>${resolution}</td><td>${Number(r.wallet_count)||0}</td><td>${Number(r.position_count)||0}</td><td style="text-align:right">${Number.isFinite(value)?value.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}):"–"}</td><td>${Number(r.unpriced_positions)||0}</td></tr>`;
     }).join("")}</tbody></table></div>`;
+}
+async function loadDailyBalanceHistory(force = false) {
+  const el=document.getElementById("dailyBalanceHistoryList");
+  if(!el||!currentUser)return;
+  if(dailyBalanceHistoryLoaded===currentUser.id && !force){renderDailyBalanceHistoryList();return;}
+  if(dailyBalanceHistoryRequest)return dailyBalanceHistoryRequest;
+  el.textContent="Bestandsverlauf wird geladen …";
+  const userId=currentUser.id;
+  dailyBalanceHistoryRequest=(async()=>{
+    const {data,error}=await sb.from("wallet_daily_balance_history")
+      .select("sample_day,captured_at,wallet_count,position_count,total_usd,unpriced_positions")
+      .eq("user_id",userId).order("sample_day",{ascending:false}).limit(500);
+    if(currentUser?.id!==userId)return;
+    if(error){el.textContent="Bestandsverlauf nicht verfügbar: "+error.message;return;}
+    if(dailyBalanceHistoryLoaded!==userId) selectedDailyBalanceDays.clear();
+    dailyBalanceHistoryLoaded=userId;
+    dailyBalanceHistoryRows=data||[];
+    const allowed=new Set(dailyBalanceHistoryRows.map(r=>r.sample_day));
+    for(const day of selectedDailyBalanceDays.keys())if(!allowed.has(day))selectedDailyBalanceDays.delete(day);
+    renderDailyBalanceHistoryList();
+  })().finally(()=>{dailyBalanceHistoryRequest=null;});
+  return dailyBalanceHistoryRequest;
 }
 
 // ---- Verlauf-Grafik (ein Token über Zeit, Snapshots + aktueller Bestand) ----
@@ -8604,7 +8673,8 @@ function renderAllocationChart() {
 }
 
 function visibleSnapshots() {
-  return snapshots.filter(s => s.visible).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return [...snapshots.filter(s => s.visible), ...[...selectedDailyBalanceDays.values()].filter(s=>s.userId===currentUser?.id)]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 // Prüft, ob für eine Chain (+ optional ein bestimmtes Wallet) überhaupt Snapshot-Daten
@@ -8621,7 +8691,7 @@ function snapshotItemBelongsToWallet(it, matchWallet) {
 }
 
 function hasVisibleSnapshotDataForChain(chain, matchWallet) {
-  return visibleSnapshots().some(s => s.items.some(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet)));
+  return visibleSnapshots().some(s => s.items.some(it => historyChainKey(it.chain) === historyChainKey(chain) && snapshotItemBelongsToWallet(it, matchWallet)));
 }
 
 // ---- Bestands-Tabelle. wallet+chain optional: nur bei Angabe werden Snapshot-Spalten
@@ -8635,7 +8705,7 @@ function rowKey(row) {
 // Summiert den Bestand eines Tokens in einem Snapshot - entweder für EIN Wallet (matchWallet
 // gesetzt) oder über ALLE Wallets summiert (matchWallet null, für die Summary-Tabelle).
 function snapshotValueForKey(snap, chain, key, matchWallet) {
-  const items = snap.items.filter(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet));
+  const items = snap.items.filter(it => historyChainKey(it.chain) === historyChainKey(chain) && snapshotItemBelongsToWallet(it, matchWallet));
   const matching = items.filter(it => (it.is_native ? "native" : (it.address || "").toLowerCase()) === key);
   if (matching.length === 0) return null;
   return matching.reduce((sum, it) => sum + Number(it.amount), 0);
@@ -8647,7 +8717,7 @@ function snapshotValueForKey(snap, chain, key, matchWallet) {
 // vorhandene Kurswert. Alte Snapshots ohne price_usd liefern null.
 function snapshotPriceForKey(snap, chain, key, matchWallet) {
   const items = snap.items.filter(it =>
-    it.chain === chain &&
+    historyChainKey(it.chain) === historyChainKey(chain) &&
     snapshotItemBelongsToWallet(it, matchWallet) &&
     (it.is_native ? "native" : (it.address || "").toLowerCase()) === key
   );
@@ -8676,16 +8746,16 @@ function attachSnapshotColumns(rows, chain, matchWallet) {
   const extraRows = [];
   snaps.forEach(s => {
     s.items
-      .filter(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet))
+      .filter(it => historyChainKey(it.chain) === historyChainKey(chain) && snapshotItemBelongsToWallet(it, matchWallet))
       .forEach(it => {
         const key = it.is_native ? "native" : (it.address || "").toLowerCase();
         if (presentKeys.has(key) || extraKeys.has(key)) return;
         extraKeys.add(key);
         const p = it.is_native ? nativePrices[chain] : priceForToken(chain, it.address);
         const extraRow = {
-          symbol: it.symbol + " (aktuell 0)",
+          symbol: it.symbol + " (nur historisch)",
           chain,
-          amount: 0, safe: true, isNative: it.is_native, address: it.address,
+          amount: null, safe: true, isNative: it.is_native, address: it.address,
           price: p ? p.price : undefined, usdValue: 0, isHistoricalOnly: true,
           snapshotValues: {},
           snapshotPrices: {}
@@ -8714,7 +8784,7 @@ function renderTable(rows, skipHeader) {
       <tbody>
       ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}">
         <td>${r.symbol} ${badge(r.safe)}${r.lpInfo?'<span class="badge safe">LP</span> ':''}${r.lpInfo?.stakedBalance>0?`<span class="price-source">davon gestakt: ${fmt(r.lpInfo.stakedBalance,{chain:r.chain||"",address:r.address,symbol:r.symbol})} ${escapeAttr(r.lpInfo.lpLabel||"LP")}</span>`:""}</td>
-        <td class="num">${fmt(r.amount,{chain:r.chain||"",address:r.address,symbol:r.symbol})}</td>
+        <td class="num">${r.isHistoricalOnly ? "–" : fmt(r.amount,{chain:r.chain||"",address:r.address,symbol:r.symbol})}</td>
         <td class="num">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
         <td class="num">${fmtChange(r.change24h)}</td>
         <td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
@@ -8736,7 +8806,7 @@ function renderTable(rows, skipHeader) {
     <th style="text-align:right">Kurs (USD)</th>
     <th style="text-align:right">24h %</th>
     <th style="text-align:right">Wert (USD)</th>
-    ${snaps.map(s => `<th style="text-align:right;white-space:normal">${fmtSnapshotDateTime(s.createdAt)}<span class="price-source">Anzahl · Kurs damals</span></th>`).join("")}
+    ${snaps.map(s => `<th style="text-align:right;white-space:normal">${s.source==="daily"?escapeAttr(s.label):fmtSnapshotDateTime(s.createdAt)}<span class="price-source">Anzahl · Kurs damals</span></th>`).join("")}
   </tr></thead>`;
 
   const bodyRows = rows.map(r => {
@@ -8755,7 +8825,7 @@ function renderTable(rows, skipHeader) {
     const mutedStyle = r.isHistoricalOnly ? "opacity:0.6;" : "";
     return `<tr class="${r.isNative ? 'native-row' : ''}" style="${mutedStyle}">
       <td style="${sticky}${mutedStyle}">${r.symbol}${r.isHistoricalOnly ? '' : ' ' + badge(r.safe)}${r.lpInfo?'<span class="badge safe">LP</span> ':''}${r.lpInfo?.stakedBalance>0?`<span class="price-source">davon gestakt: ${fmt(r.lpInfo.stakedBalance,{chain:r.chain||"",address:r.address,symbol:r.symbol})} ${escapeAttr(r.lpInfo.lpLabel||"LP")}</span>`:""}</td>
-      <td class="num" style="${mutedStyle}">${fmt(r.amount,{chain:r.chain||"",address:r.address,symbol:r.symbol})}</td>
+      <td class="num" style="${mutedStyle}">${r.isHistoricalOnly ? "–" : fmt(r.amount,{chain:r.chain||"",address:r.address,symbol:r.symbol})}</td>
       <td class="num" style="${mutedStyle}">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
       <td class="num" style="${mutedStyle}">${fmtChange(r.change24h)}</td>
       <td class="num" style="${mutedStyle}">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
@@ -8801,7 +8871,7 @@ function renderWalletHeader(walletLabel) {
       <th style="text-align:right">Kurs (USD)</th>
       <th style="text-align:right">24h %</th>
       <th style="text-align:right">Wert (USD)</th>
-      ${snaps.map(s => `<th style="text-align:right;white-space:normal">${fmtSnapshotDateTime(s.createdAt)}<span class="price-source">Anzahl · Kurs damals</span></th>`).join("")}
+      ${snaps.map(s => `<th style="text-align:right;white-space:normal">${s.source==="daily"?escapeAttr(s.label):fmtSnapshotDateTime(s.createdAt)}<span class="price-source">Anzahl · Kurs damals</span></th>`).join("")}
     </tr></thead>
   </table></div>`;
 }

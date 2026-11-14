@@ -1,3 +1,8 @@
+## Phase 8.38 – Automatische historische Bestände in Snapshot-Spalten (14.11.2026 11:51:11 CET)
+- Auswahl im automatischen Bestandsverlauf ergänzt. Maximal vier automatische Stichtage als zusätzliche Spalten in den Wallet- und Summary-Tabellen; historische Beträge aus dem vorhandenen Archiv, manuelle Snapshots unverändert.
+- Fehlende historische Wallets/Token: „–“ statt Null; nur historisch vorhandene Tokens entsprechend gekennzeichnet. Kein SQL, keine Edge Function.
+- Live-Test der Spaltenauswahl offen; Bitcoin-Fallback unter tatsächlichem HTTP 429 weiterhin nicht direkt nachgewiesen.
+
 ## Phase 8.37 – GoPlus-Cache und Rate-Limit-Steuerung (14.11.2026 11:16:58 CET)
 - Ursache: GoPlus meldete `api-code-4029` (Anfragelimit erreicht); bisherige Einzel-Fallbacks erzeugten zusätzliche Requests.
 - `token-risk` verwendet einen gemeinsamen, benutzerunabhängigen Cache pro EVM-Chain-ID und öffentlicher Contract-Adresse: erfolgreiche GoPlus-Bewertung 24 Stunden; nicht verfügbare Einzelergebnisse 15 Minuten (ausser bei 4029). Cachewerte sind Risikosignale, keine Freigabe.

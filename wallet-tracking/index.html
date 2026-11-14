@@ -1,4 +1,4 @@
-<!-- Phase 8.37: serverseitiger GoPlus-Cache und gemeinsames 4029-Rate-Gate; keine automatische Spam-Markierung. -->
+<!-- Phase 8.38: automatische Stichtagsaufnahmen als auswaehlbare Spalten in Wallet-Bestaenden und Summary. -->
 <!-- Phase 8.36: token-risk Chain-Aliase, getrennte Validierung und sichtbare Sicherheitsdiagnose. -->
 <!-- Phase 8.30: Metadaten-Batches automatisch nacheinander mit Fortschritt und Fehlerzusammenfassung. -->
 <!-- Phase 8.29: Token-Metadaten pro Stammdatensatz gezielt prüfen, Admin-Refresh mit konkretem Ergebnis. -->
@@ -284,11 +284,11 @@
 
       <div class="custom-token-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span class="field-label" style="margin:0">Snapshots (Token-Bestand zu einem Zeitpunkt, als zusätzliche Spalten je Wallet)</span>
+          <span class="field-label" style="margin:0">Manuelle Snapshots (als zusätzliche Spalten je Wallet)</span>
           <button onclick="createSnapshot()">📸 Snapshot erstellen</button>
         </div>
         <details>
-          <summary style="cursor:pointer;font-size:0.85rem;color:var(--muted)">Erstellte Snapshots anzeigen/verwalten</summary>
+          <summary style="cursor:pointer;font-size:0.85rem;color:var(--muted)">Manuelle Snapshots anzeigen/verwalten</summary>
           <div id="snapshotManagerList" style="margin-top:10px"></div>
         </details>
       </div>
@@ -297,7 +297,7 @@
       <div class="custom-token-card">
         <details id="dailyHistoryDetails" ontoggle="if(this.open)loadDailyBalanceHistory()">
           <summary style="cursor:pointer;font-weight:600">Automatischer Bestandsverlauf (7 Tage täglich · bis 365 Tage wöchentlich · danach monatlich)</summary>
-          <div class="muted" style="margin:8px 0">Die nächtlichen Bestände werden historisiert und automatisch verdichtet. Manuelle Snapshots bleiben unverändert.</div>
+          <div class="muted" style="margin:8px 0">Die nächtlichen Bestände werden historisiert und automatisch verdichtet. Stichtage auswählen, um Bestände als zusätzliche Spalten zu vergleichen. Manuelle Snapshots bleiben unverändert.</div>
           <div id="dailyBalanceHistoryList" style="margin-top:10px">Zum Laden aufklappen.</div>
         </details>
       </div>
@@ -1396,7 +1396,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 14.11.2026 11:16:58 CET · Phase 8.37 · Build 20261114-111658</span><br>
+    <span id="footerVersionLine">Version: 14.11.2026 11:51:11 CET · Phase 8.38 · Build 20261114-115111</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1422,8 +1422,8 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.37";window.BUILD_ID="20261114-111658";</script>
-<script src="./js/app.js?v=20261108-224554"></script>
+<script>window.APP_VERSION="8.38";window.BUILD_ID="20261114-115111";</script>
+<script src="./js/app.js?v=20261114-115111"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1442,6 +1442,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 14.11.2026 11:16:58 CET · Phase 8.37 · Build 20261114-111658</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 14.11.2026 11:51:11 CET · Phase 8.38 · Build 20261114-115111</div>
 </body>
 </html>
