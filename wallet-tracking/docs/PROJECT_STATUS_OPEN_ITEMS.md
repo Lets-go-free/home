@@ -1,3 +1,19 @@
+## Phase 8.43 – Explorer-gestuetzte Einzelpruefung nativer DAO-Auszahlungen
+
+# WalletTracking 8.43 – Eine native DAO1-Auszahlung gezielt verifizieren
+
+Stand: 14.11.2026 13:02:10 CET. Installation und Live-Test **ausstehend**.
+
+Die 377 nativen APTM-Kandidaten besitzen persistierte Flows, aber `claim_reward_aptm` ist leer. Die alte Funktion `wallettracking_dao_check_pending_native_payouts` wuerde sie als `needs_review` markieren. **Diese Bestandsfunktion bleibt unveraendert und darf fuer diese Wallet nicht verwendet werden.**
+
+Neue service-role-only RPC `wallettracking_dao_verify_single_native_payout_843` prueft exakt einen expliziten TX-Hash, nur `pending` ohne bisherige Audit-Klassifikation / kanonischen Claim, eindeutige erfolgreiche TX, Mining-Contract, genau einen positiven nativen Eingang, korrekte 18 Dezimalstellen, einen `claim-native:` Flow und exakte Wei-Gleichheit. Die Edge Function re-traced zuvor dieselbe TX live ueber alle Explorer-Internal-Transaction-Seiten zur entschluesselten Empfaenger-Wallet; nur direkter Contract-Payout ist im 8.43-Pilot erlaubt. Fehler/Inkongruenz: **keine** Verifikation. Bei Erfolg werden ausschliesslich `payout_*` Felder und die begrenzte Pruefhistorie via bestehender CAS-RPC geschrieben.
+
+**Erster manueller Test:** Nur die zuvor unabhaengig gepruefte Transaktion `0xe42ec5ba745314680879313587e05995bc5fee27706d819b8a7bebc249024ccb` der Wallet `8a3c5dc6-0610-482d-a327-3f3ba03db158` pruefen. Edge Function Modus `verify-one-native-payout-843`, Body {"mode":"verify-one-native-payout-843","walletId":"8a3c5dc6-0610-482d-a327-3f3ba03db158","txHash":"0xe42ec5ba745314680879313587e05995bc5fee27706d819b8a7bebc249024ccb"}, Auth: Admin Bearer JWT (nicht Cron-Secret). Flags `DAO_REWARD_ENABLE_TEST_IMPORT=true` und `DAO_REWARD_ENABLE_LIVE_WORKER` ungleich `true` erforderlich.
+
+Keine Massenverifikation, kein USD-Preis, kein kanonischer Claim, keine NFT-/Ownership-Aenderung. DAO-Cron und DAO-Live-Worker deaktiviert lassen. Nach dem ersten Erfolg die weiteren Auszahlungen einzeln/gebuendelt nur nach gesonderter Freigabe abnehmen.
+
+---
+
 ## Phase 8.42 – DAO fehlgeschlagene Claim-Transaktionen (14.11.2026 12:46:58 CET)
 
 Erstellt: 14.11.2026 12:46:58 CET. Installation in Supabase **noch ausstehend**.

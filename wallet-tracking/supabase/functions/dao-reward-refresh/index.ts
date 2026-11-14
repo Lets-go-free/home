@@ -1483,6 +1483,47 @@ Deno.serve(async request=>{
     notice:'Only staging payout evidence and its bounded history were updated. Indexed completeness is not an independent on-chain zero proof. No canonical rewards, prices, NFT ownership, cursors or queue writes.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
+ // 8.43: one explicitly selected transaction, independently re-traced through Explorer.
+ // No automatic bulk verification, canonical claim creation or valuation.
+ if(body?.mode==='verify-one-native-payout-843'){
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return Response.json({error:'Manual payout verification disabled'},{status:403});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return Response.json({error:'Disable live DAO worker before payout verification'},{status:409});
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   const walletId=String(body.walletId||'');const txHash=lower(body.txHash);
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletId)
+    || !/^0x[0-9a-f]{64}$/.test(txHash) || Object.keys(body).some(k=>!['mode','walletId','txHash'].includes(k)))
+    return Response.json({error:'Provide only mode, walletId and txHash'},{status:400});
+   const {data:wallet,error:walletError}=await sb.from('wallets').select('id,user_id')
+    .eq('id',walletId).maybeSingle();
+   if(walletError)throw walletError;
+   if(!wallet)return Response.json({error:'Wallet not found'},{status:404});
+   const job={user_id:wallet.user_id,wallet_id:wallet.id};
+   const address=await loadAddress(job);
+   const {data:rows,error:txError}=await sb.from('project_transactions')
+    .select('user_id,wallet_id,tx_hash,selector,status,to_address,block_number,tx_timestamp')
+    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+    .eq('chain_key',CHAIN).eq('tx_hash',txHash).limit(2);
+   if(txError)throw txError;
+   if(rows?.length!==1||!isSuccessfulClaim(rows[0])
+    ||lower(rows[0].to_address)!=='0x3ae2dfc3b795267e284cbab7eff9a0cefdab401d')
+    return Response.json({error:'Eligible successful claim transaction required'},{status:409});
+   // This call re-fetches all pages of Internal Transactions. If Explorer is incomplete,
+   // throws or yields no direct contract payout, DO NOT write any verification.
+   const observed=await nativeClaimPayout(address,rows[0]);
+   if(!observed || lower(observed.counterparty_address)!==lower(rows[0].to_address)
+    || !/^\d+$/.test(String(observed.amount_raw)) || BigInt(observed.amount_raw)<=0n)
+    return Response.json({error:'Direct positive Explorer internal payout not proven'},{status:409});
+   const {data,error}=await sb.rpc('wallettracking_dao_verify_single_native_payout_843',{p_user:job.user_id,p_wallet:job.wallet_id,
+    p_tx:txHash,p_explorer_amount_raw:observed.amount_raw});
+   if(error)throw error;
+   return Response.json({ok:true,mode:'verify-one-native-payout-843',walletId:wallet.id,...(data||{}),
+    notice:'One Explorer re-traced payout matched to persisted flow. Candidate payout fields only. No canonical claim, price, NFT or job changes.'});
+  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+ }
  if(body?.mode==='check-pending-native-payouts-test-wallet'){
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
    return Response.json({error:'Manual positive payout check disabled'},{status:403});
