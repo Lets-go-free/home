@@ -1,4 +1,10 @@
 
+### Phase 8.51 – DAO1 historischer NFT-Eigentumsnachweis (Installation offen)
+- Six ownership intervals for Reto's 377 claims are covered by a single verified sender. `wallet_address` is NULL in all 125 ownership rows; all 7 associated wallet EVM addresses are encrypted. **Do not backfill plaintext wallet addresses**.
+- 8.51 SQL corrects the finalizer's redundant plaintext comparison: UUID-linked ownership period plus independently verified complete transfer history and exact last NFT owner remain required. No claim/reward/data updates run by migration.
+- Install SQL, test exactly one existing 8.50 admin single-claim route, audit resulting canonical row; DAO Cron and Live Worker remain disabled.
+
+
 ## Phase 8.50 — Boot-Fehler bei 8.49 korrigiert (14.11.2026)
 
 - Fehler beim Start von `dao-reward-refresh`: `price-target-worker.ts` lieferte bei Deployment nicht den erwarteten Export `processExactPriceTargets` (BOOT_ERROR 503).
