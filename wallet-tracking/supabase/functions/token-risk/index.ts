@@ -1,4 +1,4 @@
-// WalletTracking 8.34 – öffentliches Contract-Risikosignal; kein Sicherheitszertifikat.
+// WalletTracking 8.35 – öffentliches Contract-Risikosignal; kein Sicherheitszertifikat.
 // Keine Wallet-Adressen, Benutzerlisten oder private Token-Namen an Dritte senden.
 import {createClient} from 'npm:@supabase/supabase-js@^2';
 const URL=Deno.env.get('SUPABASE_URL')||'',KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'';
@@ -57,15 +57,33 @@ Deno.serve(async request=>{
  if(addrs.some((a:string)=>!/^0x[0-9a-f]{40}$/i.test(a)))
   return reply({ok:false,error:'Invalid addresses',reason:'expected 0x + 40 hexadecimal characters'},400);
  const addresses=[...new Set((addrs as string[]).map(a=>a.toLowerCase()))];
- let security:any=null;
- try{
-  const r=await timeoutFetch('https://api.gopluslabs.io/api/v1/token_security/'+id+'?contract_addresses='+addresses.join(','),6500);
-  if(r.ok){const payload=await r.json();if(payload?.result&&typeof payload.result==='object')security=payload.result}
- }catch{/* Sicherheitsquelle nicht verfügbar: nicht als sicher werten. */}
+ // GoPlus gibt bei mehreren Adressen gelegentlich nur eine Teilmenge zurueck.
+ // Fehlende Datensaetze deshalb einmal gezielt einzeln abfragen; keine Sicherheitsfreigabe bei Luecken.
+ const security:Record<string,any>={};
+ const endpoint='https://api.gopluslabs.io/api/v1/token_security/'+id+'?contract_addresses=';
+ async function fetchSecurity(requested:string[]){
+  try{
+   const response=await timeoutFetch(endpoint+requested.join(','),6500);
+   if(!response.ok)return;
+   const payload=await response.json();
+   if(String(payload?.code)!=='1'||!payload?.result||typeof payload.result!=='object'||Array.isArray(payload.result))return;
+   for(const [key,value] of Object.entries(payload.result)){
+    const addr=key.toLowerCase();
+    // Nur angefragte Contracts uebernehmen; ein leeres Objekt ist kein gueltiger Befund.
+    if(requested.includes(addr)&&value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length>0)
+     security[addr]=value;
+   }
+  }catch{/* Timeout, Rate-Limit oder ungueltige Antwort: weiterhin nicht geprueft. */}
+ }
+ await fetchSecurity(addresses);
+ const missing=addresses.filter(a=>!security[a]);
+ // Maximal zehn Zusatzanfragen, in kleinen Gruppen statt unbeschraenkt parallel.
+ for(let i=0;i<missing.length;i+=3)
+  await Promise.all(missing.slice(i,i+3).map(a=>fetchSecurity([a])));
  const results:Record<string,any>={};
  for(const a of addresses){
   const known=chain==='bsc'&&a===flaggedBsc;
-  const gp=security?.[a]||null;
+  const gp=security[a]||null;
   results[a]={checked:!!gp||known,flags:[...new Set([
    ...(known?['BscScan: '+fraudLabel+' (bekannter dokumentierter Fall)']:[]),...goPlusFlags(gp)
   ])],reason:gp?'GoPlus geprüft':known?'Dokumentierte BscScan-Kennzeichnung':'GoPlus nicht verfügbar'};

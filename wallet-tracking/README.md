@@ -1,3 +1,10 @@
+## Phase 8.35 – GoPlus-Teilantworten pro Contract nachpruefen (14.11.2026 10:49:00 CET)
+- Bei GoPlus-Sammelantworten mit fehlenden Contract-Eintraegen folgt eine einmalige, begrenzte Einzelabfrage je fehlender Adresse (maximal 10 Zusatzanfragen, Gruppen zu 3). Auch HTTP-200-Teilantworten werden nicht als Vollstaendigkeit missverstanden.
+- Nur `code=1` und ein nichtleerer Datensatz fuer die exakt angefragte Adresse gelten als geprueft; Felder wie `is_open_source=0` bleiben Warnhinweise, kein Betrugsbeweis.
+- Fehlen auch nach Einzelabfrage Daten, bleibt `checked:false` / «GoPlus nicht verfuegbar». Bekannte Phishing-Labels und manuelle Spam-Markierung unveraendert.
+- Edge Function `token-risk/index.ts` neu deployen; keine SQL-Migration. Lokale Regressionstests und Live-Test des BSC-Contracts `0xed019f84763497417c211107705742bbb061da9b` nach Deployment erforderlich.
+- Offen danach: Bitcoin-Fallback bei echtem HTTP 429, Snapshot-Monitoring.
+
 ## Phase 8.34 – Token-Risiko-Chain-Aliase (14.11.2026 10:34:28 CET)
 - `token-risk`: `arb`/`arbitrum`, `avax`/`avalanche`, `matic`/`polygon`/`pol` korrekt zugeordnet; Fehlerantworten für Adressen, unbekannte Chains und nicht unterstützte Non-EVM-Prüfungen getrennt.
 - Manuelle Spam-Bestätigung unverändert; GoPlus-Ausfall ist weiterhin keine Freigabe.
