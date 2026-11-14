@@ -5,6 +5,7 @@
 // durable and incremental; confirmed claims and prices still need canonical enrichment.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-coverage.ts'
+import { processExactPriceTargets } from './price-target-worker.ts'
 import './asset-policy.js'
 import { rewardFlowCounterparty } from './counterparty-policy.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
@@ -1328,6 +1329,30 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // Phase 8.48: historical APTM price-only pipeline runs server-side across
+ // all users. Manual admin preview/step and independently gated cron step.
+ // Neither path invokes process() or canonical claim/NFT/reward posting.
+ if(['admin-price-preview-848','admin-price-batch-848','cron-price-batch-848'].includes(body?.mode)){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const preview=body.mode==='admin-price-preview-848';
+  const cron=body.mode==='cron-price-batch-848';
+  if(Object.keys(body).some(k=>k!=='mode'))return reply({error:'No wallet, user, limit or price overrides permitted'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({error:'Disable live DAO worker for standalone price step'},409);
+  if(cron){
+   if(Deno.env.get('DAO_REWARD_ENABLE_PRICE_WORKER')!=='true')return reply({error:'Standalone DAO price cron disabled'},403);
+   if(!await authorizedDaoCron(request))return reply({error:'Unauthorized standalone DAO price cron'},401);
+  }else{
+   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({error:'Manual DAO price test disabled'},403);
+   try{const permission=await authenticateInspectAdmin(request);if(!permission.ok)return reply({error:permission.error},permission.status)}
+   catch{return reply({error:'Admin authorization failed'},500)}
+  }
+  try{
+   const result=await processExactPriceTargets(sb,{preview,maxTargets:preview?4:4});
+   return reply({ok:!result.results?.some((r:any)=>r.status==='blocked'),mode:body.mode,
+    project:PROJECT,chain:CHAIN,...result,
+    notice:'Global user-independent exact-v13 historical APTM asset-flow pricing only. No canonical claim, reward, NFT, wallet balances or queue/cursor changes.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},500)}
+ }
  if(body?.mode==='resolve-apertum-token-decimals'||body?.mode==='refresh-apertum-token-decimals'){
   const reply=(value:any,status=200)=>Response.json(value,{status,headers:metadataCors});
   try{

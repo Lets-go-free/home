@@ -1,3 +1,7 @@
+## Phase 8.48 – Zentraler DAO1/APTM-Preisnachlauf (noch nicht installiert)
+
+Stand 14.11.2026 18:22:40 CET. Der Browser-Backfill ist auf den angemeldeten Benutzer beschränkt; der serverseitige DAO-Worker konnte bisher nur vorhandene exakte Anker anwenden. Neue service-role-only Auswahl über alle Benutzer (`wallettracking_dao_next_price_targets_848`) plus serverseitiger, begrenzter `exact-v13`-Preisnachlauf (bis vier Zielblöcke). Read-only Admin-Preview, manueller Admin-Batch und separat per Secret/Flag gesperrte Cron-Route. Die 316 bereits bewerteten APTM-Auszahlungsflows bleiben unverändert; 61 fehlende Zielblock-Anker bei Retos Wallet müssen nachgezogen werden. **Keine kanonische Reward-, Claim-, Bot- oder NFT-Änderung.** Migration, Edge-Deployment und Live-Test stehen aus; DAO-Cron/Live-Worker bleiben aus. Details und Einzel-Schritt-Abnahme: `docs/releases/8.48-dao-global-exact-pricing.md`.
+
 ## 8.47 – CORS-Fix DAO-Browser-Verifikation
 
 Stand 14.11.2026 17:09:05 CET. Phase 8.46: `Failed to send a request to the Edge Function`, obwohl direkter Supabase-Test des Modus 8.45 erfolgreich. Ursache im Quellcode: Batch-Response ohne CORS-Headers; 8.47 setzt vorhandene Header auf alle JSON-Antworten dieser Route. **Edge Function muss separat deployt werden**. Verifikation per Browser danach live testen; 149/377 unabhängig bestätigt, tatsächlichen DB-Stand nach nicht lesbarem Browser-Response prüfen. Kein SQL, keine Änderung der Prüflogik, DAO-Cron/Live-Worker bleiben aus. Dokumentation: `docs/releases/8.47-dao-payout-cors.md`.
