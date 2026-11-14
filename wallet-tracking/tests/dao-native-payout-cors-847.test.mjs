@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const edge=fs.readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
+const start=edge.indexOf("if(body?.mode==='verify-native-payout-batch-844'||body?.mode==='verify-native-payout-multi-batch-845')");
+const end=edge.indexOf("if(body?.mode==='check-pending-native-payouts-test-wallet')",start);
+assert.ok(start>0&&end>start);
+const route=edge.slice(start,end);
+assert.match(route,/const payoutReply=\(payload:any,status=200\)=>Response\.json\(payload,\{status,headers:metadataCors\}\)/);
+assert.ok(!route.includes('return Response.json('),'All route replies must use CORS helper');
+assert.match(route,/return payoutReply\(\{ok,mode:body.mode/);
+assert.match(route,/return payoutReply\(\{ok:false,error:/);
+assert.match(edge,/if\(request\.method==='OPTIONS'\)return new Response\(null,\{status:204,headers:metadataCors\}\)/);
+const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+assert.match(html,/window\.APP_VERSION="8\.47"/);
+assert.match(html,/id="footerVersionLine"[^>]*>Version:[^<]+Phase 8\.47/);
+assert.match(html,/id="buildVersion"[^>]*>Version:[^<]+Phase 8\.47/);
+console.log('8.47 CORS headers and visible version checks passed');

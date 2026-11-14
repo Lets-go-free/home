@@ -1528,21 +1528,23 @@ Deno.serve(async request=>{
  // Explorer re-trace and unchanged 8.43 RPC; only the bounded orchestration varies.
  if(body?.mode==='verify-native-payout-batch-844'||body?.mode==='verify-native-payout-multi-batch-845'){
   const multi=body.mode==='verify-native-payout-multi-batch-845';
+  // Browser-originated Admin/Audit requests need CORS on ALL responses, not just preflight.
+  const payoutReply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
-   return Response.json({error:'Manual payout verification disabled'},{status:403});
+   return payoutReply({error:'Manual payout verification disabled'},403);
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
-   return Response.json({error:'Disable live DAO worker before payout verification'},{status:409});
+   return payoutReply({error:'Disable live DAO worker before payout verification'},409);
   try{
    const permission=await authenticateInspectAdmin(request);
-   if(!permission.ok)return Response.json({error:permission.error},{status:permission.status});
+   if(!permission.ok)return payoutReply({error:permission.error},permission.status);
    const walletId=String(body.walletId||'');
    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletId)
     ||Object.keys(body).some(k=>!['mode','walletId'].includes(k)))
-    return Response.json({error:'Provide only mode and walletId'},{status:400});
+    return payoutReply({error:'Provide only mode and walletId'},400);
    const {data:wallet,error:walletError}=await sb.from('wallets').select('id,user_id')
     .eq('id',walletId).maybeSingle();
    if(walletError)throw walletError;
-   if(!wallet)return Response.json({error:'Wallet not found'},{status:404});
+   if(!wallet)return payoutReply({error:'Wallet not found'},404);
    const job={user_id:wallet.user_id,wallet_id:wallet.id};
    const address=await loadAddress(job);
    const results:any[]=[];let verified=0;let stopped='batch_complete';
@@ -1599,14 +1601,14 @@ Deno.serve(async request=>{
     if(stopped!=='batch_complete')break;
    }
    const ok=['batch_complete','time_budget','no_pending'].includes(stopped);
-   return Response.json({ok,mode:body.mode,walletId:wallet.id,
+   return payoutReply({ok,mode:body.mode,walletId:wallet.id,
     checked:results.length,verified,selected:groups.reduce((n,g)=>n+g.selected,0),
     stopped,...(multi?{batchesCompleted:groups.filter(g=>g.verified===g.selected).length,
       batches:groups,maxBatches:3,maxPayouts:12,timeBudgetMs:50000}:{}),results,
     claimsCreated:0,referralPosting:'disabled',
     notice:multi?'Manual bounded multi-batch, maximum three batches of four. Every TX independently re-traced and checked via unchanged 8.43 RPC; stop on any discrepancy. Candidate payout evidence only; no canonical claims, rewards, prices, NFTs, queues, cron or live worker changes.':
     'Manual batch, maximum four. Per-TX Explorer re-trace and the existing 8.43 RPC. Candidate payout evidence only; no canonical claim, NFT, price, queue, cron or reward changes. On any discrepancy processing stops.'});
-  }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
+  }catch(e){return payoutReply({ok:false,error:String(e instanceof Error?e.message:e)},500)}
  }
  if(body?.mode==='check-pending-native-payouts-test-wallet'){
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')

@@ -1,3 +1,7 @@
+## 8.47 – CORS-Fix DAO-Browser-Verifikation
+
+Stand 14.11.2026 17:09:05 CET. Phase 8.46: `Failed to send a request to the Edge Function`, obwohl direkter Supabase-Test des Modus 8.45 erfolgreich. Ursache im Quellcode: Batch-Response ohne CORS-Headers; 8.47 setzt vorhandene Header auf alle JSON-Antworten dieser Route. **Edge Function muss separat deployt werden**. Verifikation per Browser danach live testen; 149/377 unabhängig bestätigt, tatsächlichen DB-Stand nach nicht lesbarem Browser-Response prüfen. Kein SQL, keine Änderung der Prüflogik, DAO-Cron/Live-Worker bleiben aus. Dokumentation: `docs/releases/8.47-dao-payout-cors.md`.
+
 
 ## 8.46 – Browser-gesteuerte manuelle DAO-Payout-Verifikation
 
