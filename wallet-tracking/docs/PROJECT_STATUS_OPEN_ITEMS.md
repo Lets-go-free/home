@@ -1,3 +1,17 @@
+## Phase 8.42 – DAO fehlgeschlagene Claim-Transaktionen (14.11.2026 12:46:58 CET)
+
+Erstellt: 14.11.2026 12:46:58 CET. Installation in Supabase **noch ausstehend**.
+
+- Die 16 nachgewiesenen fehlgeschlagenen Miner-Claim-Transaktionen (`error`) der Wallet `8a3c5dc6…` sind das Testziel; nach Migration Anzahl und Klassifikation per SQL verifizieren. Weitere Faelle werden nur bei denselben strengen Voraussetzungen klassifiziert.
+- `audit_classification='failed_transaction'` nur bei genau einer passenden Fehlertransaktion, passendem Block, ohne Eingang-Flow, ohne bestehenden kanonischen Claim, ohne bestehende Klassifikation, ohne verifizierten bisherigen Claim und ohne TX-Reward-Gutschrift. `status`, `payout_status` und NFT-Zuordnung bleiben unberuehrt.
+- `wallettracking_dao_next_native_claim_candidate`: Automatische Klassifikation vor Auswahl fuer die betroffene Wallet; Kandidatenauswahl setzt Transaktionsstatus `ok`/`success` und passenden Block voraus. Service-Role- und Wallet-Berechtigungspruefung unveraendert.
+- Zentrale Finalisierung **nicht** angefasst; sie prueft Status, Auszahlungsflows, Preisnachweis und Schutz bestehender Rewards bereits selbst.
+- Keine Cron-/Live-Worker-Aktivierung. Kein Update bestehender Preise, Rewards, NFT- oder kanonischer Claim-Daten.
+- Gezielter Live-Test nach SQL-Installation erforderlich, einschliesslich unveraenderter 377 APTM-Flow-Kandidaten und Schutz von `unpriced_before_exact_anchor` / `no_payout_evidence`.
+
+
+---
+
 ## Phase 8.41 – DAO1 Tageslimit geschuetzter Verarbeitungs-Schritte ( 14.11.2026 12:29:07 CET )
 
 - Die beiden service-role-geschuetzten RPCs `wallettracking_dao_reward_claim_v2(date)` und `wallettracking_dao_reward_claim_staged_v3(date)` reservieren nun **höchstens 32 statt 8 Schritte pro Wallet und Schweizer Kalendertag** (`step_count < 32`).
