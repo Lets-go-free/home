@@ -1,3 +1,30 @@
+## Phase 8.44 – Native DAO-Auszahlungen, begrenzte Verifikation
+
+# WalletTracking 8.44 – begrenzter manueller Batch fuer native DAO1-Auszahlungen
+
+Stand: 14.11.2026 15:21:33 CET. Installation und Live-Abnahme ausstehend.
+
+## Kontext
+
+Die 8.43-Einzelverifikation wurde an einer Blockchain-Transaktion erfolgreich live getestet. `payout_status=verified`, `payout_reason=explorer-native-matches-persisted-flow`, 18 Dezimalstellen, 1 Flow; keine kanonischen Reward-, Preis- oder NFT-Writes. Bei der Wallet `8a3c5dc6-0610-482d-a327-3f3ba03db158` waren initial 377 positive native APTM-Flows; einer wurde bereits bestaetigt (verbleibende Anzahl im Live-System vor Batch erneut pruefen).
+
+## Implementierung
+
+Neuer Admin-Modus `verify-native-payout-batch-844` in `supabase/functions/dao-reward-refresh/index.ts`. Request `{"mode":"verify-native-payout-batch-844","walletId":"<uuid>"}`. Kein Cron-Secret; Admin-Bearer-JWT. Voraussetzung `DAO_REWARD_ENABLE_TEST_IMPORT=true`, `DAO_REWARD_ENABLE_LIVE_WORKER` ungleich `true`.
+
+Nur die vier aeltesten `pending` Kandidaten mit `status=pending`, `audit_classification IS NULL` und `canonical_existing_verified=false` fuer die angegebene Wallet. Je Transaktion: erfolgreicher Claim-Selector, Mining-Contract, Blockabgleich, live erneut ermittelte direkte positive Internal-Transaction-Auszahlung aus Apertum Explorer, dann unveraenderte `wallettracking_dao_verify_single_native_payout_843` RPC. Deren SQL-Sicherheitsregeln bleiben massgebend (Wallet, Transaction, Flow, Wei-Gleichheit, CAS, Existing-Claim-Schutz). Externe Fehler, fehlende/abweichende Nachweise und unerwartete RPC-Resultate stoppen den Batch, ohne dem betroffenen Kandidaten einen Verifikationsstatus zu geben. Vor weiteren API-Anfragen Zeitbudget 45 Sekunden, maximal vier Kandidaten.
+
+Nur `dao_reward_claim_candidates.payout_*` und begrenzte Pruefhistorie koennen bei erfolgreichem Nachweis aktualisiert werden. Keine kanonischen Claims, keine Preise, keine NFT-Zuordnungen, keine Cron- oder Queue-Writes. **Keine SQL-Migration erforderlich**: bestehende 8.43-RPC wird wiederverwendet. Das alte `check-pending-native-payouts-test-wallet` ist wegen vorausgesetztem kanonischen Reward-Betrag weiterhin nicht fuer die 377 Kandidaten geeignet.
+
+## Installation und Abnahme
+
+1. Update-ZIP einspielen; nur `dao-reward-refresh/index.ts` in Supabase deployen. Kein SQL.
+2. Ein Batch fuer `8a3c5dc6-0610-482d-a327-3f3ba03db158` mit Admin-JWT und dem obigen Body; JSON pruefen. Keine unkontrollierten Wiederholungen.
+3. Anschliessend pro Status SQL verifizieren, insbesondere keinen kanonischen Claim/Preis/NFT-Write und nachvollziehbare Menge verifizierter Auszahlungen.
+4. Erst nach erfolgreicher Batch-Abnahme weitere Kandidaten kontrolliert verifizieren. DAO-Cron und Live-Worker deaktiviert lassen.
+
+---
+
 ## Phase 8.43 – Explorer-gestuetzte Einzelpruefung nativer DAO-Auszahlungen
 
 # WalletTracking 8.43 – Eine native DAO1-Auszahlung gezielt verifizieren
