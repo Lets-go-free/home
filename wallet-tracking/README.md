@@ -1,3 +1,11 @@
+## Phase 8.39 – Fünf automatische Snapshot-Spalten als Standard (14.11.2026 12:00:00 CET)
+- Unter «Wallet-Bestände» erscheinen **ohne manuelle Auswahl** die fünf neuesten verfügbaren automatischen Stichtage als historische Spalten in Summary und Wallet-Details, auch wenn die Verlaufsliste zugeklappt ist.
+- Checkbox «Alle Snapshots anzeigen» im automatischen Bestandsverlauf blendet sämtliche verfügbaren archivierten Stichtage als Spalten ein; beim Abwählen wieder die fünf neuesten. Keine einzelne Tagesauswahl und keine Begrenzung auf vier Stichtage mehr.
+- Gespeicherte Tages-/Wochen-/Monatsaufnahmen werden unverändert gelesen, keine Änderung der Verdichtungsregel (7 Tage täglich, danach wöchentlich, danach monatlich). Fehlende historische Wallet-Positionen bleiben «–».
+- Historische Positionen werden nur für eingeblendete Tage in kleinen Gruppen mit der bestehenden benutzergebundenen RLS-Berechtigung abgefragt. Keine Datenänderungen, keine SQL-Migration und kein Edge-Deployment.
+- Test: fünf Standardstichtage, «Alle»-Einblendung, Rückkehr auf fünf, Wiederverwendung bereits geladener Daten und Benutzerisolation bestanden. Live-Test im Browser offen.
+- Weiter offen: tatsächlicher Bitcoin-Fallback-Einsatz bei HTTP 429 noch nicht nachgewiesen; langfristige Snapshot-Verdichtung beobachten.
+
 ## Phase 8.38 – Automatische historische Bestände in Snapshot-Spalten (14.11.2026 11:51:11 CET)
 - Auswahl im automatischen Bestandsverlauf ergänzt. Maximal vier automatische Stichtage als zusätzliche Spalten in den Wallet- und Summary-Tabellen; historische Beträge aus dem vorhandenen Archiv, manuelle Snapshots unverändert.
 - Fehlende historische Wallets/Token: „–“ statt Null; nur historisch vorhandene Tokens entsprechend gekennzeichnet. Kein SQL, keine Edge Function.

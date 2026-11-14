@@ -1,4 +1,4 @@
-// Phase 8.38: historische automatisierte Stichtags-Snapshots als auswählbare Spalten in Wallet-/Summary-Beständen.
+// Phase 8.39: fünf jüngste automatische Bestandsverläufe immer als Spalten; optional sämtliche Stichtage.
 // Phase 7.75: Password recovery gate vor App-Initialisierung.
 // Phase 7.68 · 29.10.2026 11:15:30 CET: Atomare Speicherung automatischer Snapshots per user-gebundener SQL-Transaktion.
 // Phase 7.66 · 28.10.2026: Erster Browser-Login pro Sitzung prüft Wallet-Bestände erneut; bestehende Projekt-/Discovery-Jobs unverändert. Basis 7.56 · 09.10.2026 01:40:29 CEST: LP-Preise als USD je 1 LP-Token beschriftet; Ideenliste konsolidiert und bestätigte Tests nachgeführt. Keine Änderung der Preise, Decimals, Supply, Discovery oder Refresh-Jobs. Build 20261009-014029.
@@ -3162,7 +3162,11 @@ function showTab(name) {
     if (adminView) adminView.style.display = isAdmin ? "block" : "none";
     if (isAdmin) renderAdminChatUserSelect(); else loadOwnChat();
   }
-  if (name === "tracking") ensureSnapshotsLoaded().then(()=>{renderSnapshotManager();renderResults();renderChartWalletSelect();}).catch(e=>console.warn("Manuelle Snapshots:",e));
+  if (name === "tracking") {
+    // Fünf jüngste automatische Snapshot-Spalten immer laden, auch bei geschlossenem Verlauf.
+    loadDailyBalanceHistory().catch(e=>console.warn("Automatische Snapshots:",e));
+    ensureSnapshotsLoaded().then(()=>{renderSnapshotManager();renderResults();renderChartWalletSelect();}).catch(e=>console.warn("Manuelle Snapshots:",e));
+  }
   if (name === "tax") ensureSnapshotsLoaded().then(()=>renderTaxWalletSelect()).catch(e=>console.warn("Steuer-Snapshots:",e));
   if (name === "help") {
     if (typeof window.renderGeneralHelp === "function") window.renderGeneralHelp();
@@ -8334,9 +8338,13 @@ let dailyBalanceHistoryLoaded = null;
 let dailyBalanceHistoryRows = [];
 const selectedDailyBalanceDays = new Map(); // day -> {id, createdAt, items}
 let dailyBalanceHistoryRequest = null;
+let showAllDailyBalanceSnapshots = false;
+let dailyBalanceSelectionGeneration = 0;
+let dailyBalanceHistoryMessage = "";
 
-// Die historischen Positionen werden erst bei Auswahl eines Stichtags geladen.
-// Sie sind unveraenderliche Archivdaten und werden nie aus dem heutigen Cache rekonstruiert.
+// Historische Bestände: die fünf neuesten vorhandenen Stichtage automatisch,
+// mit "Alle Snapshots anzeigen" alle archivierten Tages-/Wochen-/Monatsstände.
+// Niemals Bestände aus dem aktuellen Wallet-Cache rückwirkend erzeugen.
 const DAILY_HISTORY_CHAIN_ALIASES = Object.freeze({arb:"arbitrum",avax:"avalanche",matic:"polygon",sol:"solana"});
 function historyChainKey(chain) {
   return DAILY_HISTORY_CHAIN_ALIASES[String(chain||"").toLowerCase()] || String(chain||"").toLowerCase();
@@ -8350,57 +8358,81 @@ function historyPositionItems(positions) {
       amount:Number(it.amount),price_usd:it.price_usd===null||it.price_usd===undefined?null:Number(it.price_usd)
     })).filter(it=>Number.isFinite(it.amount));
 }
-async function toggleDailyBalanceSnapshot(day, selected) {
-  const date=String(day||"");
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-  const el=document.getElementById("dailyBalanceHistoryList");
-  if(!selected) {
-    selectedDailyBalanceDays.delete(date);
-    renderDailyBalanceHistoryList();renderResults();return;
+function wantedDailyBalanceDays() {
+  const rows=showAllDailyBalanceSnapshots?dailyBalanceHistoryRows:dailyBalanceHistoryRows.slice(0,5);
+  return rows.map(row=>row.sample_day);
+}
+async function syncDailyBalanceSnapshotColumns() {
+  const userId=currentUser?.id;
+  if(!userId || dailyBalanceHistoryLoaded!==userId)return;
+  const generation=++dailyBalanceSelectionGeneration;
+  const wanted=wantedDailyBalanceDays();
+  const wantedSet=new Set(wanted);
+  for(const day of selectedDailyBalanceDays.keys()) {
+    if(!wantedSet.has(day) || selectedDailyBalanceDays.get(day)?.userId!==userId) selectedDailyBalanceDays.delete(day);
   }
-  if(selectedDailyBalanceDays.has(date) && selectedDailyBalanceDays.get(date)?.userId===currentUser?.id) return;
-  selectedDailyBalanceDays.delete(date);
-  // Maximal vier zusaetzliche Tages-Spalten zugleich, damit Tabellen benutzbar bleiben.
-  if(selectedDailyBalanceDays.size>=4) {
-    alert("Bitte höchstens vier automatische Stichtage gleichzeitig auswählen.");
-    renderDailyBalanceHistoryList();return;
-  }
-  const row=dailyBalanceHistoryRows.find(r=>r.sample_day===date);
-  if(!row) return;
-  if(el)el.setAttribute("aria-busy","true");
+  renderDailyBalanceHistoryList();
+  renderResults();
+  const missing=wanted.filter(day=>!selectedDailyBalanceDays.has(day));
+  if(!missing.length){dailyBalanceHistoryMessage="";renderDailyBalanceHistoryList();return;}
+  dailyBalanceHistoryMessage=`Historische Bestände werden geladen (${missing.length} Stichtage) …`;
+  renderDailyBalanceHistoryList();
   try {
-    const userId=currentUser?.id;
-    const {data,error}=await sb.from("wallet_daily_balance_history")
-      .select("sample_day,captured_at,positions")
-      .eq("user_id",userId).eq("sample_day",date).single();
-    if(error)throw error;
-    if(currentUser?.id!==userId)return;
-    const items=historyPositionItems(data?.positions);
-    if(!items.length)throw new Error("Keine historischen Token-Positionen vorhanden.");
-    selectedDailyBalanceDays.set(date,{
-      id:`daily:${date}`,createdAt:data.captured_at || `${date}T12:00:00Z`,
-      label:`${date.split("-").reverse().join(".")} · automatisch`,
-      source:"daily",userId,items,visible:true
-    });
+    // Begrenzte Gruppen vermeiden sehr grosse URL-Parameter und einzelne Riesenabfragen.
+    // Nur die bewusst eingeblendeten historischen Positionen laden.
+    const results=[];
+    for(let i=0;i<missing.length;i+=20) {
+      if(currentUser?.id!==userId || generation!==dailyBalanceSelectionGeneration)return;
+      const batch=missing.slice(i,i+20);
+      const {data,error}=await sb.from("wallet_daily_balance_history")
+        .select("sample_day,captured_at,positions")
+        .eq("user_id",userId).in("sample_day",batch);
+      if(error)throw error;
+      results.push(...(data||[]));
+    }
+    if(currentUser?.id!==userId || generation!==dailyBalanceSelectionGeneration)return;
+    for(const data of results){
+      const day=data.sample_day;
+      if(!wantedSet.has(day))continue;
+      selectedDailyBalanceDays.set(day,{
+        id:`daily:${day}`,createdAt:data.captured_at||`${day}T12:00:00Z`,
+        label:`${day.split("-").reverse().join(".")} · automatisch`,
+        source:"daily",userId,items:historyPositionItems(data.positions),visible:true
+      });
+    }
+    dailyBalanceHistoryMessage="";
+  }catch(e){
+    if(currentUser?.id!==userId || generation!==dailyBalanceSelectionGeneration)return;
+    dailyBalanceHistoryMessage="Historische Bestände konnten nicht vollständig geladen werden: "+(e?.message||String(e));
+    console.warn("Automatische Snapshot-Spalten:",e);
+  }
+  if(currentUser?.id===userId && generation===dailyBalanceSelectionGeneration){
     renderDailyBalanceHistoryList();renderResults();
-  } catch(e) {
-    alert("Automatischen Stichtag nicht laden: "+(e?.message||String(e)));
-    renderDailyBalanceHistoryList();
-  } finally {if(el)el.removeAttribute("aria-busy");}
+  }
+}
+async function toggleAllDailyBalanceSnapshots(checked) {
+  showAllDailyBalanceSnapshots=!!checked;
+  await syncDailyBalanceSnapshotColumns();
 }
 function renderDailyBalanceHistoryList() {
   const el=document.getElementById("dailyBalanceHistoryList");
   if(!el)return;
   if(!dailyBalanceHistoryRows.length){el.textContent="Noch keine nächtlichen Bestandsaufnahmen vorhanden.";return;}
-  el.innerHTML=`<div class="muted" style="margin:8px 0">Stichtage auswählen, um die damaligen Token-Mengen als zusätzliche Spalten in den Wallet-Beständen und der Summary zu vergleichen (maximal vier). Nicht erfasste Wallets erscheinen als –.</div>
+  const visibleCount=showAllDailyBalanceSnapshots?dailyBalanceHistoryRows.length:Math.min(5,dailyBalanceHistoryRows.length);
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0">
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="dailyBalanceShowAll" style="width:auto" ${showAllDailyBalanceSnapshots?"checked":""} onchange="toggleAllDailyBalanceSnapshots(this.checked)">Alle Snapshots anzeigen</label>
+      <span class="muted">${visibleCount} von ${dailyBalanceHistoryRows.length} automatischen Stichtagen als Spalten · fehlende Wallet-Daten: –</span>
+    </div>
+    ${dailyBalanceHistoryMessage?`<div class="muted" role="status">${escapeAttr(dailyBalanceHistoryMessage)}</div>`:""}
     <div style="overflow-x:auto"><table class="data-table" style="width:100%">
-    <thead><tr><th>Einblenden</th><th>Stichtag</th><th>Auflösung</th><th>Wallets</th><th>Positionen</th><th style="text-align:right">Wert in USD</th><th>Ohne Kurs</th></tr></thead>
+    <thead><tr><th>Stichtag</th><th>Auflösung</th><th>Wallets</th><th>Positionen</th><th style="text-align:right">Wert in USD</th><th>Ohne Kurs</th></tr></thead>
     <tbody>${dailyBalanceHistoryRows.map(r=>{
       const age=Math.floor((new Date().setHours(0,0,0,0)-new Date(String(r.sample_day)+"T00:00:00").getTime())/86400000);
       const resolution=age<=6?"Täglich":age<=365?"Wöchentlich":"Monatlich";
       const stamp=String(r.sample_day).split("-").reverse().join(".");
       const value=Number(r.total_usd);
-      return `<tr><td><input type="checkbox" aria-label="Stichtag ${stamp} einblenden" style="width:auto" ${selectedDailyBalanceDays.get(r.sample_day)?.userId===currentUser?.id?"checked":""} onchange="toggleDailyBalanceSnapshot('${r.sample_day}',this.checked)"></td><td>${stamp}</td><td>${resolution}</td><td>${Number(r.wallet_count)||0}</td><td>${Number(r.position_count)||0}</td><td style="text-align:right">${Number.isFinite(value)?value.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}):"–"}</td><td>${Number(r.unpriced_positions)||0}</td></tr>`;
+      const included=showAllDailyBalanceSnapshots||dailyBalanceHistoryRows.slice(0,5).some(x=>x.sample_day===r.sample_day);
+      return `<tr ${included?'style="font-weight:600"':''}><td>${stamp}${included?' <span class="muted" title="Als Snapshot-Spalte sichtbar">✓</span>':''}</td><td>${resolution}</td><td>${Number(r.wallet_count)||0}</td><td>${Number(r.position_count)||0}</td><td style="text-align:right">${Number.isFinite(value)?value.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}):"–"}</td><td>${Number(r.unpriced_positions)||0}</td></tr>`;
     }).join("")}</tbody></table></div>`;
 }
 async function loadDailyBalanceHistory(force = false) {
@@ -8416,12 +8448,10 @@ async function loadDailyBalanceHistory(force = false) {
       .eq("user_id",userId).order("sample_day",{ascending:false}).limit(500);
     if(currentUser?.id!==userId)return;
     if(error){el.textContent="Bestandsverlauf nicht verfügbar: "+error.message;return;}
-    if(dailyBalanceHistoryLoaded!==userId) selectedDailyBalanceDays.clear();
+    if(dailyBalanceHistoryLoaded!==userId){selectedDailyBalanceDays.clear();showAllDailyBalanceSnapshots=false;}
     dailyBalanceHistoryLoaded=userId;
     dailyBalanceHistoryRows=data||[];
-    const allowed=new Set(dailyBalanceHistoryRows.map(r=>r.sample_day));
-    for(const day of selectedDailyBalanceDays.keys())if(!allowed.has(day))selectedDailyBalanceDays.delete(day);
-    renderDailyBalanceHistoryList();
+    await syncDailyBalanceSnapshotColumns();
   })().finally(()=>{dailyBalanceHistoryRequest=null;});
   return dailyBalanceHistoryRequest;
 }
