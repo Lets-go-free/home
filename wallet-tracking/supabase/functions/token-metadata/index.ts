@@ -7,9 +7,9 @@ const cors={'access-control-allow-origin':'*','access-control-allow-headers':'au
 async function json(url:string,options:any={}){const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),10000);try{const r=await fetch(url,{...options,signal:abort.signal});if(!r.ok)throw Error('provider-http-unavailable');return await r.json()}finally{clearTimeout(timer)}}
 const inflight=new Map<string,Promise<any>>();
 async function resolveMetadata(chainKey:string,address:string,refresh=false,block:number|null=null){
- // The UI/predefined token key is 'arbitrum'; the chains registry uses 'arb'.
- // Keep the original token key for metadata cache and predefined-token writes.
- const configKey=chainKey==='arbitrum'?'arb':chainKey;
+ // Registry aliases only: keep original token/cache chain keys unchanged.
+ const registryAliases:Record<string,string>={arbitrum:'arb',avalanche:'avax',polygon:'matic',solana:'sol'};
+ const configKey=registryAliases[chainKey]||chainKey;
  const {data:chain,error}=await sb.from('chains').select('chain_key,wallet_type,native_symbol,evm_chain_id,rpc_url,balance_api_base,archive_rpc_url,archive_rpc_provider').eq('chain_key',configKey).maybeSingle();
  if(error||!chain)throw Error('unknown-chain');
  const alchemy=Deno.env.get('ALCHEMY_API_KEY')||'';

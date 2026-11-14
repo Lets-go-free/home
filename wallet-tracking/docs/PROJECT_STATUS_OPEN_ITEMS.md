@@ -1,4 +1,8 @@
-### Phase 8.32 – Arbitrum-Metadaten-Alias (13.11.2026 14:49:48 CET)
+#### Phase 8.33 – Vereinheitlichte Chain-Aliase (14.11.2026 10:04:32 CET)
+- Technische Token-Metadaten: UI-Schlüssel `arbitrum`, `avalanche`, `polygon`, `solana` werden nur für `public.chains` zu `arb`, `avax`, `matic`, `sol` normalisiert; Original-Keys in Token-/Cache-Tabellen bleiben erhalten.
+- SQL-Migration und `token-metadata/index.ts` erforderlich. Live-Tests Polygon WETH, Avalanche WETH.e und Solana-Mint offen. Sicherheits-/Bitcoin-Fallback-Retest weiterhin offen.
+
+## Phase 8.32 – Arbitrum-Metadaten-Alias (13.11.2026 14:49:48 CET)
 - Ursache `unknown-chain`: UI-/Token-Key `arbitrum`, Datenbank-Registry `public.chains.chain_key = arb` (EVM Chain-ID 42161).
 - Edge Function `token-metadata/index.ts` liest Konfiguration über `arb`, behält `arbitrum` für vorhandene Stammdaten und Metadaten-Cache bei. Die Chain-ID wird vor `eth_call` verifiziert; Arbitrum-RPC-Fallback verwendet den registrierten Key.
 - SQL-Migration: `wallettracking_metadata_address` erkennt den Alias, ohne `chains`, `predefined_tokens` oder historische Werte umzubenennen.
