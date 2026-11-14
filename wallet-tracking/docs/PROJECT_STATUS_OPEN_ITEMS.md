@@ -1,3 +1,11 @@
+
+## Phase 8.50 — Boot-Fehler bei 8.49 korrigiert (14.11.2026)
+
+- Fehler beim Start von `dao-reward-refresh`: `price-target-worker.ts` lieferte bei Deployment nicht den erwarteten Export `processExactPriceTargets` (BOOT_ERROR 503).
+- 8.50 liefert `index.ts` (Stand 8.49) **und** die unveränderte, korrekte `price-target-worker.ts` (Stand 8.48) ausdrücklich zusammen; kein neues SQL.
+- Offen: beide Dateien gemeinsam deployen, Boot und `admin-miner-claim-preview-849` ohne Datenänderung testen; danach erst kontrollierte Claim-Übernahme.
+- DAO-Cron und Live-Worker deaktiviert lassen.
+
 ## 8.49 – 14.11.2026 19:52:27 CET
 
 Phase 8.49 vorbereitet: 377/377 historisch verifizierte native APTM-Miner-Claims; null kanonisch. Streng geprüfte 1-Claim-Übernahme mit bestehendem Finalizer, Admin-Preview/Single, SQL- und Edge-Installation sowie Live-Regression offen. DAO-Cron/Live-Worker bleiben aus. Details: `docs/releases/8.49-verified-historical-miner-claims.md`.
