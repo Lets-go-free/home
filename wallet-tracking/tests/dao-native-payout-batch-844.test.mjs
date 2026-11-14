@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const code=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
-const batch=code.slice(code.indexOf("if(body?.mode==='verify-native-payout-batch-844')"),code.indexOf("if(body?.mode==='check-pending-native-payouts-test-wallet')"));
-test('four only, pending and audit guarded, reuse 8.43 SQL',()=>{
+const batch=code.slice(code.indexOf("if(body?.mode==='verify-native-payout-batch-844'"),code.indexOf("if(body?.mode==='check-pending-native-payouts-test-wallet')"));
+test('8.44 retains four-only guard and shared 8.43 proof',()=>{
+ assert.match(batch,/const maxGroups=multi\?3:1/);
  assert.match(batch,/\.limit\(4\)/);
  assert.match(batch,/\.eq\('payout_status','pending'\)/);
  assert.match(batch,/\.is\('audit_classification',null\)/);

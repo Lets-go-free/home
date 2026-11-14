@@ -1524,10 +1524,10 @@ Deno.serve(async request=>{
     notice:'One Explorer re-traced payout matched to persisted flow. Candidate payout fields only. No canonical claim, price, NFT or job changes.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
- // 8.44: tightly bounded manual verification of at most four pending native payouts.
- // Every entry reuses the independently Explorer-verified 8.43 service-role RPC.
- // Stop on the first incomplete/mismatched Explorer result; never infer a payout.
- if(body?.mode==='verify-native-payout-batch-844'){
+ // 8.44/8.45: Shared manual payout evidence verifier. Both modes use identical
+ // Explorer re-trace and unchanged 8.43 RPC; only the bounded orchestration varies.
+ if(body?.mode==='verify-native-payout-batch-844'||body?.mode==='verify-native-payout-multi-batch-845'){
+  const multi=body.mode==='verify-native-payout-multi-batch-845';
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
    return Response.json({error:'Manual payout verification disabled'},{status:403});
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
@@ -1545,53 +1545,67 @@ Deno.serve(async request=>{
    if(!wallet)return Response.json({error:'Wallet not found'},{status:404});
    const job={user_id:wallet.user_id,wallet_id:wallet.id};
    const address=await loadAddress(job);
-   const {data:candidates,error:candidateError}=await sb.from('dao_reward_claim_candidates')
-    .select('tx_hash,claim_block').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-    .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('status','pending')
-    .eq('payout_status','pending').is('audit_classification',null)
-    .eq('canonical_existing_verified',false)
-    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(4);
-   if(candidateError)throw candidateError;
    const results:any[]=[];let verified=0;let stopped='batch_complete';
-   const deadline=Date.now()+45000;
-   for(const candidate of candidates||[]){
+   const maxGroups=multi?3:1; // 8.45 at most 3 sequential 4-item batches (12 total)
+   const deadline=Date.now()+(multi?50000:45000);
+   const groups:any[]=[];
+   for(let group=0;group<maxGroups;group++){
     if(Date.now()>deadline){stopped='time_budget';break;}
-    const txHash=lower(candidate.tx_hash);
-    try{
-     const {data:rows,error:txError}=await sb.from('project_transactions')
-      .select('user_id,wallet_id,tx_hash,selector,status,to_address,block_number,tx_timestamp')
-      .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
-      .eq('chain_key',CHAIN).eq('tx_hash',txHash).limit(2);
-     if(txError)throw txError;
-     if(rows?.length!==1||!isSuccessfulClaim(rows[0])
-      ||lower(rows[0].to_address)!=='0x3ae2dfc3b795267e284cbab7eff9a0cefdab401d'
-      ||Number(rows[0].block_number)!==Number(candidate.claim_block)){
-      stopped='invalid_claim_context';results.push({txHash,status:'not_verified',reason:stopped});break;
+    // Fresh pending-only selection after each group prevents duplicate processing.
+    const {data:candidates,error:candidateError}=await sb.from('dao_reward_claim_candidates')
+     .select('tx_hash,claim_block').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+     .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('status','pending')
+     .eq('payout_status','pending').is('audit_classification',null)
+     .eq('canonical_existing_verified',false)
+     .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(4);
+    if(candidateError)throw candidateError;
+    if(!candidates?.length){stopped=results.length?'no_pending':'no_pending';break;}
+    let selected=0;let groupVerified=0;
+    for(const candidate of candidates){
+     selected++;
+     if(Date.now()>deadline){stopped='time_budget';break;}
+     const txHash=lower(candidate.tx_hash);
+     try{
+      const {data:rows,error:txError}=await sb.from('project_transactions')
+       .select('user_id,wallet_id,tx_hash,selector,status,to_address,block_number,tx_timestamp')
+       .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+       .eq('chain_key',CHAIN).eq('tx_hash',txHash).limit(2);
+      if(txError)throw txError;
+      if(rows?.length!==1||!isSuccessfulClaim(rows[0])
+       ||lower(rows[0].to_address)!=='0x3ae2dfc3b795267e284cbab7eff9a0cefdab401d'
+       ||Number(rows[0].block_number)!==Number(candidate.claim_block)){
+       stopped='invalid_claim_context';results.push({txHash,status:'not_verified',reason:stopped});break;
+      }
+      const observed=await nativeClaimPayout(address,rows[0]);
+      if(!observed||lower(observed.counterparty_address)!==lower(rows[0].to_address)
+       ||!/^[0-9]+$/.test(String(observed.amount_raw))||BigInt(observed.amount_raw)<=0n){
+       stopped='explorer_evidence_missing';results.push({txHash,status:'not_verified',reason:stopped});break;
+      }
+      const {data,error}=await sb.rpc('wallettracking_dao_verify_single_native_payout_843',{
+       p_user:job.user_id,p_wallet:job.wallet_id,p_tx:txHash,
+       p_explorer_amount_raw:observed.amount_raw});
+      if(error)throw error;
+      const status=String(data?.status||'unknown');
+      results.push({txHash,status,reason:data?.reason||null,
+       ...(status==='verified'?{amountRaw:data.amountRaw}:{})});
+      if(status!=='verified'){stopped='rpc_not_verified';break;}
+      verified++;groupVerified++;
+     }catch(e){
+      stopped='verification_error';results.push({txHash,status:'not_verified',
+       reason:String(e instanceof Error?e.message:e)});break;
      }
-     const observed=await nativeClaimPayout(address,rows[0]);
-     if(!observed||lower(observed.counterparty_address)!==lower(rows[0].to_address)
-      ||!/^[0-9]+$/.test(String(observed.amount_raw))||BigInt(observed.amount_raw)<=0n){
-      stopped='explorer_evidence_missing';results.push({txHash,status:'not_verified',reason:stopped});break;
-     }
-     const {data,error}=await sb.rpc('wallettracking_dao_verify_single_native_payout_843',{
-      p_user:job.user_id,p_wallet:job.wallet_id,p_tx:txHash,
-      p_explorer_amount_raw:observed.amount_raw});
-     if(error)throw error;
-     const status=String(data?.status||'unknown');
-     results.push({txHash,status,reason:data?.reason||null,
-      ...(status==='verified'?{amountRaw:data.amountRaw}:{})});
-     if(status!=='verified'){stopped='rpc_not_verified';break;}
-     verified++;
-    }catch(e){
-     stopped='verification_error';results.push({txHash,status:'not_verified',
-      reason:String(e instanceof Error?e.message:e)});break;
     }
+    groups.push({batch:group+1,selected:candidates.length,checked:selected,verified:groupVerified});
+    if(stopped!=='batch_complete')break;
    }
-   return Response.json({ok:stopped==='batch_complete'||stopped==='time_budget',
-    mode:'verify-native-payout-batch-844',walletId:wallet.id,
-    checked:results.length,verified,selected:(candidates||[]).length,stopped,results,
+   const ok=['batch_complete','time_budget','no_pending'].includes(stopped);
+   return Response.json({ok,mode:body.mode,walletId:wallet.id,
+    checked:results.length,verified,selected:groups.reduce((n,g)=>n+g.selected,0),
+    stopped,...(multi?{batchesCompleted:groups.filter(g=>g.verified===g.selected).length,
+      batches:groups,maxBatches:3,maxPayouts:12,timeBudgetMs:50000}:{}),results,
     claimsCreated:0,referralPosting:'disabled',
-    notice:'Manual batch, maximum four. Per-TX Explorer re-trace and the existing 8.43 RPC. Candidate payout evidence only; no canonical claim, NFT, price, queue, cron or reward changes. On any discrepancy processing stops.'});
+    notice:multi?'Manual bounded multi-batch, maximum three batches of four. Every TX independently re-traced and checked via unchanged 8.43 RPC; stop on any discrepancy. Candidate payout evidence only; no canonical claims, rewards, prices, NFTs, queues, cron or live worker changes.':
+    'Manual batch, maximum four. Per-TX Explorer re-trace and the existing 8.43 RPC. Candidate payout evidence only; no canonical claim, NFT, price, queue, cron or reward changes. On any discrepancy processing stops.'});
   }catch(e){return Response.json({ok:false,error:String(e instanceof Error?e.message:e)},{status:500})}
  }
  if(body?.mode==='check-pending-native-payouts-test-wallet'){

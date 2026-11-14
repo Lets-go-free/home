@@ -1,3 +1,9 @@
+## Phase 8.45 – Kontrollierte Mehrfachverifikation nativer DAO-Auszahlungen
+
+Stand 14.11.2026 15:32:49 CET. Neuer Modus `verify-native-payout-multi-batch-845` bis 3×4 Auszahlungen, 50s Zeitbudget, unveraenderte 8.43-Explorer/RPC-Pruefregeln; keine SQL-Migration. Installation/Live-Abnahme offen. Letzter nachgewiesener Stand Wallet `8a3c5dc6…`: 17 von 377 verifiziert, 360 offen, ohne Fehler und ohne kanonische Writes. Weiter nur manuell mit Admin-JWT; DAO-Cron/Live-Worker deaktiviert. Details: `docs/releases/8.45-native-payout-multi-batch.md`.
+
+---
+
 ## Phase 8.44 – Native DAO-Auszahlungen, begrenzte Verifikation
 
 # WalletTracking 8.44 – begrenzter manueller Batch fuer native DAO1-Auszahlungen
