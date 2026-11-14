@@ -1,3 +1,6 @@
+## 8.52 · 14.11.2026 20:49:27 CET
+- DAO1 kanonische Reward-Felder bei neuen Claims atomar vervollständigt; bewachte Einzel-Reparatur ergänzt. Installation und Live-Test offen.
+
 ## 8.08 · 08.11.2026 22:45:54 CET · Build 20261108-224554
 
 - Neue gemeinsame technische Metadaten-Funktion für alle aktuell unterstützten Chains, Master-/Custom-Token, Native-/Pool-Sonderfälle und dauerhaftes Konfliktprotokoll im internen Schema.

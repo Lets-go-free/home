@@ -1,3 +1,8 @@
+### Phase 8.52 – DAO1 kanonische Reward-Konsistenz (Installation und Einzeltest offen)
+- Stand bis Schritt 66: 377 Reto-Auszahlungen verifiziert (`exact-v13`); erster Claim erstellt, 376 offen. 2241 Alt-Claims konsistent, ein neuer Claim mit leeren TX-Reward-/NFT-Feldern und `project_nft_claims.reward_usd`.
+- 8.52: Finalizer schreibt Begleitfelder atomar bei neuen Claims; separate streng bewachte Einzel-Reparatur für den bereits erstellten Claim. Kein automatischer Backfill. Details: `docs/releases/8.52-dao-canonical-reward-consistency.md`.
+- **Nächster Schritt:** 8.52-Migration installieren, danach genau einen Repair und genau einen neuen Claim getrennt testen. DAO-Cron und Live-Worker deaktiviert.
+
 
 ### Phase 8.51 – DAO1 historischer NFT-Eigentumsnachweis (Installation offen)
 - Six ownership intervals for Reto's 377 claims are covered by a single verified sender. `wallet_address` is NULL in all 125 ownership rows; all 7 associated wallet EVM addresses are encrypted. **Do not backfill plaintext wallet addresses**.
