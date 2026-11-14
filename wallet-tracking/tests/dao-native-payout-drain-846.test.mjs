@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const ui=readFileSync('admin/dao-native-verification-846.js','utf8');
+const page=readFileSync('index.html','utf8');
+const edge=readFileSync('supabase/functions/dao-reward-refresh/index.ts','utf8');
+assert.match(ui,/const MAX_CALLS = 25/);
+assert.match(ui,/const MAX_PER_CALL = 12/);
+assert.match(ui,/stopRequested/);
+assert.match(ui,/sb\.functions\.invoke\('dao-reward-refresh'/);
+assert.match(ui,/data\.stopped === 'no_pending'/);
+assert.match(ui,/data\.claimsCreated !== 0/);
+assert.match(ui,/data\.referralPosting !== 'disabled'/);
+assert.match(ui,/!isAdmin/);
+assert.doesNotMatch(ui,/setInterval|setTimeout/);
+assert.match(page,/daoNativeDrainStart/);
+assert.match(page,/APP_VERSION="8.46"/);
+assert.match(edge,/verify-native-payout-multi-batch-845/);
+console.log('8.46 manueller Payout-Durchlauf: Regression OK');

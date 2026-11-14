@@ -1,3 +1,4 @@
+<!-- Phase 8.46: Browser-gesteuerte, manuelle historische DAO-Payout-Verifikation; kein Cron. -->
 <!-- Phase 8.45: Admin-only bounded multi-batch native payout verification, shared 8.43 RPC; no canonical writes. -->
 <!-- Phase 8.43: Einzelne native DAO-Auszahlung ueber Explorer intern erneut verifizieren; keine kanonischen Writes. -->
 <!-- Phase 8.42: Fehlgeschlagene DAO-Claim-Versuche nachweisbasiert klassifizieren; Kandidatenauswahl nur erfolgreiche TX. -->
@@ -842,6 +843,16 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
           <button onclick="renderHardcodingAudit()">🔎 Audit aktualisieren</button>
         </div>
+        <div class="custom-token-card" id="daoNativeDrain846" style="margin:16px 0;padding:14px">
+          <strong>DAO1 / Apertum · Historische Auszahlungen verifizieren (8.46)</strong>
+          <p class="note" style="margin:8px 0">Manuelle Admin-Verarbeitung nur für die geprüfte Wallet <code>8a3c5dc6…</code>. Pro Server-Aufruf höchstens 12, pro Start höchstens 25 Aufrufe. Bereits verifizierte Auszahlungen werden übersprungen. Browser-Tab während der Verarbeitung geöffnet lassen. Keine Cron-/Live-Worker-Aktivierung und keine kanonischen Reward-Änderungen.</p>
+          <div class="action-row" style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="daoNativeDrainStart" type="button" onclick="startDaoNativeDrain846()">Verifikation starten / fortsetzen</button>
+            <button id="daoNativeDrainStop" type="button" class="secondary" onclick="stopDaoNativeDrain846()" disabled>Nach aktuellem Aufruf stoppen</button>
+          </div>
+          <div id="daoNativeDrainCount" class="note" aria-live="polite" style="margin-top:10px">0 in diesem Durchlauf verifiziert · 0 Server-Aufrufe</div>
+          <div id="daoNativeDrainStatus" class="note" role="status" aria-live="polite" style="margin-top:6px">Noch nicht gestartet. Für die abschliessende Bestätigung ist eine Datenbankkontrolle erforderlich.</div>
+        </div>
         <div id="adminHardcodingAudit"></div>
       </div>
 
@@ -1427,8 +1438,9 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.45";window.BUILD_ID="20261114-153249";</script>
+<script>window.APP_VERSION="8.46";window.BUILD_ID="20261114-161405";</script>
 <script src="./js/app.js?v=20261114-122907"></script>
+<script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 

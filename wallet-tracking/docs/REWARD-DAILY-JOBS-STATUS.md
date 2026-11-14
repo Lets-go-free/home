@@ -1,3 +1,8 @@
+
+## 8.46 – Browser-gesteuerte manuelle DAO-Payout-Verifikation
+
+Stand 14.11.2026 16:14:05 CET. Version 8.46 ergänzt Admin → Audit um eine manuelle Start-/Stopp-Steuerung, die die geprüfte 8.45-Edge-Function sequenziell aufruft, maximal 25 Aufrufe zu je 12. Stoppt bei Fehler, `no_pending` und Benutzer-Stopp; Browser-Tab muss offen bleiben. Ausgangsstand **137/377 verifiziert, 240 offen** laut letzten 10 erfolgreichen Multi-Batch-Meldungen; Live-Test 8.46 offen. **Kein SQL/Edge-Deployment, Cron/Live-Worker aus.** Details: `docs/releases/8.46-manual-dao-payout-drain.md`.
+
 ## Phase 8.45 – Kontrollierte Mehrfachverifikation nativer DAO-Auszahlungen
 
 Stand 14.11.2026 15:32:49 CET. Neuer Modus `verify-native-payout-multi-batch-845` bis 3×4 Auszahlungen, 50s Zeitbudget, unveraenderte 8.43-Explorer/RPC-Pruefregeln; keine SQL-Migration. Installation/Live-Abnahme offen. Letzter nachgewiesener Stand Wallet `8a3c5dc6…`: 17 von 377 verifiziert, 360 offen, ohne Fehler und ohne kanonische Writes. Weiter nur manuell mit Admin-JWT; DAO-Cron/Live-Worker deaktiviert. Details: `docs/releases/8.45-native-payout-multi-batch.md`.
