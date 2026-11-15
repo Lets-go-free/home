@@ -122,3 +122,7 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - 8.54: Streng bewachte, service-role-only und auf eine Pilot-TX fest begrenzte NFT-Identitätszuordnung. Frischer Blockchain-Event-/Ownership-Preview vor SQL-Commit. Ausschliesslich Kandidaten-NFT-Felder und Status, kein kanonischer Claim/Reward/Preis-Write. SQL-Installation und Edge-Live-Test offen.
 - Version/Build/Dokumentation/TODO/Regressionen aktualisiert. DAO-Cron und Live-Worker bleiben deaktiviert.
 
+## 8.55 · 15.11.2026 16:27:00 CET · Build 20261115-162700
+- 8.54-Live-Test scheiterte ohne erfolgreichen Write: Kandidatentabelle hat kein `updated_at`. Neue Migration ersetzt nur die bestehende 8.54-Funktion ohne diese Spaltenreferenz; Guard- und Transaktionslogik unverändert, kein Edge-Deploy. Historische Migration 8.54 bleibt erhalten.
+- Doku/TODO/Version und gezielter Regressionstest ergänzt. Nur SQL 8.55 installieren, danach Rückmeldung abwarten. DAO-Cron/Live-Worker AUS.
+

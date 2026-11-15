@@ -1,4 +1,4 @@
-> **Aktuell 8.54:** 8.53 Read-only-Live-Preview (`ready=true`, NFT #37084) erfolgreich. 8.54 bewachte **Einzelzuordnung** erstellt, Installation offen. **Nächster Schritt nur 8.54-SQL-Migration ausführen**, danach Rückmeldung abwarten. Details `docs/releases/8.54-dao-single-miner-nft-assignment.md`. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.55:** 8.54 SQL und Edge installiert, erster Einzelzuordnungsaufruf scheiterte an nicht existierender Spalte `dao_reward_claim_candidates.updated_at`; kein erfolgreicher Write. 8.55 ersetzt die RPC mit unveränderten Guards, aber ohne diese Spalte. **Nächster Schritt: nur neue 8.55-SQL-Migration installieren**, Rückmeldung abwarten. Details `docs/releases/8.55-dao-single-miner-nft-column-fix.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – DAO1 historische Reto-Claims: Live-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - **Version 8.52 installiert und live getestet:** `wallettracking_dao_finalize_single_claim` schreibt die Begleitfelder in `project_transactions` und `project_nft_claims.reward_usd` atomar. Der zuvor unvollständige Claim zu NFT #21 wurde durch `wallettracking_dao_repair_single_claim_852` repariert und einzeln vollständig geprüft. Neue Claim-Erstellung, Wiederholungsschutz und historischer `exact-v13`-Preis wurden live bestätigt.
@@ -498,4 +498,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - 8.53-Einzel-Preview live erfolgreich: `ready=true`, NFT #37084, Collection 32887, `72141524528301886` Wei, Block 14'099'107, Preisquelle `exact-v13`. Keine Claim- oder NFT-Änderung beim Preview.
 - Neue SQL-Servicefunktion mit festen Pilot-Guards, erneuter Payout-/Eigentums-/Transfer-/Preisprüfung und atomarem Kandidaten-Update; neuer Admin-Commit-Modus verwendet vor jedem Write denselben frischen 8.53-Preview. Kein kanonischer Claim-Write.
 - Installation **offen**. Nur die neue SQL-Migration installieren, Ergebnis abwarten; danach erst Edge-Deployment und genau ein Test. Allgemeine Queue, ERC20/Referrals und Wiederanlauf weiter offen. DAO-Cron/Live-Worker AUS.
+
+### Phase 8.55 – SQL-Spaltenkorrektur nach erster 8.54-Liveprobe
+- 8.54 SQL und Edge installiert; erster einzelner Aufruf wurde mit `Guarded NFT assignment refused: column "updated_at" of relation "dao_reward_claim_candidates" does not exist` abgelehnt. Das UPDATE wurde nicht ausgeführt, kein Erfolg behauptet.
+- 8.55-Migration ersetzt dieselbe service-only RPC ohne `updated_at`-Zuweisung. Kein neuer Edge-Deploy, keine automatische Datenänderung. Als Nächstes **nur diese Migration** installieren und Ergebnis melden. DAO-Cron/Live-Worker AUS.
 

@@ -1,4 +1,4 @@
-> **Aktuell 8.54:** 8.53-Preview live mit `ready=true` für Pilot-TX/NFT #37084 bestanden. Neue atomare 8.54-Einzel-NFT-Zuordnung vorbereitet; **nächster Schritt nur SQL-Migration installieren**, danach Rückmeldung. Details in `docs/releases/8.54-dao-single-miner-nft-assignment.md`. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.55:** 8.54 SQL/Edge installiert; Einzelzuordnungsversuch scheiterte bei SQL-UPDATE an fehlender Kandidaten-Spalte `updated_at`, keine Zuordnung bestätigt. 8.55-Korrektur neu versioniert; **nächster Schritt ausschliesslich 8.55-SQL-Migration installieren**. Edge 8.54 bleibt unverändert. Details `docs/releases/8.55-dao-single-miner-nft-column-fix.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – Reto-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - Live-Migration 8.52 installiert, ursprünglichen unvollständigen Claim #21 repariert; zweiter Claim erfolgreich atomar angelegt, `exact-v13` bestätigt.
@@ -254,4 +254,8 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 - 8.53-Live-Preview abgeschlossen: `ready=true` für TX `0xed667ac1…b71b32` / NFT #37084, keine Writes.
 - 8.54 SQL-RPC und Admin-Commit-Modus unter unverändertem `dao-reward-refresh` vorbereitet, ausschließlich NFT-Kandidatenfelder/status einer fest vorgegebenen TX. Kein Claim/Preis/Reward-Write. Migration, Edge-Deployment und Live-Test noch offen.
 - **Nächster Schritt:** Nur `20261115162034_dao_single_miner_nft_assignment_854.sql` vollständig im Supabase SQL Editor ausführen; Rückmeldung abwarten. DAO-Cron/Live-Worker AUS. Details `docs/releases/8.54-dao-single-miner-nft-assignment.md`.
+
+### Phase 8.55 – 8.54-SQL-Fehlerbehebung
+- Nach installierter 8.54 SQL + Edge lieferte Einzelversuch `ok:false` wegen nicht existierender `dao_reward_claim_candidates.updated_at`; kein Write bestätigt.
+- Neue Migration `20261115162700_dao_single_miner_nft_assignment_fix_855.sql` ersetzt dieselbe RPC ohne `updated_at`; alle Guards unverändert. **Nächster Schritt: nur SQL 8.55 installieren**, Rückmeldung abwarten. Details `docs/releases/8.55-dao-single-miner-nft-column-fix.md`.
 
