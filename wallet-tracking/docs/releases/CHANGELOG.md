@@ -117,3 +117,8 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - DAO Miner `RewardClaimed`-Event: strikte read-only Einzel-Preview mit Historien-, Payout-, NFT- und Wallet-Guards, ohne neuen DB-Write. Vier neue Parser-Regressionen. Zwei Edge-Dateien gemeinsam deployen, danach nur einen Admin-Preview testen.
 - 73 zusätzliche unzugeordnete Mining-Claims mit nativen APTM-Flows entdeckt; ein Pilot-Payout live verifiziert und persistiert, NFT-Eigentum belegt. 377 kanonische Reto-Claims, 16 Fehl-TXs und 2'454 `exact-v13`-Konsistenz nicht verändert. DAO-Cron/Live-Worker deaktiviert.
 
+## 8.54 · 15.11.2026 16:21:31 CET · Build 20261115-162131
+- 8.53 Preview für genau eine Reto-Claim-TX live `ready=true`, keine Datenänderungen.
+- 8.54: Streng bewachte, service-role-only und auf eine Pilot-TX fest begrenzte NFT-Identitätszuordnung. Frischer Blockchain-Event-/Ownership-Preview vor SQL-Commit. Ausschliesslich Kandidaten-NFT-Felder und Status, kein kanonischer Claim/Reward/Preis-Write. SQL-Installation und Edge-Live-Test offen.
+- Version/Build/Dokumentation/TODO/Regressionen aktualisiert. DAO-Cron und Live-Worker bleiben deaktiviert.
+

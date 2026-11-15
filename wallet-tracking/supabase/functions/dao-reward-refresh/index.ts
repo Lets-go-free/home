@@ -1332,8 +1332,9 @@ Deno.serve(async request=>{
  let body:any={};try{body=await request.json()}catch{}
  // 8.53: one strictly read-only historical miner-event preview. No candidate
  // status, ownership, price, queue or canonical writes are possible here.
- if(body?.mode==='admin-miner-event-preview-853'){
+ if(body?.mode==='admin-miner-event-preview-853'||body?.mode==='admin-miner-nft-assign-854'){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const commit=body.mode==='admin-miner-nft-assign-854';
   if(Object.keys(body).some(k=>!['mode','walletId','txHash'].includes(k)) ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||'')) ||
     !/^0x[0-9a-f]{64}$/.test(String(body.txHash||'')))return reply({ok:false,error:'Invalid preview target'},400);
@@ -1401,6 +1402,20 @@ Deno.serve(async request=>{
     !transfers.some((x:any)=>x.block_number===block)&&!!prior&&
     transfers.filter((x:any)=>x.block_number===prior.block_number).length===1&&
     lower(prior.to_address)===event.staker;
+   if(commit&&!ready)return reply({ok:false,mode:body.mode,ready:false,reason:'historical-ownership-guard'},409);
+   if(commit&&ready){
+    // SQL independently rechecks the entire persisted proof under locks.
+    // This route has no ability to create a canonical claim or change prices.
+    const {data:assigned,error:ae}=await sb.rpc('wallettracking_dao_assign_single_miner_nft_854',{
+     p_user:wallet.user_id,p_wallet:wallet.id,p_tx:txHash,
+     p_collection_id:event.collectionId,p_nft_id:event.tokenId,
+     p_event_staker:event.staker,p_event_amount_raw:event.amountRaw});
+    if(ae)throw Error('Guarded NFT assignment refused: '+ae.message);
+    if(assigned?.status!=='assigned'||assigned?.claimsCreated!==0)
+     throw Error('Unexpected guarded NFT assignment response');
+    return reply({ok:true,mode:body.mode,ready:true,...assigned,
+     notice:'Exactly one guarded candidate NFT assignment. No canonical claim, reward, price, flow or queue writes.'});
+   }
    return reply({ok:true,mode:body.mode,ready,reason:ready?'all-preview-guards-passed':'historical-ownership-guard',
     txHash,claimBlock:block,collectionId:event.collectionId,nftId:event.tokenId,
     amountRaw:event.amountRaw,priceSource:incoming[0].price_source,

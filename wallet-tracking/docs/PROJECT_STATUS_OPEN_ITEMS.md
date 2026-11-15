@@ -1,4 +1,4 @@
-> **Aktuell 8.53:** Read-only Miner-Event-Preview bereit, Installation/Live-Test offen. Nächster Schritt: ZIP übernehmen, `dao-reward-refresh/index.ts` und `miner-event-853.js` gemeinsam deployen; erst nach Rückmeldung ein einziger Preview-Test. Details unter `docs/releases/8.53-dao-miner-event-preview.md`; ergänzter Status am Dokumentende. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.54:** 8.53 Read-only-Live-Preview (`ready=true`, NFT #37084) erfolgreich. 8.54 bewachte **Einzelzuordnung** erstellt, Installation offen. **Nächster Schritt nur 8.54-SQL-Migration ausführen**, danach Rückmeldung abwarten. Details `docs/releases/8.54-dao-single-miner-nft-assignment.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – DAO1 historische Reto-Claims: Live-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - **Version 8.52 installiert und live getestet:** `wallettracking_dao_finalize_single_claim` schreibt die Begleitfelder in `project_transactions` und `project_nft_claims.reward_usd` atomar. Der zuvor unvollständige Claim zu NFT #21 wurde durch `wallettracking_dao_repair_single_claim_852` repariert und einzeln vollständig geprüft. Neue Claim-Erstellung, Wiederholungsschutz und historischer `exact-v13`-Preis wurden live bestätigt.
@@ -493,4 +493,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Pilot-TX `0xed667ac1…b71b32`, Block 14'099'107: NFT #37084 aus `RewardClaimed`-Event; vollständiger historischer Eigentumsnachweis und exakter interner APTM-Eingang. 8.43-Payout-Verifikation live erfolgreich und persistiert, keine anderen Writes.
 - 8.53 liefert **nur** read-only Admin-Preview für genau ein Event mit strengen Payout-/NFT-/Ownership-Guards; Deployment und Live-Test offen. Nächster Schritt: Update einspielen und beide Edge-Dateien gemeinsam deployen; anschliessend genau einen Preview testen. Details `docs/releases/8.53-dao-miner-event-preview.md`.
 - 377 kanonische Reto-Claims, 16 Fehltransaktionen, 125 NFT-Reparaturen und 2'454/2'454 `exact-v13`-Konsistenz unverändert schützen. DAO-Cron und Live-Worker AUS.
+
+### Phase 8.54 – Bewachte NFT-Einzelzuordnung vorbereitet (15.11.2026)
+- 8.53-Einzel-Preview live erfolgreich: `ready=true`, NFT #37084, Collection 32887, `72141524528301886` Wei, Block 14'099'107, Preisquelle `exact-v13`. Keine Claim- oder NFT-Änderung beim Preview.
+- Neue SQL-Servicefunktion mit festen Pilot-Guards, erneuter Payout-/Eigentums-/Transfer-/Preisprüfung und atomarem Kandidaten-Update; neuer Admin-Commit-Modus verwendet vor jedem Write denselben frischen 8.53-Preview. Kein kanonischer Claim-Write.
+- Installation **offen**. Nur die neue SQL-Migration installieren, Ergebnis abwarten; danach erst Edge-Deployment und genau ein Test. Allgemeine Queue, ERC20/Referrals und Wiederanlauf weiter offen. DAO-Cron/Live-Worker AUS.
 

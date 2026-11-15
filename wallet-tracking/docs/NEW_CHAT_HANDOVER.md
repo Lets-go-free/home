@@ -1,4 +1,4 @@
-> **Aktuell 8.53:** Read-only Miner-Event-Preview erstellt, Edge-Deployment/Live-Test offen. Siehe Release-Dokument `docs/releases/8.53-dao-miner-event-preview.md` und vollständigen Nachtrag am Ende dieser Übergabe. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.54:** 8.53-Preview live mit `ready=true` für Pilot-TX/NFT #37084 bestanden. Neue atomare 8.54-Einzel-NFT-Zuordnung vorbereitet; **nächster Schritt nur SQL-Migration installieren**, danach Rückmeldung. Details in `docs/releases/8.54-dao-single-miner-nft-assignment.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – Reto-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - Live-Migration 8.52 installiert, ursprünglichen unvollständigen Claim #21 repariert; zweiter Claim erfolgreich atomar angelegt, `exact-v13` bestätigt.
@@ -249,4 +249,9 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 - Schritte 71–93: sechs Benutzer / 15 EVM-Wallets im Import; sieben `complete`, acht `empty_verified` je Stream; 15 `staged` am 14.11., keine Reward-Completion daraus ableiten.
 - Reto-Zusatzbestand 73 `unassigned_miner` mit nativen APTM-Reward-Flows, 76 `unassigned_legacy` ohne Eingangsflow. Pilot-TX `0xed667ac1962cbc234629b0d1258378192087f0c2445c26a6f22a99a6a2b71b32`: NFT #37084 / Collection 32887 aus RewardClaimed; 0.072141524528301886 APTM live intern bestätigt und via bestehender 8.43-Route `verified`; Owner-Zeitraum, drei vollständige Transfers, Empfänger-Gleichheit und kein Same-Block-Transfer bestätigt. Weiter kein kanonischer Claim/NFT-Feld-Write.
 - 8.53 Edge-Preview **nur read-only**, kein SQL; gemeinsame Deployment-Dateien `index.ts` und `miner-event-853.js`; Admin-Einzeltest nach Installation. Release-Dokument `docs/releases/8.53-dao-miner-event-preview.md` führt den genau nächsten Test auf. DAO-Cron/Live-Worker AUS; allgemeine Pipeline weiterhin offen.
+
+### Phase 8.54 – Pilot-NFT-Einzelzuordnung vorbereitet (15.11.2026)
+- 8.53-Live-Preview abgeschlossen: `ready=true` für TX `0xed667ac1…b71b32` / NFT #37084, keine Writes.
+- 8.54 SQL-RPC und Admin-Commit-Modus unter unverändertem `dao-reward-refresh` vorbereitet, ausschließlich NFT-Kandidatenfelder/status einer fest vorgegebenen TX. Kein Claim/Preis/Reward-Write. Migration, Edge-Deployment und Live-Test noch offen.
+- **Nächster Schritt:** Nur `20261115162034_dao_single_miner_nft_assignment_854.sql` vollständig im Supabase SQL Editor ausführen; Rückmeldung abwarten. DAO-Cron/Live-Worker AUS. Details `docs/releases/8.54-dao-single-miner-nft-assignment.md`.
 
