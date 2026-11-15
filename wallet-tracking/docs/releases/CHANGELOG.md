@@ -107,3 +107,9 @@
 - 7.33: Nutzerbegrenzte private Partnernamen; Edge wallet-private muss aktualisiert sein.
 
 Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit. Die aktuelle Betriebs-/Restore-Anleitung steht in Admin → Dokumentation.
+## 8.52 · Nachtrag 15.11.2026 · Schritte 53–70 (nur Dokumentation)
+- Globaler `exact-v13`-Audit nach letztem Batch: 2454/2454 konsistent, 0 Abweichungen.
+- Reto-Bestand endgültig geklärt: 377/377 verifizierte Claims kanonisch abgeschlossen; 16 weitere Claim-Versuche bereits als `failed_transaction` klassifiziert; 0 weiter verarbeitbar.
+- Beispielhafter Explorer-Abgleich: `NothingToClaim()` / `status=error`, keine internen oder Token-Auszahlungen. 8.42-Audit-Klassifikation der 16 Fälle bereits vorhanden; kein SQL-/Code-Deploy oder Reward-Write erforderlich.
+- DAO-Cron und Live-Worker deaktiviert. Allgemeine DAO-Pipeline weiter offen.
+

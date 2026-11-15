@@ -2,7 +2,7 @@
 - Live-Migration 8.52 installiert, ursprünglichen unvollständigen Claim #21 repariert; zweiter Claim erfolgreich atomar angelegt, `exact-v13` bestätigt.
 - Historische NFT-ID-Lücken (125 Claims einer anderen Wallet) sicher behoben: erst 1, dann 124; keine Rewardwerte verändert; 2'078/2'078 konsistent.
 - Reto: **377/377 verifizierte Auszahlungen kanonisch übernommen**, 16 Kandidaten ohne verifizierte Auszahlung unangetastet. Schritt-52-Audit: 393 gesamt, 377 abgeschlossen, 16 unverified, 0 verifiziert ohne Claim, 0 Abweichungen.
-- **Nächster konkreter Schritt:** globale `exact-v13`-Konsistenz nach letztem Batch erneut prüfen, danach die 16 ungeprüften Kandidaten diagnostizieren. DAO-Cron/Live-Worker AUS. Detailprotokoll: `docs/releases/8.52-dao-canonical-reward-consistency.md`.
+- **Aktualisierung nach Schritten 53–70:** Globaler Check 2'454/2'454 konsistent, alle 16 übrigen Kandidaten bereits `failed_transaction`, 0 weiter verarbeitbar. Nächster Schwerpunkt allgemeine DAO-Reward-Pipeline. DAO-Cron/Live-Worker AUS. Details in `docs/releases/8.52-dao-canonical-reward-consistency.md`.
 - Dokumentationsnachtrag zur weiterhin angezeigten **Phase 8.52**, kein weiterer SQL-/Code-Deploy.
 
 
@@ -236,3 +236,10 @@ Zuerst die neue Edge Function token-metadata mit index.ts UND metadata.ts (beide
 Die Browser-/Worker-Integration braucht die neue Funktion; Web-/Workerdateien deshalb nicht vor deren Deployment aktivieren. Laufenden DAO-Worker/Cron ausgeschaltet lassen. Nach Deployment jeweils nur den nächsten einzelnen manuellen Metadaten-Batch/SQL-/UI-Test anleiten; keine vollständige Testserie auf einmal.
 
 DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage, Referral, neue Miner-Zuordnung und vollständige inkrementelle Tagesqueue offen. Historische Referenzfälle nicht zurücksetzen. Separater TLN/VOW-Reward-Job, späterer VOW-Burn-Tab (Bridge-Transfers unterscheiden) und Apple-Passwortmanager Chrome offen. Pro Antwort nur nächste SQL-Abfrage oder nächsten Test; kleine ZIPs und echte Schweizer Zeitstempel.
+### Abschluss Reto – Nachtrag Schritte 53–70 (15.11.2026)
+- Globaler `exact-v13`-Abschlussaudit: **2454/2454 konsistent, 0 abweichend**.
+- Reto Wallet `8a3c5dc6-0610-482d-a327-3f3ba03db158`: 393 Kandidaten, davon **377 kanonisch übernommen**, **16 bereits unter 8.42 als `failed_transaction` klassifiziert**, **0 weitere verarbeitbar**. Alle 16 behalten technische Payout-/Pipeline-Status `pending`, sind jedoch durch die Audit-Klassifikation ausgeschlossen. Keine Bereinigung dieser Statusfelder ohne neue Begründung.
+- Ein Fall wurde über Explorer geprüft: Internal- und ERC20-Listen leer, Haupttransaktion `execution reverted / NothingToClaim()`; gespeicherter Status `error` stimmt. Alle 16 haben gespeicherten TX-Status `error` und keine gespeicherten Flows.
+- Keinen ungeeigneten Legacy-Payout-Prüfer auf diese Fälle anwenden. **Nächste Entwicklung:** allgemeine DAO-Reward-Pipeline gesondert planen und kontrolliert testen, insbesondere inkrementellen Import, ERC20/Referral, Retry und Mehrbenutzer-Betrieb.
+- **DAO-Cron und Live-Worker AUS.** Phase bleibt 8.52; dieses ZIP enthält nur Dokumentation.
+
