@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const edge=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8');
-const batch=edge.slice(edge.indexOf('// 8.63: explicitly administered'),edge.indexOf('// 8.61: general admin-only'));
+const batch=edge.slice(edge.indexOf('// 8.63/8.65: explicitly administered'),edge.indexOf('// 8.61: general admin-only'));
 
 test('8.63 requires the manual/admin flags and refuses live worker',()=>{
  assert.match(batch,/authenticateInspectAdmin\(request\)/);
@@ -20,9 +20,18 @@ test('8.64 accepts a standard five-group UUID for the batch wallet',()=>{
  assert.equal(uuidPattern.test(`${valid}-1111`),false);
 });
 test('8.63 bounds the queue to three and does not activate background processing',()=>{
- assert.match(batch,/\.limit\(3\)/);
+ assert.match(batch,/maxCandidates=extended\?10:3/);
+ assert.match(batch,/\.limit\(maxCandidates\)/);
  assert.match(batch,/45000/);
  assert.doesNotMatch(batch,/cron\.schedule|queue\.insert|process\(job/);
+});
+test('8.65 adds explicit 10-candidate plan and commit without changing 8.63 modes',()=>{
+ for(const mode of ['admin-miner-batch-plan-863','admin-miner-batch-commit-863',
+                    'admin-miner-batch-plan-865','admin-miner-batch-commit-865'])
+  assert.ok(batch.includes(mode),`${mode} is present`);
+ assert.match(batch,/maxCandidates=extended\?10:3/);
+ assert.match(batch,/body\.mode\.endsWith\('-865'\)/);
+ assert.match(batch,/selected\[0\]\.txHash!==body\.firstTxHash/);
 });
 test('8.63 handles all three candidate stages with independent RPC guards',()=>{
  assert.match(batch,/c\.payout_status==='pending'/);

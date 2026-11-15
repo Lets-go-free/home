@@ -170,3 +170,8 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Hotfix: der neue 8.63-Batch-Plan wies gültige Wallet-UUIDs irrtümlich zurück, da der Eingabeguard sechs statt fünf UUID-Gruppen verlangte. Korrigiert auf Standardformat 8-4-4-4-12; zusätzlicher Regressionstest mit dem echten (nicht geheimen) Test-Wallet-Identifier.
 - 8.63-Read-only-Plan lieferte `Invalid guarded miner batch request`; die Anfrage kam nicht bis zur DB, daher kein Daten-Write. **Nur `dao-reward-refresh/index.ts` neu deployen**, keine SQL-Migration, Cron/Live-Worker bleiben AUS. Dann denselben 8.63-Batch-Plan erneut testen.
 
+## 8.65 · 15.11.2026 20:51:05 CET · Build 20261115-205105
+- Manueller Admin-10er-Batch als **neue Modi** `admin-miner-batch-plan-865` und `admin-miner-batch-commit-865`. Maximal 10 Kandidaten; derselbe 45-Sekunden-Abbruch, Hash-Bindung, strikt sequenzielle Payout-/NFT-/Claim-Einzel-RPCs und Wiederanlauf wie 8.63. Die beiden bisherigen 8.63-Modi bleiben bei maximal drei Kandidaten unverändert verfügbar.
+- Vorher produktiv bestätigt: zwei 3er-Batches vollständig erfolgreich (6/6 kanonische neue Claims), Wiederanlauf sowie alter Start-Hash abgewiesen. Global letzter Audit **2'471/2'471 `exact-v13` konsistent, 0 Abweichungen**. Letzte Bestandszählung **56 offene `unassigned_miner`**, alle mit `payout_status=pending` und `claim_pipeline_status=pending`.
+- Keine neue SQL-Migration, keine Aktivierung von Cron, Live-Worker, Queue oder Cursor. Erst ZIP deployen, dann ausschliesslich `admin-miner-batch-plan-865` read-only testen; Commit separat freigeben. Lokal statische Regressionen, produktiver 10er-Lauf noch nicht getestet.
+

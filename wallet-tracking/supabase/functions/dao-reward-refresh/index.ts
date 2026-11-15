@@ -1332,11 +1332,16 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
- // 8.63: explicitly administered, at-most-three sequential miner completions.
+ // 8.63/8.65: explicitly administered sequential miner completions.
+ // 8.63 retains its maximum of three; 8.65 allows up to ten with the same
+ // time and evidence guards. No new batch worker or cron route is exposed.
  // The plan has no writes. Commit rechecks its first transaction and every
  // individual guard; an interruption can resume an already assigned NFT.
- if(body?.mode==='admin-miner-batch-plan-863'||body?.mode==='admin-miner-batch-commit-863'){
-  const commit=body.mode==='admin-miner-batch-commit-863';
+ if(['admin-miner-batch-plan-863','admin-miner-batch-commit-863',
+     'admin-miner-batch-plan-865','admin-miner-batch-commit-865'].includes(body?.mode)){
+  const commit=body.mode==='admin-miner-batch-commit-863'||body.mode==='admin-miner-batch-commit-865';
+  const extended=body.mode.endsWith('-865');
+  const maxCandidates=extended?10:3;
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
   if(Object.keys(body).some(k=>!['mode','walletId','firstTxHash'].includes(k))||
      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||''))||
@@ -1359,13 +1364,13 @@ Deno.serve(async request=>{
     .or('status.eq.unassigned_miner,and(status.eq.pending,nft_id.not.is.null)')
     .eq('claim_pipeline_status','pending').is('audit_classification',null)
     .eq('canonical_existing_verified',false)
-    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(3);
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(maxCandidates);
    if(qe)throw qe;
    const selected=(queue||[]).map((c:any)=>({txHash:c.tx_hash,claimBlock:c.claim_block,
     stage:c.nft_id!=null?'nft-assigned':c.payout_status==='verified'?'payout-verified':'payout-pending',
     nftId:c.nft_id??null}));
    if(!commit)return reply({ok:true,mode:body.mode,walletId:wallet.id,selected:selected.length,
-    candidates:selected,claimsCreated:0,notice:'Read-only three-candidate plan. No writes, cron or queue activation.'});
+    maxCandidates,candidates:selected,claimsCreated:0,notice:'Read-only bounded miner plan. No writes, cron or queue activation.'});
    if(!selected.length||selected[0].txHash!==body.firstTxHash)
     return reply({ok:false,mode:body.mode,error:'Batch start changed; obtain a fresh plan',candidates:selected},409);
    const results:any[]=[];let stopped='completed',claimsCreated=0;
@@ -1461,7 +1466,7 @@ Deno.serve(async request=>{
     }catch(e){row.error=daoErrorSummary(e);stopped='guard-failed';break;}
    }
    return reply({ok:stopped==='completed',mode:body.mode,walletId:wallet.id,
-    selected:selected.length,completed:claimsCreated,claimsCreated,stopped,results,
+    maxCandidates,selected:selected.length,completed:claimsCreated,claimsCreated,stopped,results,
     notice:'Admin-only bounded sequential run. Each transaction independently guarded. No cron, live worker, price, queue or cursor activation.'});
   }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},500)}
  }
