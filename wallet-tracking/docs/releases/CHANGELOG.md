@@ -149,3 +149,9 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - `admin-miner-page-preview-860`: schrittweise Read-only-Abnahme der 70 übrigen Miner mit stabil sortiertem Block/Hash-Fortsetzungspunkt. Maximal drei überprüfte Kandidaten und höchstens vier Datenbank-Kandidaten je Aufruf; keine Schreibzugriffe. Wiederverwendung derselben strikten 8.57-Event-Aggregation und 8.56-Payout-/Ownership-Evidenz.
 - Response mit `continuation` (Block/Hash), `hasMore`, kompakter Collection-Spanne und Event-Anzahl; Zeitbudget darf keinen ungeprüften Kandidaten überspringen. Keine SQL-Migration, keine generische NFT-/Claim-Schreibroute, DAO-Cron/Live-Worker AUS.
 
+## 8.61 · 15.11.2026 19:06:27 CET · Build 20261115-190627
+- 8.60-Live-Preview erfolgreich über zwei Seiten: jeweils 3/3 Miner bereit, strikt aufsteigende Block/Hash-Reihenfolge und gültiger Cursor, kein Write.
+- Neue allgemeine, manuelle Einzel-NFT-Zuordnung ohne hartcodierte Transaktions-ID, NFT-ID, Eventzahl oder Betrag. Routen `admin-miner-nft-preview-861` (reines Read-only) und `admin-miner-nft-assign-861` (erst nach Payout verified, genau eine Kandidaten-NFT-Zuordnung).
+- SQL-Funktion `wallettracking_dao_assign_multi_miner_nft_861`: service_role-only, verschlossene Transaktions-/Wallet-Scope, exakter nativer Payout, unveränderter exact-v13-Flow, historische NFT-Eigentümerschaft und komplette Transfer-Coverage mit Sperren. Explorer-Events werden in Edge vollständig revalidiert. Kein automatischer Claim-/Reward-/Preis-Write und keine Batch-Freigabe; Cron/Live-Worker AUS.
+- Stufenweise Installation und Live-Abnahme: zuerst SQL, dann Edge, dann eine Payout-Verifikation, Read-only-NFT-Preview, guarded NFT-Assign und erst danach separater kanonischer Finalizer.
+
