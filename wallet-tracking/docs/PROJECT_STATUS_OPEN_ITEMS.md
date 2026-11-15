@@ -1,4 +1,4 @@
-> **Aktuell 8.55:** 8.54 SQL und Edge installiert, erster Einzelzuordnungsaufruf scheiterte an nicht existierender Spalte `dao_reward_claim_candidates.updated_at`; kein erfolgreicher Write. 8.55 ersetzt die RPC mit unveränderten Guards, aber ohne diese Spalte. **Nächster Schritt: nur neue 8.55-SQL-Migration installieren**, Rückmeldung abwarten. Details `docs/releases/8.55-dao-single-miner-nft-column-fix.md`. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.56:** 8.55-Korrektur live installiert; ein zusätzlicher Reto-Miner-Claim erfolgreich einzeln NFT-zugeordnet und kanonisch erstellt. Global 2'455/2'455 `exact-v13` konsistent. 72 offene Miner + 76 Legacy verbleiben. **8.56 read-only Drei-Miner-Preview erstellt, Deployment offen.** Nächster Schritt: ZIP übernehmen und drei Edge-Dateien gemeinsam deployen; danach Rückmeldung. Details `docs/releases/8.56-dao-three-miner-preview.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – DAO1 historische Reto-Claims: Live-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - **Version 8.52 installiert und live getestet:** `wallettracking_dao_finalize_single_claim` schreibt die Begleitfelder in `project_transactions` und `project_nft_claims.reward_usd` atomar. Der zuvor unvollständige Claim zu NFT #21 wurde durch `wallettracking_dao_repair_single_claim_852` repariert und einzeln vollständig geprüft. Neue Claim-Erstellung, Wiederholungsschutz und historischer `exact-v13`-Preis wurden live bestätigt.
@@ -502,4 +502,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 ### Phase 8.55 – SQL-Spaltenkorrektur nach erster 8.54-Liveprobe
 - 8.54 SQL und Edge installiert; erster einzelner Aufruf wurde mit `Guarded NFT assignment refused: column "updated_at" of relation "dao_reward_claim_candidates" does not exist` abgelehnt. Das UPDATE wurde nicht ausgeführt, kein Erfolg behauptet.
 - 8.55-Migration ersetzt dieselbe service-only RPC ohne `updated_at`-Zuweisung. Kein neuer Edge-Deploy, keine automatische Datenänderung. Als Nächstes **nur diese Migration** installieren und Ergebnis melden. DAO-Cron/Live-Worker AUS.
+
+### Phase 8.56 – Drei-Miner-Read-only-Preview vorbereitet
+- Ein zusätzlicher Reto-Claim (NFT #37084) ist nach 8.55-Fehlerkorrektur vollständig kanonisch übernommen und in beiden Tabellen konsistent; global 2'455/2'455 `exact-v13`-Claims, null Abweichungen. 72 `unassigned_miner` und 76 `unassigned_legacy` bleiben offen.
+- Neue begrenzte, reine Admin-Preview für bis zu drei älteste Miner-Kandidaten mit on-chain Event, nativer Explorer-Auszahlung, unverändertem exaktem Preis und historischer Ownership-Coverage. Keine SQL-/Reward-/Queue-Writes. Deployment/Test offen; Details `docs/releases/8.56-dao-three-miner-preview.md`.
+- Nächster Schritt: ZIP übernehmen, `index.ts`, `miner-event-853.js` und `miner-batch-preview-856.js` gemeinsam deployen; Ergebnis melden. DAO-Cron/Live-Worker AUS.
 

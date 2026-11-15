@@ -1,4 +1,4 @@
-> **Aktuell 8.55:** 8.54 SQL/Edge installiert; Einzelzuordnungsversuch scheiterte bei SQL-UPDATE an fehlender Kandidaten-Spalte `updated_at`, keine Zuordnung bestätigt. 8.55-Korrektur neu versioniert; **nächster Schritt ausschliesslich 8.55-SQL-Migration installieren**. Edge 8.54 bleibt unverändert. Details `docs/releases/8.55-dao-single-miner-nft-column-fix.md`. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.56:** 8.55-Migration live installiert. Pilot-Claim NFT #37084 erfolgreich zugeordnet und kanonisch erstellt, SQL-Vergleich konsistent, global 2'455/2'455 `exact-v13`, null Abweichungen. Reto: 378 kanonische Miner-Claims, 72 weitere unassigned_miner, 76 unassigned_legacy. 8.56 read-only Drei-Kandidaten-Preview vorbereitet, **nächster Schritt nur Edge-Deployment**, dann Rückmeldung. Details `docs/releases/8.56-dao-three-miner-preview.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – Reto-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - Live-Migration 8.52 installiert, ursprünglichen unvollständigen Claim #21 repariert; zweiter Claim erfolgreich atomar angelegt, `exact-v13` bestätigt.
@@ -258,4 +258,9 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 ### Phase 8.55 – 8.54-SQL-Fehlerbehebung
 - Nach installierter 8.54 SQL + Edge lieferte Einzelversuch `ok:false` wegen nicht existierender `dao_reward_claim_candidates.updated_at`; kein Write bestätigt.
 - Neue Migration `20261115162700_dao_single_miner_nft_assignment_fix_855.sql` ersetzt dieselbe RPC ohne `updated_at`; alle Guards unverändert. **Nächster Schritt: nur SQL 8.55 installieren**, Rückmeldung abwarten. Details `docs/releases/8.55-dao-single-miner-nft-column-fix.md`.
+
+### Phase 8.56 – Drei-Miner-Preview, noch nicht deployt
+- 8.55 installiert: NFT #37084, Payout und kanonischer Reward vollständig konsistent übernommen; nun 378 Reto-Miner-Claims abgeschlossen, global 2'455/2'455 `exact-v13` mit null Abweichungen.
+- 72 `unassigned_miner` und 76 `unassigned_legacy` verbleiben. 8.56 liefert nur einen Admin-Read-only-Preview für die nächsten maximal drei Miner, mit unabhängiger on-chain Auszahlung, Event, exaktem Preis und historischer NFT-Ownership-Coverage; kein Write/Cron.
+- **Nächster Schritt:** Update-ZIP einspielen, `dao-reward-refresh` mit `index.ts`, `miner-event-853.js`, `miner-batch-preview-856.js` gemeinsam deployen. Rückmeldung abwarten. Details `docs/releases/8.56-dao-three-miner-preview.md`.
 
