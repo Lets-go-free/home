@@ -155,3 +155,8 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - SQL-Funktion `wallettracking_dao_assign_multi_miner_nft_861`: service_role-only, verschlossene Transaktions-/Wallet-Scope, exakter nativer Payout, unveränderter exact-v13-Flow, historische NFT-Eigentümerschaft und komplette Transfer-Coverage mit Sperren. Explorer-Events werden in Edge vollständig revalidiert. Kein automatischer Claim-/Reward-/Preis-Write und keine Batch-Freigabe; Cron/Live-Worker AUS.
 - Stufenweise Installation und Live-Abnahme: zuerst SQL, dann Edge, dann eine Payout-Verifikation, Read-only-NFT-Preview, guarded NFT-Assign und erst danach separater kanonischer Finalizer.
 
+## 8.62 · 15.11.2026 19:11:12 CET · Build 20261115-191112
+- 8.61-SQL-Installationsversuch fehlgeschlagen (SQLSTATE 42601, `OR` nach `COMMIT`). Ursache: verdoppelter SQL-Suffix hinter dem gültigen Funktionsblock in der ausgelieferten Migrationsdatei. Kein Daten- oder Schema-Write erfolgt.
+- Neue korrigierte 8.62-Migration installiert dieselbe generische, service_role-geschützte Funktion. Zur Sicherung künftiger Projekt-Replays wurde die **nicht erfolgreich ausgeführte** 8.61-Quellmigration im Archiv ebenfalls korrigiert. Keine Änderung der Edge-Guards, Preis-/Reward-/Claim-Tabellen oder Jobs.
+- Nächster Schritt nur 8.62 SQL installieren, danach Edge-Deploy separat. DAO-Cron/Live-Worker AUS.
+
