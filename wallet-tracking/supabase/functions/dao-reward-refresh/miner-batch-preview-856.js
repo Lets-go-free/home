@@ -15,8 +15,9 @@ export function evaluateMinerPreview856({candidate:c,tx:t,flows,event,observed,o
       !/^0x[0-9a-f]{40}$/.test(lower(address)) ||
       Number(t.claim_reward_aptm || 0) !== 0 || Number(t.claim_reward_usd || 0) !== 0 ||
       t.claim_nft_id != null) return blocked('transaction-or-wallet-mismatch')
+  const collections=event?.collectionIds || (event?.collectionId ? [event.collectionId] : [])
   if (!event || event.staker !== lower(address) || !/^[0-9]+$/.test(event.tokenId || '') ||
-      !/^[0-9]+$/.test(event.collectionId || '') ||
+      !Array.isArray(collections) || !collections.length || collections.some(x=>!/^[0-9]+$/.test(x)) ||
       !/^[0-9]+$/.test(event.amountRaw || '')) return blocked('reward-event-missing-or-ambiguous')
   if (!observed || lower(observed.counterparty_address) !== contract ||
       observed.amount_raw !== event.amountRaw) return blocked('explorer-native-payout-mismatch')

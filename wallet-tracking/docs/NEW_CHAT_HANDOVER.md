@@ -1,4 +1,4 @@
-> **Aktuell 8.56:** 8.55-Migration live installiert. Pilot-Claim NFT #37084 erfolgreich zugeordnet und kanonisch erstellt, SQL-Vergleich konsistent, global 2'455/2'455 `exact-v13`, null Abweichungen. Reto: 378 kanonische Miner-Claims, 72 weitere unassigned_miner, 76 unassigned_legacy. 8.56 read-only Drei-Kandidaten-Preview vorbereitet, **nächster Schritt nur Edge-Deployment**, dann Rückmeldung. Details `docs/releases/8.56-dao-three-miner-preview.md`. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.57:** 8.56 Read-only-Drei-Miner-Preview live 0/3 ready, 3/3 `reward-event-missing-or-ambiguous`; Explorer zeigte mehrere RewardClaimed-Events zu gleicher NFT #37084/Staker, unterschiedlichen Collections. 8.57 korrigiert aggregierte exakte Wei-Auszahlung bei strenger Einzigkeit, nur read-only. **Nächster Schritt nur Edge-Deployment** mit `index.ts`, `miner-multi-event-857.js`, `miner-batch-preview-856.js`, `miner-event-853.js`, dann Rückmeldung. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – Reto-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - Live-Migration 8.52 installiert, ursprünglichen unvollständigen Claim #21 repariert; zweiter Claim erfolgreich atomar angelegt, `exact-v13` bestätigt.
@@ -263,4 +263,9 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 - 8.55 installiert: NFT #37084, Payout und kanonischer Reward vollständig konsistent übernommen; nun 378 Reto-Miner-Claims abgeschlossen, global 2'455/2'455 `exact-v13` mit null Abweichungen.
 - 72 `unassigned_miner` und 76 `unassigned_legacy` verbleiben. 8.56 liefert nur einen Admin-Read-only-Preview für die nächsten maximal drei Miner, mit unabhängiger on-chain Auszahlung, Event, exaktem Preis und historischer NFT-Ownership-Coverage; kein Write/Cron.
 - **Nächster Schritt:** Update-ZIP einspielen, `dao-reward-refresh` mit `index.ts`, `miner-event-853.js`, `miner-batch-preview-856.js` gemeinsam deployen. Rückmeldung abwarten. Details `docs/releases/8.56-dao-three-miner-preview.md`.
+
+### Phase 8.57 – Mehrfach-Event-Aggregation vorbereitet
+- 8.56 Drei-Kandidaten-Preview live: 3/3 wegen mehrerer RewardClaimed-Events blockiert, keine Writes. Explorer-Screenshots belegen mehrere Collection-IDs für NFT #37084 und identischen Staker.
+- 8.57 nur read-only: identische NFT-/Staker-Identität über vollständige paginierte Logs, eindeutige Indizes, BigInt-Summe exakt zur Explorer-Auszahlung und gespeichertem bewerteten Flow. Verschiedene NFT-/Wallets/fehlende Nachweise werden blockiert.
+- Nächster Schritt: ZIP einspielen, `index.ts`, `miner-multi-event-857.js`, `miner-batch-preview-856.js`, `miner-event-853.js` gemeinsam deployen; Rückmeldung abwarten. Kein SQL, Cron/Live-Worker AUS.
 

@@ -130,3 +130,7 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - 8.55-Korrektur live bestätigt; genau ein zusätzlicher Reto-Miner-Claim (NFT #37084) durch Event, Ownership, Auszahlung, NFT-Zuordnung und 8.52-Finalizer kanonisch übernommen. SQL-Audit in beiden Tabellen konsistent, global 2'455/2'455 `exact-v13` ohne Abweichung. 72 weitere Miner + 76 Legacy bleiben offen.
 - Neue admin-authentifizierte read-only Drei-Kandidaten-Preview mit Event-, Payout-, Eigentums-, Coverage- und Preis-Guards; keine SQL-Migration, keinerlei DB-Writes. Edge-Deployment und Live-Test offen. DAO-Cron/Live-Worker AUS.
 
+## 8.57 · 15.11.2026 16:45:00 CET · Build 20261115-164500
+- 8.56 Read-only-Preview live: drei Kandidaten wegen mehrfacher RewardClaimed-Events blockiert, keine DB-Änderung. Explorer zeigt mehrere Collection-IDs pro NFT/Staker.
+- 8.57 ergänzt strikte Aggregation aller vollständigen TX-lokalen RewardClaimed-Events zu einem NFT-Claim, exakte Wei-Summe und Payout-/Flow-Gleichheit; Misch-IDs, Index-Duplikate, fehlende Historie bleiben blockiert. Keine SQL-/Reward-/Claim-Writes. Live-Retest und Deployment offen; DAO-Cron/Live-Worker aus.
+

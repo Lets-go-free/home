@@ -1,4 +1,4 @@
-> **Aktuell 8.56:** 8.55-Korrektur live installiert; ein zusätzlicher Reto-Miner-Claim erfolgreich einzeln NFT-zugeordnet und kanonisch erstellt. Global 2'455/2'455 `exact-v13` konsistent. 72 offene Miner + 76 Legacy verbleiben. **8.56 read-only Drei-Miner-Preview erstellt, Deployment offen.** Nächster Schritt: ZIP übernehmen und drei Edge-Dateien gemeinsam deployen; danach Rückmeldung. Details `docs/releases/8.56-dao-three-miner-preview.md`. DAO-Cron/Live-Worker AUS.
+> **Aktuell 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
 ### Phase 8.52 – DAO1 historische Reto-Claims: Live-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - **Version 8.52 installiert und live getestet:** `wallettracking_dao_finalize_single_claim` schreibt die Begleitfelder in `project_transactions` und `project_nft_claims.reward_usd` atomar. Der zuvor unvollständige Claim zu NFT #21 wurde durch `wallettracking_dao_repair_single_claim_852` repariert und einzeln vollständig geprüft. Neue Claim-Erstellung, Wiederholungsschutz und historischer `exact-v13`-Preis wurden live bestätigt.
@@ -507,4 +507,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Ein zusätzlicher Reto-Claim (NFT #37084) ist nach 8.55-Fehlerkorrektur vollständig kanonisch übernommen und in beiden Tabellen konsistent; global 2'455/2'455 `exact-v13`-Claims, null Abweichungen. 72 `unassigned_miner` und 76 `unassigned_legacy` bleiben offen.
 - Neue begrenzte, reine Admin-Preview für bis zu drei älteste Miner-Kandidaten mit on-chain Event, nativer Explorer-Auszahlung, unverändertem exaktem Preis und historischer Ownership-Coverage. Keine SQL-/Reward-/Queue-Writes. Deployment/Test offen; Details `docs/releases/8.56-dao-three-miner-preview.md`.
 - Nächster Schritt: ZIP übernehmen, `index.ts`, `miner-event-853.js` und `miner-batch-preview-856.js` gemeinsam deployen; Ergebnis melden. DAO-Cron/Live-Worker AUS.
+
+### Phase 8.57 – Mehrere RewardClaimed-Events eines NFT aggregieren
+- Live-Preview 8.56 für drei älteste offene Miner: 0 bereit, 3 blockiert als `reward-event-missing-or-ambiguous`, ohne Datenänderung. Explorer zeigt bei erster TX viele RewardClaimed-Events zu NFT #37084 und derselben Staker-Adresse, jedoch mehreren Collection-IDs.
+- Neue read-only 8.57-Aggregation fordert identisches NFT/Staker, eindeutige Log-Indizes, vollständige TX-Logs und exakte BigInt-Summe gleich nativer Explorer-Auszahlung und persistiertem `exact-v13`-Flow. Keine automatischen Writes; Deployment/Live-Test offen.
+- Nächster Schritt: Update-ZIP übernehmen, vier Edge-Dateien gemeinsam deployen, Rückmeldung abwarten. DAO-Cron/Live-Worker AUS.
 

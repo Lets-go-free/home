@@ -19,6 +19,10 @@ const source={
 }
 const assess=changes=>evaluateMinerPreview856({...source,...changes})
 test('8.56 accepts complete, independently consistent read-only evidence',()=>assert.deepEqual(assess({}),{ready:true,reason:'all-preview-guards-passed'}))
+test('8.57 accepts aggregated multi-collection evidence for one NFT',()=>{
+ const aggregated={tokenId:'37084',staker:addr,amountRaw:'72141524528301886',collectionIds:['32888','32889'],eventCount:2}
+ assert.equal(assess({event:aggregated}).ready,true)
+})
 test('8.56 refuses prior claims and unverified assets',()=>{
  assert.equal(assess({candidate:{...source.candidate,claim_pipeline_status:'completed'}}).ready,false)
  assert.equal(assess({candidate:{...source.candidate,payout_status:'verified'}}).ready,false)
@@ -39,7 +43,7 @@ test('8.56 endpoint has bounded read-only surface',()=>{
  const region=code.split("if(body?.mode==='admin-miner-batch-preview-856'){")[1].split('// 8.53: one strictly read-only')[0]
  assert.match(region,/limit\(3\)/)
  assert.match(region,/from\('dao_reward_claim_candidates'\)\s*\.select\(/)
- assert.match(region,/uniqueMinerRewardEvent853/)
+ assert.match(region,/aggregateMinerRewardEvents857/)
  assert.match(region,/evaluateMinerPreview856/)
  assert.doesNotMatch(region,/sb\.rpc\(|\.upsert\(|\.insert\(|\.update\(|\.delete\(/)
 })

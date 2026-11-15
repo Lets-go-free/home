@@ -10,6 +10,7 @@ import './asset-policy.js'
 import { rewardFlowCounterparty } from './counterparty-policy.js'
 import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
 import { evaluateMinerPreview856 } from './miner-batch-preview-856.js'
+import { aggregateMinerRewardEvents857 } from './miner-multi-event-857.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
@@ -1391,8 +1392,8 @@ Deno.serve(async request=>{
       for(const [k,v] of Object.entries(response.next_page_params))if(v!=null)url.searchParams.set(k,String(v));
       next=url.toString();
      }
-     const event=uniqueMinerRewardEvent853(logs,c.tx_hash);
-     if(!event){row.reason='reward-event-missing-or-ambiguous';results.push(row);continue;}
+     const event=aggregateMinerRewardEvents857(logs,c.tx_hash);
+     if(!event){row.reason='reward-events-missing-mixed-or-ambiguous';results.push(row);continue;}
      const nftScope={chain_key:CHAIN,nft_contract:'0x3ae2dfc3b795267e284cbab7eff9a0cefdab401d',nft_id:event.tokenId};
      const [{data:ownership,error:oe},{data:coverage,error:he},{data:transfers,error:xe}]=await Promise.all([
       sb.from('project_nft_ownership').select('owned_from_block,owned_to_block').match({...nftScope,user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT}).limit(3),
@@ -1401,7 +1402,7 @@ Deno.serve(async request=>{
      ]);
      if(oe||he||xe)throw Error('Scoped NFT ownership evidence query failed');
      const assessment=evaluateMinerPreview856({candidate:c,tx:t,flows,event,observed,ownership,coverage,transfers,address});
-     Object.assign(row,assessment,{nftId:event.tokenId,collectionId:event.collectionId,
+     Object.assign(row,assessment,{nftId:event.tokenId,collectionIds:event.collectionIds,eventCount:event.eventCount,
       amountRaw:event.amountRaw,priceSource:flows?.[0]?.price_source??null});
     }catch(e){row.reason='evidence-unavailable: '+daoErrorSummary(e);}
     results.push(row);
