@@ -139,3 +139,8 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Neue eng auf die erste TX begrenzte Admin-Route `admin-miner-multi-nft-assign-858` und SQL-Funktion: vollständige paginierte Event-Summe, einzigartige Log-Indizes/Collections, identischer Staker/NFT, retraceter nativer Payout, unveränderter historischer Flow, Eigentumsintervall und kompletter Transfernachweis; SQL-Reprüfung mit Sperren. Nur Kandidaten-NFT-Zuordnung; kein Canonical/Reward/Preis-Write. DAO-Cron und Live-Worker deaktiviert.
 - Abnahme bewusst schrittweise: zuerst SQL-Migration, dann Edge, danach genau ein Live-Assign-Test; keine automatische Batch-Aktivierung.
 
+## 8.59 · 15.11.2026 18:17:55 CET · Build 20261115-181755
+- Zweiter Multi-Event-Claim aus 8.58 erfolgreich kanonisch übernommen, Reward/Flow exakt identisch; global 2'456/2'456 `exact-v13` Claims konsistent, 0 Abweichungen.
+- Nachfolgende 71 unassigned Miner kontrolliert geprüft: die ältesten drei 3/3 read-only bereit (500/500/237 Events). Erste weitere Auszahlung (50.945303137912696144 APTM) via 8.43 Explorer-Trace verifiziert, SQL bestätigt candidate-only verified.
+- 8.59 installiert noch nichts automatisch: neue streng auf TX `0xed7beb78…` begrenzte Admin-Route und eigene SQL-NFT-Zuordnung (500 Events, Collections 33387–33886, NFT #37084). Keine Canonical-/Reward-/Preis-Writes; DAO-Cron/Live-Worker bleiben aus.
+

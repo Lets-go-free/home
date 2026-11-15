@@ -1,0 +1,34 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const root=new URL('../',import.meta.url);
+const edge=readFileSync(new URL('supabase/functions/dao-reward-refresh/index.ts',root),'utf8');
+const sql=readFileSync(new URL('supabase/migrations/20261115181730_dao_second_multi_event_assignment_859.sql',root),'utf8');
+const route=edge.slice(edge.indexOf("if(body?.mode==='admin-miner-multi-nft-assign-859')"),edge.indexOf(' // 8.58: single approved'));
+const hash='0xed7beb78eae4965a64a2dd929edb7cf3c39ef5731b8093d445ec848d05ec93be';
+const wei='50945303137912696144';
+test('8.59 edge second pilot is locked to exact evidence and retains 8.58 route',()=>{
+ assert.ok(route.includes(hash));
+ assert.ok(route.includes(wei));
+ assert.match(route,/event\.eventCount!==500/);
+ assert.match(route,/event\.collectionIds\[499\]!=='33886'/);
+ assert.match(route,/authenticateInspectAdmin/);
+ assert.match(route,/aggregateMinerRewardEvents857/);
+ assert.match(route,/evaluateMinerPreview856/);
+ assert.match(route,/DAO_REWARD_ENABLE_LIVE_WORKER/);
+ assert.match(edge,/admin-miner-multi-nft-assign-858/);
+});
+test('8.59 SQL cannot run for another wallet, transaction, amount or event count',()=>{
+ assert.ok(sql.includes(hash));
+ assert.ok(sql.includes(wei));
+ assert.match(sql,/p_wallet IS DISTINCT FROM '8a3c5dc6-0610-482d-a327-3f3ba03db158'/);
+ assert.match(sql,/p_user IS DISTINCT FROM 'f1c89973-f40b-402a-9670-33cee7300b1e'/);
+ assert.match(sql,/p_event_count IS DISTINCT FROM 500/);
+ assert.match(sql,/p_collection_id IS DISTINCT FROM 33387/);
+ assert.match(sql,/p_event_amount_raw IS DISTINCT FROM '50945303137912696144'/);
+ assert.match(sql,/Unique historical ownership interval required/);
+ assert.match(sql,/Complete NFT transfer coverage required/);
+ assert.match(sql,/Payout flow or exact historical price mismatch/);
+ assert.match(sql,/SET nft_contract=v_contract,nft_id=p_nft_id,status='pending'/);
+ assert.doesNotMatch(sql,/INSERT INTO|DELETE FROM|updated_at=now\(\)/i);
+});
