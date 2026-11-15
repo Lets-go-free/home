@@ -1339,7 +1339,7 @@ Deno.serve(async request=>{
   const commit=body.mode==='admin-miner-batch-commit-863';
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
   if(Object.keys(body).some(k=>!['mode','walletId','firstTxHash'].includes(k))||
-     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||''))||
+     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||''))||
      (commit?!/^0x[0-9a-f]{64}$/.test(String(body.firstTxHash||'')):body.firstTxHash!==undefined))
    return reply({ok:false,error:'Invalid guarded miner batch request'},400);
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual batch disabled'},403);

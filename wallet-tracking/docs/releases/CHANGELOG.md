@@ -166,3 +166,7 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Letzter manueller Live-Audit vor Release: 2'465/2'465 `exact-v13`-Claims konsistent, keine Abweichung. Zwei unterschiedliche NFTs #42474/#42475 mit derselben Collection-Spanne einzeln via Explorer-Logs belegt und jeweils finalisiert. Ein weiterer Kandidat NFT #42475, Block 14711369 ist **nur NFT-zugeordnet**, noch nicht finalisiert: absichtlicher Resume-Test für 8.63.
 - DAO-Cron und Live-Worker bleiben deaktiviert; kein Test in Supabase vor Edge-Deploy. Neue Testdatei und aktualisierte Dokumentation.
 
+## 8.64 · 15.11.2026 20:40:36 CET · Build 20261115-204036
+- Hotfix: der neue 8.63-Batch-Plan wies gültige Wallet-UUIDs irrtümlich zurück, da der Eingabeguard sechs statt fünf UUID-Gruppen verlangte. Korrigiert auf Standardformat 8-4-4-4-12; zusätzlicher Regressionstest mit dem echten (nicht geheimen) Test-Wallet-Identifier.
+- 8.63-Read-only-Plan lieferte `Invalid guarded miner batch request`; die Anfrage kam nicht bis zur DB, daher kein Daten-Write. **Nur `dao-reward-refresh/index.ts` neu deployen**, keine SQL-Migration, Cron/Live-Worker bleiben AUS. Dann denselben 8.63-Batch-Plan erneut testen.
+

@@ -11,6 +11,14 @@ test('8.63 requires the manual/admin flags and refuses live worker',()=>{
  assert.match(batch,/DAO_REWARD_ENABLE_LIVE_WORKER/);
  assert.match(batch,/firstTxHash/);
 });
+test('8.64 accepts a standard five-group UUID for the batch wallet',()=>{
+ const valid='8a3c5dc6-0610-482d-a327-3f3ba03db158';
+ const guard=batch.match(/!\/(\^\[0-9a-f\].+?\$)\/i\.test\(String\(body\.walletId\|\|''\)\)/);
+ assert.ok(guard,'batch wallet UUID guard is present');
+ const uuidPattern=new RegExp(guard[1],'i');
+ assert.equal(uuidPattern.test(valid),true);
+ assert.equal(uuidPattern.test(`${valid}-1111`),false);
+});
 test('8.63 bounds the queue to three and does not activate background processing',()=>{
  assert.match(batch,/\.limit\(3\)/);
  assert.match(batch,/45000/);
