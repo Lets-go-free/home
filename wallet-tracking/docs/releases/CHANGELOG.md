@@ -134,3 +134,8 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - 8.56 Read-only-Preview live: drei Kandidaten wegen mehrfacher RewardClaimed-Events blockiert, keine DB-Änderung. Explorer zeigt mehrere Collection-IDs pro NFT/Staker.
 - 8.57 ergänzt strikte Aggregation aller vollständigen TX-lokalen RewardClaimed-Events zu einem NFT-Claim, exakte Wei-Summe und Payout-/Flow-Gleichheit; Misch-IDs, Index-Duplikate, fehlende Historie bleiben blockiert. Keine SQL-/Reward-/Claim-Writes. Live-Retest und Deployment offen; DAO-Cron/Live-Worker aus.
 
+## 8.58 · 15.11.2026 17:52:45 CET · Build 20261115-175245
+- 8.57-Live-Vorschau 3/3 bereit; 499/500/500 Events pro TX belegen die gleiche NFT und mehrere Collection-IDs. Erste Auszahlung 54.477996600093324995 APTM erfolgreich verifiziert; SQL bestätigt 1 unveränderten exact-v13-Flow und noch 0 kanonische Claims.
+- Neue eng auf die erste TX begrenzte Admin-Route `admin-miner-multi-nft-assign-858` und SQL-Funktion: vollständige paginierte Event-Summe, einzigartige Log-Indizes/Collections, identischer Staker/NFT, retraceter nativer Payout, unveränderter historischer Flow, Eigentumsintervall und kompletter Transfernachweis; SQL-Reprüfung mit Sperren. Nur Kandidaten-NFT-Zuordnung; kein Canonical/Reward/Preis-Write. DAO-Cron und Live-Worker deaktiviert.
+- Abnahme bewusst schrittweise: zuerst SQL-Migration, dann Edge, danach genau ein Live-Assign-Test; keine automatische Batch-Aktivierung.
+

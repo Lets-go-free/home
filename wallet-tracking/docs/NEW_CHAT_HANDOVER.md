@@ -269,3 +269,5 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 - 8.57 nur read-only: identische NFT-/Staker-Identität über vollständige paginierte Logs, eindeutige Indizes, BigInt-Summe exakt zur Explorer-Auszahlung und gespeichertem bewerteten Flow. Verschiedene NFT-/Wallets/fehlende Nachweise werden blockiert.
 - Nächster Schritt: ZIP einspielen, `index.ts`, `miner-multi-event-857.js`, `miner-batch-preview-856.js`, `miner-event-853.js` gemeinsam deployen; Rückmeldung abwarten. Kein SQL, Cron/Live-Worker AUS.
 
+> **Aktuell 8.58 (15.11.2026):** Live-Preview 8.57: 3/3 Multi-Event-Claims bereit (499/500/500 Events), keine Writes. Erster TX `0xb4090cfa…` native Auszahlung 54.477996600093324995 APTM erfolgreich mit 8.43 verifiziert; SQL bestätigt 0 kanonische Claims, 1 unveränderten exact-v13-Flow, NFT leer. 8.58 **einzige feste Pilot-TX** mit 499 gleich-NFT-Events und SQL-Eigentumsprüfungen; Update-ZIP vorbereitet. **Nur nächster Schritt:** SQL-Migration 8.58 installieren, Rückmeldung abwarten. Edge danach separat. Kein DAO-Cron/Live-Worker. Detail `docs/releases/8.58-dao-multi-event-single-assignment.md`.
+
