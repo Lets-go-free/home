@@ -160,3 +160,9 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Neue korrigierte 8.62-Migration installiert dieselbe generische, service_role-geschützte Funktion. Zur Sicherung künftiger Projekt-Replays wurde die **nicht erfolgreich ausgeführte** 8.61-Quellmigration im Archiv ebenfalls korrigiert. Keine Änderung der Edge-Guards, Preis-/Reward-/Claim-Tabellen oder Jobs.
 - Nächster Schritt nur 8.62 SQL installieren, danach Edge-Deploy separat. DAO-Cron/Live-Worker AUS.
 
+## 8.63 · 15.11.2026 20:33:13 CET · Build 20261115-203313
+- Neuer manueller Admin-Dreierbatch für historische Miner: `admin-miner-batch-plan-863` (schreibgeschützter Plan) und `admin-miner-batch-commit-863` (höchstens drei sequenziell geprüfte TX, Start-Hash-Bindung). Ausschliesslich bestehende service_role-RPCs für Auszahlung, NFT-Zuordnung und finalen Claim; kein neuer SQL-/Cron-Worker.
+- Für den Wiederanlauf werden unverifizierte, verifizierte und bereits NFT-zugeordnete Kandidaten unterschieden. Nach jeder Mutation prüft der Batch frische DB-Evidenz; bei Fehler oder Zeitbudget stoppt er ohne weitere TX. Kein Batch-Retry durch blindes Wiederholen derselben Start-TX: immer neuen Plan abrufen.
+- Letzter manueller Live-Audit vor Release: 2'465/2'465 `exact-v13`-Claims konsistent, keine Abweichung. Zwei unterschiedliche NFTs #42474/#42475 mit derselben Collection-Spanne einzeln via Explorer-Logs belegt und jeweils finalisiert. Ein weiterer Kandidat NFT #42475, Block 14711369 ist **nur NFT-zugeordnet**, noch nicht finalisiert: absichtlicher Resume-Test für 8.63.
+- DAO-Cron und Live-Worker bleiben deaktiviert; kein Test in Supabase vor Edge-Deploy. Neue Testdatei und aktualisierte Dokumentation.
+

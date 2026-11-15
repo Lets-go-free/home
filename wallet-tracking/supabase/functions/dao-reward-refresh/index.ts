@@ -1332,6 +1332,139 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // 8.63: explicitly administered, at-most-three sequential miner completions.
+ // The plan has no writes. Commit rechecks its first transaction and every
+ // individual guard; an interruption can resume an already assigned NFT.
+ if(body?.mode==='admin-miner-batch-plan-863'||body?.mode==='admin-miner-batch-commit-863'){
+  const commit=body.mode==='admin-miner-batch-commit-863';
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  if(Object.keys(body).some(k=>!['mode','walletId','firstTxHash'].includes(k))||
+     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||''))||
+     (commit?!/^0x[0-9a-f]{64}$/.test(String(body.firstTxHash||'')):body.firstTxHash!==undefined))
+   return reply({ok:false,error:'Invalid guarded miner batch request'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual batch disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error},permission.status);
+   const {data:wallet,error:we}=await sb.from('wallets').select('id,user_id').eq('id',body.walletId).maybeSingle();
+   if(we||!wallet)throw Error('Wallet scope unavailable');
+   const job={user_id:wallet.user_id,wallet_id:wallet.id};
+   const address=await loadAddress(job);
+   // An assigned but unfinalized candidate has status=pending. Never select
+   // generic pending candidates without an NFT, nor legacy/failed candidates.
+   const {data:queue,error:qe}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,claim_block,status,payout_status,nft_id,nft_contract,claim_pipeline_status,audit_classification,canonical_existing_verified')
+    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT).eq('chain_key',CHAIN)
+    .or('status.eq.unassigned_miner,and(status.eq.pending,nft_id.not.is.null)')
+    .eq('claim_pipeline_status','pending').is('audit_classification',null)
+    .eq('canonical_existing_verified',false)
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(3);
+   if(qe)throw qe;
+   const selected=(queue||[]).map((c:any)=>({txHash:c.tx_hash,claimBlock:c.claim_block,
+    stage:c.nft_id!=null?'nft-assigned':c.payout_status==='verified'?'payout-verified':'payout-pending',
+    nftId:c.nft_id??null}));
+   if(!commit)return reply({ok:true,mode:body.mode,walletId:wallet.id,selected:selected.length,
+    candidates:selected,claimsCreated:0,notice:'Read-only three-candidate plan. No writes, cron or queue activation.'});
+   if(!selected.length||selected[0].txHash!==body.firstTxHash)
+    return reply({ok:false,mode:body.mode,error:'Batch start changed; obtain a fresh plan',candidates:selected},409);
+   const results:any[]=[];let stopped='completed',claimsCreated=0;
+   const started=Date.now();
+   for(const item of selected){
+    if(Date.now()-started>45000){stopped='time-budget';break;}
+    const row:any={txHash:item.txHash,claimBlock:item.claimBlock,status:'blocked',stage:item.stage};
+    results.push(row);
+    try{
+     const scope={...job,project_key:PROJECT,chain_key:CHAIN,tx_hash:item.txHash};
+     const [{data:cs,error:ce},{data:ts,error:te},{data:fs,error:fe},{data:ns,error:ne}]=await Promise.all([
+      sb.from('dao_reward_claim_candidates').select('status,payout_status,payout_amount_raw,payout_token_address,payout_token_decimals,payout_flow_count,nft_id,nft_contract,audit_classification,canonical_existing_verified,claim_pipeline_status,claim_block').match(scope).limit(2),
+      sb.from('project_transactions').select('tx_hash,selector,status,from_address,to_address,block_number,tx_timestamp,claim_reward_aptm,claim_reward_usd,claim_nft_id').match(scope).limit(2),
+      sb.from('project_transaction_asset_flows').select('flow_key,direction,token_address,amount_raw,token_decimals,counterparty_address,value_usd,price_source').match(scope).limit(3),
+      sb.from('project_nft_claims').select('id').match(scope).limit(1)
+     ]);
+     if(ce||te||fe||ne||cs?.length!==1||ts?.length!==1||ns?.length)throw Error('Candidate or canonical evidence changed');
+     const c=cs[0],t=ts[0],contract='0x3ae2dfc3b795267e284cbab7eff9a0cefdab401d';
+     if(c.claim_pipeline_status!=='pending'||c.canonical_existing_verified===true||c.audit_classification!=null||
+        !['unassigned_miner','pending'].includes(c.status)||Number(c.claim_block)!==Number(t.block_number)||
+        t.selector!==NEW_MINER_CLAIM_SELECTOR||!['ok','success'].includes(String(t.status).toLowerCase())||
+        lower(t.to_address)!==contract)throw Error('Claim candidate guard failed');
+     if(fs?.length!==1||fs[0].price_source?.includes('exact-v13')!==true||fs[0].value_usd==null)
+      throw Error('Exactly one exact-v13 priced flow required');
+     const observed=await nativeClaimPayout(address,t);
+     if(!observed||lower(observed.counterparty_address)!==contract||
+        !/^[1-9][0-9]*$/.test(String(observed.amount_raw)))throw Error('Verified native Explorer payout unavailable');
+     if(c.payout_status==='pending'){
+      if(c.status!=='unassigned_miner'||c.nft_id!=null)throw Error('Pending payout state mismatch');
+      const {data:verified,error:ve}=await sb.rpc('wallettracking_dao_verify_single_native_payout_843',{
+       p_user:job.user_id,p_wallet:job.wallet_id,p_tx:item.txHash,p_explorer_amount_raw:observed.amount_raw});
+      if(ve||verified?.status!=='verified')throw Error('Payout verification refused: '+(ve?.message||verified?.reason||'unknown'));
+      row.stage='payout-verified';
+     }else if(c.payout_status!=='verified'||String(c.payout_amount_raw)!==String(observed.amount_raw))
+      throw Error('Verified payout evidence changed');
+     // Refresh after the independent payout RPC, rather than trusting stale candidate values.
+     const {data:current,error:re}=await sb.from('dao_reward_claim_candidates')
+      .select('status,payout_status,payout_amount_raw,payout_token_address,payout_token_decimals,payout_flow_count,nft_id,nft_contract,audit_classification,canonical_existing_verified,claim_pipeline_status,claim_block')
+      .match(scope).maybeSingle();
+     if(re||!current||current.payout_status!=='verified'||current.payout_token_address!=='native'||
+        current.payout_token_decimals!==18||current.payout_flow_count!==1||
+        current.payout_amount_raw!==observed.amount_raw)throw Error('Fresh payout guard failed');
+     if(current.nft_id==null){
+      if(current.status!=='unassigned_miner'||current.nft_contract!=null)throw Error('NFT candidate state changed');
+      const root=`${EXPLORER}/transactions/${item.txHash}/logs`,logs:any[]=[];
+      let next=root;const seen=new Set<string>();
+      for(let page=0;next;page++){
+       if(page>=10||seen.has(next))throw Error('Incomplete reward-event pagination');
+       seen.add(next);const data=await json(next);
+       if(!Array.isArray(data?.items))throw Error('Invalid reward-event response');
+       logs.push(...data.items);if(logs.length>1000)throw Error('Reward-event safety limit');
+       if(!data.next_page_params){next='';break;}
+       const url=new URL(root);for(const [k,v] of Object.entries(data.next_page_params))
+        if(v!=null)url.searchParams.set(k,String(v));
+       next=url.toString();
+      }
+      const event=aggregateMinerRewardEvents857(logs,item.txHash);
+      if(!event||event.eventCount<1||event.eventCount>1000||
+         event.amountRaw!==observed.amount_raw||event.staker!==lower(address)||
+         !event.collectionIds.length||!Number.isSafeInteger(Number(event.tokenId))||Number(event.tokenId)<=0)
+       throw Error('Incomplete or ambiguous NFT event evidence');
+      const nftScope={chain_key:CHAIN,nft_contract:contract,nft_id:event.tokenId};
+      const [{data:ownership,error:oe},{data:coverage,error:he},{data:transfers,error:xe}]=await Promise.all([
+       sb.from('project_nft_ownership').select('owned_from_block,owned_to_block').match({...nftScope,user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT}).limit(3),
+       sb.from('apertum_nft_history_coverage').select('is_complete,transfer_count').match(nftScope).limit(2),
+       sb.from('apertum_nft_transfer_cache').select('block_number,log_index,to_address').match(nftScope).order('block_number',{ascending:false}).order('log_index',{ascending:false}).limit(1000)
+      ]);
+      if(oe||he||xe)throw Error('Historical NFT ownership unavailable');
+      const assessment=evaluateMinerPreview856({candidate:{...current,payout_status:'pending'},tx:t,flows:fs,event,observed,ownership,coverage,transfers,address});
+      if(!assessment.ready)throw Error('NFT assignment guard: '+assessment.reason);
+      if(Date.now()-started>45000){stopped='time-budget';row.status='paused';break;}
+      const {data:assigned,error:ae}=await sb.rpc('wallettracking_dao_assign_multi_miner_nft_861',{
+       p_user:job.user_id,p_wallet:job.wallet_id,p_tx:item.txHash,
+       p_collection_id:Number(event.collectionIds[0]),p_nft_id:Number(event.tokenId),
+       p_event_staker:event.staker,p_event_amount_raw:event.amountRaw,p_event_count:event.eventCount});
+      if(ae||assigned?.status!=='assigned'||assigned?.claimsCreated!==0)throw Error('NFT assignment refused: '+(ae?.message||'unexpected result'));
+      row.stage='nft-assigned';row.nftId=Number(event.tokenId);
+     }else{
+      if(current.status!=='pending'||lower(current.nft_contract)!==contract||
+         !Number.isSafeInteger(Number(current.nft_id))||Number(current.nft_id)<=0)
+       throw Error('Previously assigned NFT guard failed');
+      row.stage='nft-assigned';row.nftId=Number(current.nft_id);
+     }
+     if(Date.now()-started>45000){stopped='time-budget';row.status='paused';break;}
+     const {data:target,error:pe}=await sb.rpc('wallettracking_dao_preview_verified_miner_849',{p_wallet:wallet.id});
+     if(pe||target?.selected!==1||target.walletId!==wallet.id||target.txHash!==item.txHash||
+        Number(target.nftId)!==Number(row.nftId))throw Error('Canonical preview target changed');
+     const {data:finalized,error:ze}=await sb.rpc('wallettracking_dao_finalize_single_native_claim',{
+      p_user:target.userId,p_wallet:wallet.id,p_tx:item.txHash});
+     if(ze||finalized?.status!=='completed'||finalized?.claimsCreated!==1)
+      throw Error('Canonical finalizer refused: '+(ze?.message||finalized?.reason||'unknown'));
+     row.status='completed';row.stage='finalized';row.claimsCreated=1;claimsCreated++;
+    }catch(e){row.error=daoErrorSummary(e);stopped='guard-failed';break;}
+   }
+   return reply({ok:stopped==='completed',mode:body.mode,walletId:wallet.id,
+    selected:selected.length,completed:claimsCreated,claimsCreated,stopped,results,
+    notice:'Admin-only bounded sequential run. Each transaction independently guarded. No cron, live worker, price, queue or cursor activation.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},500)}
+ }
  // 8.61: general admin-only single miner preview and guarded NFT assignment.
  // Recheck complete on-chain evidence before any optional SQL mutation.
  if(body?.mode==='admin-miner-nft-preview-861'||body?.mode==='admin-miner-nft-assign-861'){
