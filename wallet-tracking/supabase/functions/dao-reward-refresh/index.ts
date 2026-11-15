@@ -8,6 +8,7 @@ import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-co
 import { processExactPriceTargets } from './price-target-worker.ts'
 import './asset-policy.js'
 import { rewardFlowCounterparty } from './counterparty-policy.js'
+import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
@@ -1329,6 +1330,83 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // 8.53: one strictly read-only historical miner-event preview. No candidate
+ // status, ownership, price, queue or canonical writes are possible here.
+ if(body?.mode==='admin-miner-event-preview-853'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  if(Object.keys(body).some(k=>!['mode','walletId','txHash'].includes(k)) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||'')) ||
+    !/^0x[0-9a-f]{64}$/.test(String(body.txHash||'')))return reply({ok:false,error:'Invalid preview target'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual preview disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
+  try{
+   const auth=await authenticateInspectAdmin(request);
+   if(!auth.ok)return reply({ok:false,error:auth.error},auth.status);
+   const txHash=String(body.txHash),walletId=String(body.walletId);
+   const {data:wallet,error:we}=await sb.from('wallets').select('id,user_id').eq('id',walletId).maybeSingle();
+   if(we)throw we;
+   if(!wallet)return reply({ok:false,error:'Wallet missing'},404);
+   const scope={user_id:wallet.user_id,wallet_id:wallet.id,project_key:PROJECT,chain_key:CHAIN,tx_hash:txHash};
+   const [{data:c,error:ce},{data:t,error:te},{data:canonical,error:ne},{data:flows,error:fe}]=await Promise.all([
+    sb.from('dao_reward_claim_candidates').select('status,payout_status,payout_amount_raw,payout_token_address,payout_token_decimals,payout_flow_count,nft_id,nft_contract,audit_classification,claim_pipeline_status,claim_block').match(scope).maybeSingle(),
+    sb.from('project_transactions').select('selector,status,from_address,to_address,block_number,claim_reward_aptm,claim_reward_usd').match(scope).maybeSingle(),
+    sb.from('project_nft_claims').select('id').match(scope).limit(1),
+    sb.from('project_transaction_asset_flows').select('flow_key,direction,token_address,amount_raw,token_decimals,counterparty_address,value_usd,price_source').match(scope).limit(3)
+   ]);
+   if(ce||te||ne||fe)throw Error('Scoped source read failed');
+   const contract='0x3ae2dfc3b795267e284cbab7eff9a0cefdab401d';
+   if(!c||!t||canonical?.length||c.status!=='unassigned_miner'||c.payout_status!=='verified'||
+      c.audit_classification!==null||c.claim_pipeline_status==='completed'||c.nft_id!==null||c.nft_contract!==null||
+      t.selector!==NEW_MINER_CLAIM_SELECTOR||!['ok','success'].includes(String(t.status).toLowerCase())||
+      lower(t.to_address)!==contract||Number(t.block_number)!==Number(c.claim_block)||
+      Number(t.claim_reward_aptm||0)!==0||Number(t.claim_reward_usd||0)!==0)
+    return reply({ok:true,mode:body.mode,ready:false,reason:'candidate-or-canonical-guard'},200);
+   const address=await loadAddress({user_id:wallet.user_id,wallet_id:wallet.id});
+   const incoming=(flows||[]).filter((f:any)=>f.direction==='eingang');
+   if(flows?.length!==1||incoming.length!==1||
+      incoming[0].flow_key!==`claim-native:${txHash}`||incoming[0].token_address!=='native'||
+      incoming[0].amount_raw!==c.payout_amount_raw||c.payout_token_address!=='native'||
+      c.payout_token_decimals!==18||c.payout_flow_count!==1||incoming[0].token_decimals!==18||
+      lower(incoming[0].counterparty_address)!==contract||incoming[0].value_usd==null)
+    return reply({ok:true,mode:body.mode,ready:false,reason:'payout-or-price-guard'},200);
+   // Read the complete TX-local log stream, with a hard pagination ceiling.
+   const logs:any[]=[];const root=`${EXPLORER}/transactions/${txHash}/logs`;
+   let next=root;const seen=new Set<string>();
+   for(let page=0;next;page++){
+    if(page>=10||seen.has(next))throw Error('Log pagination incomplete');
+    seen.add(next);const data=await json(next);
+    if(!Array.isArray(data?.items))throw Error('Log response incomplete');
+    logs.push(...data.items);
+    if(logs.length>1000)throw Error('Log count exceeds safe bound');
+    if(!data.next_page_params){next='';break;}
+    const url=new URL(root);
+    for(const [k,v] of Object.entries(data.next_page_params))if(v!=null)url.searchParams.set(k,String(v));
+    next=url.toString();
+   }
+   const event=uniqueMinerRewardEvent853(logs,txHash);
+   if(!event||event.amountRaw!==c.payout_amount_raw||event.staker!==lower(t.from_address)||event.staker!==lower(address))
+    return reply({ok:true,mode:body.mode,ready:false,reason:'missing-or-ambiguous-reward-event'},200);
+   const nftScope={chain_key:CHAIN,nft_contract:contract,nft_id:event.tokenId};
+   const [{data:ownership,error:oe},{data:coverage,error:he},{data:transfers,error:xe}]=await Promise.all([
+    sb.from('project_nft_ownership').select('owned_from_block,owned_to_block').match({...nftScope,user_id:wallet.user_id,wallet_id:wallet.id,project_key:PROJECT}).limit(3),
+    sb.from('apertum_nft_history_coverage').select('is_complete,transfer_count').match(nftScope).limit(2),
+    sb.from('apertum_nft_transfer_cache').select('block_number,log_index,to_address').match(nftScope).order('block_number',{ascending:false}).order('log_index',{ascending:false}).limit(1000)
+   ]);
+   if(oe||he||xe)throw Error('Ownership evidence read failed');
+   const block=Number(c.claim_block),prior=(transfers||[]).find((x:any)=>x.block_number<block);
+   const ready=ownership?.length===1&&ownership[0].owned_from_block<=block&&
+    (ownership[0].owned_to_block==null||ownership[0].owned_to_block>=block)&&
+    coverage?.length===1&&coverage[0].is_complete===true&&
+    transfers?.length===coverage[0].transfer_count&&transfers.length<1000&&
+    !transfers.some((x:any)=>x.block_number===block)&&!!prior&&
+    transfers.filter((x:any)=>x.block_number===prior.block_number).length===1&&
+    lower(prior.to_address)===event.staker;
+   return reply({ok:true,mode:body.mode,ready,reason:ready?'all-preview-guards-passed':'historical-ownership-guard',
+    txHash,claimBlock:block,collectionId:event.collectionId,nftId:event.tokenId,
+    amountRaw:event.amountRaw,priceSource:incoming[0].price_source,
+    canonicalClaimsCreated:0,notice:'Read-only event and historical ownership preview. No write route in 8.53.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:String(e instanceof Error?e.message:e)},500)}
+ }
  // Phase 8.49: one-at-a-time admin-only, cross-user historical NFT miner
  // finalization. Preview never mutates; commit requires the exact preview TX.
  if(body?.mode==='admin-miner-claim-preview-849'||body?.mode==='admin-miner-claim-single-849'){

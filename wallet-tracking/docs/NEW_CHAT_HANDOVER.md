@@ -1,3 +1,5 @@
+> **Aktuell 8.53:** Read-only Miner-Event-Preview erstellt, Edge-Deployment/Live-Test offen. Siehe Release-Dokument `docs/releases/8.53-dao-miner-event-preview.md` und vollständigen Nachtrag am Ende dieser Übergabe. DAO-Cron/Live-Worker AUS.
+
 ### Phase 8.52 – Reto-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - Live-Migration 8.52 installiert, ursprünglichen unvollständigen Claim #21 repariert; zweiter Claim erfolgreich atomar angelegt, `exact-v13` bestätigt.
 - Historische NFT-ID-Lücken (125 Claims einer anderen Wallet) sicher behoben: erst 1, dann 124; keine Rewardwerte verändert; 2'078/2'078 konsistent.
@@ -242,4 +244,9 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 - Ein Fall wurde über Explorer geprüft: Internal- und ERC20-Listen leer, Haupttransaktion `execution reverted / NothingToClaim()`; gespeicherter Status `error` stimmt. Alle 16 haben gespeicherten TX-Status `error` und keine gespeicherten Flows.
 - Keinen ungeeigneten Legacy-Payout-Prüfer auf diese Fälle anwenden. **Nächste Entwicklung:** allgemeine DAO-Reward-Pipeline gesondert planen und kontrolliert testen, insbesondere inkrementellen Import, ERC20/Referral, Retry und Mehrbenutzer-Betrieb.
 - **DAO-Cron und Live-Worker AUS.** Phase bleibt 8.52; dieses ZIP enthält nur Dokumentation.
+
+### Phase 8.53 – Einzelfall-Miner-Event-Preview vorbereitet (15.11.2026)
+- Schritte 71–93: sechs Benutzer / 15 EVM-Wallets im Import; sieben `complete`, acht `empty_verified` je Stream; 15 `staged` am 14.11., keine Reward-Completion daraus ableiten.
+- Reto-Zusatzbestand 73 `unassigned_miner` mit nativen APTM-Reward-Flows, 76 `unassigned_legacy` ohne Eingangsflow. Pilot-TX `0xed667ac1962cbc234629b0d1258378192087f0c2445c26a6f22a99a6a2b71b32`: NFT #37084 / Collection 32887 aus RewardClaimed; 0.072141524528301886 APTM live intern bestätigt und via bestehender 8.43-Route `verified`; Owner-Zeitraum, drei vollständige Transfers, Empfänger-Gleichheit und kein Same-Block-Transfer bestätigt. Weiter kein kanonischer Claim/NFT-Feld-Write.
+- 8.53 Edge-Preview **nur read-only**, kein SQL; gemeinsame Deployment-Dateien `index.ts` und `miner-event-853.js`; Admin-Einzeltest nach Installation. Release-Dokument `docs/releases/8.53-dao-miner-event-preview.md` führt den genau nächsten Test auf. DAO-Cron/Live-Worker AUS; allgemeine Pipeline weiterhin offen.
 

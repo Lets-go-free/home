@@ -113,3 +113,7 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Beispielhafter Explorer-Abgleich: `NothingToClaim()` / `status=error`, keine internen oder Token-Auszahlungen. 8.42-Audit-Klassifikation der 16 Fälle bereits vorhanden; kein SQL-/Code-Deploy oder Reward-Write erforderlich.
 - DAO-Cron und Live-Worker deaktiviert. Allgemeine DAO-Pipeline weiter offen.
 
+## 8.53 · 15.11.2026 16:07:37 CET · Build 20261115-160737
+- DAO Miner `RewardClaimed`-Event: strikte read-only Einzel-Preview mit Historien-, Payout-, NFT- und Wallet-Guards, ohne neuen DB-Write. Vier neue Parser-Regressionen. Zwei Edge-Dateien gemeinsam deployen, danach nur einen Admin-Preview testen.
+- 73 zusätzliche unzugeordnete Mining-Claims mit nativen APTM-Flows entdeckt; ein Pilot-Payout live verifiziert und persistiert, NFT-Eigentum belegt. 377 kanonische Reto-Claims, 16 Fehl-TXs und 2'454 `exact-v13`-Konsistenz nicht verändert. DAO-Cron/Live-Worker deaktiviert.
+
