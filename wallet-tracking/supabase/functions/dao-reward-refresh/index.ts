@@ -1498,11 +1498,16 @@ Deno.serve(async request=>{
  }
  // 8.56: bounded multi-candidate *read-only* preview. No SQL RPC, upsert,
  // reservation, scan cursor or status transition is reachable in this route.
- if(body?.mode==='admin-miner-batch-preview-856'){
+ if(body?.mode==='admin-miner-batch-preview-856'||body?.mode==='admin-miner-page-preview-860'){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
-  if(Object.keys(body).some(k=>!['mode','walletId'].includes(k)) ||
+  const paged=body.mode==='admin-miner-page-preview-860';
+  const hasCursor=body.afterBlock!==undefined||body.afterTxHash!==undefined;
+  const afterBlock=body.afterBlock,afterTxHash=body.afterTxHash;
+  if(Object.keys(body).some(k=>!(paged?['mode','walletId','afterBlock','afterTxHash']:['mode','walletId']).includes(k)) ||
+     (paged&&hasCursor&&( !Number.isSafeInteger(afterBlock)||afterBlock<=0||
+       typeof afterTxHash!=='string'||!/^0x[0-9a-f]{64}$/.test(afterTxHash))) ||
      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||'')))
-    return reply({ok:false,error:'Exactly one walletId required'},400);
+    return reply({ok:false,error:'Invalid wallet or continuation cursor'},400);
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual preview disabled'},403);
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
   try{
@@ -1513,18 +1518,22 @@ Deno.serve(async request=>{
    if(!wallet)return reply({ok:false,error:'Wallet missing'},404);
    const job={user_id:wallet.user_id,wallet_id:wallet.id};
    const address=await loadAddress(job);
-   const {data:candidates,error:ce}=await sb.from('dao_reward_claim_candidates')
+   let sourceQuery=sb.from('dao_reward_claim_candidates')
     .select('tx_hash,claim_block,status,payout_status,audit_classification,canonical_existing_verified,claim_pipeline_status,nft_id,nft_contract')
     .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
     .eq('project_key',PROJECT).eq('chain_key',CHAIN)
     .eq('status','unassigned_miner').eq('payout_status','pending')
-    .is('audit_classification',null).eq('canonical_existing_verified',false)
-    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(3);
+    .is('audit_classification',null).eq('canonical_existing_verified',false);
+   if(paged&&hasCursor)
+    sourceQuery=sourceQuery.or(`claim_block.gt.${afterBlock},and(claim_block.eq.${afterBlock},tx_hash.gt.${afterTxHash})`);
+   const {data:candidates,error:ce}=await sourceQuery
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(paged?4:3);
    if(ce)throw ce;
+   const windowCandidates=paged?(candidates||[]).slice(0,3):(candidates||[]);
    const results:any[]=[];const started=Date.now();
-   for(const c of candidates||[]){
+   for(const c of windowCandidates){
     const row:any={txHash:c.tx_hash,claimBlock:c.claim_block,ready:false};
-    if(Date.now()-started>55000){row.reason='time-budget';results.push(row);break;}
+    if(Date.now()-started>55000)break;
     try{
      const scope={user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:c.tx_hash};
      const [{data:transactions,error:te},{data:flows,error:fe},{data:canonical,error:ne}]=await Promise.all([
@@ -1566,13 +1575,22 @@ Deno.serve(async request=>{
      ]);
      if(oe||he||xe)throw Error('Scoped NFT ownership evidence query failed');
      const assessment=evaluateMinerPreview856({candidate:c,tx:t,flows,event,observed,ownership,coverage,transfers,address});
-     Object.assign(row,assessment,{nftId:event.tokenId,collectionIds:event.collectionIds,eventCount:event.eventCount,
+     Object.assign(row,assessment,{nftId:event.tokenId,eventCount:event.eventCount,
       amountRaw:event.amountRaw,priceSource:flows?.[0]?.price_source??null});
+     if(paged)Object.assign(row,{collectionCount:event.collectionIds.length,
+      firstCollectionId:event.collectionIds[0],lastCollectionId:event.collectionIds.at(-1)});
+     else row.collectionIds=event.collectionIds;
     }catch(e){row.reason='evidence-unavailable: '+daoErrorSummary(e);}
     results.push(row);
    }
+   const last=results.at(-1);
+   const continuation=paged&&last?{
+    afterBlock:last.claimBlock,afterTxHash:last.txHash
+   }:null;
    return reply({ok:true,mode:body.mode,walletId:wallet.id,selected:results.length,
     ready:results.filter(x=>x.ready).length,blocked:results.filter(x=>!x.ready).length,results,
+    ...(paged?{continuation,hasMore:(candidates||[]).length>results.length,
+      timeBudgetStopped:results.length<windowCandidates.length}:{}),
     claimsCreated:0,notice:'Read-only, at most three oldest unassigned miners. No status, NFT, payout, claim, price, flow, queue or cursor writes.'});
   }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},500)}
  }

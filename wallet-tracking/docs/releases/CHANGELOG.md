@@ -144,3 +144,8 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Nachfolgende 71 unassigned Miner kontrolliert geprüft: die ältesten drei 3/3 read-only bereit (500/500/237 Events). Erste weitere Auszahlung (50.945303137912696144 APTM) via 8.43 Explorer-Trace verifiziert, SQL bestätigt candidate-only verified.
 - 8.59 installiert noch nichts automatisch: neue streng auf TX `0xed7beb78…` begrenzte Admin-Route und eigene SQL-NFT-Zuordnung (500 Events, Collections 33387–33886, NFT #37084). Keine Canonical-/Reward-/Preis-Writes; DAO-Cron/Live-Worker bleiben aus.
 
+## 8.60 · 15.11.2026 18:29:07 CET · Build 20261115-182907
+- 8.59-Pilot live abgeschlossen: NFT #37084 und 50.945303137912696144 APTM, ein kanonischer Claim; globale Kontrolle 2'457/2'457 exact-v13 konsistent.
+- `admin-miner-page-preview-860`: schrittweise Read-only-Abnahme der 70 übrigen Miner mit stabil sortiertem Block/Hash-Fortsetzungspunkt. Maximal drei überprüfte Kandidaten und höchstens vier Datenbank-Kandidaten je Aufruf; keine Schreibzugriffe. Wiederverwendung derselben strikten 8.57-Event-Aggregation und 8.56-Payout-/Ownership-Evidenz.
+- Response mit `continuation` (Block/Hash), `hasMore`, kompakter Collection-Spanne und Event-Anzahl; Zeitbudget darf keinen ungeprüften Kandidaten überspringen. Keine SQL-Migration, keine generische NFT-/Claim-Schreibroute, DAO-Cron/Live-Worker AUS.
+

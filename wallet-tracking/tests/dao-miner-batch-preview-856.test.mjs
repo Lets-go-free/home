@@ -40,8 +40,9 @@ test('8.56 refuses missing or ambiguous historical ownership',()=>{
 })
 test('8.56 endpoint has bounded read-only surface',()=>{
  const code=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8')
- const region=code.split("if(body?.mode==='admin-miner-batch-preview-856'){")[1].split('// 8.53: one strictly read-only')[0]
- assert.match(region,/limit\(3\)/)
+ const region=code.split("if(body?.mode==='admin-miner-batch-preview-856'||body?.mode==='admin-miner-page-preview-860'){")[1].split('// 8.53: one strictly read-only')[0]
+ assert.match(region,/limit\(paged\?4:3\)/)
+ assert.match(region,/paged\?\(candidates\|\|\[\]\)\.slice\(0,3\)/)
  assert.match(region,/from\('dao_reward_claim_candidates'\)\s*\.select\(/)
  assert.match(region,/aggregateMinerRewardEvents857/)
  assert.match(region,/evaluateMinerPreview856/)
