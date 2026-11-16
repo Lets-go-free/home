@@ -1,5 +1,8 @@
 
-### Phase 8.66 – Historische DAO1 Native-Minter-Claims: Admin-Preview (Installation offen)
+### Phase 8.67 – Blockscout-Topic-Nullkompatibilität (Installation offen)
+- 8.66-Preview live mit fünf Legacy-Transaktionen: alle `invalid-mint-event`, ohne Schreibvorgang. Eine echte Blockscout-v2-Antwort enthält drei Topics plus ein abschliessendes `null`; die bisherige Länge-3-Prüfung lehnte sie ab. 8.67 erlaubt nur dieses konkrete Null-Padding, keine zusätzlichen Topics mit Inhalt. Erneuter Read-only-Test nach Deployment offen; DAO-Cron und Live-Worker bleiben deaktiviert. Details `docs/releases/8.67-dao-native-mint-log-null-topic.md`.
+
+### Phase 8.66 – Historische DAO1 Native-Minter-Claims: Admin-Preview (installiert, Formatfehler im ersten Live-Test)
 - 76 historische `unassigned_legacy`-Transaktionen der Test-Wallet ohne gewöhnlichen Transfer; 16 fehlgeschlagene Transaktionen ausdrücklich ausgeschlossen. Beispiel Block 11448516: Zwei Mint-Calls an Avalanche Native Minter mit passenden Events, zusammen 5.359811966623994539 APTM. `claimReward` und Vault-IDs beweisen allein weder NFT-Identität noch USD-Preis.
 - Neuer einzelner Admin-Modus `admin-legacy-native-mint-preview-866` (fünf Kandidaten je Seite, streng gleichlautende Trace- und Log-Evidenz, read-only). Noch nicht deployt oder live getestet. **Kein Cron, kein Worker, kein kanonischer Write, keine SQL.** Details `docs/releases/8.66-dao-legacy-native-mint-preview.md`.
 

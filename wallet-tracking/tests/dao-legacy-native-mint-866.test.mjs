@@ -23,6 +23,11 @@ assert.equal(ok.mintCalls,2)
 assert.equal(ok.mintEvents,2)
 assert.equal(ok.amountRaw,'5359811966623994539')
 assert.equal(ok.amountAptm,'5.359811966623994539')
+// Real Apertum Blockscout v2 API response (TX at block 40707) includes
+// an extra null in topics; strict proof must accept it, not extra data.
+const paddedLogs=logs.map(l=>({...l,topics:[...l.topics,null]}))
+assert.equal(verifyLegacyNativeMint866(trace,paddedLogs,wallet).status,'verified')
+assert.equal(verifyLegacyNativeMint866(trace,[{...paddedLogs[0],topics:[...logs[0].topics,pad('0x01')]},paddedLogs[1]],wallet).reason,'invalid-mint-event')
 assert.equal(verifyLegacyNativeMint866(trace,logs.slice(0,1),wallet).reason,'mint-call-event-mismatch')
 assert.equal(verifyLegacyNativeMint866(trace,[],wallet).status,'needs_review')
 assert.equal(verifyLegacyNativeMint866({calls:[]},[],wallet).status,'no_evidence')

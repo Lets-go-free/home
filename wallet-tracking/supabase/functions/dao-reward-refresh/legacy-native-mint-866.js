@@ -41,7 +41,10 @@ export function verifyLegacyNativeMint866(trace,logs,walletAddress){
   if(lower(log?.address?.hash||log?.address_hash||log?.address) !==NATIVE_MINTER_866)continue
   if(lower(log?.topics?.[0])!==NATIVE_MINTED_TOPIC_866)continue
   const t=log.topics
-  if(t.length!==3||!hex(t[1],64)||!hex(t[2],64)||!hex(log.data,64))
+  // Blockscout v2 pads the three indexed NativeCoinMinted topics with
+  // a fourth, null entry. Accept only that exact harmless padding.
+  const validTopics=t.length===3||(t.length===4&&t[3]===null)
+  if(!validTopics||!hex(t[1],64)||!hex(t[2],64)||!hex(log.data,64))
    return result('needs_review','invalid-mint-event')
   const index=log.index??log.log_index
   if(index!=null){
