@@ -3,6 +3,7 @@
 export const NATIVE_MINTER_866='0x0200000000000000000000000000000000000001'
 export const MINT_SELECTOR_866='0x4f5aaaba'
 export const NATIVE_MINTED_TOPIC_866='0x400cd392f3d56fd10bb1dbd5839fdda8298208ddaa97b368faa053e1850930ee'
+export const LEGACY_MINT_PROOF_BUILD='868-field-diagnostics'
 const hex=(s,n)=>typeof s==='string'&&new RegExp(`^0x[0-9a-fA-F]{${n}}$`).test(s)
 const lower=s=>String(s||'').toLowerCase()
 const addressTopic=s=>hex(s,64)&&/^0x0{24}[0-9a-f]{40}$/i.test(s)?'0x'+s.slice(-40).toLowerCase():null
@@ -44,8 +45,11 @@ export function verifyLegacyNativeMint866(trace,logs,walletAddress){
   // Blockscout v2 pads the three indexed NativeCoinMinted topics with
   // a fourth, null entry. Accept only that exact harmless padding.
   const validTopics=t.length===3||(t.length===4&&t[3]===null)
-  if(!validTopics||!hex(t[1],64)||!hex(t[2],64)||!hex(log.data,64))
-   return result('needs_review','invalid-mint-event')
+  if(!validTopics)return result('needs_review','invalid-mint-topics-layout',{
+   topicCount:t.length,trailingTopicNull:t.length>3&&t[3]===null})
+  if(!hex(t[1],64)||!hex(t[2],64))return result('needs_review','invalid-mint-address-topics')
+  if(!hex(log.data,64))return result('needs_review','invalid-mint-amount-data',{
+   amountHexLength:typeof log.data==='string'?log.data.length:null})
   const index=log.index??log.log_index
   if(index!=null){
    if(!/^(0|[1-9][0-9]*)$/.test(String(index))||indices.has(String(index)))
@@ -53,7 +57,7 @@ export function verifyLegacyNativeMint866(trace,logs,walletAddress){
    indices.add(String(index))
   }
   const sender=addressTopic(t[1]),recipient=addressTopic(t[2]),amount=BigInt(log.data)
-  if(!sender||!recipient||amount<=0n)return result('needs_review','invalid-mint-event')
+  if(!sender||!recipient||amount<=0n)return result('needs_review','invalid-mint-address-or-amount')
   if(recipient===wallet)events.push({sender,recipient,amount})
  }
  if(!mintCalls.length&&events.length)return result('needs_review','mint-event-without-trace')

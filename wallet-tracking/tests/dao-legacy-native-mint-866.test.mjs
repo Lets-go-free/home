@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import {verifyLegacyNativeMint866,NATIVE_MINTED_TOPIC_866} from '../supabase/functions/dao-reward-refresh/legacy-native-mint-866.js'
+import {verifyLegacyNativeMint866,NATIVE_MINTED_TOPIC_866,LEGACY_MINT_PROOF_BUILD} from '../supabase/functions/dao-reward-refresh/legacy-native-mint-866.js'
 
 const wallet='0x39180b13f5bd24432f01535ceb2c069fd2adf937'
 const precompile='0x0200000000000000000000000000000000000001'
@@ -18,6 +18,7 @@ const logs=[
  {address:{hash:precompile},topics:[NATIVE_MINTED_TOPIC_866,pad(sender2),pad(wallet)],data:pad('0x4820de085da694ec')}
 ]
 const ok=verifyLegacyNativeMint866(trace,logs,wallet)
+assert.equal(LEGACY_MINT_PROOF_BUILD,'868-field-diagnostics')
 assert.equal(ok.status,'verified')
 assert.equal(ok.mintCalls,2)
 assert.equal(ok.mintEvents,2)
@@ -27,7 +28,8 @@ assert.equal(ok.amountAptm,'5.359811966623994539')
 // an extra null in topics; strict proof must accept it, not extra data.
 const paddedLogs=logs.map(l=>({...l,topics:[...l.topics,null]}))
 assert.equal(verifyLegacyNativeMint866(trace,paddedLogs,wallet).status,'verified')
-assert.equal(verifyLegacyNativeMint866(trace,[{...paddedLogs[0],topics:[...logs[0].topics,pad('0x01')]},paddedLogs[1]],wallet).reason,'invalid-mint-event')
+assert.equal(verifyLegacyNativeMint866(trace,[{...paddedLogs[0],topics:[...logs[0].topics,pad('0x01')]},paddedLogs[1]],wallet).reason,'invalid-mint-topics-layout')
+assert.equal(verifyLegacyNativeMint866(trace,[{...logs[0],data:'0x1'},logs[1]],wallet).reason,'invalid-mint-amount-data')
 assert.equal(verifyLegacyNativeMint866(trace,logs.slice(0,1),wallet).reason,'mint-call-event-mismatch')
 assert.equal(verifyLegacyNativeMint866(trace,[],wallet).status,'needs_review')
 assert.equal(verifyLegacyNativeMint866({calls:[]},[],wallet).status,'no_evidence')

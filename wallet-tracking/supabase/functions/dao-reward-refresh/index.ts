@@ -11,7 +11,7 @@ import { rewardFlowCounterparty } from './counterparty-policy.js'
 import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
 import { evaluateMinerPreview856 } from './miner-batch-preview-856.js'
 import { aggregateMinerRewardEvents857 } from './miner-multi-event-857.js'
-import { verifyLegacyNativeMint866 } from './legacy-native-mint-866.js'
+import { verifyLegacyNativeMint866, LEGACY_MINT_PROOF_BUILD } from './legacy-native-mint-866.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
@@ -1392,7 +1392,7 @@ Deno.serve(async request=>{
     }catch(e){item.status='needs_review';item.reason='explorer-or-evidence-check-failed';item.error=daoErrorSummary(e)}
    }
    const completed=results.length,hasMore=(candidates||[]).length>pageSize;
-   return reply({ok:true,mode:body.mode,walletId:wallet.id,offset,selected:selected.length,
+   return reply({ok:true,mode:body.mode,proofBuild:LEGACY_MINT_PROOF_BUILD,walletId:wallet.id,offset,selected:selected.length,
     checked:completed,nextOffset:offset+completed,hasMore:hasMore||stopped==='time-budget',stopped,results,
     claimsCreated:0,notice:'Read-only native-mint evidence preview. No NFT, canonical claim, candidate, reward, price, flow, cursor, queue or cron writes.'});
   }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},409)}

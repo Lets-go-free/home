@@ -1,5 +1,8 @@
 
-### Phase 8.67 – Blockscout-Topic-Nullkompatibilität (Installation offen)
+### Phase 8.68 – Legacy Native-Mint-Preview-Diagnose (Installation offen)
+- Nach 8.67-Installation weiterhin fünf `invalid-mint-event`; der dokumentierte echte Log besteht lokal. Neu `proofBuild` und getrennte Gründe für Topics-Layout, Address-Topics, Amount-Daten und Absender/Empfänger/Betrag. Read-only, keine SQL oder Datenänderung; DAO-Cron/Live-Worker AUS. Details `docs/releases/8.68-dao-legacy-mint-diagnostics.md`.
+
+### Phase 8.67 – Blockscout-Topic-Nullkompatibilität (installiert, Live-Test weiterhin auffällig)
 - 8.66-Preview live mit fünf Legacy-Transaktionen: alle `invalid-mint-event`, ohne Schreibvorgang. Eine echte Blockscout-v2-Antwort enthält drei Topics plus ein abschliessendes `null`; die bisherige Länge-3-Prüfung lehnte sie ab. 8.67 erlaubt nur dieses konkrete Null-Padding, keine zusätzlichen Topics mit Inhalt. Erneuter Read-only-Test nach Deployment offen; DAO-Cron und Live-Worker bleiben deaktiviert. Details `docs/releases/8.67-dao-native-mint-log-null-topic.md`.
 
 ### Phase 8.66 – Historische DAO1 Native-Minter-Claims: Admin-Preview (installiert, Formatfehler im ersten Live-Test)
