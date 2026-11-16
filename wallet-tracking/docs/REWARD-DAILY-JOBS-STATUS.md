@@ -1,3 +1,6 @@
+### Phase 8.76 – Exakte Raw-Decimal-Abschlussprüfung (Installation offen)
+- 8.75 Single-Commit rollback bei `Canonical post-condition missing`, erneute Kontrolle 0 Claims/Flows/Anker. Lesende DB-Abfrage bewies Precision-Ursache: zentrale Raw-Decimal-Funktion = 15.167495057030400213, direkte SQL-Division = 15.1674950570304002, Gleichheit false. 8.76 verwendet denselben kanonischen Parser für Flow-Betrag und Postcondition. Sonstige Guards/Finalizer bleiben; kein automatischer Write oder Cron. `docs/releases/8.76-dao-legacy-raw-decimal-postcondition.md`.
+
 ### Phase 8.75 – Native-Flow-Constraint für einzelnen historischen Claim korrigiert (Installation offen)
 - 8.74 Commit abgebrochen: NOT NULL `project_transaction_asset_flows.log_index`; 8.74 erzeugte NULL. Read-only SQL bestätigt **keine** Änderungen: Claim 0, Flows 0, Anker 0, Candidate unassigned_legacy/pending. 8.75 ersetzt nur die service-only Commit-Funktion mit `log_index=-1` (identisch zu regulärem DAO-Native-Staging) und verbessert Admin-HTTP-Fehleranzeige. Kein Commit bei Installation, keine Jobs. `docs/releases/8.75-dao-legacy-native-flow-log-index-fix.md`.
 

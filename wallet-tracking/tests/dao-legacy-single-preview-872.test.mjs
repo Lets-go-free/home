@@ -82,3 +82,12 @@ test('8.75 native flow uses established -1 log index and surfaces server failure
  assert.match(js,/response\.clone\(\)\.json\(\)/)
  assert.doesNotMatch(js,/setInterval|setTimeout/)
 })
+test('8.76 compares exact native decimals via canonical parser without rounded numeric division',()=>{
+ const sql=readFileSync(new URL('../supabase/migrations/20261116201153_dao_legacy_exact_raw_decimal_fix_876.sql',import.meta.url),'utf8')
+ assert.match(sql,/CREATE OR REPLACE FUNCTION public\.wallettracking_dao_commit_legacy_minebot_874/)
+ assert.match(sql,/n\.reward_aptm=public\.wallettracking_dao_raw_decimal\(v_amount,18\)/)
+ assert.match(sql,/18,v_amount,public\.wallettracking_dao_raw_decimal\(v_amount,18\)/)
+ assert.doesNotMatch(sql,/v_amount::numeric\/1000000000000000000::numeric/)
+ assert.match(sql,/wallettracking_dao_finalize_single_native_claim/)
+ assert.match(sql,/-1,'native','APTM'/)
+})
