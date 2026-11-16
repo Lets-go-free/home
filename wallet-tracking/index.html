@@ -1,4 +1,4 @@
-<!-- Phase 8.79: fixed five-claim atomic historical MineBot commit behind verified preview. -->
+<!-- Phase 8.80: second fixed five-claim atomic historical MineBot commit. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.46: Browser-gesteuerte, manuelle historische DAO-Payout-Verifikation; kein Cron. -->
@@ -888,7 +888,8 @@
           <strong>DAO1 · Nächste 5 historisch bewertbare MineBot-Claims prüfen (8.78)</strong>
           <p class="note" style="margin:8px 0">Nur offene Legacy-Claims ab Block 88'356 der festgelegten Test-Wallet. Vier frühere, korrekt nicht in USD bewertbare Claims bleiben ausgeschlossen. Live-Native-Mint, NFT-Eigentum und exact-v13-Preis werden für jeden Claim erneut geprüft. Nur Vorschau, kein Datenbank-Write und keine Job-Aktivierung.</p>
           <button id="daoLegacyPricedFiveStart878" type="button" onclick="previewDaoLegacyPricedFive878()">Nächste 5 mit USD-Beleg prüfen</button>
-          <button id="daoLegacyPricedFiveCommit879" type="button" onclick="commitDaoLegacyPricedFive879()" disabled>Diese 5 Claims atomar übernehmen (8.79)</button>
+          <button id="daoLegacyPricedFiveCommit879" type="button" onclick="commitDaoLegacyPricedFive879()" disabled style="display:none">Abgeschlossener Stapel 8.79</button>
+          <button id="daoLegacyPricedFiveCommit880" type="button" onclick="commitDaoLegacyPricedFive880()" disabled>Diese 5 Claims atomar übernehmen (8.80)</button>
           <p class="note">Nur nach vollständiger Live-Prüfung freigeschaltet. Eine Transaktion für genau fünf festgelegte Claims; bei Abweichung vollständiger Rollback. Vier Claims vor dem Preisbeginn bleiben unberührt.</p>
           <div id="daoLegacyPricedFiveStatus878" class="note" role="status" aria-live="polite" style="margin-top:9px">Noch nicht gestartet.</div>
           <pre id="daoLegacyPricedFiveResult878" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px;margin-top:8px"></pre>
@@ -1452,7 +1453,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 16.11.2026 20:42:46 CET · Phase 8.79 · Build 20261116-204246</span><br>
+    <span id="footerVersionLine">Version: 16.11.2026 20:58:12 CET · Phase 8.80 · Build 20261116-205812</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1478,13 +1479,13 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.79";window.BUILD_ID="20261116-204246";</script>
+<script>window.APP_VERSION="8.80";window.BUILD_ID="20261116-205812";</script>
 <script src="./js/app.js?v=20261114-122907"></script>
 <script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
 <script src="./admin/dao-legacy-mint-drain-869.js?v=20261116-114435"></script>
 <script src="./admin/dao-legacy-single-preview-872.js?v=20261116-876"></script>
 <script src="./admin/dao-legacy-five-preview-877.js?v=20261116-877"></script>
-<script src="./admin/dao-legacy-priced-five-preview-878.js?v=20261116-879"></script>
+<script src="./admin/dao-legacy-priced-five-preview-878.js?v=20261116-880"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1503,6 +1504,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 16.11.2026 20:42:46 CET · Phase 8.79 · Build 20261116-204246</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 16.11.2026 20:58:12 CET · Phase 8.80 · Build 20261116-205812</div>
 </body>
 </html>

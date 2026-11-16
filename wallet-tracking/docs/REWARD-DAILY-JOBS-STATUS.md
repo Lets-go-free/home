@@ -1,3 +1,6 @@
+### 8.80 – Zweite atomare 5er-Übernahme vorbereitet (Installation offen)
+- 8.79 live 5/5 übernommen und per SQL unabhängig geprüft; 6/76 Legacy insgesamt kanonisch. 70 Legacy offen (66 priced, 4 pre-price). 8.78 nächster 5er-Satz live exakt verifiziert, 0 Writes. 8.80 SQL-Funktion/Edge/Admin mit festen fünf Hashes, erneuter Live-Verifikation, doppelt bestätigtem atomarem Commit und Rollback. ZIP/SQL/Edge/Abnahme offen. DAO-Cron/Live-Worker AUS. `docs/releases/8.80-dao-legacy-second-five-atomic-commit.md`.
+
 ### 8.79 · Aktuell – Atomarer 5er-Commit (noch nicht installiert)
 - 8.78 live 5/5 geprüft, 0 Writes. 8.79 feste fünf Claims, frische Live-Belege, doppelter Admin-Confirm, atomarer SQL-Finalizer; vier frühe ohne USD ausgenommen. SQL/Edge/ZIP-Installation und Abnahme offen, DAO-Cron/Live-Worker AUS.
 
