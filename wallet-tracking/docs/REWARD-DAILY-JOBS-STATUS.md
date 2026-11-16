@@ -1,5 +1,8 @@
 
-### Phase 8.69 – Manuelle Browser-Serie für 46 Legacy-Prüfungen (Installation offen)
+### Phase 8.70 – Historische MineBot-NFTs #818/#819, strikte Eigentumsregistrierung (Installation offen)
+- 76/76 Legacy-Minter-Auszahlungen live verifiziert: 224.410053146163331226 APTM. Vault-IDs 818 und 819 sind dieselben MineBot-NFT-IDs des ERC-721-Vertrags `0xa1b76189…`. Beide in Block 10904 an Wallet geprägt; vollständige Transferhistorie, Ausgänge Block 11448349/11448526; 42 bzw. 34 Claims liegen im Eigentumsintervall. 8.70 nur 2 Katalogeinträge und 2 nicht-aktuelle Ownership-Zeiträume, mit strengen Guards. SQL/Installation und Abnahme offen; keine kanonische Claim-Erstellung oder USD-Preisveränderung, DAO-Cron/Live-Worker AUS. Details `docs/releases/8.70-dao-legacy-minebot-ownership.md`.
+
+### Phase 8.69 – Manuelle Browser-Serie für 46 Legacy-Prüfungen (installiert, 76/76 abgeschlossen)
 - Erste 30/76 historische Native-Minter-Auszahlungen live exakt verifiziert, **90.576417951299766898 APTM**, 0 Fehler und 0 Writes. Neuer Admin-Audit-Button führt die restlichen 46 in bis zu zehn seriellen Read-only-Gruppen à maximal fünf aus. Browser-Tab geöffnet halten; Stop bei Fehler oder manuellem Stopp. Nur Frontend-Dateien geändert; **keine SQL / Edge-Neudeploy / Cron-Aktivierung**. Details `docs/releases/8.69-dao-legacy-mint-browser-drain.md`.
 
 ### Phase 8.68 – Legacy Native-Mint-Preview-Diagnose (installiert und live geprüft)
