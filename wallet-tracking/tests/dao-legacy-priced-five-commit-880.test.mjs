@@ -38,7 +38,7 @@ test('8.80 commit is distinct from 8.79, service role only and fully atomic',()=
 })
 test('8.80 UI needs verified preview and two manual confirmations',()=>{
  assert.match(html,/id="daoLegacyPricedFiveCommit880"[^>]*disabled/)
- assert.match(html,/window\.APP_VERSION="8\.80"/)
+ assert.match(html,/window\.APP_VERSION="8\.81"/)
  assert.match(ui,/ready880=false/)
  assert.match(ui,/window\.prompt\('Fünf neue/)
  assert.match(ui,/window\.confirm\('Letzte Bestätigung/)

@@ -1,3 +1,6 @@
+### 8.81 – Dritter atomarer MineBot-5er-Commit vorbereitet (Installation offen)
+- 8.80 live 5/5 kanonisch übernommen und DB-bestätigt, insgesamt 11/76; offen 61 priced + 4 pre-price. Nächste fünf Blöcke 2337881/2396232/2743281/2743285/2803236 live read-only 5/5 verifiziert. 8.81 eigene service-only SQL-Funktion, Edge-Live-Reproof und gesonderter bestätigter atomarer Commit. Installation/SQL/Edge/Live-Abnahme offen. DAO-Cron/Live-Worker AUS. `docs/releases/8.81-dao-legacy-third-five-atomic-commit.md`.
+
 ### 8.80 – Zweite atomare 5er-Übernahme vorbereitet (Installation offen)
 - 8.79 live 5/5 übernommen und per SQL unabhängig geprüft; 6/76 Legacy insgesamt kanonisch. 70 Legacy offen (66 priced, 4 pre-price). 8.78 nächster 5er-Satz live exakt verifiziert, 0 Writes. 8.80 SQL-Funktion/Edge/Admin mit festen fünf Hashes, erneuter Live-Verifikation, doppelt bestätigtem atomarem Commit und Rollback. ZIP/SQL/Edge/Abnahme offen. DAO-Cron/Live-Worker AUS. `docs/releases/8.80-dao-legacy-second-five-atomic-commit.md`.
 

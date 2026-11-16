@@ -1334,13 +1334,15 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
- // 8.77/8.78 read-only previews; 8.79/8.80 fixed five-claim atomic commits.
+ // 8.77/8.78 read-only previews; 8.79–8.81 fixed five-claim atomic commits.
  // The write path reruns every independent live proof and calls one SQL RPC.
  if(body?.mode==='admin-legacy-next-five-preview-877'||body?.mode==='admin-legacy-priced-next-five-preview-878'||
-    body?.mode==='admin-legacy-priced-five-commit-879'||body?.mode==='admin-legacy-priced-five-commit-880'){
+    body?.mode==='admin-legacy-priced-five-commit-879'||body?.mode==='admin-legacy-priced-five-commit-880'||
+    body?.mode==='admin-legacy-priced-five-commit-881'){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
   const committing880=body.mode==='admin-legacy-priced-five-commit-880';
-  const committing=committing880||body.mode==='admin-legacy-priced-five-commit-879';
+  const committing881=body.mode==='admin-legacy-priced-five-commit-881';
+  const committing=committing881||committing880||body.mode==='admin-legacy-priced-five-commit-879';
   const pricedOnly=committing||body.mode==='admin-legacy-priced-next-five-preview-878';
   const fixed879=[
    ['0x21a0ec877f6ebf0452db83b9a0439ea26d12b28351f571b8d48c21ce9d6eb99d',165133,818,'2897336081630970904',1.5082171161676934],
@@ -1356,9 +1358,16 @@ Deno.serve(async request=>{
    ['0x4bf476ecd9fa1ffe956ddce09e40731ea856170c034b706bb3e4a8e98813af6b',2185862,819,'2761830123649018195',1.6638156156980808],
    ['0x5bfd2df402f5ac52708c88838cf443711932fa6f7dc1f91bf6635c21c210429f',2337875,818,'1137205057236417485',1.9320395188634845]
   ] as const;
-  const fixed=committing880?fixed880:fixed879;
+  const fixed881=[
+   ['0x9c9f96176b85f475568b8360919f70af67bee87cd5c359db1e4f36076de5490f',2337881,819,'1137205057236417485',1.9321904798310519],
+   ['0xaf426c032f2506eb7e9fd2279072457e750b678f76cc06d505170e124ff9c29c',2396232,818,'487363152984477954',1.8732107004603566],
+   ['0x105cc30694e9de6bcafc948bf688d2dc4e9eaca765776e20837e09b3505c4a89',2743281,819,'3411310607339698510',1.7170427180788568],
+   ['0x174c195a835de324dea9c4dd0b70e55d97f6a1e75dcb6fbeb28e05fd2684aaed',2743285,818,'2923947454355220556',1.7170506314776859],
+   ['0x4e0458a361e2fd6c93fdb99a78dac414cb205fcf4a5e961b81b4017fe10ca703',2803236,818,'487311054585855039',1.6983804634903685]
+  ] as const;
+  const fixed=committing881?fixed881:committing880?fixed880:fixed879;
   if(Object.keys(body).some(k=>!(committing?['mode','confirm']:['mode']).includes(k))||
-     (committing&&body.confirm!==(committing880?'COMMIT-FIVE-880':'COMMIT-FIVE-879')))
+     (committing&&body.confirm!==(committing881?'COMMIT-FIVE-881':committing880?'COMMIT-FIVE-880':'COMMIT-FIVE-879')))
    return reply({ok:false,error:'Explicit fixed five-claim confirmation required',writesPerformed:0},400);
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
@@ -1458,7 +1467,8 @@ Deno.serve(async request=>{
      throw Error(`Five-claim batch did not pass all live proofs: ${stopped}`);
     const proofs=results.map(x=>({txHash:x.txHash,claimBlock:x.claimBlock,nftId:x.nftId,
      amountRaw:x.amountRaw,priceUsd:x.price.priceUsd,proofBlock:x.price.proofBlock,source:x.price.source}));
-    const {data:commit,error:commitError}=await sb.rpc(committing880?
+    const {data:commit,error:commitError}=await sb.rpc(committing881?
+     'wallettracking_dao_commit_legacy_priced_five_881':committing880?
      'wallettracking_dao_commit_legacy_priced_five_880':'wallettracking_dao_commit_legacy_priced_five_879',{
      p_user:wallet.user_id,p_wallet:wallet.id,p_proofs:proofs
     });
