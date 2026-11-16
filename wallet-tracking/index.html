@@ -1,4 +1,4 @@
-<!-- Phase 8.68: read-only legacy Native Minter field diagnostics and proof build marker. -->
+<!-- Phase 8.69: browser-controlled bounded read-only legacy Native Minter drain. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.46: Browser-gesteuerte, manuelle historische DAO-Payout-Verifikation; kein Cron. -->
@@ -856,6 +856,16 @@
           <div id="daoNativeDrainCount" class="note" aria-live="polite" style="margin-top:10px">0 in diesem Durchlauf verifiziert · 0 Server-Aufrufe</div>
           <div id="daoNativeDrainStatus" class="note" role="status" aria-live="polite" style="margin-top:6px">Noch nicht gestartet. Für die abschliessende Bestätigung ist eine Datenbankkontrolle erforderlich.</div>
         </div>
+        <div class="custom-token-card" id="daoLegacyMintDrain869" style="margin:16px 0;padding:14px">
+          <strong>DAO1 · Historische Native-Minter-Auszahlungen prüfen (8.69)</strong>
+          <p class="note" style="margin:8px 0">Nur für die geprüfte Test-Wallet. Die ersten 30 von 76 Transaktionen wurden bereits einzeln verifiziert; die verbleibenden 46 werden nach manuellem Start in maximal zehn sequenziellen 5er-Gruppen gelesen. Sofortiger Stopp bei Abweichungen. Den Browser-Tab geöffnet lassen. Keine Claim-Erstellung, Datenbankänderungen, Cron- oder Live-Worker-Aktivierung.</p>
+          <div class="action-row" style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="daoLegacyMintDrainStart" type="button" onclick="startDaoLegacyMintDrain869()">Restliche 46 prüfen</button>
+            <button id="daoLegacyMintDrainStop" type="button" class="secondary" onclick="stopDaoLegacyMintDrain869()" disabled>Nach aktuellem Aufruf stoppen</button>
+          </div>
+          <div id="daoLegacyMintDrainCount" class="note" aria-live="polite" style="margin-top:10px">0 von 46 verbleibenden geprüft</div>
+          <div id="daoLegacyMintDrainStatus" class="note" role="status" aria-live="polite" style="margin-top:6px">Noch nicht gestartet. Ausschliesslich Read-only-Preview.</div>
+        </div>
         <div id="adminHardcodingAudit"></div>
       </div>
 
@@ -1415,7 +1425,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 16.11.2026 11:33:23 CET · Phase 8.68 · Build 20261116-113323</span><br>
+    <span id="footerVersionLine">Version: 16.11.2026 11:44:35 CET · Phase 8.69 · Build 20261116-114435</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1441,9 +1451,10 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.68";window.BUILD_ID="20261116-113323";</script>
+<script>window.APP_VERSION="8.69";window.BUILD_ID="20261116-114435";</script>
 <script src="./js/app.js?v=20261114-122907"></script>
 <script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
+<script src="./admin/dao-legacy-mint-drain-869.js?v=20261116-114435"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1462,6 +1473,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 16.11.2026 11:33:23 CET · Phase 8.68 · Build 20261116-113323</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 16.11.2026 11:44:35 CET · Phase 8.69 · Build 20261116-114435</div>
 </body>
 </html>

@@ -1,5 +1,8 @@
 
-### Phase 8.68 – Legacy Native-Mint-Preview-Diagnose (Installation offen)
+### Phase 8.69 – Manuelle Browser-Serie für 46 Legacy-Prüfungen (Installation offen)
+- Erste 30/76 historische Native-Minter-Auszahlungen live exakt verifiziert, **90.576417951299766898 APTM**, 0 Fehler und 0 Writes. Neuer Admin-Audit-Button führt die restlichen 46 in bis zu zehn seriellen Read-only-Gruppen à maximal fünf aus. Browser-Tab geöffnet halten; Stop bei Fehler oder manuellem Stopp. Nur Frontend-Dateien geändert; **keine SQL / Edge-Neudeploy / Cron-Aktivierung**. Details `docs/releases/8.69-dao-legacy-mint-browser-drain.md`.
+
+### Phase 8.68 – Legacy Native-Mint-Preview-Diagnose (installiert und live geprüft)
 - Nach 8.67-Installation weiterhin fünf `invalid-mint-event`; der dokumentierte echte Log besteht lokal. Neu `proofBuild` und getrennte Gründe für Topics-Layout, Address-Topics, Amount-Daten und Absender/Empfänger/Betrag. Read-only, keine SQL oder Datenänderung; DAO-Cron/Live-Worker AUS. Details `docs/releases/8.68-dao-legacy-mint-diagnostics.md`.
 
 ### Phase 8.67 – Blockscout-Topic-Nullkompatibilität (installiert, Live-Test weiterhin auffällig)
