@@ -1,3 +1,6 @@
+### Phase 8.71 – MineBot-Ownership-SQL-Korrektur (Installation offen)
+- 8.70-SQL scheiterte in Supabase mit `42702` (`wallet_address` Variable/Spalte). Read-only Kontrollen: null Zeilen für #818/#819. 8.71-Migration benennt lokale Konstante eindeutig um; Guards/Inserts unverändert. Noch nicht installiert. DAO-Cron/Worker AUS; keine Claim-/Reward-/Preisänderung. `docs/releases/8.71-dao-legacy-minebot-sql-fix.md`.
+
 
 ### Phase 8.70 – Historische MineBot-NFTs #818/#819, strikte Eigentumsregistrierung (Installation offen)
 - 76/76 Legacy-Minter-Auszahlungen live verifiziert: 224.410053146163331226 APTM. Vault-IDs 818 und 819 sind dieselben MineBot-NFT-IDs des ERC-721-Vertrags `0xa1b76189…`. Beide in Block 10904 an Wallet geprägt; vollständige Transferhistorie, Ausgänge Block 11448349/11448526; 42 bzw. 34 Claims liegen im Eigentumsintervall. 8.70 nur 2 Katalogeinträge und 2 nicht-aktuelle Ownership-Zeiträume, mit strengen Guards. SQL/Installation und Abnahme offen; keine kanonische Claim-Erstellung oder USD-Preisveränderung, DAO-Cron/Live-Worker AUS. Details `docs/releases/8.70-dao-legacy-minebot-ownership.md`.
