@@ -1,3 +1,6 @@
+### 8.79 · Aktuell – Atomarer 5er-Commit (noch nicht installiert)
+- 8.78 live 5/5 geprüft, 0 Writes. 8.79 feste fünf Claims, frische Live-Belege, doppelter Admin-Confirm, atomarer SQL-Finalizer; vier frühe ohne USD ausgenommen. SQL/Edge/ZIP-Installation und Abnahme offen, DAO-Cron/Live-Worker AUS.
+
 ### Phase 8.78 – Nächste fünf preisfähige Legacy-Claims lesend prüfen (Installation offen)
 - 8.77 live: 5/5 Mint/Eigentum verifiziert, 0 Writes; 4 vor Marktstart 88356 ohne USD, späterer Block165133 exact-v13. 8.78 neue, strikt lesende Admin-Route mit DB-Filter `claim_block>=88356`, maximal fünf älteste offene Kandidaten, frischer Pool-State-/Sync-Preisbeleg für jeden, bei Abweichung Stopp. Kein SQL/Commit/Cron/Worker. Die vier frühen Claims verbleiben für einen späteren eigenen Null-USD-Kanonikpfad. `docs/releases/8.78-dao-legacy-priced-five-preview.md`.
 
@@ -247,3 +250,6 @@ Edge Function `dao-reward-refresh` und beide Reward-Crons NICHT aktivieren.
 - Die Prüfung berücksichtigt solche Kollisionen auch über Pagination-Grenzen hinweg und prüft die gesamte Gruppe dieses Blocks, bevor sie eine Bestätigung zulässt.
 - Neun lokale Regressionstests, darunter Übertragungen innerhalb eines früheren Blocks und über Seitengrenzen, erfolgreich.
 - **Weiterhin kein automatischer Datenbankeintrag der `claim_nft_id` und keine Reward-Job-Aktivierung.** Erst kanonische Claim-Argumente, Contract-Evidenz, native/Token-Auszahlung, Preisbewertung und End-to-End-Abgleich müssen abgeschlossen werden.
+### Phase 8.79 – Fünf feste preisfähige Legacy-Claims atomar übernehmen (Installation offen)
+- 8.78 installiert/deployed und live 5/5 geprüft (Blöcke 165133, 957944, 1235068, 1563318, 1571769): 0 Writes, frische Blockchain-Mint-Belege und exakte historische Preise. 8.79 ergänzt nur einen expliziten, nach erneuter Vorschau und doppelter Bestätigung auslösbaren Commit; SQL erzeugt service-only Funktion mit festen fünf Transaktionen, prüft jeden Datensatz unter Advisory-Lock und nutzt je Claim denselben zentralen Native-Claim-Finalizer, alles atomar in einer SQL-Transaktion. Vier vor Block88356 bleiben ohne USD und unberührt. **Weder Cron noch Live-Worker aktiviert.** `docs/releases/8.79-dao-legacy-priced-five-atomic-commit.md`.
+
