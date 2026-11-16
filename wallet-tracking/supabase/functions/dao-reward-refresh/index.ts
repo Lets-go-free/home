@@ -11,6 +11,7 @@ import { rewardFlowCounterparty } from './counterparty-policy.js'
 import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
 import { evaluateMinerPreview856 } from './miner-batch-preview-856.js'
 import { aggregateMinerRewardEvents857 } from './miner-multi-event-857.js'
+import { verifyLegacyNativeMint866 } from './legacy-native-mint-866.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
@@ -1332,6 +1333,70 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // 8.66: bounded, read-only historical Native Minter evidence, independent
+ // of the newer NFT pipeline. Every mint must match a precompile event.
+ if(body?.mode==='admin-legacy-native-mint-preview-866'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  if(Object.keys(body).some(k=>!['mode','walletId','offset'].includes(k))||
+     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.walletId||''))||
+     (body.offset!==undefined&&(!Number.isSafeInteger(body.offset)||body.offset<0||body.offset>1000)))
+   return reply({ok:false,mode:body.mode,error:'Invalid legacy mint preview request'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error},permission.status);
+   const {data:wallet,error:we}=await sb.from('wallets').select('id,user_id').eq('id',body.walletId).maybeSingle();
+   if(we||!wallet)throw Error('Wallet scope unavailable');
+   const job={user_id:wallet.user_id,wallet_id:wallet.id},address=await loadAddress(job);
+   const offset=body.offset||0,pageSize=5;
+   const {data:candidates,error:ce}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,claim_block,status,payout_status,nft_id,claim_pipeline_status')
+    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT).eq('chain_key',CHAIN)
+    .eq('status','unassigned_legacy').order('claim_block',{ascending:true}).order('tx_hash',{ascending:true})
+    .range(offset,offset+pageSize);
+   if(ce)throw ce;
+   const selected=(candidates||[]).slice(0,pageSize),results:any[]=[];
+   const started=Date.now();let stopped='completed';
+   for(const c of selected){
+    if(Date.now()-started>40000){stopped='time-budget';break}
+    const item:any={txHash:c.tx_hash,claimBlock:c.claim_block,status:'needs_review'};
+    results.push(item);
+    try{
+     const scope={user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN,tx_hash:c.tx_hash};
+     const [{data:tx,error:te},{data:claims,error:ne}]=await Promise.all([
+      sb.from('project_transactions').select('selector,status,block_number,to_address').match(scope).limit(2),
+      sb.from('project_nft_claims').select('id').match(scope).limit(1)
+     ]);
+     if(te||ne||tx?.length!==1||claims?.length||tx[0].selector!==CLAIM_SELECTOR||
+        !['ok','success'].includes(String(tx[0].status).toLowerCase())||
+        Number(tx[0].block_number)!==Number(c.claim_block))throw Error('Legacy candidate guard failed');
+     const [raw,firstPage]=await Promise.all([
+      json(`${EXPLORER}/transactions/${c.tx_hash}/raw-trace`),
+      json(`${EXPLORER}/transactions/${c.tx_hash}/logs`)
+     ]);
+     if(!Array.isArray(firstPage?.items))throw Error('Mint log response unavailable');
+     const logs=[...firstPage.items],root=`${EXPLORER}/transactions/${c.tx_hash}/logs`;
+     let params=firstPage.next_page_params;const seen=new Set<string>();
+     while(params){
+      if(seen.size>=9)throw Error('Mint log pagination safety limit');
+      const url=new URL(root);for(const [k,v] of Object.entries(params))if(v!=null)url.searchParams.set(k,String(v));
+      const pageUrl=url.toString();if(seen.has(pageUrl))throw Error('Repeated mint log page');
+      seen.add(pageUrl);const page=await json(pageUrl);
+      if(!Array.isArray(page?.items))throw Error('Incomplete mint log pagination');
+      logs.push(...page.items);if(logs.length>1000)throw Error('Mint event count safety limit');
+      params=page.next_page_params;
+     }
+     const proof=verifyLegacyNativeMint866(raw?.result??raw,logs,address);
+     Object.assign(item,proof);
+    }catch(e){item.status='needs_review';item.reason='explorer-or-evidence-check-failed';item.error=daoErrorSummary(e)}
+   }
+   const completed=results.length,hasMore=(candidates||[]).length>pageSize;
+   return reply({ok:true,mode:body.mode,walletId:wallet.id,offset,selected:selected.length,
+    checked:completed,nextOffset:offset+completed,hasMore:hasMore||stopped==='time-budget',stopped,results,
+    claimsCreated:0,notice:'Read-only native-mint evidence preview. No NFT, canonical claim, candidate, reward, price, flow, cursor, queue or cron writes.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e)},409)}
+ }
  // 8.63/8.65: explicitly administered sequential miner completions.
  // 8.63 retains its maximum of three; 8.65 allows up to ten with the same
  // time and evidence guards. No new batch worker or cron route is exposed.

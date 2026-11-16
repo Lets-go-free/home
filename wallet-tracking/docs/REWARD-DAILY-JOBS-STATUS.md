@@ -1,4 +1,8 @@
 
+### Phase 8.66 – Historische DAO1 Native-Minter-Claims: Admin-Preview (Installation offen)
+- 76 historische `unassigned_legacy`-Transaktionen der Test-Wallet ohne gewöhnlichen Transfer; 16 fehlgeschlagene Transaktionen ausdrücklich ausgeschlossen. Beispiel Block 11448516: Zwei Mint-Calls an Avalanche Native Minter mit passenden Events, zusammen 5.359811966623994539 APTM. `claimReward` und Vault-IDs beweisen allein weder NFT-Identität noch USD-Preis.
+- Neuer einzelner Admin-Modus `admin-legacy-native-mint-preview-866` (fünf Kandidaten je Seite, streng gleichlautende Trace- und Log-Evidenz, read-only). Noch nicht deployt oder live getestet. **Kein Cron, kein Worker, kein kanonischer Write, keine SQL.** Details `docs/releases/8.66-dao-legacy-native-mint-preview.md`.
+
 ### Phase 8.51 – DAO1 historischer NFT-Eigentumsnachweis (Installation offen)
 - Six ownership intervals for Reto's 377 claims are covered by a single verified sender. `wallet_address` is NULL in all 125 ownership rows; all 7 associated wallet EVM addresses are encrypted. **Do not backfill plaintext wallet addresses**.
 - 8.51 SQL corrects the finalizer's redundant plaintext comparison: UUID-linked ownership period plus independently verified complete transfer history and exact last NFT owner remain required. No claim/reward/data updates run by migration.
