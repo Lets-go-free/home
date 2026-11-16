@@ -1,3 +1,6 @@
+### Phase 8.73 – Historischer exact-v13-Preisbeleg als Einzel-Preview (Installation offen)
+- 8.72 live: Block 40707 (#819, 2.432568024883926698 APTM) und 957942 (#818, 15.167495057030400213 APTM) beide verified_preview, 0 Writes. 8.73 ruft unveränderten exactAnchor-Pool-State-/Sync-Vorgänger-Nachweis lesend auf; kein Preisanker-, Flow-, Reward- oder Claim-Write. Preisquelle und Block, USD-Reward nur indikativ. Vor Block 88356 bleibt unpriced; RPC-Fehler liefert Preisstatus unavailable. DAO-Cron/Worker AUS. Details docs/releases/8.73-dao-legacy-single-exact-price.md.
+
 ### Phase 8.72 – Historische MineBot-Einzel-Claim-Vorschau (Installation offen)
 - 8.71 SQL erfolgreich: NFTs 818/819 historisch angelegt und geprüft. 76 Legacy-Claims = 42/34, 0 kanonische Claims, 0 Asset-Flows, 0 Rewards oder USD; 224.410053146163331226 APTM read-only native Mints. 8.72 neuer Admin-only Einzel-Modus und Audit-UI zur erneuten Trace/Event-, Eigentums- und Duplikatprüfung. 4 Claims vor Pool-Start 88356 als unpriced; 72 spätere benötigen separat belegte exact-v13-Preise. **Keine** Schreiboperation, Cron/Live-Worker bleiben AUS. `docs/releases/8.72-dao-legacy-single-preview.md`.
 

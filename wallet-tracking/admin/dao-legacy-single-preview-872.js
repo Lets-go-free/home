@@ -28,8 +28,11 @@
       data.txHash!==hash||data.writesPerformed!==0||!['verified_preview','needs_review'].includes(data.status))
     throw Error('Ungültige oder unvollständige Prüfantwort');
    if(out)out.textContent=JSON.stringify(data,null,2);
+   const priceLabel=data.price?.status==='exact_v13_verified'
+    ?`exact-v13: ${data.price.priceUsd} USD/APTM (Belegblock ${data.price.proofBlock}); indikativ ${data.price.rewardUsdEstimate??'–'} USD`
+    :`USD: ${data.price?.status||'offen'}`;
    status(data.status==='verified_preview'
-    ?`Prüfung erfolgreich: MineBot #${data.nftId}, ${data.amountAptm} APTM. USD: ${data.price?.status}. Keine Datenänderungen.`
+    ?`Prüfung erfolgreich: MineBot #${data.nftId}, ${data.amountAptm} APTM. ${priceLabel}. Keine Datenänderungen.`
     :`Nicht zur Übernahme bereit: ${(data.blockers||[]).join(', ')}. Keine Datenänderungen.`,data.status!=='verified_preview');
   }catch(e){status(`Prüfung abgebrochen: ${String(e?.message||e)}. Keine automatische Wiederholung.`,true);}
   finally{active=false;if(button)button.disabled=false;}

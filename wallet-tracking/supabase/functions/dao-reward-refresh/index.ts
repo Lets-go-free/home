@@ -5,7 +5,7 @@
 // durable and incremental; confirmed claims and prices still need canonical enrichment.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-coverage.ts'
-import { processExactPriceTargets } from './price-target-worker.ts'
+import { processExactPriceTargets, previewExactPriceAtBlock873 } from './price-target-worker.ts'
 import './asset-policy.js'
 import { rewardFlowCounterparty } from './counterparty-policy.js'
 import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
@@ -1399,10 +1399,25 @@ Deno.serve(async request=>{
    const assessment=assessLegacySingle872({candidate,transaction,proof,
     ownership:ownershipQuery.data[0],catalog:catalogQuery.data[0],
     canonicalCount:canonicalQuery.data.length,flowCount:flowQuery.data.length});
+   // Price evidence is independent from the native mint proof; a failing archive
+   // RPC never makes an unverified price look like a confirmed historical quote.
+   if(assessment.status==='verified_preview'&&assessment.price.status==='exact_v13_proof_required'){
+    try{
+     const price=await previewExactPriceAtBlock873(sb,Number(candidate.claim_block));
+     const indicative=Number(assessment.amountAptm)*Number(price.priceUsd);
+     assessment.price={...price,
+      ...(Number.isFinite(indicative)&&indicative>0?{
+       rewardUsdEstimate:Number(indicative.toPrecision(15)),estimateOnly:true
+      }:{})};
+    }catch(e){
+     assessment.price={status:'exact_v13_proof_unavailable',valueUsd:null,
+      reason:daoErrorSummary(e),targetBlock:Number(candidate.claim_block)};
+    }
+   }
    return reply({ok:true,mode:body.mode,proofBuild:LEGACY_MINT_PROOF_BUILD,
     walletId:wallet.id,txHash:body.txHash,claimBlock:candidate.claim_block,
     nativeMint:{status:proof.status,reason:proof.reason,mintCalls:proof.mintCalls??0,mintEvents:proof.mintEvents??0},
-    ...assessment,notice:'Strict one-claim read-only preview. Price eligibility is not an exact-v13 USD quote. No database writes or jobs.'});
+    ...assessment,notice:'Strict read-only preview. Only exact_v13_verified has an independent historical price proof; rewardUsdEstimate is indicative, never canonical. No database writes or jobs.'});
   }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e),writesPerformed:0},409)}
  }
  // 8.66: bounded, read-only historical Native Minter evidence, independent

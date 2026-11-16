@@ -97,6 +97,23 @@ async function exactAnchor(block:number,rpc:(method:string,params:unknown[])=>Pr
  }
  throw Error('No complete historical reserve/Sync proof for target block');
 }
+// 8.73: independent single-block proof using the very same exactAnchor logic.
+// Intentionally no anchor cache, upsert, flow-pricing RPC or database writes.
+export async function previewExactPriceAtBlock873(sb:SupabaseLike,block:number){
+ if(!Number.isSafeInteger(block)||block<MARKET_START)
+  return {status:'unpriced_before_exact_anchor',valueUsd:null,priceUsd:null,
+   source:'before-first-proven-pool-block',targetBlock:block};
+ const rpc=await rpcFactory(sb);
+ const meta=await poolMetadata(rpc);
+ const proof=await exactAnchor(block,rpc,meta);
+ if(!(Number(proof.aptm_usd)>0)||!Number.isSafeInteger(proof.sync_block)||proof.sync_block>block)
+  throw Error('Invalid independent exact-v13 price proof');
+ return {status:'exact_v13_verified',priceUsd:proof.aptm_usd,valueUsd:null,
+  source:proof.tx_hash?'verified-predecessor-sync':'historical-pool-state',
+  poolAddress:PAIR,parserVersion:1,targetBlock:block,proofBlock:proof.sync_block,
+  proofTxHash:proof.tx_hash??null,proofLogIndex:proof.log_index??null,
+  scannedFromBlock:proof.scanned_from_block};
+}
 export async function processExactPriceTargets(sb:SupabaseLike,{preview=false,maxTargets=4}:{preview?:boolean,maxTargets?:number}={}){
  const {data:targets,error}=await sb.rpc('wallettracking_dao_next_price_targets_848',{p_limit:maxTargets});
  if(error)throw Error('Global DAO price candidate selection: '+error.message);
