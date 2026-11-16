@@ -1,4 +1,4 @@
-/* WalletTracking 8.81: priced five preview + separately confirmed fixed atomic commits. */
+/* WalletTracking 8.82: reusable bounded historical claim preview and atomic commit. */
 (() => {
  'use strict';
  const MODE='admin-legacy-priced-next-five-preview-878';
@@ -6,6 +6,7 @@
  const COMMIT_MODE='admin-legacy-priced-five-commit-879';
  const COMMIT_MODE_880='admin-legacy-priced-five-commit-880';
  const COMMIT_MODE_881='admin-legacy-priced-five-commit-881';
+ const COMMIT_MODE_882='admin-legacy-priced-bounded-commit-882';
  const FIXED=[
   ['0x21a0ec877f6ebf0452db83b9a0439ea26d12b28351f571b8d48c21ce9d6eb99d',165133,818,'2897336081630970904',1.5082171161676934],
   ['0x0c7c6987ef6b39a84fc8cb38cbc8beb5865ccc249e6b15141bc7b5c0f4a5a9d4',957944,819,'18064831138661371117',1.3088042775902748],
@@ -31,6 +32,7 @@
  let ready=false;
  let ready880=false;
  let ready881=false;
+ let ready882=[];
  const el=id=>document.getElementById(id);
  const status=(message,failed=false)=>{
   const node=el('daoLegacyPricedFiveStatus878');
@@ -38,10 +40,11 @@
  };
  window.previewDaoLegacyPricedFive878=async()=>{
   if(active)return;
-  ready=false;ready880=false;ready881=false;
+  ready=false;ready880=false;ready881=false;ready882=[];
   const commitButton=el('daoLegacyPricedFiveCommit879');if(commitButton)commitButton.disabled=true;
   const commitButton880=el('daoLegacyPricedFiveCommit880');if(commitButton880)commitButton880.disabled=true;
   const commitButton881=el('daoLegacyPricedFiveCommit881');if(commitButton881)commitButton881.disabled=true;
+  const commitButton882=el('daoLegacyPricedFiveCommit882');if(commitButton882)commitButton882.disabled=true;
   if(!window.isSecureContext||!navigator.onLine||typeof sb==='undefined'||!isAdmin||!currentUser?.id){
    status('HTTPS, Internet und angemeldetes Admin-Konto erforderlich.',true);return;
   }
@@ -90,6 +93,18 @@
       x.price?.status==='exact_v13_verified'&&x.price?.priceUsd===FIXED_881[i][4]&&
       x.price?.source==='historical-pool-state'&&x.price?.proofBlock===FIXED_881[i][1])){
     ready881=true;if(commitButton881)commitButton881.disabled=false;
+   }
+   if(data.stopped==='completed'&&data.checked>0&&data.checked<=5&&
+      data.results.every(x=>x.status==='verified_preview'&&x.blockers?.length===0&&
+       [818,819].includes(x.nftId)&&/^[0-9]+$/.test(x.amountRaw)&&
+       x.price?.status==='exact_v13_verified'&&x.price?.priceUsd>0&&
+       x.price?.source==='historical-pool-state'&&x.price?.proofBlock===Number(x.claimBlock)&&
+       x.price?.targetBlock===Number(x.claimBlock)&&x.price?.scannedFromBlock===Number(x.claimBlock)&&
+       x.price?.parserVersion===1&&
+       x.price?.poolAddress?.toLowerCase()==='0x38acbfa5108d3c76d6cea4d380182e832a289b57'&&
+       x.mintCalls>=1&&x.mintCalls===x.mintEvents)){
+    ready882=data.results.map(x=>x.txHash);
+    if(commitButton882)commitButton882.disabled=false;
    }
    const verified=data.results.filter(x=>x.status==='verified_preview').length;
    status(`${verified}/${data.checked} mit historischem USD-Beleg verifiziert. ${data.stopped==='completed'?'Prüfung abgeschlossen.':'Stopp: '+data.stopped}. Keine Datenänderungen.`,data.stopped!=='completed');
@@ -184,6 +199,40 @@
    const output=el('daoLegacyPricedFiveResult878');if(output)output.textContent=JSON.stringify(data,null,2);
    status('Fünf festgelegte 8.80-Claims atomar übernommen. Datenbank-Abnahme erforderlich.');
   }catch(e){status(`Stapelübernahme nicht bestätigt: ${String(e?.message||e)}. Vor Wiederholung Datenbankstatus prüfen.`,true);}
+  finally{active=false;if(button)button.disabled=false;}
+ };
+ window.commitDaoLegacyPricedBounded882=async()=>{
+  if(active||ready882.length<1||ready882.length>5){
+   status('Zuerst den nächsten Stapel vollständig und erfolgreich lesen.',true);return;
+  }
+  const expected=[...ready882];
+  const code=window.prompt(`Genau ${expected.length} frisch geprüfte Claims atomar übernehmen. Gib COMMIT-NEXT-882 ein:`);
+  if(code!=='COMMIT-NEXT-882'){status('Keine Übernahme bestätigt.');return;}
+  if(!window.confirm(`Letzte Bestätigung: ${expected.length} historische MineBot-Claims gemeinsam übernehmen?`))return;
+  const button=el('daoLegacyPricedFiveStart878'),commitButton=el('daoLegacyPricedFiveCommit882');
+  ready882=[];active=true;if(button)button.disabled=true;if(commitButton)commitButton.disabled=true;
+  status('Prüfe den bestätigten Stapel live erneut. Bei Abweichung keine Buchung…');
+  try{
+   if(!window.isSecureContext||!navigator.onLine||typeof sb==='undefined'||!isAdmin||!currentUser?.id)
+    throw Error('Sichere Admin-Sitzung erforderlich');
+   const user=currentUser.id;
+   const {data:session,error:se}=await sb.auth.getSession();
+   if(se||!session?.session?.access_token||currentUser?.id!==user)throw Error('Admin-Sitzung geändert');
+   const {data,error}=await sb.functions.invoke('dao-reward-refresh',{
+    body:{mode:COMMIT_MODE_882,confirm:'COMMIT-NEXT-882',expectedTxHashes:expected}
+   });
+   if(error){
+    let detail='';try{detail=String((await error.context?.clone?.().json())?.error||'')}catch(_ignored){}
+    throw Error(detail||String(error.message||error));
+   }
+   if(data?.ok!==true||data.mode!==COMMIT_MODE_882||data.walletId!==WALLET||
+      data.status!=='committed'||data.claimsCreated!==expected.length||
+      !Array.isArray(data.results)||data.results.length!==expected.length||
+      data.results.some((x,i)=>x.txHash!==expected[i]||x.status!=='completed'))
+    throw Error(data?.error||'Keine vollständige atomare Übernahmebestätigung');
+   const output=el('daoLegacyPricedFiveResult878');if(output)output.textContent=JSON.stringify(data,null,2);
+   status(`${expected.length} historische Claims atomar übernommen. Vor dem nächsten Stapel Datenbank-Abnahme durchführen.`);
+  }catch(e){status(`Übernahme nicht bestätigt: ${String(e?.message||e)}. Vor Wiederholung Datenbankstatus prüfen.`,true);}
   finally{active=false;if(button)button.disabled=false;}
  };
 })();

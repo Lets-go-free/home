@@ -1,3 +1,6 @@
+### 8.82 – Dauerhafter manueller 1–5 Legacy-Claim-Stapel (Installation offen)
+- 8.81 live 5/5 per DB abgenommen, 16/76 kanonisch; 56 priced und 4 pre-price offen. Nächster 5er-Satz live read-only verified. 8.82 ersetzt fixe Einmal-Hashlisten durch eine wiederverwendbare manuelle 1–5-Verarbeitung derselben Wallet mit frischem Live-Proof, SQL-oldest-five-Reihenfolge, zentralem Finalizer, Wallet-Advisory-Locks und atomarem Rollback. Keine neuen ZIPs pro Stapel. Admin-Preview → Bestätigung → SQL-Abnahme je Batch; kein Cron, Worker oder anderer Wallet-Scope. Details `docs/releases/8.82-dao-legacy-reusable-bounded-commit.md`.
+
 ### 8.81 – Dritter atomarer MineBot-5er-Commit vorbereitet (Installation offen)
 - 8.80 live 5/5 kanonisch übernommen und DB-bestätigt, insgesamt 11/76; offen 61 priced + 4 pre-price. Nächste fünf Blöcke 2337881/2396232/2743281/2743285/2803236 live read-only 5/5 verifiziert. 8.81 eigene service-only SQL-Funktion, Edge-Live-Reproof und gesonderter bestätigter atomarer Commit. Installation/SQL/Edge/Live-Abnahme offen. DAO-Cron/Live-Worker AUS. `docs/releases/8.81-dao-legacy-third-five-atomic-commit.md`.
 

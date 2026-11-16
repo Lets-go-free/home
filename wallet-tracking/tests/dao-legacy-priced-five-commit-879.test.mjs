@@ -38,7 +38,7 @@ test('8.79 SQL is service-only and atomic, and existing canonical pipeline is re
 })
 test('8.79 manual button is initially disabled and requires two confirmations',()=>{
  assert.match(html,/id="daoLegacyPricedFiveCommit879"[^>]*disabled/)
- assert.match(html,/window\.APP_VERSION="8\.80"/)
+ assert.match(html,/window\.APP_VERSION="8\.82"/)
  assert.match(ui,/ready=false/)
  assert.match(ui,/window\.prompt\(/)
  assert.match(ui,/window\.confirm\(/)

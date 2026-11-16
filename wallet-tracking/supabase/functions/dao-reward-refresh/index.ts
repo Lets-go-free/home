@@ -1334,15 +1334,16 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
- // 8.77/8.78 read-only previews; 8.79–8.81 fixed five-claim atomic commits.
+ // 8.77/8.78 read-only previews; 8.79–8.81 fixed commits; 8.82 bounded reusable commit.
  // The write path reruns every independent live proof and calls one SQL RPC.
  if(body?.mode==='admin-legacy-next-five-preview-877'||body?.mode==='admin-legacy-priced-next-five-preview-878'||
     body?.mode==='admin-legacy-priced-five-commit-879'||body?.mode==='admin-legacy-priced-five-commit-880'||
-    body?.mode==='admin-legacy-priced-five-commit-881'){
+    body?.mode==='admin-legacy-priced-five-commit-881'||body?.mode==='admin-legacy-priced-bounded-commit-882'){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
   const committing880=body.mode==='admin-legacy-priced-five-commit-880';
   const committing881=body.mode==='admin-legacy-priced-five-commit-881';
-  const committing=committing881||committing880||body.mode==='admin-legacy-priced-five-commit-879';
+  const committing882=body.mode==='admin-legacy-priced-bounded-commit-882';
+  const committing=committing882||committing881||committing880||body.mode==='admin-legacy-priced-five-commit-879';
   const pricedOnly=committing||body.mode==='admin-legacy-priced-next-five-preview-878';
   const fixed879=[
    ['0x21a0ec877f6ebf0452db83b9a0439ea26d12b28351f571b8d48c21ce9d6eb99d',165133,818,'2897336081630970904',1.5082171161676934],
@@ -1366,8 +1367,13 @@ Deno.serve(async request=>{
    ['0x4e0458a361e2fd6c93fdb99a78dac414cb205fcf4a5e961b81b4017fe10ca703',2803236,818,'487311054585855039',1.6983804634903685]
   ] as const;
   const fixed=committing881?fixed881:committing880?fixed880:fixed879;
-  if(Object.keys(body).some(k=>!(committing?['mode','confirm']:['mode']).includes(k))||
-     (committing&&body.confirm!==(committing881?'COMMIT-FIVE-881':committing880?'COMMIT-FIVE-880':'COMMIT-FIVE-879')))
+  if(Object.keys(body).some(k=>!(committing882?['mode','confirm','expectedTxHashes']:
+      committing?['mode','confirm']:['mode']).includes(k))||
+     (committing&&body.confirm!==(committing882?'COMMIT-NEXT-882':committing881?'COMMIT-FIVE-881':committing880?'COMMIT-FIVE-880':'COMMIT-FIVE-879'))||
+     (committing882&&(!Array.isArray(body.expectedTxHashes)||body.expectedTxHashes.length<1||
+      body.expectedTxHashes.length>5||body.expectedTxHashes.some((h:unknown)=>
+       typeof h!=='string'||!/^0x[0-9a-f]{64}$/.test(h))||
+      new Set(body.expectedTxHashes).size!==body.expectedTxHashes.length)))
    return reply({ok:false,error:'Explicit fixed five-claim confirmation required',writesPerformed:0},400);
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
@@ -1387,9 +1393,12 @@ Deno.serve(async request=>{
     .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(6);
    if(qe)throw Error('Legacy candidate queue unavailable');
    const selected=(queue||[]).slice(0,5),results:any[]=[];
-   if(committing&&(selected.length!==5||selected.some((c,i)=>
+   if(committing&&!committing882&&(selected.length!==5||selected.some((c,i)=>
       c.tx_hash!==fixed[i][0]||Number(c.claim_block)!==fixed[i][1])))
     throw Error('Fixed five-claim batch order or candidate set changed');
+   if(committing882&&(selected.length!==body.expectedTxHashes.length||
+      selected.some((c,i)=>c.tx_hash!==body.expectedTxHashes[i])))
+    throw Error('Expected priced claim batch changed since admin preview');
    let stopped='completed';const started=Date.now();
    for(const candidate of selected){
     if(Date.now()-started>40000){stopped='time-budget';break;}
@@ -1447,7 +1456,18 @@ Deno.serve(async request=>{
      }
      if(pricedOnly&&assessment.price.status!=='exact_v13_verified')
       throw Error('Priced-only batch requires exact-v13 historical quote');
-     if(committing){
+     if(committing882){
+      const price=assessment.price;
+      if(price.source!=='historical-pool-state'||
+         Number(price.targetBlock)!==Number(candidate.claim_block)||
+         Number(price.proofBlock)!==Number(candidate.claim_block)||
+         Number(price.scannedFromBlock)!==Number(candidate.claim_block)||
+         Number(price.parserVersion)!==1||
+         price.poolAddress?.toLowerCase()!=='0x38acbfa5108d3c76d6cea4d380182e832a289b57'||
+         !(Number(price.priceUsd)>0)||proof.mintCalls<1||proof.mintEvents!==proof.mintCalls)
+       throw Error('Reusable batch requires exact historical pool-state and matched native mint proof');
+     }
+     if(committing&&!committing882){
       const expected=fixed[results.length-1],price=assessment.price;
       if(candidate.tx_hash!==expected[0]||Number(candidate.claim_block)!==expected[1]||
          assessment.nftId!==expected[2]||assessment.amountRaw!==expected[3]||
@@ -1463,20 +1483,24 @@ Deno.serve(async request=>{
     }catch(e){item.status='needs_review';item.reason=daoErrorSummary(e);stopped='needs_review';break;}
    }
    if(committing){
-    if(stopped!=='completed'||results.length!==5||results.some(x=>x.status!=='verified_preview'))
+    if(stopped!=='completed'||results.length<1||results.length>5||
+       (!committing882&&results.length!==5)||results.some(x=>x.status!=='verified_preview'))
      throw Error(`Five-claim batch did not pass all live proofs: ${stopped}`);
     const proofs=results.map(x=>({txHash:x.txHash,claimBlock:x.claimBlock,nftId:x.nftId,
-     amountRaw:x.amountRaw,priceUsd:x.price.priceUsd,proofBlock:x.price.proofBlock,source:x.price.source}));
-    const {data:commit,error:commitError}=await sb.rpc(committing881?
+     amountRaw:x.amountRaw,priceUsd:x.price.priceUsd,proofBlock:x.price.proofBlock,
+     source:x.price.source,poolAddress:x.price.poolAddress,parserVersion:x.price.parserVersion,
+     mintCalls:x.mintCalls,mintEvents:x.mintEvents}));
+    const {data:commit,error:commitError}=await sb.rpc(committing882?
+     'wallettracking_dao_commit_legacy_priced_bounded_882':committing881?
      'wallettracking_dao_commit_legacy_priced_five_881':committing880?
      'wallettracking_dao_commit_legacy_priced_five_880':'wallettracking_dao_commit_legacy_priced_five_879',{
      p_user:wallet.user_id,p_wallet:wallet.id,p_proofs:proofs
     });
-    if(commitError||commit?.status!=='completed'||commit?.claimsCreated!==5||commit?.results?.length!==5)
+    if(commitError||commit?.status!=='completed'||commit?.claimsCreated!==results.length||commit?.results?.length!==results.length)
      throw Error(`Atomic five-claim SQL finalizer rejected: ${commitError?.message||JSON.stringify(commit)}`);
     return reply({ok:true,mode:body.mode,walletId:wallet.id,status:'committed',
-     claimsCreated:5,results:commit.results,
-     notice:'Exactly five fixed canonical claims committed in one guarded SQL transaction. No cron or other wallet touched.'});
+     claimsCreated:results.length,results:commit.results,
+     notice:'Only the freshly verified next priced claims committed in one guarded SQL transaction. No cron or other wallet touched.'});
    }
    return reply({ok:true,mode:body.mode,walletId:wallet.id,pricedOnly,
     minClaimBlock:pricedOnly?88356:null,remainingBefore:count??null,

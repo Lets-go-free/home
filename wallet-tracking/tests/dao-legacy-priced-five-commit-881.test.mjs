@@ -38,7 +38,7 @@ test('8.81 single atomic service-role finalizer and independent live evidence ga
 })
 test('8.81 browser button is gated, twice confirmed and never automatic',()=>{
  assert.match(html,/id="daoLegacyPricedFiveCommit881"[^>]*disabled/)
- assert.match(html,/window\.APP_VERSION="8\.81"/)
+ assert.match(html,/window\.APP_VERSION="8\.82"/)
  assert.match(ui,/ready881=false/)
  assert.match(ui,/window\.prompt\('Fünf neue/)
  assert.match(ui,/COMMIT-FIVE-881/)
