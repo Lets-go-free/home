@@ -1334,13 +1334,17 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
- // 8.72: one explicitly selected historical transaction; read-only from end to end.
- // A successful preview is not authorization to mutate canonical rewards.
- if(body?.mode==='admin-legacy-single-claim-preview-872'){
+ // 8.74: explicit single-claim commit is separately gated and uses the existing
+ // atomic canonical finalizer; the 8.72 preview continues to be read-only.
+ if(body?.mode==='admin-legacy-single-claim-preview-872'||body?.mode==='admin-legacy-single-claim-commit-874'){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
-  if(Object.keys(body).some(k=>!['mode','txHash'].includes(k))||
+  const committing=body.mode==='admin-legacy-single-claim-commit-874';
+  const commitHash='0xc27e0aa5e092efefe9f57e8c7d6890bfdd54a974fde2988e6319a653b3eb2363';
+  if(Object.keys(body).some(k=>!(committing?['mode','txHash','confirm']:['mode','txHash']).includes(k))||
      !/^0x[0-9a-f]{64}$/.test(String(body.txHash||'')))
    return reply({ok:false,error:'Invalid single legacy transaction hash'},400);
+  if(committing&&(body.txHash!==commitHash||body.confirm!=='COMMIT-957942-818'))
+   return reply({ok:false,error:'Explicit fixed-claim confirmation required',writesPerformed:0},400);
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
   try{
@@ -1413,6 +1417,28 @@ Deno.serve(async request=>{
      assessment.price={status:'exact_v13_proof_unavailable',valueUsd:null,
       reason:daoErrorSummary(e),targetBlock:Number(candidate.claim_block)};
     }
+   }
+   if(committing){
+    const price=assessment.price;
+    if(assessment.status!=='verified_preview'||assessment.blockers?.length||
+       Number(candidate.claim_block)!==957942||assessment.nftId!==818||
+       assessment.amountRaw!=='15167495057030400213'||
+       price.status!=='exact_v13_verified'||price.source!=='historical-pool-state'||
+       Number(price.targetBlock)!==957942||Number(price.proofBlock)!==957942||
+       Number(price.scannedFromBlock)!==957942||
+       price.poolAddress?.toLowerCase()!=='0x38acbfa5108d3c76d6cea4d380182e832a289b57'||
+       Number(price.parserVersion)!==1||Number(price.priceUsd)!==1.3088042775902748)
+     throw Error('Fresh native, ownership or exact-v13 historical pool proof failed; no commit');
+    const {data:commit,error:commitError}=await sb.rpc('wallettracking_dao_commit_legacy_minebot_874',{
+     p_user:wallet.user_id,p_wallet:wallet.id,p_tx:body.txHash,
+     p_amount_raw:assessment.amountRaw,p_price:price.priceUsd,p_proof_block:price.proofBlock
+    });
+    if(commitError||commit?.status!=='completed'||commit?.claimsCreated!==1)
+     throw Error(`Atomic single-claim commit rejected: ${commitError?.message||JSON.stringify(commit)}`);
+    return reply({ok:true,mode:body.mode,walletId:wallet.id,txHash:body.txHash,
+     status:'committed',claimsCreated:1,nftId:818,amountAptm:assessment.amountAptm,
+     canonicalFinalizer:commit.canonicalFinalizer,
+     notice:'One fixed legacy claim atomically created by guarded canonical finalizer. No cron or bulk run.'});
    }
    return reply({ok:true,mode:body.mode,proofBuild:LEGACY_MINT_PROOF_BUILD,
     walletId:wallet.id,txHash:body.txHash,claimBlock:candidate.claim_block,

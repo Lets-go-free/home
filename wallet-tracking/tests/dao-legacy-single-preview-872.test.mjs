@@ -39,13 +39,16 @@ test('unexpected calldata and proof mismatch are rejected',()=>{
  const invalid=base();invalid.proof.status='needs_review'
  assert.equal(assessLegacySingle872(invalid).status,'needs_review')
 })
-test('endpoint retains strict authorization, no mutation methods',()=>{
+test('endpoint retains strict authorization; preview has no mutation methods',()=>{
  const source=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8')
- const section=source.split("if(body?.mode==='admin-legacy-single-claim-preview-872'){")[1].split('// 8.66: bounded')[0]
+ const section=source.split("if(body?.mode==='admin-legacy-single-claim-preview-872'||body?.mode==='admin-legacy-single-claim-commit-874'){")[1].split('// 8.66: bounded')[0]
  assert.match(section,/authenticateInspectAdmin\(request\)/)
  assert.match(section,/DAO_REWARD_ENABLE_LIVE_WORKER/)
  assert.match(section,/LEGACY_SINGLE_TEST_WALLET_872/)
- assert.doesNotMatch(section,/\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(/)
+ assert.match(section,/if\(committing\)/)
+ assert.match(section,/wallettracking_dao_commit_legacy_minebot_874/)
+ assert.match(section,/COMMIT-957942-818/)
+ assert.doesNotMatch(section,/\.insert\(|\.update\(|\.upsert\(|\.delete\(/)
 })
 test('admin UI exposes one selected hash and no automatic batch mode',()=>{
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8')
@@ -55,4 +58,17 @@ test('admin UI exposes one selected hash and no automatic batch mode',()=>{
  assert.match(html,/dao-legacy-single-preview-872\.js/)
  assert.match(js,/mode:MODE,txHash:hash/)
  assert.doesNotMatch(js,/setInterval|setTimeout|\.update\(|\.upsert\(/)
+})
+test('8.74 commit requires fixed TX, exact historical proof, explicit UI confirmation and guarded SQL finalizer',()=>{
+ const sql=readFileSync(new URL('../supabase/migrations/20261116161659_dao_legacy_single_native_claim_commit_874.sql',import.meta.url),'utf8')
+ const js=readFileSync(new URL('../admin/dao-legacy-single-preview-872.js',import.meta.url),'utf8')
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8')
+ assert.match(sql,/v_tx constant text := '0xc27e0aa5e092efefe9f57e8c7d6890bfdd54a974fde2988e6319a653b3eb2363'/)
+ assert.match(sql,/wallettracking_dao_finalize_single_native_claim/)
+ assert.match(sql,/REVOKE ALL ON FUNCTION/)
+ assert.match(sql,/TO service_role/)
+ assert.doesNotMatch(sql,/\bDELETE\s+FROM\b/i)
+ assert.match(js,/window\.prompt/)
+ assert.match(js,/window\.confirm/)
+ assert.match(html,/id="daoLegacySingleCommit874"[^>]*disabled/)
 })
