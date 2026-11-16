@@ -1,3 +1,6 @@
+### Phase 8.78 – Nächste fünf preisfähige Legacy-Claims lesend prüfen (Installation offen)
+- 8.77 live: 5/5 Mint/Eigentum verifiziert, 0 Writes; 4 vor Marktstart 88356 ohne USD, späterer Block165133 exact-v13. 8.78 neue, strikt lesende Admin-Route mit DB-Filter `claim_block>=88356`, maximal fünf älteste offene Kandidaten, frischer Pool-State-/Sync-Preisbeleg für jeden, bei Abweichung Stopp. Kein SQL/Commit/Cron/Worker. Die vier frühen Claims verbleiben für einen späteren eigenen Null-USD-Kanonikpfad. `docs/releases/8.78-dao-legacy-priced-five-preview.md`.
+
 ### Phase 8.77 – Nächste fünf historische MineBot-Claims nur lesend prüfen (Installation offen)
 - 8.76 Live-Erfolg: MineBot #818, Block 957942, 1 kanonischer Claim und Flow, 15.167495057030400213 APTM, exakt 19.85128241097073681207126347197496 USD, Pipeline completed; DB-Abnahme 75 weiterhin unassigned. 8.77 neuer Admin-Button/Edge-Read-only-Route für die nächsten fünf offenen Kandidaten; bei erster Abweichung Stop, externe Mint-Events/NFT-Eigentum/Preisbelege wie Einzel-Preview, keine Commits/Cron/Worker. `docs/releases/8.77-dao-legacy-five-preview.md`.
 

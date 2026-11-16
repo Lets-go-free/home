@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 
 const source=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8')
-const section=source.split("if(body?.mode==='admin-legacy-next-five-preview-877'){")[1]
+const section=source.split("if(body?.mode==='admin-legacy-next-five-preview-877'||body?.mode==='admin-legacy-priced-next-five-preview-878'){")[1]
  ?.split('// 8.74: explicit single-claim commit')[0]
 
 test('8.77 exposes only a bounded read-only, fixed-wallet next-five preview',()=>{

@@ -1334,11 +1334,12 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
- // 8.77: bounded, read-only next-five Legacy MineBot preview.
+ // 8.77/8.78: bounded, read-only next-five Legacy MineBot preview.
  // It reuses the same pure assessor and independent live Mint + price proofs
  // as the accepted single preview. No write path exists in this branch.
- if(body?.mode==='admin-legacy-next-five-preview-877'){
+ if(body?.mode==='admin-legacy-next-five-preview-877'||body?.mode==='admin-legacy-priced-next-five-preview-878'){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const pricedOnly=body.mode==='admin-legacy-priced-next-five-preview-878';
   if(Object.keys(body).some(k=>k!=='mode'))return reply({ok:false,error:'Unexpected batch preview parameter'},400);
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
@@ -1350,9 +1351,11 @@ Deno.serve(async request=>{
    if(we||!wallet)throw Error('Fixed test wallet unavailable');
    const job={user_id:wallet.user_id,wallet_id:wallet.id},address=await loadAddress(job);
    const scope={user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN};
-   const {data:queue,error:qe,count}=await sb.from('dao_reward_claim_candidates')
+   let queueQuery=sb.from('dao_reward_claim_candidates')
     .select('tx_hash,claim_block,status,payout_status',{count:'exact'})
-    .match({...scope,status:'unassigned_legacy',payout_status:'pending'})
+    .match({...scope,status:'unassigned_legacy',payout_status:'pending'});
+   if(pricedOnly)queueQuery=queueQuery.gte('claim_block',88356);
+   const {data:queue,error:qe,count}=await queueQuery
     .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(6);
    if(qe)throw Error('Legacy candidate queue unavailable');
    const selected=(queue||[]).slice(0,5),results:any[]=[];
@@ -1406,15 +1409,20 @@ Deno.serve(async request=>{
      if(assessment.status!=='verified_preview')throw Error(`Legacy evidence blocked: ${assessment.blockers.join(', ')}`);
      if(assessment.price.status==='exact_v13_proof_required'){
       const price=await previewExactPriceAtBlock873(sb,Number(candidate.claim_block));
+      if(price.status!=='exact_v13_verified'||!(Number(price.priceUsd)>0))
+       throw Error('Independent exact-v13 price proof missing');
       assessment.price={...price,estimateOnly:true,
        rewardUsdEstimate:Number((Number(assessment.amountAptm)*Number(price.priceUsd)).toPrecision(15))};
      }
+     if(pricedOnly&&assessment.price.status!=='exact_v13_verified')
+      throw Error('Priced-only batch requires exact-v13 historical quote');
      Object.assign(item,{status:'verified_preview',nftId:assessment.nftId,
       amountRaw:assessment.amountRaw,amountAptm:assessment.amountAptm,
       price:assessment.price,mintCalls:proof.mintCalls,mintEvents:proof.mintEvents,blockers:[]});
     }catch(e){item.status='needs_review';item.reason=daoErrorSummary(e);stopped='needs_review';break;}
    }
-   return reply({ok:true,mode:body.mode,walletId:wallet.id,remainingBefore:count??null,
+   return reply({ok:true,mode:body.mode,walletId:wallet.id,pricedOnly,
+    minClaimBlock:pricedOnly?88356:null,remainingBefore:count??null,
     selected:selected.length,checked:results.length,hasMore:(count??0)>results.length,
     stopped,results,writesPerformed:0,claimsCreated:0,
     notice:'Strict next-five read-only batch. Stops at first discrepancy; no claim, price, flow, candidate, queue, cursor or cron writes.'});
