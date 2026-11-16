@@ -72,3 +72,13 @@ test('8.74 commit requires fixed TX, exact historical proof, explicit UI confirm
  assert.match(js,/window\.confirm/)
  assert.match(html,/id="daoLegacySingleCommit874"[^>]*disabled/)
 })
+test('8.75 native flow uses established -1 log index and surfaces server failures without retry',()=>{
+ const sql=readFileSync(new URL('../supabase/migrations/20261116195516_dao_legacy_native_log_index_fix_875.sql',import.meta.url),'utf8')
+ const js=readFileSync(new URL('../admin/dao-legacy-single-preview-872.js',import.meta.url),'utf8')
+ assert.match(sql,/log_index,token_address,token_symbol/)
+ assert.match(sql,/-1,'native','APTM'/)
+ assert.doesNotMatch(sql,/NULL,'native','APTM'/)
+ assert.match(sql,/CREATE OR REPLACE FUNCTION public\.wallettracking_dao_commit_legacy_minebot_874/)
+ assert.match(js,/response\.clone\(\)\.json\(\)/)
+ assert.doesNotMatch(js,/setInterval|setTimeout/)
+})

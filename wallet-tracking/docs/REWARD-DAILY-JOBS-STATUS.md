@@ -1,3 +1,6 @@
+### Phase 8.75 – Native-Flow-Constraint für einzelnen historischen Claim korrigiert (Installation offen)
+- 8.74 Commit abgebrochen: NOT NULL `project_transaction_asset_flows.log_index`; 8.74 erzeugte NULL. Read-only SQL bestätigt **keine** Änderungen: Claim 0, Flows 0, Anker 0, Candidate unassigned_legacy/pending. 8.75 ersetzt nur die service-only Commit-Funktion mit `log_index=-1` (identisch zu regulärem DAO-Native-Staging) und verbessert Admin-HTTP-Fehleranzeige. Kein Commit bei Installation, keine Jobs. `docs/releases/8.75-dao-legacy-native-flow-log-index-fix.md`.
+
 ### Phase 8.74 – Einzige historische MineBot-Claim-Übernahme (vorbereitet, nicht ausgeführt)
 - Live 8.73 Einzel-Preview bestätigt für #818/Block 957942: 15.167495057030400213 APTM, historischer exact-v13 Pool-State-Preis 1.3088042775902748 USD/APTM. 8.74: kein automatischer Write; dedizierte service-only SQL-Funktion und Admin-UI mit zwei Bestätigungen. Bei erneut verifizierten Trace/Event/NFT/Preisbelegen schreibt eine Transaktion nativen Flow, exakt belegten Preisanker und kanonischen Claim über den bestehenden Finalizer; Fehler rollen alles zurück. Restliche 75 und Jobs unberührt. SQL/Edge/UI installieren, kontrollierte Einzelübernahme, DB-Nachprüfung ausstehend. `docs/releases/8.74-dao-legacy-single-commit.md`.
 

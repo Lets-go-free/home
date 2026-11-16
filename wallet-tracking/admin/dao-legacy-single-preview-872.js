@@ -1,4 +1,4 @@
-/* WalletTracking 8.74: read-only single proof + explicitly confirmed, fixed-TX commit. */
+/* WalletTracking 8.75: fixed-TX commit plus visible HTTP error details, no retry. */
 (() => {
  'use strict';
  const MODE='admin-legacy-single-claim-preview-872';
@@ -68,7 +68,18 @@
    const {data,error}=await sb.functions.invoke('dao-reward-refresh',{
     body:{mode:COMMIT_MODE,txHash:COMMIT_HASH,confirm:'COMMIT-957942-818'}
    });
-   if(error||data?.ok!==true||data.mode!==COMMIT_MODE||data.txHash!==COMMIT_HASH||
+   if(error){
+    let detail='';
+    try{
+     const response=error.context;
+     if(response&&typeof response.clone==='function'){
+      const payload=await response.clone().json();
+      detail=String(payload?.error||'').slice(0,500);
+     }
+    }catch(_ignored){}
+    throw Error(detail||String(error.message||error));
+   }
+   if(data?.ok!==true||data.mode!==COMMIT_MODE||data.txHash!==COMMIT_HASH||
       data.status!=='committed'||data.claimsCreated!==1)throw Error(error?.message||data?.error||'Übernahme nicht bestätigt');
    const out=el('daoLegacySingleResult');if(out)out.textContent=JSON.stringify(data,null,2);
    status('Genau 1 kanonischer Claim #818 übernommen. Weitere Claims wurden nicht verändert.');
