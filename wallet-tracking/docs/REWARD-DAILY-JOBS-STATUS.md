@@ -1,3 +1,6 @@
+### Phase 8.77 – Nächste fünf historische MineBot-Claims nur lesend prüfen (Installation offen)
+- 8.76 Live-Erfolg: MineBot #818, Block 957942, 1 kanonischer Claim und Flow, 15.167495057030400213 APTM, exakt 19.85128241097073681207126347197496 USD, Pipeline completed; DB-Abnahme 75 weiterhin unassigned. 8.77 neuer Admin-Button/Edge-Read-only-Route für die nächsten fünf offenen Kandidaten; bei erster Abweichung Stop, externe Mint-Events/NFT-Eigentum/Preisbelege wie Einzel-Preview, keine Commits/Cron/Worker. `docs/releases/8.77-dao-legacy-five-preview.md`.
+
 ### Phase 8.76 – Exakte Raw-Decimal-Abschlussprüfung (Installation offen)
 - 8.75 Single-Commit rollback bei `Canonical post-condition missing`, erneute Kontrolle 0 Claims/Flows/Anker. Lesende DB-Abfrage bewies Precision-Ursache: zentrale Raw-Decimal-Funktion = 15.167495057030400213, direkte SQL-Division = 15.1674950570304002, Gleichheit false. 8.76 verwendet denselben kanonischen Parser für Flow-Betrag und Postcondition. Sonstige Guards/Finalizer bleiben; kein automatischer Write oder Cron. `docs/releases/8.76-dao-legacy-raw-decimal-postcondition.md`.
 

@@ -1334,6 +1334,92 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // 8.77: bounded, read-only next-five Legacy MineBot preview.
+ // It reuses the same pure assessor and independent live Mint + price proofs
+ // as the accepted single preview. No write path exists in this branch.
+ if(body?.mode==='admin-legacy-next-five-preview-877'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  if(Object.keys(body).some(k=>k!=='mode'))return reply({ok:false,error:'Unexpected batch preview parameter'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error},permission.status);
+   const {data:wallet,error:we}=await sb.from('wallets').select('id,user_id')
+    .eq('id',LEGACY_SINGLE_TEST_WALLET_872).single();
+   if(we||!wallet)throw Error('Fixed test wallet unavailable');
+   const job={user_id:wallet.user_id,wallet_id:wallet.id},address=await loadAddress(job);
+   const scope={user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN};
+   const {data:queue,error:qe,count}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,claim_block,status,payout_status',{count:'exact'})
+    .match({...scope,status:'unassigned_legacy',payout_status:'pending'})
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(6);
+   if(qe)throw Error('Legacy candidate queue unavailable');
+   const selected=(queue||[]).slice(0,5),results:any[]=[];
+   let stopped='completed';const started=Date.now();
+   for(const candidate of selected){
+    if(Date.now()-started>40000){stopped='time-budget';break;}
+    const item:any={txHash:candidate.tx_hash,claimBlock:candidate.claim_block,status:'needs_review'};
+    results.push(item);
+    try{
+     if(!/^0x[0-9a-f]{64}$/.test(String(candidate.tx_hash||'')))throw Error('Invalid legacy candidate hash');
+     const txScope={...scope,tx_hash:candidate.tx_hash};
+     const [tq,cq,fq]=await Promise.all([
+      sb.from('project_transactions').select('tx_hash,block_number,selector,status,raw_input,value_aptm,from_address').match(txScope).limit(2),
+      sb.from('project_nft_claims').select('id').match(txScope).limit(2),
+      sb.from('project_transaction_asset_flows').select('id').match(txScope).limit(2)
+     ]);
+     if(tq.error||cq.error||fq.error||tq.data?.length!==1)throw Error('Non-unique or missing claim context');
+     const transaction=tq.data[0];
+     if(String(transaction.from_address||'').toLowerCase()!==address.toLowerCase())throw Error('Legacy claim sender differs from wallet');
+     const calldata=/^0x86bb8f37([0-9a-f]{64})([0-9a-f]{64})$/i.exec(String(transaction.raw_input||''));
+     const vault=calldata?BigInt('0x'+calldata[1]):0n;
+     if(!calldata||(vault!==818n&&vault!==819n)||BigInt('0x'+calldata[2])!==50n)
+      throw Error('Unexpected MineBot vault calldata');
+     const nftId=Number(vault);
+     const [oq,nq]=await Promise.all([
+      sb.from('project_nft_ownership').select('nft_id,is_current,acquisition_verified,acquisition_kind,owned_from_block,owned_to_block')
+       .match({...scope,nft_contract:LEGACY_SINGLE_NFT_CONTRACT_872,nft_id:nftId}).limit(2),
+      sb.from('project_nfts').select('nft_id,subtype')
+       .match({project_key:PROJECT,chain_key:CHAIN,nft_contract:LEGACY_SINGLE_NFT_CONTRACT_872,nft_id:nftId}).limit(2)
+     ]);
+     if(oq.error||nq.error||oq.data?.length!==1||nq.data?.length!==1)throw Error('Historical NFT metadata not unique');
+     const [raw,firstPage]=await Promise.all([
+      json(`${EXPLORER}/transactions/${candidate.tx_hash}/raw-trace`),
+      json(`${EXPLORER}/transactions/${candidate.tx_hash}/logs`)
+     ]);
+     if(!Array.isArray(firstPage?.items))throw Error('Mint events unavailable');
+     const logs=[...firstPage.items],root=`${EXPLORER}/transactions/${candidate.tx_hash}/logs`;
+     const seen=new Set<string>();let params=firstPage.next_page_params;
+     while(params){
+      if(seen.size>=9)throw Error('Mint log pagination limit');
+      const url=new URL(root);for(const [k,v] of Object.entries(params))if(v!=null)url.searchParams.set(k,String(v));
+      const pageUrl=url.toString();if(seen.has(pageUrl))throw Error('Repeated mint log page');
+      seen.add(pageUrl);const page=await json(pageUrl);
+      if(!Array.isArray(page?.items))throw Error('Incomplete mint log page');
+      logs.push(...page.items);if(logs.length>1000)throw Error('Mint event safety limit');
+      params=page.next_page_params;
+     }
+     const proof=verifyLegacyNativeMint866(raw?.result??raw,logs,address);
+     const assessment=assessLegacySingle872({candidate,transaction,proof,
+      ownership:oq.data[0],catalog:nq.data[0],canonicalCount:cq.data.length,flowCount:fq.data.length});
+     if(assessment.status!=='verified_preview')throw Error(`Legacy evidence blocked: ${assessment.blockers.join(', ')}`);
+     if(assessment.price.status==='exact_v13_proof_required'){
+      const price=await previewExactPriceAtBlock873(sb,Number(candidate.claim_block));
+      assessment.price={...price,estimateOnly:true,
+       rewardUsdEstimate:Number((Number(assessment.amountAptm)*Number(price.priceUsd)).toPrecision(15))};
+     }
+     Object.assign(item,{status:'verified_preview',nftId:assessment.nftId,
+      amountRaw:assessment.amountRaw,amountAptm:assessment.amountAptm,
+      price:assessment.price,mintCalls:proof.mintCalls,mintEvents:proof.mintEvents,blockers:[]});
+    }catch(e){item.status='needs_review';item.reason=daoErrorSummary(e);stopped='needs_review';break;}
+   }
+   return reply({ok:true,mode:body.mode,walletId:wallet.id,remainingBefore:count??null,
+    selected:selected.length,checked:results.length,hasMore:(count??0)>results.length,
+    stopped,results,writesPerformed:0,claimsCreated:0,
+    notice:'Strict next-five read-only batch. Stops at first discrepancy; no claim, price, flow, candidate, queue, cursor or cron writes.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e),writesPerformed:0},409)}
+ }
  // 8.74: explicit single-claim commit is separately gated and uses the existing
  // atomic canonical finalizer; the 8.72 preview continues to be read-only.
  if(body?.mode==='admin-legacy-single-claim-preview-872'||body?.mode==='admin-legacy-single-claim-commit-874'){
