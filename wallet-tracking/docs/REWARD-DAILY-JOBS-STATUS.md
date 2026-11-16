@@ -1,3 +1,6 @@
+### Phase 8.72 – Historische MineBot-Einzel-Claim-Vorschau (Installation offen)
+- 8.71 SQL erfolgreich: NFTs 818/819 historisch angelegt und geprüft. 76 Legacy-Claims = 42/34, 0 kanonische Claims, 0 Asset-Flows, 0 Rewards oder USD; 224.410053146163331226 APTM read-only native Mints. 8.72 neuer Admin-only Einzel-Modus und Audit-UI zur erneuten Trace/Event-, Eigentums- und Duplikatprüfung. 4 Claims vor Pool-Start 88356 als unpriced; 72 spätere benötigen separat belegte exact-v13-Preise. **Keine** Schreiboperation, Cron/Live-Worker bleiben AUS. `docs/releases/8.72-dao-legacy-single-preview.md`.
+
 ### Phase 8.71 – MineBot-Ownership-SQL-Korrektur (Installation offen)
 - 8.70-SQL scheiterte in Supabase mit `42702` (`wallet_address` Variable/Spalte). Read-only Kontrollen: null Zeilen für #818/#819. 8.71-Migration benennt lokale Konstante eindeutig um; Guards/Inserts unverändert. Noch nicht installiert. DAO-Cron/Worker AUS; keine Claim-/Reward-/Preisänderung. `docs/releases/8.71-dao-legacy-minebot-sql-fix.md`.
 

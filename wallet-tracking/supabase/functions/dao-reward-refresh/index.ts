@@ -12,6 +12,7 @@ import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
 import { evaluateMinerPreview856 } from './miner-batch-preview-856.js'
 import { aggregateMinerRewardEvents857 } from './miner-multi-event-857.js'
 import { verifyLegacyNativeMint866, LEGACY_MINT_PROOF_BUILD } from './legacy-native-mint-866.js'
+import { assessLegacySingle872, LEGACY_SINGLE_TEST_WALLET_872, LEGACY_SINGLE_NFT_CONTRACT_872 } from './legacy-single-preview-872.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
@@ -1333,6 +1334,77 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // 8.72: one explicitly selected historical transaction; read-only from end to end.
+ // A successful preview is not authorization to mutate canonical rewards.
+ if(body?.mode==='admin-legacy-single-claim-preview-872'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  if(Object.keys(body).some(k=>!['mode','txHash'].includes(k))||
+     !/^0x[0-9a-f]{64}$/.test(String(body.txHash||'')))
+   return reply({ok:false,error:'Invalid single legacy transaction hash'},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error},permission.status);
+   const {data:wallet,error:we}=await sb.from('wallets').select('id,user_id').eq('id',LEGACY_SINGLE_TEST_WALLET_872).single();
+   if(we||!wallet)throw Error('Fixed test wallet unavailable');
+   const job={user_id:wallet.user_id,wallet_id:wallet.id};
+   const address=await loadAddress(job);
+   const scope={user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN};
+   const [candidateQuery,transactionQuery,canonicalQuery,flowQuery]=await Promise.all([
+    sb.from('dao_reward_claim_candidates').select('tx_hash,claim_block,status,payout_status').match({...scope,tx_hash:body.txHash}).limit(2),
+    sb.from('project_transactions').select('tx_hash,block_number,selector,status,raw_input,value_aptm,from_address').match({...scope,tx_hash:body.txHash}).limit(2),
+    sb.from('project_nft_claims').select('id').match({...scope,tx_hash:body.txHash}).limit(2),
+    sb.from('project_transaction_asset_flows').select('id').match({...scope,tx_hash:body.txHash}).limit(2)
+   ]);
+   if(candidateQuery.error||transactionQuery.error||canonicalQuery.error||flowQuery.error)throw Error('Legacy preview database read failed');
+   if(candidateQuery.data?.length!==1||transactionQuery.data?.length!==1)throw Error('Expected unique persisted legacy candidate and transaction');
+   const candidate=candidateQuery.data[0],transaction=transactionQuery.data[0];
+   if(candidate.status!=='unassigned_legacy'||candidate.payout_status!=='pending'||
+      Number(transaction.block_number)!==Number(candidate.claim_block)||
+      String(transaction.from_address||'').toLowerCase()!==address.toLowerCase())
+    throw Error('Candidate status, block or sender does not match fixed wallet');
+   // Refuse an unrelated TX before contacting the external explorer.
+   const calldata=/^0x86bb8f37([0-9a-f]{64})([0-9a-f]{64})$/i.exec(String(transaction.raw_input||''));
+   const vault=calldata?BigInt('0x'+calldata[1]):0n;
+   if((vault!==818n&&vault!==819n)||!calldata||BigInt('0x'+calldata[2])!==50n)
+    throw Error('Not a verified legacy MineBot 818/819 calldata candidate');
+   const nftId=Number(vault);
+   const [ownershipQuery,catalogQuery]=await Promise.all([
+    sb.from('project_nft_ownership').select('nft_id,is_current,acquisition_verified,acquisition_kind,owned_from_block,owned_to_block')
+     .match({...scope,nft_contract:LEGACY_SINGLE_NFT_CONTRACT_872,nft_id:nftId}).limit(2),
+    sb.from('project_nfts').select('nft_id,subtype')
+     .match({project_key:PROJECT,chain_key:CHAIN,nft_contract:LEGACY_SINGLE_NFT_CONTRACT_872,nft_id:nftId}).limit(2)
+   ]);
+   if(ownershipQuery.error||catalogQuery.error||ownershipQuery.data?.length!==1||catalogQuery.data?.length!==1)
+    throw Error('Expected unique verified historical NFT metadata and ownership');
+   const [raw,firstPage]=await Promise.all([
+    json(`${EXPLORER}/transactions/${body.txHash}/raw-trace`),
+    json(`${EXPLORER}/transactions/${body.txHash}/logs`)
+   ]);
+   if(!Array.isArray(firstPage?.items))throw Error('Mint logs unavailable');
+   const logs=[...firstPage.items],root=`${EXPLORER}/transactions/${body.txHash}/logs`;
+   let params=firstPage.next_page_params;const seen=new Set<string>();
+   while(params){
+    if(seen.size>=9)throw Error('Mint log pagination limit');
+    const url=new URL(root);
+    for(const [k,v] of Object.entries(params))if(v!=null)url.searchParams.set(k,String(v));
+    const pageUrl=url.toString();if(seen.has(pageUrl))throw Error('Repeated mint log page');
+    seen.add(pageUrl);const page=await json(pageUrl);
+    if(!Array.isArray(page?.items))throw Error('Incomplete mint logs');
+    logs.push(...page.items);if(logs.length>1000)throw Error('Mint event safety limit');
+    params=page.next_page_params;
+   }
+   const proof=verifyLegacyNativeMint866(raw?.result??raw,logs,address);
+   const assessment=assessLegacySingle872({candidate,transaction,proof,
+    ownership:ownershipQuery.data[0],catalog:catalogQuery.data[0],
+    canonicalCount:canonicalQuery.data.length,flowCount:flowQuery.data.length});
+   return reply({ok:true,mode:body.mode,proofBuild:LEGACY_MINT_PROOF_BUILD,
+    walletId:wallet.id,txHash:body.txHash,claimBlock:candidate.claim_block,
+    nativeMint:{status:proof.status,reason:proof.reason,mintCalls:proof.mintCalls??0,mintEvents:proof.mintEvents??0},
+    ...assessment,notice:'Strict one-claim read-only preview. Price eligibility is not an exact-v13 USD quote. No database writes or jobs.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e),writesPerformed:0},409)}
+ }
  // 8.66: bounded, read-only historical Native Minter evidence, independent
  // of the newer NFT pipeline. Every mint must match a precompile event.
  if(body?.mode==='admin-legacy-native-mint-preview-866'){
