@@ -21,7 +21,7 @@ const oldModes = [
 ]
 
 test('8.85 removes old browser controls and Edge API routes', () => {
-  assert.match(html, /window\.APP_VERSION="8\.85"/)
+  assert.match(html, /window\.APP_VERSION="8\.8[56]"/)
   for (const id of ['daoLegacyMintDrain869', 'daoLegacySingle872', 'daoLegacyFive877',
     'daoLegacyPricedFive878', 'daoPreanchorFour884'])
     assert.doesNotMatch(html, new RegExp('id="'+id+'"'))
@@ -29,7 +29,9 @@ test('8.85 removes old browser controls and Edge API routes', () => {
     'dao-legacy-five-preview-877.js','dao-legacy-priced-five-preview-878.js','dao-preanchor-four-884.js'])
     assert.doesNotMatch(html, new RegExp('<script src="[^"]*'+name.replaceAll('.', '\\.')+'"'))
   for (const mode of oldModes) assert.ok(!edge.includes(mode), mode)
-  assert.doesNotMatch(edge, /import .*legacy-native-mint-866/)
+  // A later read-only historic proof may reuse the pure event parser, but
+  // the retired 8.66 preview route and its obsolete build metadata stay gone.
+  assert.doesNotMatch(edge, /LEGACY_MINT_PROOF_BUILD/)
   assert.doesNotMatch(edge, /import .*legacy-single-preview-872/)
   assert.match(html, /id="adminHardcodingAudit"/)
   assert.match(edge, /admin-miner-batch-plan-865/)

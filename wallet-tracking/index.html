@@ -1,4 +1,4 @@
-<!-- Phase 8.85: retire completed legacy one-off admin tools; canonical DAO logic unchanged. -->
+<!-- Phase 8.86: read-only proof of historical native payouts missing flows. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.46: Browser-gesteuerte, manuelle historische DAO-Payout-Verifikation; kein Cron. -->
@@ -856,6 +856,16 @@
           <div id="daoNativeDrainCount" class="note" aria-live="polite" style="margin-top:10px">0 in diesem Durchlauf verifiziert · 0 Server-Aufrufe</div>
           <div id="daoNativeDrainStatus" class="note" role="status" aria-live="polite" style="margin-top:6px">Noch nicht gestartet. Für die abschliessende Bestätigung ist eine Datenbankkontrolle erforderlich.</div>
         </div>
+        <div class="custom-token-card" id="daoHistoricalFlowPreview886" style="margin:16px 0;padding:14px">
+          <strong>DAO1 · Historische Claims ohne Eingangsflow prüfen (8.86)</strong>
+          <p class="note" style="margin:8px 0">Ausschliesslich die 164 bereits kanonischen Claims der geprüften Wallet. Maximal drei pro Aufruf; Live-Native-Mint-Trace, Mint-Event, NFT-Eigentum und Originalbetrag. Bei Abweichung sofortiger Stopp. <strong>Nur lesen:</strong> keine Claim-, Flow-, Preis-, Queue- oder Cron-Änderung.</p>
+          <div class="action-row" style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="daoHistoricalFlowFirst886" type="button" onclick="previewDaoHistoricalFlows886(false)">Erste 3 prüfen</button>
+            <button id="daoHistoricalFlowNext886" type="button" onclick="previewDaoHistoricalFlows886(true)" disabled>Nächste 3 prüfen</button>
+          </div>
+          <div id="daoHistoricalFlowStatus886" class="note" role="status" aria-live="polite" style="margin-top:9px">Noch nicht geprüft.</div>
+          <pre id="daoHistoricalFlowResult886" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px;margin-top:8px"></pre>
+        </div>
         <div id="adminHardcodingAudit"></div>
       </div>
 
@@ -1415,7 +1425,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 17.11.2026 10:06:44 CET · Phase 8.85 · Build 20261117-100644</span><br>
+    <span id="footerVersionLine">Version: 17.11.2026 10:34:41 CET · Phase 8.86 · Build 20261117-103441</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1441,9 +1451,10 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.85";window.BUILD_ID="20261117-100644";</script>
+<script>window.APP_VERSION="8.86";window.BUILD_ID="20261117-103441";</script>
 <script src="./js/app.js?v=20261114-122907"></script>
 <script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
+<script src="./admin/dao-historical-flow-preview-886.js?v=20261117-886"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1462,6 +1473,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 17.11.2026 10:06:44 CET · Phase 8.85 · Build 20261117-100644</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 17.11.2026 10:34:41 CET · Phase 8.86 · Build 20261117-103441</div>
 </body>
 </html>

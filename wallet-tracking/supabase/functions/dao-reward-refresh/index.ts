@@ -11,6 +11,8 @@ import { rewardFlowCounterparty } from './counterparty-policy.js'
 import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
 import { evaluateMinerPreview856 } from './miner-batch-preview-856.js'
 import { aggregateMinerRewardEvents857 } from './miner-multi-event-857.js'
+import { verifyLegacyNativeMint866 } from './legacy-native-mint-866.js'
+import { assessHistoricalRawAmount886 } from './legacy-flow-proof-886.js'
 const DB_URL=Deno.env.get('SUPABASE_URL')||''
 const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
 const CRON_SECRET=Deno.env.get('DAO_REWARD_CRON_SECRET')||''
@@ -1332,6 +1334,103 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // 8.86: narrow read-only historic payout evidence, never a repair or import.
+ if(body?.mode==='admin-historical-flow-preview-886'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const fixedWallet='e8b5c835-0db2-4449-bbee-258e28b42bbb';
+  const fixedContract='0x2096bd2e860b450498a7c908708757a1eb306416';
+  const offset=body.offset;
+  if(Object.keys(body).some(k=>!['mode','offset'].includes(k))||
+     !Number.isSafeInteger(offset)||offset<0||offset>163)
+   return reply({ok:false,error:'Expected only mode and integer offset 0..163',writesPerformed:0},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual historic inspection disabled',writesPerformed:0},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Disable DAO live worker first',writesPerformed:0},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error,writesPerformed:0},permission.status);
+   const {data:wallet,error:walletError}=await sb.from('wallets').select('id,user_id').eq('id',fixedWallet).maybeSingle();
+   if(walletError||!wallet)throw Error('Fixed historic wallet unavailable');
+   const job={user_id:wallet.user_id,wallet_id:wallet.id};
+   const walletAddress=await loadAddress(job);
+   const scope={user_id:job.user_id,wallet_id:fixedWallet,project_key:PROJECT,chain_key:CHAIN};
+   // The verified historical cohort is fixed. A changed count is a stop condition,
+   // not a reason to silently expand the job or scan arbitrary wallets.
+   const {count:total,error:countError}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash',{count:'exact',head:true}).match(scope)
+    .eq('status','pending').eq('payout_status','pending').eq('claim_pipeline_status','pending')
+    .eq('canonical_existing_verified',false).is('audit_classification',null);
+   if(countError)throw countError;
+   if(total!==164)throw Error('Fixed candidate cohort changed; expected 164');
+   const {data:candidates,error:candidateError}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,claim_block,nft_id,nft_contract,status').match(scope)
+    .eq('status','pending').eq('payout_status','pending').eq('claim_pipeline_status','pending')
+    .eq('canonical_existing_verified',false).is('audit_classification',null)
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).range(offset,Math.min(offset+2,163));
+   if(candidateError)throw candidateError;
+   if(!candidates?.length)throw Error('Expected historical candidate page unavailable');
+   const results:any[]=[];let stopped='completed';
+   for(const candidate of candidates){
+    const item:any={txHash:candidate.tx_hash,claimBlock:candidate.claim_block,nftId:candidate.nft_id,status:'needs_review',blockers:[]};
+    results.push(item);
+    try{
+     const {data:transactions,error:transactionError}=await sb.from('project_transactions')
+      .select('tx_hash,block_number,status,selector,from_address,to_address,claim_reward_aptm,claim_reward_usd')
+      .match(scope).eq('tx_hash',candidate.tx_hash).limit(2);
+     if(transactionError||transactions?.length!==1)throw Error('Claim transaction not unique');
+     const tx=transactions[0];
+     if(tx.selector!==CLAIM_SELECTOR||!['ok','success'].includes(lower(tx.status))||
+        lower(tx.to_address)!==fixedContract||lower(tx.from_address)!==walletAddress||
+        Number(tx.block_number)!==Number(candidate.claim_block)||!Number.isSafeInteger(Number(tx.block_number)))
+      throw Error('Fixed historic transaction evidence mismatch');
+     const {data:claims,error:claimError}=await sb.from('project_nft_claims')
+      .select('tx_hash,nft_id,nft_contract,reward_aptm,reward_asset_amount,reward_asset_decimals')
+      .match(scope).eq('tx_hash',candidate.tx_hash).limit(2);
+     if(claimError||claims?.length!==1||String(claims[0].nft_id)!==String(candidate.nft_id)||
+        lower(claims[0].nft_contract)!==lower(candidate.nft_contract)||
+        Number(claims[0].reward_asset_decimals)!==18)throw Error('Canonical NFT/asset mismatch');
+     const {count:flows,error:flowError}=await sb.from('project_transaction_asset_flows')
+      .select('id',{count:'exact',head:true}).match(scope).eq('tx_hash',candidate.tx_hash);
+     if(flowError||flows!==0)throw Error('Flow already present or unreadable');
+     const {data:ownership,error:ownerError}=await sb.from('project_nft_ownership')
+      .select('nft_id,nft_contract,owned_from_block,owned_to_block,acquisition_verified')
+      .match(scope).eq('nft_id',candidate.nft_id).eq('nft_contract',candidate.nft_contract)
+      .lte('owned_from_block',candidate.claim_block).limit(20);
+     if(ownerError||!ownership||ownership.length!==1||ownership[0].acquisition_verified!==true||
+        (ownership[0].owned_to_block!==null&&Number(ownership[0].owned_to_block)<Number(candidate.claim_block)))
+      throw Error('Unique verified historical NFT interval missing');
+     const [trace,firstLogs]=await Promise.all([
+      json(`${EXPLORER}/transactions/${candidate.tx_hash}/raw-trace`),
+      json(`${EXPLORER}/transactions/${candidate.tx_hash}/logs`)
+     ]);
+     if(!Array.isArray(firstLogs?.items))throw Error('Mint logs unavailable');
+     const logs=[...firstLogs.items],root=`${EXPLORER}/transactions/${candidate.tx_hash}/logs`;
+     let params=firstLogs.next_page_params;const seen=new Set<string>();
+     while(params){
+      if(seen.size>=9||logs.length>1000)throw Error('Incomplete mint log pagination');
+      const u=new URL(root);for(const [k,v] of Object.entries(params))if(v!=null)u.searchParams.set(k,String(v));
+      const url=u.toString();if(seen.has(url))throw Error('Repeated mint log page');
+      seen.add(url);const page=await json(url);
+      if(!Array.isArray(page?.items))throw Error('Invalid mint log page');
+      logs.push(...page.items);params=page.next_page_params;
+     }
+     if(logs.length>1000)throw Error('Mint log safety limit exceeded');
+     const proof=verifyLegacyNativeMint866(trace?.result??trace,logs,walletAddress);
+     if(proof.status!=='verified'||proof.reason!=='matched-native-minter-call-and-event')
+      throw Error('Strict native mint trace/event proof missing: '+proof.reason);
+     const amount=assessHistoricalRawAmount886(proof.amountRaw,claims[0].reward_asset_amount);
+     const canonical=assessHistoricalRawAmount886(proof.amountRaw,claims[0].reward_aptm);
+     if(!amount.ok||!canonical.ok)throw Error('Original raw amount differs from canonical reward');
+     Object.assign(item,{status:'verified_preview',amountRaw:proof.amountRaw,amountAptm:proof.amountAptm,
+      mintCalls:proof.mintCalls,mintEvents:proof.mintEvents,canonicalDifferenceWei:canonical.differenceWei,
+      claimAssetDifferenceWei:amount.differenceWei,blockers:[]});
+    }catch(e){item.blockers.push(daoErrorSummary(e));stopped='first_discrepancy';break;}
+   }
+   return reply({ok:true,mode:body.mode,walletId:fixedWallet,total,offset,selected:candidates.length,
+    checked:results.length,nextOffset:offset+results.length,hasMore:offset+results.length<total,
+    stopped,results,writesPerformed:0,claimsCreated:0,
+    notice:'Strict historical mint evidence preview only. No candidate, transaction, claim, flow, price, queue, cursor or cron writes.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e),writesPerformed:0},409)}
+ }
  // 8.63/8.65: explicitly administered sequential miner completions.
  // 8.63 retains its maximum of three; 8.65 allows up to ten with the same
  // time and evidence guards. No new batch worker or cron route is exposed.

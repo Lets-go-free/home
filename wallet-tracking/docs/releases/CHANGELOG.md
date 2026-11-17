@@ -191,3 +191,10 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Guarded SQL-Retirement für sechs einmalige Commit-RPCs, ausschliesslich nach Live-Zählprüfung, `RESTRICT` und Transaktions-Rollback. Regulärer DAO-Worker, exakte zentrale Preislogik und Finalizer unverändert.
 - SQL- und Edge-Installation offen; DAO-Cron/Live-Worker bleiben AUS. Siehe `8.85-dao-completed-legacy-retirement.md`.
 
+## 8.86 · 17.11.2026 · Historische Native-Flow-Lücken lesend prüfen
+
+- 15 DAO-Wallets mit `staged`, 1'870 fehlende Candidate-Markierungen trotz 1'870 schon vorhandenen korrekten kanonischen Claims. 1'690 Flows mit Betrags- und Senderkonsistenz; 164 positive historische Claims ohne irgendeinen Flow/Raw-Coverage; 16 erfolgreiche Claim-Aufrufe ohne erfasste Auszahlung.
+- Neuer strikt begrenzter Admin-Nachweis: höchstens drei der 164 historischen Claim-TX pro manuellem Aufruf; Live-Minter-Trace und Mint-Event, exakter BigInt-Rohbetrag mit enger historischer Präzisionsprüfung, geprüftes NFT-Intervall, vollständiger Stopp bei Abweichung. 0 Writes, keine SQL, kein Cron.
+- Neue Edge-Hilfsdatei `legacy-flow-proof-886.js`, Änderung `dao-reward-refresh/index.ts`, neue Admin-Karte und JS; 8.85-Sonderrouten bleiben entfernt. Deployment/Live-Nachweise offen.
+- Details: `8.86-dao-historical-native-flow-preview.md`.
+
