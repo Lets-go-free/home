@@ -175,3 +175,7 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Vorher produktiv bestätigt: zwei 3er-Batches vollständig erfolgreich (6/6 kanonische neue Claims), Wiederanlauf sowie alter Start-Hash abgewiesen. Global letzter Audit **2'471/2'471 `exact-v13` konsistent, 0 Abweichungen**. Letzte Bestandszählung **56 offene `unassigned_miner`**, alle mit `payout_status=pending` und `claim_pipeline_status=pending`.
 - Keine neue SQL-Migration, keine Aktivierung von Cron, Live-Worker, Queue oder Cursor. Erst ZIP deployen, dann ausschliesslich `admin-miner-batch-plan-865` read-only testen; Commit separat freigeben. Lokal statische Regressionen, produktiver 10er-Lauf noch nicht getestet.
 
+## 8.83 · 17.11.2026 · kontrollierte Legacy-Stapel
+- Alte versteckte 8.79–8.81-Commit-Buttons aus Admin entfernt; nur abgesicherter wiederverwendbarer 8.82-Commit sichtbar, Zähler der offenen bewertbaren Claims ergänzt.
+- 36 verbleibende Claims als **ungeprüfte Live-Annahme**, kein DB-Write durch Update. Siehe `8.83-legacy-remaining-and-audit-cleanup.md`. Audit-/RPC-Drops erst nach Abhängigkeitsprüfung. DAO-Cron/Worker AUS.
+

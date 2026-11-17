@@ -1,4 +1,4 @@
-/* WalletTracking 8.82: reusable bounded historical claim preview and atomic commit. */
+/* WalletTracking 8.83: reusable bounded historical claim preview and atomic commit. */
 (() => {
  'use strict';
  const MODE='admin-legacy-priced-next-five-preview-878';
@@ -107,7 +107,8 @@
     if(commitButton882)commitButton882.disabled=false;
    }
    const verified=data.results.filter(x=>x.status==='verified_preview').length;
-   status(`${verified}/${data.checked} mit historischem USD-Beleg verifiziert. ${data.stopped==='completed'?'Prüfung abgeschlossen.':'Stopp: '+data.stopped}. Keine Datenänderungen.`,data.stopped!=='completed');
+   const remaining=Number.isInteger(data.remainingBefore)?` Noch ${data.remainingBefore} bewertbare Claims offen.`:'';
+   status(`${verified}/${data.checked} mit historischem USD-Beleg verifiziert.${remaining} ${data.stopped==='completed'?'Prüfung abgeschlossen.':'Stopp: '+data.stopped}. Keine Datenänderungen.`,data.stopped!=='completed');
   }catch(e){status(`Prüfung abgebrochen: ${String(e?.message||e)}. Keine automatische Wiederholung.`,true);}
   finally{active=false;if(button)button.disabled=false;}
  };
