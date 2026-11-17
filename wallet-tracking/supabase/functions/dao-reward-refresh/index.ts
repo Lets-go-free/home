@@ -1392,12 +1392,20 @@ Deno.serve(async request=>{
       .select('id',{count:'exact',head:true}).match(scope).eq('tx_hash',candidate.tx_hash);
      if(flowError||flows!==0)throw Error('Flow already present or unreadable');
      const {data:ownership,error:ownerError}=await sb.from('project_nft_ownership')
-      .select('nft_id,nft_contract,owned_from_block,owned_to_block,acquisition_verified')
+      .select('nft_id,nft_contract,owned_from_block,owned_to_block')
       .match(scope).eq('nft_id',candidate.nft_id).eq('nft_contract',candidate.nft_contract)
       .lte('owned_from_block',candidate.claim_block).limit(20);
-     if(ownerError||!ownership||ownership.length!==1||ownership[0].acquisition_verified!==true||
+     if(ownerError||!ownership||ownership.length!==1||
         (ownership[0].owned_to_block!==null&&Number(ownership[0].owned_to_block)<Number(candidate.claim_block)))
-      throw Error('Unique verified historical NFT interval missing');
+      throw Error('Unique historical NFT interval missing');
+     // 8.87: a persisted interval can be a provisional browser observation.
+     // Prove the actual historical owner independently on-chain for EVERY
+     // preview, including NFTs without populated global history coverage.
+     const liveOwner=await historicalNftOwnership(
+      {_contract:candidate.nft_contract,tokenId:String(candidate.nft_id)},
+      walletAddress,Number(candidate.claim_block));
+     if(liveOwner.verified!==true)
+      throw Error('Live historical NFT owner proof missing: '+liveOwner.reason);
      const [trace,firstLogs]=await Promise.all([
       json(`${EXPLORER}/transactions/${candidate.tx_hash}/raw-trace`),
       json(`${EXPLORER}/transactions/${candidate.tx_hash}/logs`)
@@ -1422,7 +1430,7 @@ Deno.serve(async request=>{
      if(!amount.ok||!canonical.ok)throw Error('Original raw amount differs from canonical reward');
      Object.assign(item,{status:'verified_preview',amountRaw:proof.amountRaw,amountAptm:proof.amountAptm,
       mintCalls:proof.mintCalls,mintEvents:proof.mintEvents,canonicalDifferenceWei:canonical.differenceWei,
-      claimAssetDifferenceWei:amount.differenceWei,blockers:[]});
+      claimAssetDifferenceWei:amount.differenceWei,ownershipProof:liveOwner.reason,blockers:[]});
     }catch(e){item.blockers.push(daoErrorSummary(e));stopped='first_discrepancy';break;}
    }
    return reply({ok:true,mode:body.mode,walletId:fixedWallet,total,offset,selected:candidates.length,

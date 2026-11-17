@@ -198,3 +198,9 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Neue Edge-Hilfsdatei `legacy-flow-proof-886.js`, Änderung `dao-reward-refresh/index.ts`, neue Admin-Karte und JS; 8.85-Sonderrouten bleiben entfernt. Deployment/Live-Nachweise offen.
 - Details: `8.86-dao-historical-native-flow-preview.md`.
 
+## 8.87 · 17.11.2026 · Live-NFT-Besitznachweis in der historischen Vorschau
+
+- Erster 8.86-Live-Test stoppt korrekt bei NFT #89892, dessen gespeicherter Erwerb nicht verifiziert ist. SQL-Ergebnis: 131/164 Claims bereits durch komplette NFT-Transfercache-Historien gedeckt; 33 Claims von zwei NFTs ohne Transfercache.
+- Neue streng lesende historische Besitzprüfung via vollständige erforderliche Explorer-ERC-721-Instanztransfer-Seiten für jeden Claim; nur bei eindeutigem Vor-Claim-Empfänger, ohne gleichzeitige/mehrdeutige Transfers und ohne Pagination-Probleme erfolgreich. Kein SQL, keine Flows, keine Preise, kein Cron.
+- Nur Edge `dao-reward-refresh/index.ts` und sichtbare Versionsanzeige verändert, plus Dokumentation/Testanpassung. Deployment/Live-Retest offen. Details `8.87-dao-live-historical-nft-proof.md`.
+
