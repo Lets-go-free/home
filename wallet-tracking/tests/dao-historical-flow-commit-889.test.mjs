@@ -42,7 +42,7 @@ test('8.89 Edge path freshly repeats all strict proofs before RPC, under admin a
 test('8.90 requires explicit confirmation before running the guarded commit loop',()=>{
  assert.match(html,/id="daoHistoricalFlowCommitPanel889"/)
  assert.match(html,/dao-historical-flow-commit-889\.js/)
- assert.match(html,/window\.APP_VERSION="8\.90"/)
+ assert.match(html,/window\.APP_VERSION="8\.91"/)
  assert.match(ui,/confirm\(/)
  assert.match(ui,/COMMIT-3-HISTORICAL-FLOWS/)
  assert.match(ui,/commitDaoHistoricalFlows889/)

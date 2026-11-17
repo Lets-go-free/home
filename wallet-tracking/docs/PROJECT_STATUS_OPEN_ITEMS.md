@@ -34,6 +34,13 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.91 – Konsistente vorhandene DAO1-Claims markieren (17.11.2026)
+
+- 8.90 live erfolgreich: alle 161 verbleibenden historischen Flows übernommen, unabhängig SQL abgenommen: **164/164** genau 1 kanonischer Claim, genau 1 Native-Flow, Original-APTM/USD korrekt, Kandidat vollständig abgeschlossen.
+- Neue globale Statistik: 1'706 noch `pending/pending/pending` und canonical false ohne Auditklassifikation; alle mit 1 kanonischem Claim, davon **1'690 mit genau 1 Native-Eingangsflow** und 16 ohne Flow. SQL-Audit für alle 1'690 bestätigt Native 18, erfolgreiche Claim-TX, APTM-Menge innerhalb 1e-12, USD identisch; ein echter unbewerteter Prelaunch.
+- 8.91 als **SQL-only** vorbereitete Reconciliation: Vorschau ohne Writes, optionaler **atomarer** Commit erst nach ausdrücklicher separater Freigabe. Strikter fixer 1706/1690/16/1-Schutz; markiert beim Commit nur kanonisch bereits bestehende Claims. Historische USD NULL bleibt. 16 ohne Flow separat; Cron/Worker AUS. ZIP/SQL/Preview/Commit noch offen.
+- Nächster Schritt ZIP 8.91 installieren, SQL-Migration ausführen, anschliessend einzeln **nur Preview** `wallettracking_dao_reconcile_existing_native_891(false)` kontrollieren. `docs/releases/8.91-dao-existing-native-reconciliation.md`.
+
 ### Phase 8.90 – Sequenzielle Übernahme der restlichen 161 historischen DAO1-Flows (17.11.2026)
 
 - 8.89 live **installiert, SQL ausgeführt, Edge deployed**. Erster Commit `flowsCreated=3`, `claimsCreated=0`. SQL-Abnahme bestätigt für jede der drei TX: genau 1 vorhandener kanonischer Claim, 1 nativer Eingangsflow, Original-Wei und USD korrekt, Kandidat abgeschlossen. Keine Duplikate.

@@ -1,3 +1,6 @@
+## 8.91 · 17.11.2026 17:06:53 CET · Build 20261117-170653
+- Nach vollständiger unabhängiger SQL-Abnahme aller 164 historischen Native-Flows: neuer SQL-only, standardmässig lesender und optional atomarer Gesamt-Abgleich von genau 1'690 vorhandenen Claims/Flows. 16 ohne Flow und 1 Prelaunch USD NULL werden bewahrt; ausschliesslich `canonical_existing_verified/checked_at` werden beim späteren expliziten Commit gesetzt. Kein Edge-Deploy, kein Cron. `8.91-dao-existing-native-reconciliation.md`.
+
 ## 8.90 · 17.11.2026 15:42:20 CET · Build 20261117-154220
 - Nach erfolgreichem 8.89-Realtest (3/3 Native-Flows, je 1 Claim, Original-Wei und USD korrekt, Kandidaten abgeschlossen) können die restlichen 161 in seriellen, frischen und atomaren Dreierstapeln ergänzt werden. Einmalige Admin-Bestätigung, Stopptaste, Fortschritts-Checkpoint, kein automatischer Retry bei Fehler. **Nur Frontend-Update**, kein SQL/Edge-Deploy/Cron. `8.90-dao-historical-flow-sequential-commit.md`.
 
