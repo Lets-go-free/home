@@ -1,4 +1,4 @@
-<!-- Phase 8.84: guarded manual preanchor legacy claims, USD deliberately NULL. -->
+<!-- Phase 8.85: retire completed legacy one-off admin tools; canonical DAO logic unchanged. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.46: Browser-gesteuerte, manuelle historische DAO-Payout-Verifikation; kein Cron. -->
@@ -856,51 +856,6 @@
           <div id="daoNativeDrainCount" class="note" aria-live="polite" style="margin-top:10px">0 in diesem Durchlauf verifiziert · 0 Server-Aufrufe</div>
           <div id="daoNativeDrainStatus" class="note" role="status" aria-live="polite" style="margin-top:6px">Noch nicht gestartet. Für die abschliessende Bestätigung ist eine Datenbankkontrolle erforderlich.</div>
         </div>
-        <div class="custom-token-card" id="daoLegacyMintDrain869" style="margin:16px 0;padding:14px">
-          <strong>DAO1 · Historische Native-Minter-Auszahlungen prüfen (8.69)</strong>
-          <p class="note" style="margin:8px 0">Nur für die geprüfte Test-Wallet. Die ersten 30 von 76 Transaktionen wurden bereits einzeln verifiziert; die verbleibenden 46 werden nach manuellem Start in maximal zehn sequenziellen 5er-Gruppen gelesen. Sofortiger Stopp bei Abweichungen. Den Browser-Tab geöffnet lassen. Keine Claim-Erstellung, Datenbankänderungen, Cron- oder Live-Worker-Aktivierung.</p>
-          <div class="action-row" style="display:flex;gap:8px;flex-wrap:wrap">
-            <button id="daoLegacyMintDrainStart" type="button" onclick="startDaoLegacyMintDrain869()">Restliche 46 prüfen</button>
-            <button id="daoLegacyMintDrainStop" type="button" class="secondary" onclick="stopDaoLegacyMintDrain869()" disabled>Nach aktuellem Aufruf stoppen</button>
-          </div>
-          <div id="daoLegacyMintDrainCount" class="note" aria-live="polite" style="margin-top:10px">0 von 46 verbleibenden geprüft</div>
-          <div id="daoLegacyMintDrainStatus" class="note" role="status" aria-live="polite" style="margin-top:6px">Noch nicht gestartet. Ausschliesslich Read-only-Preview.</div>
-        </div>
-        <div class="custom-token-card" id="daoLegacySingle872" style="margin:16px 0;padding:14px">
-          <strong>DAO1 · Historischen MineBot-Claim einzeln prüfen (8.76)</strong>
-          <p class="note" style="margin:8px 0">Die Prüfung bleibt ausschliesslich lesend. Bei genau einer festgelegten Testtransaktion (#818, Block 957'942) wird nach vollständigem Live-Beleg eine separate, zweifach bestätigte Übernahme freigeschaltet. Die Buchung erfolgt atomar über die bestehende kanonische Pipeline. Kein Massenimport und keine Cron-/Worker-Aktivierung.</p>
-          <div class="action-row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input id="daoLegacySingleHash" aria-label="Historischer Claim-Transaktionshash" style="min-width:260px;flex:1" value="0xc66aa64b38d65910e64c3bd63b26b58961f155e5a35663900494bd0721641c6c" spellcheck="false" />
-            <button id="daoLegacySingleStart" type="button" onclick="previewDaoLegacySingle872()">Einzel-Claim prüfen</button>
-            <button id="daoLegacySingleCommit874" type="button" onclick="commitDaoLegacySingle874()" disabled>Geprüften Claim #818 verbindlich übernehmen</button>
-          </div>
-          <div id="daoLegacySingleStatus" class="note" role="status" aria-live="polite" style="margin-top:9px">Bereit für den lesenden Einzeltest.</div>
-          <pre id="daoLegacySingleResult" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:380px;overflow:auto;font-size:12px;margin-top:8px"></pre>
-        </div>
-        <div class="custom-token-card" id="daoLegacyFive877" style="margin:16px 0;padding:14px">
-          <strong>DAO1 · Verbleibende historische MineBot-Claims: nächste 5 prüfen (8.77)</strong>
-          <p class="note" style="margin:8px 0">Nach erfolgreicher Einzelübernahme #818: ausschliesslich die fünf ältesten noch offenen Legacy-Kandidaten der festgelegten Test-Wallet. Live-Mint, historisches NFT-Eigentum, Duplikate und historische Preisbelege werden einzeln überprüft. Sofortiger Stopp bei einer Abweichung. Nur lesend; keine Stapelbuchung und keine Job-Aktivierung.</p>
-          <button id="daoLegacyFiveStart877" type="button" onclick="previewDaoLegacyFive877()">Nächste 5 Claims lesend prüfen</button>
-          <div id="daoLegacyFiveStatus877" class="note" role="status" aria-live="polite" style="margin-top:9px">Bereit für die begrenzte 5er-Prüfung.</div>
-          <pre id="daoLegacyFiveResult877" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px;margin-top:8px"></pre>
-        </div>
-        <div class="custom-token-card" id="daoLegacyPricedFive878" style="margin:16px 0;padding:14px">
-          <strong>DAO1 · Historische MineBot-Claims kontrolliert übernehmen (8.83)</strong>
-          <p class="note" style="margin:8px 0">Nur offene Legacy-Claims ab Block 88'356 der festgelegten Test-Wallet. Vier frühere, korrekt nicht in USD bewertbare Claims bleiben ausgeschlossen. Live-Native-Mint, NFT-Eigentum und exact-v13-Preis werden für jeden Claim erneut geprüft. Nur Vorschau, kein Datenbank-Write und keine Job-Aktivierung.</p>
-          <button id="daoLegacyPricedFiveStart878" type="button" onclick="previewDaoLegacyPricedFive878()">Nächste 5 mit USD-Beleg prüfen</button>
-          <button id="daoLegacyPricedFiveCommit882" type="button" onclick="commitDaoLegacyPricedBounded882()" disabled>Geprüfte Claims atomar übernehmen (8.83)</button>
-          <p class="note">Nur nach vollständiger Live-Prüfung freigeschaltet. Maximal fünf nächste preisfähige Claims je Transaktion; bei Abweichung vollständiger Rollback. Nach jedem Commit zuerst Datenbank abnehmen, dann den nächsten Stapel prüfen. Vier Claims vor Preisbeginn bleiben unberührt. Ausgangsannahme: 36 offene bewertbare Claims; massgeblich ist der aktuelle Read-only-Zähler.</p>
-          <div id="daoLegacyPricedFiveStatus878" class="note" role="status" aria-live="polite" style="margin-top:9px">Noch nicht gestartet.</div>
-          <pre id="daoLegacyPricedFiveResult878" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px;margin-top:8px"></pre>
-        </div>
-        <div class="custom-token-card" id="daoPreanchorFour884" style="margin:16px 0;padding:14px">
-          <strong>DAO1 · Vier frühe MineBot-Claims ohne historischen USD-Preis (8.84)</strong>
-          <p class="note" style="margin:8px 0">Nur die vier festgelegten Claims vor Preisbeginn (Blöcke 40'707, 40'709, 62'642, 62'644). NFT-Eigentum, exakte Native-Mint-Beträge und Duplikate werden unmittelbar vor jeder Buchung erneut geprüft. USD bleibt NULL. Keine automatische Wiederholung und keine Job-Aktivierung.</p>
-          <button id="daoPreanchorPreview884" type="button" onclick="previewDaoPreanchorFour884()">Vier Prelaunch-Claims lesend prüfen</button>
-          <button id="daoPreanchorCommit884" type="button" onclick="commitDaoPreanchorFour884()" disabled>Vier geprüfte Claims atomar übernehmen (8.84)</button>
-          <div id="daoPreanchorStatus884" class="note" role="status" aria-live="polite" style="margin-top:9px">Noch nicht geprüft.</div>
-          <pre id="daoPreanchorResult884" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px;margin-top:8px"></pre>
-        </div>
         <div id="adminHardcodingAudit"></div>
       </div>
 
@@ -1460,7 +1415,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 17.11.2026 08:45:04 CET · Phase 8.84 · Build 20261117-084504</span><br>
+    <span id="footerVersionLine">Version: 17.11.2026 10:06:44 CET · Phase 8.85 · Build 20261117-100644</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1486,14 +1441,9 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.84";window.BUILD_ID="20261117-084504";</script>
+<script>window.APP_VERSION="8.85";window.BUILD_ID="20261117-100644";</script>
 <script src="./js/app.js?v=20261114-122907"></script>
 <script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
-<script src="./admin/dao-legacy-mint-drain-869.js?v=20261116-114435"></script>
-<script src="./admin/dao-legacy-single-preview-872.js?v=20261116-876"></script>
-<script src="./admin/dao-legacy-five-preview-877.js?v=20261116-877"></script>
-<script src="./admin/dao-legacy-priced-five-preview-878.js?v=20261117-883"></script>
-<script src="./admin/dao-preanchor-four-884.js?v=20261117-884"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1512,6 +1462,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 17.11.2026 08:45:04 CET · Phase 8.84 · Build 20261117-084504</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 17.11.2026 10:06:44 CET · Phase 8.85 · Build 20261117-100644</div>
 </body>
 </html>

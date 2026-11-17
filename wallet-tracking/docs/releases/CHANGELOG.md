@@ -184,3 +184,10 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Nachweisbarer 8.83-Live-Abschluss: 36/36 bewertbare Legacy-Claims übernommen und unabhängig abgenommen. Vier weitere frühe Legacy-Claims stehen separat aus.
 - Dokumentierter Apertum-Pair-Logbereichsfehler (Provider-Limit 2048 Blöcke) bleibt separat offen. DAO-Cron/Worker AUS. Details `8.84-dao-four-preanchor-unpriced-claims.md`.
 
+## 8.85 · 17.11.2026 · Legacy-Abschluss und Stilllegung
+
+- Nutzer-Abnahme: 76/76 historische MineBot-Claims der festen Test-Wallet kanonisch verarbeitet; zuletzt vier Pre-Anker-Rewards mit USD NULL, 4/4 Claims und Flows korrekt, kein offener Legacy-Kandidat.
+- Fünf veraltete Admin-Audit-Bedienkarten samt Skripteinbindungen entfernt; Legacy-Sonderrouten aus DAO-Edge-Funktion entfernt.
+- Guarded SQL-Retirement für sechs einmalige Commit-RPCs, ausschliesslich nach Live-Zählprüfung, `RESTRICT` und Transaktions-Rollback. Regulärer DAO-Worker, exakte zentrale Preislogik und Finalizer unverändert.
+- SQL- und Edge-Installation offen; DAO-Cron/Live-Worker bleiben AUS. Siehe `8.85-dao-completed-legacy-retirement.md`.
+
