@@ -1,4 +1,4 @@
-<!-- Phase 8.89: guarded atomic import of missing native flows for existing DAO claims. -->
+<!-- Phase 8.90: sequential guarded historical native flow completion with safe checkpoints. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.50: Edge-Function-Deploy-Paket mit vollständigem Price-Worker-Export; DAO-Cron aus. -->
 <!-- Phase 8.46: Browser-gesteuerte, manuelle historische DAO-Payout-Verifikation; kein Cron. -->
@@ -870,9 +870,13 @@
           <pre id="daoHistoricalFlowResult886" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px;margin-top:8px"></pre>
         </div>
         <div class="custom-token-card" id="daoHistoricalFlowCommitPanel889" style="margin:16px 0;padding:14px">
-          <strong>DAO1 · Fehlende historische Eingangsflows kontrolliert übernehmen (8.89)</strong>
-          <p class="note" style="margin:8px 0">164/164 historische Claims wurden separat lesend geprüft. Mit dieser Aktion werden maximal die drei ältesten noch offenen Claims <strong>erneut live verifiziert</strong> und bei vollständiger Übereinstimmung atomar um genau einen nativen Eingangsflow pro Transaktion ergänzt. Vorhandene Claims und historische USD-Werte bleiben unverändert. Kein automatischer Folgelauf, kein Cron.</p>
-          <button id="daoHistoricalFlowCommit889" type="button" onclick="commitDaoHistoricalFlows889()">Nächste maximal 3 Flows verifizieren und übernehmen</button>
+          <strong>DAO1 · Fehlende historische Eingangsflows kontrolliert übernehmen (8.90)</strong>
+          <p class="note" style="margin:8px 0">164/164 Claims wurden lesend geprüft und die ersten drei bereits atomar übernommen sowie unabhängig per SQL abgenommen. Die übrigen 161 können in aufeinanderfolgenden <strong>Dreierstapeln mit frischer Live-Verifikation</strong> ergänzt werden. Bei jeder Abweichung oder unklaren Antwort sofortiger Stopp. Keine Änderung bestehender Claims und historischer USD-Werte; kein Cron.</p>
+          <div class="action-row" style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="daoHistoricalFlowCommit889" type="button" onclick="commitDaoHistoricalFlows889()">Nächste maximal 3 Flows übernehmen</button>
+            <button id="daoHistoricalFlowCommitAll890" type="button" onclick="commitAllDaoHistoricalFlows890()">Alle verbleibenden 161 Flows übernehmen</button>
+            <button id="daoHistoricalFlowStop890" class="secondary" type="button" onclick="stopDaoHistoricalFlowCommit890()" disabled>Nach aktuellem Stapel stoppen</button>
+          </div>
           <div id="daoHistoricalFlowCommitStatus889" class="note" role="status" aria-live="polite" style="margin-top:9px">Noch kein Schreibvorgang gestartet.</div>
           <pre id="daoHistoricalFlowCommitResult889" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px;margin-top:8px"></pre>
         </div>
@@ -1435,7 +1439,7 @@
   </div>
 
   <footer>
-    <span id="footerVersionLine">Version: 17.11.2026 11:31:08 CET · Phase 8.89 · Build 20261117-113108</span><br>
+    <span id="footerVersionLine">Version: 17.11.2026 15:42:20 CET · Phase 8.90 · Build 20261117-154220</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1461,11 +1465,11 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="8.89";window.BUILD_ID="20261117-113108";</script>
+<script>window.APP_VERSION="8.90";window.BUILD_ID="20261117-154220";</script>
 <script src="./js/app.js?v=20261114-122907"></script>
 <script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
 <script src="./admin/dao-historical-flow-preview-886.js?v=20261117-886"></script>
-<script src="./admin/dao-historical-flow-commit-889.js?v=20261117-889"></script>
+<script src="./admin/dao-historical-flow-commit-889.js?v=20261117-890"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20261009-014029"></script>
 
 
@@ -1484,6 +1488,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 17.11.2026 11:31:08 CET · Phase 8.89 · Build 20261117-113108</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 17.11.2026 15:42:20 CET · Phase 8.90 · Build 20261117-154220</div>
 </body>
 </html>

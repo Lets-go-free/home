@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import vm from 'node:vm'
 
 const sql=readFileSync(new URL('../supabase/migrations/20261117112925_dao_historical_existing_claim_flows_889.sql',import.meta.url),'utf8')
 const edge=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8')
@@ -38,12 +39,44 @@ test('8.89 Edge path freshly repeats all strict proofs before RPC, under admin a
  assert.match(route,/claimsCreated:0/)
 })
 
-test('8.89 requires an explicit browser confirmation and never auto-loops commits',()=>{
+test('8.90 requires explicit confirmation before running the guarded commit loop',()=>{
  assert.match(html,/id="daoHistoricalFlowCommitPanel889"/)
  assert.match(html,/dao-historical-flow-commit-889\.js/)
- assert.match(html,/window\.APP_VERSION="8\.89"/)
+ assert.match(html,/window\.APP_VERSION="8\.90"/)
  assert.match(ui,/confirm\(/)
  assert.match(ui,/COMMIT-3-HISTORICAL-FLOWS/)
  assert.match(ui,/commitDaoHistoricalFlows889/)
- assert.doesNotMatch(ui,/while\s*\(|for\s*\(/)
+ assert.match(ui,/commitAllDaoHistoricalFlows890/)
+ assert.match(ui,/stopDaoHistoricalFlowCommit890/)
+ assert.match(ui,/remaining>0&&!stopRequested/)
+})
+
+test('8.90 sequentially commits 161 as 53 groups of 3 plus one of 2, no automatic retry',async()=>{
+ const ids=['daoHistoricalFlowCommit889','daoHistoricalFlowCommitAll890','daoHistoricalFlowStop890',
+  'daoHistoricalFlowCommitResult889','daoHistoricalFlowCommitStatus889'];
+ const dom=new Map(ids.map(id=>[id,{disabled:false,textContent:'',style:{}}]));
+ let remaining=161,calls=0,failOn=null;
+ const memory=new Map();
+ const context={isSecureContext:true,navigator:{onLine:true},isAdmin:true,currentUser:{id:'admin'},
+  confirm:()=>true,document:{getElementById:id=>dom.get(id)},
+  sessionStorage:{getItem:key=>memory.get(key),setItem:(key,value)=>memory.set(key,value)},
+  sb:{auth:{getSession:async()=>({data:{session:{access_token:'jwt'}}})},functions:{invoke:async(_name,{body})=>{
+   assert.equal(body.confirmation,'COMMIT-3-HISTORICAL-FLOWS')
+   calls++;
+   if(calls===failOn)return {error:{message:'network response unknown'}};
+   const n=Math.min(3,remaining),before=remaining;remaining-=n;
+   return {data:{ok:true,mode:body.mode,walletId:'e8b5c835-0db2-4449-bbee-258e28b42bbb',
+    status:'committed',totalBefore:before,flowsCreated:n,verified:n,claimsCreated:0,
+    results:Array.from({length:n},(_,i)=>({status:'flow_committed',
+     txHash:'0x'+(calls*3+i).toString(16).padStart(64,'0'),amountRaw:'123'}))}}
+  }}}}
+ context.window=context;vm.createContext(context);vm.runInContext(ui,context);
+ await context.commitAllDaoHistoricalFlows890();
+ assert.equal(calls,54);assert.equal(remaining,0);
+ assert.match(dom.get('daoHistoricalFlowCommitStatus889').textContent,/Abgeschlossen/);
+ assert.equal(dom.get('daoHistoricalFlowCommitAll890').disabled,false);
+ remaining=161;calls=0;failOn=3;
+ await context.commitAllDaoHistoricalFlows890();
+ assert.equal(calls,3);assert.equal(remaining,155);
+ assert.match(dom.get('daoHistoricalFlowCommitStatus889').textContent,/gestoppt/);
 })

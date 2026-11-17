@@ -34,6 +34,12 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.90 – Sequenzielle Übernahme der restlichen 161 historischen DAO1-Flows (17.11.2026)
+
+- 8.89 live **installiert, SQL ausgeführt, Edge deployed**. Erster Commit `flowsCreated=3`, `claimsCreated=0`. SQL-Abnahme bestätigt für jede der drei TX: genau 1 vorhandener kanonischer Claim, 1 nativer Eingangsflow, Original-Wei und USD korrekt, Kandidat abgeschlossen. Keine Duplikate.
+- 8.90 **nur Frontend**: Ein Admin-Klick startet alle verbleibenden 161 über unveränderte service-only 8.89-Edge-/SQL-Belege; je maximal 3 atomar, nach jedem vollständigen Stapel Checkpoint/Restanzeige, Sofortstopp bei Abweichung oder unklarer Antwort, kein automatischer Retry, manueller Stopp zwischen Stapeln. Keine SQL/Edge-Änderung, DAO-Cron und Live-Worker AUS.
+- Nächster Schritt 8.90 ZIP installieren, Admin → Audit → „Alle verbleibenden 161 Flows übernehmen“, danach unabhängige SQL-Gesamtabnahme aller 164 und verbleibender Kandidaten. `docs/releases/8.90-dao-historical-flow-sequential-commit.md`.
+
 ### Phase 8.89 – Historische native Flows für kanonische DAO1-Claims (17.11.2026)
 
 - 8.88 unter Admin bestätigt: automatischer read-only Durchlauf bis **164/164**, letzte Gruppe Offset 162–164 ohne Blocker (zwei Mint-Calls/Events, 397 Wei Abweichung), 0 Writes.

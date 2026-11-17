@@ -1,3 +1,6 @@
+## 8.90 · 17.11.2026 15:42:20 CET · Build 20261117-154220
+- Nach erfolgreichem 8.89-Realtest (3/3 Native-Flows, je 1 Claim, Original-Wei und USD korrekt, Kandidaten abgeschlossen) können die restlichen 161 in seriellen, frischen und atomaren Dreierstapeln ergänzt werden. Einmalige Admin-Bestätigung, Stopptaste, Fortschritts-Checkpoint, kein automatischer Retry bei Fehler. **Nur Frontend-Update**, kein SQL/Edge-Deploy/Cron. `8.90-dao-historical-flow-sequential-commit.md`.
+
 ## 8.89 · 17.11.2026 11:31:08 CET · Build 20261117-113108
 - Streng begrenzte atomare Übernahme der ersten maximal 3 von 164 historischen kanonischen DAO-Claims ohne Eingangsflow, erst nach neuen Live-Trace/Mint-/NFT-Belegen und ausdrücklicher Admin-Bestätigung. Neuer service-only SQL-Finalizer ergänzt nur Native-Flows und Kandidatenstatus; Claims/Preise unangetastet. Cron/Live-Worker AUS. Details `8.89-dao-historical-canonical-flow-commit.md`.
 
