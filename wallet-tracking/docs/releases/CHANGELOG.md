@@ -1,3 +1,6 @@
+## 8.94 · 17.11.2026 21:33:35 CET · Build 20261117-213335
+- Streng begrenzte, nur lesende Edge-Admin-Vorschau der 16 erfolgreichen DAO-Claim-Transaktionen ohne positive Reward-/Flow-Daten: drei feste Wallets (9/6/1), maximal 3 pro Aufruf, bestehende Explorer-Transaktions-/Payout-Coverage wiederverwendet. Keine Status-, Claim-, Flow-, Preis- oder Cursor-Änderung; Live-Abnahme vor Klassifizierung offen. `8.94-dao-zero-claim-evidence-preview.md`.
+
 ## 8.93 · 17.11.2026 20:13:40 CET · Build 20261117-201340
 - DAO1 8.91-Reconciliation korrigiert ausschliesslich die zu enge Transaktionsziel-Prüfung auf die drei SQL-bestätigten historischen Contracts (1'698 + 7 + 1 Kandidaten). Nur SQL-Migration mit unveränderten weiteren Guards, keine Datenänderung bei Installation. Preview/Commit separat. `8.93-dao-historical-contract-reconciliation.md`.
 

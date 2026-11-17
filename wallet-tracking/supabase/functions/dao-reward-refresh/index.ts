@@ -1335,6 +1335,76 @@ Deno.serve(async request=>{
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
  // 8.86: narrow read-only historic payout evidence, never a repair or import.
+ // 8.94: immutable three-wallet inspection of the 16 still-pending legacy
+ // claim calls. Explorer coverage is evidence, NOT permission to write or
+ // infer a zero payout. Existing payout-coverage policy remains unchanged.
+ if(body?.mode==='admin-zero-payout-preview-894'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const expectedByWallet:Record<string,number>={
+   'ecbc2543-98fe-4b67-bf24-141c7ff20b15':9,
+   '8b93754f-983d-4693-bafd-53267205a29c':6,
+   'd82b6059-dc99-4900-9e2b-078f3defd7a2':1
+  };
+  const walletId=String(body.walletId||'').toLowerCase(),offset=body.offset;
+  if(Object.keys(body).some(k=>!['mode','walletId','offset'].includes(k))||
+     !Object.hasOwn(expectedByWallet,walletId)||!Number.isSafeInteger(offset)||
+     offset<0||offset>=expectedByWallet[walletId])
+   return reply({ok:false,error:'Expected one of the three verified wallet IDs and a valid offset',writesPerformed:0},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return reply({ok:false,error:'Manual historical inspection disabled',writesPerformed:0},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return reply({ok:false,error:'Disable DAO live worker first',writesPerformed:0},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error,writesPerformed:0},permission.status);
+   const {data:wallet,error:walletError}=await sb.from('wallets').select('id,user_id').eq('id',walletId).maybeSingle();
+   if(walletError)throw walletError;
+   if(!wallet)return reply({ok:false,error:'Wallet not found',writesPerformed:0},404);
+   const job={user_id:wallet.user_id,wallet_id:wallet.id};
+   const {data:candidates,count,error:candidateError}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,claim_block,nft_id',{count:'exact'})
+    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+    .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+    .eq('status','pending').eq('payout_status','pending')
+    .eq('claim_pipeline_status','pending').is('audit_classification',null)
+    .eq('canonical_existing_verified',false)
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true})
+    .range(offset,Math.min(expectedByWallet[walletId]-1,offset+2));
+   if(candidateError)throw candidateError;
+   if(count!==expectedByWallet[walletId])
+    return reply({ok:false,error:'Strict historical candidate count changed',expected:expectedByWallet[walletId],actual:count,writesPerformed:0},409);
+   const address=await loadAddress(job),results:any[]=[];
+   for(const candidate of candidates||[]){
+    const [{data:txRows,error:txError},{count:claimsCount,error:claimError},{count:flowsCount,error:flowError}]=await Promise.all([
+     sb.from('project_transactions').select('tx_hash,selector,status,to_address,block_number')
+      .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+      .eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).limit(2),
+     sb.from('project_nft_claims').select('id',{head:true,count:'exact'})
+      .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+      .eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash),
+     sb.from('project_transaction_asset_flows').select('id',{head:true,count:'exact'})
+      .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+      .eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).eq('direction','eingang')
+    ]);
+    if(txError||claimError||flowError)throw Error('Persisted historical evidence query failed');
+    const tx=txRows?.[0];
+    if(txRows?.length!==1||claimsCount!==1||flowsCount!==0||
+       !isSuccessfulClaim(tx)||lower(tx.to_address)!=='0x2096bd2e860b450498a7c908708757a1eb306416'||
+       tx.block_number!==candidate.claim_block)
+     return reply({ok:false,stopped:'persisted-evidence-mismatch',txHash:candidate.tx_hash,results,writesPerformed:0},409);
+    const checked=await inspectClaimPayoutCoverage(tx,address,json,EXPLORER);
+    const negativeEvidence=noPayoutEvidenceAllowed(checked.coverage,[]);
+    results.push({txHash:candidate.tx_hash,claimBlock:candidate.claim_block,nftId:candidate.nft_id,
+      status:negativeEvidence?'no_payout_evidence_preview':'needs_review',
+      reason:checked.reason,coverage:checked.coverage});
+   }
+   const nextOffset=offset+results.length;
+   return reply({ok:true,mode:'admin-zero-payout-preview-894',walletId,
+    total:count,offset,checked:results.length,nextOffset,
+    hasMore:nextOffset<count,results,writesPerformed:0,claimsCreated:0,flowsCreated:0,
+    notice:'Read-only indexed transaction coverage; no independent proof of on-chain zero. No candidate, transaction, claim, flow, price, cursor, queue or cron writes.'});
+  }catch(e){return reply({ok:false,error:String(e instanceof Error?e.message:e),writesPerformed:0},500)}
+ }
  if(['admin-historical-flow-preview-886','admin-historical-flow-commit-889'].includes(body?.mode)){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
   const commit=body.mode==='admin-historical-flow-commit-889';

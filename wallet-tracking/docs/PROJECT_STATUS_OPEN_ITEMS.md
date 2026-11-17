@@ -34,6 +34,12 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.94 – DAO1: 16 Null-Reward-Claim-Aufrufe lesend auf Payout-Belege prüfen (17.11.2026)
+
+- 8.93 SQL installiert; 8.91-Reconciliation Preview 1706/1690/16/1 korrekt, `true` Commit erfolgreich (marked 1690, 0 neue Flows/Claims). Unabhängige SQL-Abnahme: 2094 Kandidaten insgesamt (388 früher + 1690 neu markiert + 16 ohne Flow), 2078/2078 korrekt, 0 fehlerhaft.
+- Verbliebene 16: drei Wallets 9/6/1, alle Transaktionen `ok`, Selector `0x86bb8f37`, Claim-Contract `0x2096...`, 16 Raw-Inputs, kein positiver Reward, kein USD, kein Eingangsflow, keine Payout-Prüfung/Begründung. Fehlende Speicherung ist **kein** eigenständiger On-Chain-Nullbeweis.
+- 8.94 erweitert ausschliesslich die Admin-Edge Function um festen **read-only** Preview-Modus für diese drei Wallets und maximal drei TX je Aufruf. Bestehende Blockscout-Transaction-/Transfer-Pagination plus strenge `noPayoutEvidenceAllowed`-Entscheidung, keine Datenbank-Writes; vor Commit separat vollständige 16er-Prüfung nötig. ZIP/Deploy/Live-Tests offen, DAO-Cron aus. `docs/releases/8.94-dao-zero-claim-evidence-preview.md`.
+
 ### Phase 8.93 – DAO1: drei historische Claim-Contracts beim Existing-Reconcile (17.11.2026)
 
 - 8.91 installiert; read-only `wallettracking_dao_reconcile_existing_native_891(false)` stoppte bei Prelaunch Block 41'856, obwohl NFT-ID/Contract, Claim-APTM, Raw/Flow-APTM, Selector und USD-NULL exakt konsistent sind. Ursache: 8.91 fixiert nur Transaktionsziel `0x2096...`, während die 1'706 bestehenden Kandidaten nach SQL **drei** bestätigte Empfänger besitzen: `0x2096...` (1'698), `0xdb330...` (7), `0xa1b761...` (1); jeweils Selector `0x86bb8f37`.
