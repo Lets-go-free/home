@@ -1334,6 +1334,105 @@ Deno.serve(async request=>{
  // The test route is independent from the existing daily-refresh secret.
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
+ // 8.84: four fixed pre-price native MineBot claims; preview is read-only,
+ // commit rechecks all four live traces and mints before one atomic SQL RPC.
+ if(body?.mode==='admin-legacy-preanchor-preview-884'||body?.mode==='admin-legacy-preanchor-commit-884'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const commit=body.mode==='admin-legacy-preanchor-commit-884';
+  const fixed=[
+   ['0xc66aa64b38d65910e64c3bd63b26b58961f155e5a35663900494bd0721641c6c',40707,819,'2432568024883926698','0xa1b761890c36e356f49f9df8d495fcffa76857ad'],
+   ['0xa7bf9a4827adcb397f92c0f67412320d0d77a74022878e5700b950fb28c47333',40709,818,'2432568024883926698','0xa1b761890c36e356f49f9df8d495fcffa76857ad'],
+   ['0x88459cda136bdc5abebc2f3d79c2dcdd05320d498fac6d8c0c23c83f54f79b8f',62642,818,'676221939941904344','0xdb330f9a9c4cd2ab4f8e6965bbff8af225b3da60'],
+   ['0x37b087ddc4dc1a70cdfbb659561eeb1e81a7ad104e498f80ac9a453d4931ca53',62644,819,'676221939941904344','0xdb330f9a9c4cd2ab4f8e6965bbff8af225b3da60']
+  ] as const;
+  if(Object.keys(body).some(k=>!(commit?['mode','confirm','expectedTxHashes']:['mode']).includes(k))||
+     (commit&&(body.confirm!=='COMMIT-PREANCHOR-884'||
+      !Array.isArray(body.expectedTxHashes)||body.expectedTxHashes.length!==4||
+      body.expectedTxHashes.some((h:unknown,i:number)=>h!==fixed[i][0]))))
+   return reply({ok:false,error:'Invalid explicit preanchor confirmation',writesPerformed:0},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual inspection disabled'},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Live worker must remain disabled'},409);
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error},permission.status);
+   const {data:wallet,error:we}=await sb.from('wallets').select('id,user_id')
+    .eq('id',LEGACY_SINGLE_TEST_WALLET_872).single();
+   if(we||!wallet)throw Error('Fixed wallet unavailable');
+   const job={user_id:wallet.user_id,wallet_id:wallet.id},address=await loadAddress(job);
+   if(address.toLowerCase()!=='0x39180b13f5bd24432f01535ceb2c069fd2adf937')throw Error('Wallet address changed');
+   const scope={user_id:job.user_id,wallet_id:job.wallet_id,project_key:PROJECT,chain_key:CHAIN};
+   const {data:queue,error:qe}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,claim_block,status,payout_status,claim_pipeline_status,audit_classification,canonical_existing_verified')
+    .match({...scope,status:'unassigned_legacy',payout_status:'pending'})
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(5);
+   if(qe||queue?.length!==4||queue.some((c,i)=>c.tx_hash!==fixed[i][0]||Number(c.claim_block)!==fixed[i][1]||
+      c.claim_pipeline_status!=='pending'||c.audit_classification!==null||c.canonical_existing_verified!==false))
+    throw Error('Preanchor candidate set changed or incomplete');
+   const results:any[]=[],started=Date.now();
+   for(const [txHash,claimBlock,nftId,amountRaw,toAddress] of fixed){
+    if(Date.now()-started>40000)throw Error('Preanchor live proof time budget exceeded');
+    const txScope={...scope,tx_hash:txHash};
+    const [tq,cq,fq,oq,nq]=await Promise.all([
+     sb.from('project_transactions').select('tx_hash,block_number,selector,status,raw_input,value_aptm,from_address,to_address,claim_reward_aptm,claim_reward_usd,claim_nft_id').match(txScope).limit(2),
+     sb.from('project_nft_claims').select('id').match(txScope).limit(2),
+     sb.from('project_transaction_asset_flows').select('id').match(txScope).limit(2),
+     sb.from('project_nft_ownership').select('nft_id,is_current,acquisition_verified,acquisition_kind,owned_from_block,owned_to_block')
+      .match({...scope,nft_contract:LEGACY_SINGLE_NFT_CONTRACT_872,nft_id:nftId}).limit(2),
+     sb.from('project_nfts').select('nft_id,subtype').match({project_key:PROJECT,chain_key:CHAIN,nft_contract:LEGACY_SINGLE_NFT_CONTRACT_872,nft_id:nftId}).limit(2)
+    ]);
+    if(tq.error||cq.error||fq.error||oq.error||nq.error||tq.data?.length!==1||oq.data?.length!==1||nq.data?.length!==1)
+     throw Error('Preanchor DB context incomplete');
+    const tx=tq.data[0];
+    if(tx.block_number!==claimBlock||String(tx.status).toLowerCase()!=='ok'||
+       tx.from_address?.toLowerCase()!==address.toLowerCase()||tx.to_address?.toLowerCase()!==toAddress||
+       tx.selector?.toLowerCase()!=='0x86bb8f37'||
+       tx.raw_input?.toLowerCase()!==('0x86bb8f37'+BigInt(nftId).toString(16).padStart(64,'0')+BigInt(50).toString(16).padStart(64,'0'))||
+       Number(tx.value_aptm)!==0||Number(tx.claim_reward_aptm||0)!==0||
+       tx.claim_reward_usd!=null||tx.claim_nft_id!=null||cq.data?.length||fq.data?.length)
+     throw Error('Preanchor transaction or duplicate guard failed');
+    const ownership=oq.data[0];
+    if(ownership.acquisition_verified!==true||ownership.acquisition_kind!=='mint_to_own_wallet'||
+       ownership.is_current!==false||ownership.owned_from_block!==10904||
+       Number(ownership.owned_to_block)!==(nftId===818?11448349:11448526)||
+       !(ownership.owned_from_block<claimBlock&&ownership.owned_to_block>claimBlock)||
+       nq.data[0].subtype!=='Mining-Bot')throw Error('Preanchor historical NFT guard failed');
+    const [raw,firstPage]=await Promise.all([
+     json(`${EXPLORER}/transactions/${txHash}/raw-trace`),
+     json(`${EXPLORER}/transactions/${txHash}/logs`)
+    ]);
+    if(!Array.isArray(firstPage?.items))throw Error('Preanchor mint logs unavailable');
+    const logs=[...firstPage.items],root=`${EXPLORER}/transactions/${txHash}/logs`;
+    let params=firstPage.next_page_params;const seen=new Set<string>();
+    while(params){
+     if(seen.size>=9)throw Error('Preanchor pagination limit');
+     const url=new URL(root);for(const [k,v] of Object.entries(params))if(v!=null)url.searchParams.set(k,String(v));
+     const pageUrl=url.toString();if(seen.has(pageUrl))throw Error('Repeated mint log page');
+     seen.add(pageUrl);const page=await json(pageUrl);
+     if(!Array.isArray(page?.items))throw Error('Incomplete mint log page');
+     logs.push(...page.items);if(logs.length>1000)throw Error('Mint log safety limit');
+     params=page.next_page_params;
+    }
+    const proof=verifyLegacyNativeMint866(raw?.result??raw,logs,address);
+    if(proof.status!=='verified'||proof.reason!=='matched-native-minter-call-and-event'||
+       proof.amountRaw!==amountRaw||proof.mintCalls!==1||proof.mintEvents!==1||
+       proof.asset!=='native'||proof.decimals!==18)throw Error('Fresh preanchor native-mint proof differs');
+    results.push({txHash,claimBlock,nftId,amountRaw,mintCalls:1,mintEvents:1,
+     status:'verified_preview',priceStatus:'unpriced_before_exact_anchor',rewardUsd:null});
+   }
+   if(commit){
+    const proofs=results.map(x=>({txHash:x.txHash,claimBlock:x.claimBlock,nftId:x.nftId,
+     amountRaw:x.amountRaw,mintCalls:x.mintCalls,mintEvents:x.mintEvents,priceStatus:x.priceStatus}));
+    const {data:result,error}=await sb.rpc('wallettracking_dao_commit_legacy_preanchor_four_884',{
+     p_user:wallet.user_id,p_wallet:wallet.id,p_proofs:proofs});
+    if(error||result?.status!=='completed'||result?.claimsCreated!==4||result?.results?.length!==4)
+     throw Error('Atomic preanchor SQL commit rejected: '+(error?.message||JSON.stringify(result)));
+    return reply({ok:true,mode:body.mode,status:'committed',walletId:wallet.id,
+     claimsCreated:4,results:result.results,notice:'Four exact native rewards committed with NULL USD, no prices or cron.'});
+   }
+   return reply({ok:true,mode:body.mode,walletId:wallet.id,checked:4,stopped:'completed',
+    results,writesPerformed:0,claimsCreated:0,notice:'Four read-only exact preanchor proofs; USD is intentionally NULL.'});
+  }catch(e){return reply({ok:false,mode:body.mode,error:daoErrorSummary(e),writesPerformed:0},409)}
+ }
  // 8.77/8.78 read-only previews; 8.79–8.81 fixed commits; 8.82 bounded reusable commit.
  // The write path reruns every independent live proof and calls one SQL RPC.
  if(body?.mode==='admin-legacy-next-five-preview-877'||body?.mode==='admin-legacy-priced-next-five-preview-878'||

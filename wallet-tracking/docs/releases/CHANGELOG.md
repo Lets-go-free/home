@@ -179,3 +179,8 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Alte versteckte 8.79–8.81-Commit-Buttons aus Admin entfernt; nur abgesicherter wiederverwendbarer 8.82-Commit sichtbar, Zähler der offenen bewertbaren Claims ergänzt.
 - 36 verbleibende Claims als **ungeprüfte Live-Annahme**, kein DB-Write durch Update. Siehe `8.83-legacy-remaining-and-audit-cleanup.md`. Audit-/RPC-Drops erst nach Abhängigkeitsprüfung. DAO-Cron/Worker AUS.
 
+## 8.84 · 17.11.2026 · vier frühe Legacy-Claims ohne USD
+- Fest auf vier verifizierte Preanchor-MineBot-Transaktionen begrenzte service-only SQL-Funktion, Live-Mint-Preview und manuell doppelt bestätigter atomarer Commit. Kein Preisanker und keine künstliche Bewertung; kanonische USD-Felder bleiben NULL. Nur vorbereitet, kein Live-Write.
+- Nachweisbarer 8.83-Live-Abschluss: 36/36 bewertbare Legacy-Claims übernommen und unabhängig abgenommen. Vier weitere frühe Legacy-Claims stehen separat aus.
+- Dokumentierter Apertum-Pair-Logbereichsfehler (Provider-Limit 2048 Blöcke) bleibt separat offen. DAO-Cron/Worker AUS. Details `8.84-dao-four-preanchor-unpriced-claims.md`.
+

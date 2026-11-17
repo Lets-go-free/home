@@ -7,7 +7,7 @@ const ui=readFileSync(new URL('../admin/dao-legacy-priced-five-preview-878.js',i
 const edge=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8')
 
 test('8.83 removes obsolete hidden commit controls without weakening the guarded commit',()=>{
- assert.match(html,/window\.APP_VERSION="8\.83"/)
+ assert.match(html,/window\.APP_VERSION="8\.(83|84)"/)
  for(const id of ['daoLegacyPricedFiveCommit879','daoLegacyPricedFiveCommit880','daoLegacyPricedFiveCommit881'])
   assert.doesNotMatch(html,new RegExp(`id="${id}"`))
  assert.match(html,/id="daoLegacyPricedFiveCommit882"[^>]*disabled/)

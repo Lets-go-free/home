@@ -41,7 +41,7 @@ test('8.82 Edge rechecks the same ordered hashes and live proofs before one RPC'
 
 test('8.82 browser has a single manually confirmed reusable batch button',()=>{
  assert.match(html,/id="daoLegacyPricedFiveCommit882"[^>]*disabled/)
- assert.match(html,/window\.APP_VERSION="8\.(82|83)"/)
+ assert.match(html,/window\.APP_VERSION="8\.(82|83|84)"/)
  assert.match(ui,/ready882=\[\]/)
  assert.match(ui,/window\.commitDaoLegacyPricedBounded882=async/)
  assert.match(ui,/window\.prompt\(/)
