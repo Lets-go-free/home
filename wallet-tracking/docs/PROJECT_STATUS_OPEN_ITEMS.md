@@ -34,6 +34,13 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.89 – Historische native Flows für kanonische DAO1-Claims (17.11.2026)
+
+- 8.88 unter Admin bestätigt: automatischer read-only Durchlauf bis **164/164**, letzte Gruppe Offset 162–164 ohne Blocker (zwei Mint-Calls/Events, 397 Wei Abweichung), 0 Writes.
+- Supabase live geprüft: 164 kanonische NFT-Claims alle mit positiven APTM- und USD-Werten und historischer Preisquelle, keine fehlende USD-Bewertung; `project_transaction_asset_flows` hat einen eindeutigen `flow_key`, aber keine `tx_hash`-Unique-Constraint und keine benutzerdefinierten Trigger.
+- **8.89 vorbereitet:** neuer expliziter Admin-Commit für genau die ältesten 1–3 verbleibenden Claims, frisch nachgewiesener historischer NFT-Besitz und Native-Minter-Call/Event, service-only atomare SQL-Übernahme von genau einem Flow pro Transaktion, Kandidat abgeschlossen; kanonische Claims und Preise unverändert. **Install/SQL/Edge/Live-Test noch ausstehend**. Kein Massencommit ohne unabhängige DB-Abnahme des ersten Stapels. DAO-Cron/Live-Worker AUS.
+- Nächster Schritt ZIP 8.89 installieren, SQL `20261117112925_dao_historical_existing_claim_flows_889.sql` ausführen, Edge `dao-reward-refresh/index.ts` **mit allen im Release aufgelisteten unveränderten Importmodulen** deployen. Danach genau eine bestätigte Admin-Dreierübernahme testen und JSON melden. Siehe `docs/releases/8.89-dao-historical-canonical-flow-commit.md`.
+
 ### Phase 8.88 – Historische 164 DAO1-Claims automatisch lesen (17.11.2026)
 
 - 8.87 installiert/deployed. Erste 6 von 164 historischen Claims live verified: frischer NFT-Eigentumsnachweis, Original-Native-Minter-Trace/Event, genaue APTM-Menge. Darunter 2 Mint-Calls und 2 Events; bis 623 Wei Abweichung (innerhalb 1e-12-APTM-Grenze), 0 Writes.

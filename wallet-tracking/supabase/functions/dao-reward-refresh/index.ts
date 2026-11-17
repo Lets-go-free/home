@@ -1335,14 +1335,16 @@ Deno.serve(async request=>{
  // All other routes continue to require that secret, even if the worker is disabled.
  let body:any={};try{body=await request.json()}catch{}
  // 8.86: narrow read-only historic payout evidence, never a repair or import.
- if(body?.mode==='admin-historical-flow-preview-886'){
+ if(['admin-historical-flow-preview-886','admin-historical-flow-commit-889'].includes(body?.mode)){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const commit=body.mode==='admin-historical-flow-commit-889';
   const fixedWallet='e8b5c835-0db2-4449-bbee-258e28b42bbb';
   const fixedContract='0x2096bd2e860b450498a7c908708757a1eb306416';
   const offset=body.offset;
-  if(Object.keys(body).some(k=>!['mode','offset'].includes(k))||
-     !Number.isSafeInteger(offset)||offset<0||offset>163)
-   return reply({ok:false,error:'Expected only mode and integer offset 0..163',writesPerformed:0},400);
+  if(Object.keys(body).some(k=>!(commit?['mode','offset','confirmation']:['mode','offset']).includes(k))||
+     !Number.isSafeInteger(offset)||offset<0||offset>163||
+     (commit&&(offset!==0||body.confirmation!=='COMMIT-3-HISTORICAL-FLOWS')))
+   return reply({ok:false,error:'Invalid strict historical preview/commit arguments',writesPerformed:0},400);
   if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')return reply({ok:false,error:'Manual historic inspection disabled',writesPerformed:0},403);
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return reply({ok:false,error:'Disable DAO live worker first',writesPerformed:0},409);
   try{
@@ -1360,12 +1362,13 @@ Deno.serve(async request=>{
     .eq('status','pending').eq('payout_status','pending').eq('claim_pipeline_status','pending')
     .eq('canonical_existing_verified',false).is('audit_classification',null);
    if(countError)throw countError;
-   if(total!==164)throw Error('Fixed candidate cohort changed; expected 164');
+   if(commit){if(total===null||total<1||total>164)throw Error('No bounded historical claims remain');}
+   else if(total!==164)throw Error('Fixed preview cohort changed; expected 164');
    const {data:candidates,error:candidateError}=await sb.from('dao_reward_claim_candidates')
     .select('tx_hash,claim_block,nft_id,nft_contract,status').match(scope)
     .eq('status','pending').eq('payout_status','pending').eq('claim_pipeline_status','pending')
     .eq('canonical_existing_verified',false).is('audit_classification',null)
-    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).range(offset,Math.min(offset+2,163));
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).range(offset,Math.min(offset+2,(total??164)-1));
    if(candidateError)throw candidateError;
    if(!candidates?.length)throw Error('Expected historical candidate page unavailable');
    const results:any[]=[];let stopped='completed';
@@ -1432,6 +1435,22 @@ Deno.serve(async request=>{
       mintCalls:proof.mintCalls,mintEvents:proof.mintEvents,canonicalDifferenceWei:canonical.differenceWei,
       claimAssetDifferenceWei:amount.differenceWei,ownershipProof:liveOwner.reason,blockers:[]});
     }catch(e){item.blockers.push(daoErrorSummary(e));stopped='first_discrepancy';break;}
+   }
+   if(commit){
+    if(stopped!=='completed'||results.length!==candidates.length||
+       results.some((r:any)=>r.status!=='verified_preview'||r.blockers?.length))
+     return reply({ok:false,mode:body.mode,status:'proof_failed',total,checked:results.length,
+      stopped,results,flowsCreated:0,claimsCreated:0},409);
+    const proofs=results.map((r:any)=>({txHash:r.txHash,claimBlock:r.claimBlock,nftId:r.nftId,
+     amountRaw:r.amountRaw,mintCalls:r.mintCalls,mintEvents:r.mintEvents,ownershipProof:r.ownershipProof}));
+    const {data:committed,error:commitError}=await sb.rpc('wallettracking_dao_commit_historical_existing_flows_889',
+     {p_user:job.user_id,p_wallet:fixedWallet,p_proofs:proofs});
+    if(commitError)throw Error('Atomic historic flow commit rejected: '+commitError.message);
+    if(committed?.status!=='completed'||committed?.flowsCreated!==results.length||
+       committed?.claimsCreated!==0)throw Error('Unexpected DB commit return; independently audit before retry');
+    return reply({ok:true,mode:body.mode,walletId:fixedWallet,totalBefore:total,
+     verified:results.length,flowsCreated:committed.flowsCreated,claimsCreated:0,
+     results:committed.results,status:'committed',notice:'Only native flows and candidate statuses committed; canonical claims/prices unchanged. DAO cron remains off.'});
    }
    return reply({ok:true,mode:body.mode,walletId:fixedWallet,total,offset,selected:candidates.length,
     checked:results.length,nextOffset:offset+results.length,hasMore:offset+results.length<total,

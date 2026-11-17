@@ -1,3 +1,6 @@
+## 8.89 · 17.11.2026 11:31:08 CET · Build 20261117-113108
+- Streng begrenzte atomare Übernahme der ersten maximal 3 von 164 historischen kanonischen DAO-Claims ohne Eingangsflow, erst nach neuen Live-Trace/Mint-/NFT-Belegen und ausdrücklicher Admin-Bestätigung. Neuer service-only SQL-Finalizer ergänzt nur Native-Flows und Kandidatenstatus; Claims/Preise unangetastet. Cron/Live-Worker AUS. Details `8.89-dao-historical-canonical-flow-commit.md`.
+
 ## 8.88 · 17.11.2026 10:59:47 CET · Build 20261117-105947
 - Vollständiger automatischer, abbrechbarer **Read-only**-Prüfdurchlauf der 164 historischen DAO1-Claims ab zuletzt bestätigtem Offset. Edge-Live-Belege bleiben unverändert dreierweise; Checkpoint, sofortiger Stopp bei Abweichung, kein SQL/Edge-Deploy/Schreiben. Erste 6 unter 8.87 bereits verifiziert. Details: `8.88-dao-historical-flow-full-read-only-check.md`.
 
