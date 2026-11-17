@@ -34,6 +34,11 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.93 – DAO1: drei historische Claim-Contracts beim Existing-Reconcile (17.11.2026)
+
+- 8.91 installiert; read-only `wallettracking_dao_reconcile_existing_native_891(false)` stoppte bei Prelaunch Block 41'856, obwohl NFT-ID/Contract, Claim-APTM, Raw/Flow-APTM, Selector und USD-NULL exakt konsistent sind. Ursache: 8.91 fixiert nur Transaktionsziel `0x2096...`, während die 1'706 bestehenden Kandidaten nach SQL **drei** bestätigte Empfänger besitzen: `0x2096...` (1'698), `0xdb330...` (7), `0xa1b761...` (1); jeweils Selector `0x86bb8f37`.
+- 8.93 ändert **nur** diese Allowlist-Bedingung in der bestehenden service-only 8.91-Reconciliation. Installation führt keinen Commit aus, Betrags-/Preis-/NFT-/Flow- und Zählguards bleiben erhalten. ZIP/SQL installieren, **zuerst nur read-only Preview wiederholen**. Erst nach 1'706/1'690/16/1-Freigabe separat committen; DAO-Cron AUS. `docs/releases/8.93-dao-historical-contract-reconciliation.md`.
+
 ### DRINGEND / Phase 8.92 – TLN/VOW-Handelscache: RPC 429 und fehlende Receipts (17.11.2026)
 
 - Produktiver Cron `tln-vow-trade-sync-5m` (Job 4) läuft alle fünf Minuten, jedoch bestätigten 20 HTTP-Antworten Status 500. BSC: `Receipt missing` bei wechselnden TX-Hashes; ETH: wiederholt `RPC HTTP 429` (auch `eth_blockNumber`), gelegentlich ebenfalls fehlende Receipts. Letzte Cache-Checkpoints 15.11.2026 BSC 02:01, ETH 13:51. Handelsvolumen bleiben berechtigt `SCAN UNVOLLSTÄNDIG`.

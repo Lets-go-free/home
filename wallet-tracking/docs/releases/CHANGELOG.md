@@ -1,3 +1,6 @@
+## 8.93 · 17.11.2026 20:13:40 CET · Build 20261117-201340
+- DAO1 8.91-Reconciliation korrigiert ausschliesslich die zu enge Transaktionsziel-Prüfung auf die drei SQL-bestätigten historischen Contracts (1'698 + 7 + 1 Kandidaten). Nur SQL-Migration mit unveränderten weiteren Guards, keine Datenänderung bei Installation. Preview/Commit separat. `8.93-dao-historical-contract-reconciliation.md`.
+
 ## 8.92 · 17.11.2026 17:58:21 CET · Build 20261117-175821
 - TLN/VOW 5-Minuten-Trade-Indexer gegen Alchemy HTTP 429/503 und fehlende Batch-Receipts abgesichert: gedrosselte Requests, begrenzte exponentielle Wiederholungen, individueller Receipt-Fallback. Keine Daten überspringen, keine verfrühten Checkpoints. Nur Edge Function ändern und neu deployen; SQL/Cron/DAO unverändert. Produktiver Retest offen. `8.92-tln-vow-trade-rpc-resilience.md`.
 
