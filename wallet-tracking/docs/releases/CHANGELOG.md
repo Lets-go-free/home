@@ -1,3 +1,6 @@
+## 8.92 · 17.11.2026 17:58:21 CET · Build 20261117-175821
+- TLN/VOW 5-Minuten-Trade-Indexer gegen Alchemy HTTP 429/503 und fehlende Batch-Receipts abgesichert: gedrosselte Requests, begrenzte exponentielle Wiederholungen, individueller Receipt-Fallback. Keine Daten überspringen, keine verfrühten Checkpoints. Nur Edge Function ändern und neu deployen; SQL/Cron/DAO unverändert. Produktiver Retest offen. `8.92-tln-vow-trade-rpc-resilience.md`.
+
 ## 8.91 · 17.11.2026 17:06:53 CET · Build 20261117-170653
 - Nach vollständiger unabhängiger SQL-Abnahme aller 164 historischen Native-Flows: neuer SQL-only, standardmässig lesender und optional atomarer Gesamt-Abgleich von genau 1'690 vorhandenen Claims/Flows. 16 ohne Flow und 1 Prelaunch USD NULL werden bewahrt; ausschliesslich `canonical_existing_verified/checked_at` werden beim späteren expliziten Commit gesetzt. Kein Edge-Deploy, kein Cron. `8.91-dao-existing-native-reconciliation.md`.
 

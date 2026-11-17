@@ -34,6 +34,12 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### DRINGEND / Phase 8.92 – TLN/VOW-Handelscache: RPC 429 und fehlende Receipts (17.11.2026)
+
+- Produktiver Cron `tln-vow-trade-sync-5m` (Job 4) läuft alle fünf Minuten, jedoch bestätigten 20 HTTP-Antworten Status 500. BSC: `Receipt missing` bei wechselnden TX-Hashes; ETH: wiederholt `RPC HTTP 429` (auch `eth_blockNumber`), gelegentlich ebenfalls fehlende Receipts. Letzte Cache-Checkpoints 15.11.2026 BSC 02:01, ETH 13:51. Handelsvolumen bleiben berechtigt `SCAN UNVOLLSTÄNDIG`.
+- 8.92: begrenzte RPC-Wiederholungen bei HTTP 429/503, geteilte Anfrage-Taktung sowie individuelle Nachladung fehlender Batch-Receipts. Niemals fehlende Transaktionen als 0 klassifizieren oder ungeprüfte Fenster als vollständig speichern. **Edge-Deployment und unabhängige Live-Abnahme offen.** Keine Cron-/DAO-/Preisänderung.
+- Danach `net._http_response` und `tln_vow_trade_scan_state` für beide Chains prüfen; erst bei frischen und vollständig aufgeholten Checkpoints Handelsansicht abnehmen. Bei fortgesetzten 429 Provider-Kapazität und Aufrufrate messen/erhöhen bzw. Scanfenster weiter verkleinern. Details `docs/releases/8.92-tln-vow-trade-rpc-resilience.md`.
+
 ### Phase 8.91 – Konsistente vorhandene DAO1-Claims markieren (17.11.2026)
 
 - 8.90 live erfolgreich: alle 161 verbleibenden historischen Flows übernommen, unabhängig SQL abgenommen: **164/164** genau 1 kanonischer Claim, genau 1 Native-Flow, Original-APTM/USD korrekt, Kandidat vollständig abgeschlossen.

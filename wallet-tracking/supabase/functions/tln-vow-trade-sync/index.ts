@@ -21,26 +21,62 @@ const authSecret=Deno.env.get('TRADE_SYNC_SECRET')||'';
 const sb=createClient(dburl,adminKey,{auth:{persistSession:false}});
 const urls:Record<string,string>={bsc:`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(apiKey)}`,eth:`https://eth-mainnet.g.alchemy.com/v2/${encodeURIComponent(apiKey)}`};
 
+// 8.92: shared per-invocation pacing and bounded retry for provider throttling.
+// A failed request must NEVER be treated as an empty successful scan window.
+const wait=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
+let nextRpcAt=0;
+async function pacedRpcFetch(chain:string,body:unknown,method:string){
+  for(let attempt=0;attempt<4;attempt++){
+    const delay=Math.max(0,nextRpcAt-Date.now());
+    if(delay)await wait(delay);
+    nextRpcAt=Date.now()+180;
+    const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);
+    try{
+      const res=await fetch(urls[chain],{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:c.signal});
+      if(res.status===429||res.status===503){
+        if(attempt===3)throw new Error(`${chain} RPC HTTP ${res.status} (${method}) after 4 attempts`);
+        const retryAfter=Number(res.headers.get('retry-after'));
+        await wait(Number.isFinite(retryAfter)&&retryAfter>0?Math.min(retryAfter*1000,12000):1500*Math.pow(2,attempt));
+        continue;
+      }
+      if(!res.ok)throw new Error(`${chain} RPC HTTP ${res.status} (${method})`);
+      const data=await res.json();
+      // Batch endpoints may return a JSON-RPC error object instead of an array.
+      if(data?.error?.code===429||data?.error?.code===-32005){
+        if(attempt===3)throw new Error(`${chain} RPC rate limited (${method}) after 4 attempts`);
+        await wait(1500*Math.pow(2,attempt));continue;
+      }
+      return data;
+    }finally{clearTimeout(timer);}
+  }
+  throw new Error(`${chain} RPC retries exhausted (${method})`);
+}
+
 async function rpc(chain:string,method:string,params:unknown[]){
-  const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);
-  try{
-    const res=await fetch(urls[chain],{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:c.signal});
-    if(!res.ok)throw new Error(`${chain} RPC HTTP ${res.status} (${method})`);
-    const raw=await res.json();if(raw.error)throw new Error(`${chain} ${method}: ${raw.error.message}`);
-    return raw.result;
-  }finally{clearTimeout(timer);}
+  const raw=await pacedRpcFetch(chain,{jsonrpc:'2.0',id:1,method,params},method);
+  if(raw.error)throw new Error(`${chain} ${method}: ${raw.error.message}`);
+  return raw.result;
 }
 async function batchReceipts(chain:string,hashes:string[]){
   const result=new Map<string,any>();
   for(let p=0;p<hashes.length;p+=10){
-    const chunk=hashes.slice(p,p+10),c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);
-    try{
-      const res=await fetch(urls[chain],{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(chunk.map((hash,i)=>({jsonrpc:'2.0',id:i+1,method:'eth_getTransactionReceipt',params:[hash]}))),signal:c.signal});
-      if(!res.ok)throw new Error(`${chain} receipt batch HTTP ${res.status}`);
-      const rows=await res.json();if(!Array.isArray(rows))throw new Error('Receipt batch format');
-      const ids=new Map(rows.map((x:any)=>[Number(x.id),x]));
-      for(let i=0;i<chunk.length;i++){const x:any=ids.get(i+1);if(x?.error||!x?.result?.logs)throw new Error(`Receipt missing ${chunk[i]}`);result.set(chunk[i],x.result);}
-    }finally{clearTimeout(timer);}
+    const chunk=hashes.slice(p,p+10);
+    const rows=await pacedRpcFetch(chain,chunk.map((hash,i)=>({jsonrpc:'2.0',id:i+1,method:'eth_getTransactionReceipt',params:[hash]})),'receipt batch');
+    if(!Array.isArray(rows))throw new Error(`${chain} receipt batch returned non-array response`);
+    const ids=new Map(rows.map((x:any)=>[Number(x.id),x]));
+    for(let i=0;i<chunk.length;i++){
+      const x:any=ids.get(i+1);
+      if(x?.result&&Array.isArray(x.result.logs)){result.set(chunk[i],x.result);continue;}
+      // A batch can omit a receipt transiently. Re-query just that hash, never skip it.
+      let receipt:any=null;
+      for(let retry=0;retry<3;retry++){
+        if(retry)await wait(retry*750);
+        receipt=await rpc(chain,'eth_getTransactionReceipt',[chunk[i]]);
+        if(receipt&&Array.isArray(receipt.logs))break;
+      }
+      if(!receipt||!Array.isArray(receipt.logs))throw new Error(`Receipt missing after individual retries ${chunk[i]}`);
+      result.set(chunk[i],receipt);
+    }
   }
   return result;
 }
