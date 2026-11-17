@@ -21,7 +21,7 @@ const oldModes = [
 ]
 
 test('8.85 removes old browser controls and Edge API routes', () => {
-  assert.match(html, /window\.APP_VERSION="8\.8[5-7]"/)
+  assert.match(html, /window\.APP_VERSION="8\.8[5-8]"/)
   for (const id of ['daoLegacyMintDrain869', 'daoLegacySingle872', 'daoLegacyFive877',
     'daoLegacyPricedFive878', 'daoPreanchorFour884'])
     assert.doesNotMatch(html, new RegExp('id="'+id+'"'))

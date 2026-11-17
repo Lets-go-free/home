@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import vm from 'node:vm'
 import {assessHistoricalRawAmount886} from '../supabase/functions/dao-reward-refresh/legacy-flow-proof-886.js'
 
 const edge=readFileSync(new URL('../supabase/functions/dao-reward-refresh/index.ts',import.meta.url),'utf8')
@@ -36,4 +37,38 @@ test('8.86 only exposes a three-claim admin preview for the fixed historic walle
  assert.match(html,/dao-historical-flow-preview-886\.js/)
  assert.match(ui,/admin-historical-flow-preview-886/)
  assert.doesNotMatch(ui,/commit|COMMIT|confirm\(/)
+})
+
+test('8.88 loops across strictly read-only three-claim pages and resumes after a discrepancy',async()=>{
+ const elements=new Map(['daoHistoricalFlowResume888','daoHistoricalFlowStatus886','daoHistoricalFlowResult886',
+  'daoHistoricalFlowFirst886','daoHistoricalFlowNext886','daoHistoricalFlowStop888'].map(id=>[id,{value:'6',textContent:'',disabled:false,style:{}}]))
+ const memory=new Map(),calls=[]
+ let failAt=12
+ const context={isSecureContext:true,document:{getElementById:id=>elements.get(id)},
+  sessionStorage:{getItem:key=>memory.get(key)??null,setItem:(key,value)=>memory.set(key,value)},
+  navigator:{onLine:true},isAdmin:true,currentUser:{id:'admin'},
+  sb:{auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},functions:{invoke:async(_name,{body})=>{
+   calls.push(body.offset)
+   if(body.offset===failAt)return {data:{ok:true,mode:body.mode,walletId:'e8b5c835-0db2-4449-bbee-258e28b42bbb',
+    total:164,offset:body.offset,selected:1,checked:1,nextOffset:body.offset+1,hasMore:true,
+    stopped:'first_discrepancy',writesPerformed:0,claimsCreated:0,
+    results:[{status:'needs_review',blockers:['missing']}]}}
+   const checked=Math.min(3,164-body.offset)
+   return {data:{ok:true,mode:body.mode,walletId:'e8b5c835-0db2-4449-bbee-258e28b42bbb',
+    total:164,offset:body.offset,selected:checked,checked,nextOffset:body.offset+checked,
+    hasMore:body.offset+checked<164,stopped:'completed',writesPerformed:0,claimsCreated:0,
+    results:Array.from({length:checked},()=>({status:'verified_preview',blockers:[],amountRaw:'123',ownershipProof:'prior-transfer-recipient'}))}}
+  }}}}
+ context.window=context
+ vm.createContext(context);vm.runInContext(ui,context)
+ await context.runDaoHistoricalFlowAll888()
+ assert.deepEqual(calls,[6,9,12])
+ assert.equal(elements.get('daoHistoricalFlowResume888').value,'12')
+ assert.match(elements.get('daoHistoricalFlowStatus886').textContent,/gestoppt/)
+ failAt=-1;calls.length=0
+ await context.runDaoHistoricalFlowAll888()
+ assert.equal(calls[0],12)
+ assert.equal(calls.at(-1),162)
+ assert.equal(elements.get('daoHistoricalFlowResume888').value,'164')
+ assert.match(elements.get('daoHistoricalFlowStatus886').textContent,/164\/164/)
 })

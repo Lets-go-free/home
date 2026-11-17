@@ -1,3 +1,6 @@
+## 8.88 · 17.11.2026 10:59:47 CET · Build 20261117-105947
+- Vollständiger automatischer, abbrechbarer **Read-only**-Prüfdurchlauf der 164 historischen DAO1-Claims ab zuletzt bestätigtem Offset. Edge-Live-Belege bleiben unverändert dreierweise; Checkpoint, sofortiger Stopp bei Abweichung, kein SQL/Edge-Deploy/Schreiben. Erste 6 unter 8.87 bereits verifiziert. Details: `8.88-dao-historical-flow-full-read-only-check.md`.
+
 ## 8.52 · Live-Abnahme-Nachtrag 14.11.2026 21:39:51 CET (Dokumentation, kein neuer Build)
 - 8.52-Migration installiert, kanonischen Erstclaim repariert und neu angelegten Claim mit exact-v13 bestätigt.
 - 125 historische NFT-ID-Lücken (1+124) nach Gleichheits-/Wallet-Guards behoben; 2'078/2'078 damals konsistent.

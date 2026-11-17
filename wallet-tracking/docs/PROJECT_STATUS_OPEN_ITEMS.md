@@ -34,6 +34,13 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.88 – Historische 164 DAO1-Claims automatisch lesen (17.11.2026)
+
+- 8.87 installiert/deployed. Erste 6 von 164 historischen Claims live verified: frischer NFT-Eigentumsnachweis, Original-Native-Minter-Trace/Event, genaue APTM-Menge. Darunter 2 Mint-Calls und 2 Events; bis 623 Wei Abweichung (innerhalb 1e-12-APTM-Grenze), 0 Writes.
+- 8.88 erweitert **nur die Admin-Oberfläche**: automatischer serieller Lesedurchlauf der übrigen 158 Claims in unveränderten 3er-Edge-Aufrufen. Sofortiger Stopp bei Abweichung, Stopptaste zwischen Aufrufen, sichtbarer Offset, Session-Checkpoint, Fortsetzung. Startoffset 6 ist durch Live-Vorschau bestätigt. Keine Flow-Commits, kein SQL; DAO-Cron und Live-Worker aus.
+- Nächster Schritt ZIP 8.88 installieren, **kein Edge-Deploy**, kein SQL; Admin → Audit → «Alle verbleibenden prüfen», Ergebnis melden. Erst nach vollständigem unabhängigen Nachweis gesonderte kanonische Flow-Ergänzung planen.
+- `docs/releases/8.88-dao-historical-flow-full-read-only-check.md`
+
 ### Phase 8.52 – DAO1 historische Reto-Claims: Live-Abnahme abgeschlossen (14.11.2026 21:39:51 CET)
 - **Version 8.52 installiert und live getestet:** `wallettracking_dao_finalize_single_claim` schreibt die Begleitfelder in `project_transactions` und `project_nft_claims.reward_usd` atomar. Der zuvor unvollständige Claim zu NFT #21 wurde durch `wallettracking_dao_repair_single_claim_852` repariert und einzeln vollständig geprüft. Neue Claim-Erstellung, Wiederholungsschutz und historischer `exact-v13`-Preis wurden live bestätigt.
 - **Historische NFT-Lücke:** 125 Claims einer weiteren Wallet hatten `project_nft_claims.nft_id IS NULL`, während die eindeutige `project_transactions.claim_nft_id` samt Name, Typ und Contract vorhanden war. Reward-APTM und USD stimmten bereits überein. 1 Einzelreparatur (Claim-ID 29305), dann 124 weitere mit strengen Gleichheitsbedingungen durchgeführt. Die 17 betroffenen Miner-NFTs waren nicht vollständig in `project_nfts` katalogisiert (1 vorhanden, 16 nicht); es wurden **keine Stammdaten erfunden**. Danach 2'078/2'078 `exact-v13`-Claims konsistent.
