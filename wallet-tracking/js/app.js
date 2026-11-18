@@ -12476,22 +12476,43 @@ const DISCOVERY_REFERENCE_TOKENS={
   bsc:{USDT:['0x55d398326f99059ff775485246999027b3197955']},
   eth:{USDT:['0xdac17f958d2ee523a2206206994597c13d831ec7']}
 };
+// 9.07: Fold visual Unicode lookalikes only when checking trusted token tickers.
+// Legitimate non-Latin tokens stay unaffected unless they imitate a known ticker.
+const DISCOVERY_TICKER_CONFUSABLES=Object.freeze({
+  'Α':'A','А':'A','Β':'B','В':'B','С':'C','Ϲ':'C','Ε':'E','Е':'E',
+  'Η':'H','Н':'H','Ι':'I','І':'I','Ӏ':'I','Κ':'K','К':'K',
+  'Μ':'M','М':'M','Ν':'N','О':'O','Ο':'O','Ρ':'P','Р':'P',
+  'Ѕ':'S','Տ':'S','Τ':'T','Т':'T','Υ':'Y','Ү':'Y','Χ':'X','Х':'X',
+  'Ζ':'Z','Ԍ':'G','Ԛ':'Q','Ԝ':'W','ԁ':'D','Ԁ':'D',
+  'а':'A','с':'C','е':'E','і':'I','о':'O','р':'P','ѕ':'S','т':'T','х':'X','у':'Y',
+  'Ꭰ':'D','Ꮪ':'S','Ꭲ':'T','Ꮜ':'U','Ꭱ':'R','Ꮯ':'C'
+});
+function discoveryTickerIdentity(value){
+  const raw=String(value||'').normalize('NFKC').toUpperCase();
+  let normalized='';
+  for(const c of raw){
+    if(/[\p{Mark}\p{Cf}]/u.test(c))continue;
+    normalized+=DISCOVERY_TICKER_CONFUSABLES[c]||c;
+  }
+  return normalized.trim();
+}
 function discoveryReferenceSymbolMismatch(f){
   if(!f?.chain||!f?.address)return null;
   const chain=String(f.chain).toLowerCase();
-  const symbol=String(f.symbol||'').trim().toUpperCase();
+  const rawSymbol=String(f.symbol||'').trim();
+  const symbol=discoveryTickerIdentity(rawSymbol);
   const reference=DISCOVERY_REFERENCE_TOKENS[chain]?.[symbol];
   if(!reference)return null;
   const actual=String(f.address).toLowerCase();
   if(reference.includes(actual))return null;
-  return {symbol,reference,chain};
+  return {symbol,reference,chain,unicodeImpersonation:rawSymbol.toUpperCase()!==symbol};
 }
 function discoveryPredefinedIdentityMismatch(f){
   if(!f?.chain||!f?.address)return null;
   const sourceChain=f.chain;
   const chainKeys=discoveryEquivalentChainKeys(sourceChain);
   const current=normalizeAddress(f.address,sourceChain);
-  const symbol=discoveryIdentityText(f.symbol), name=discoveryIdentityText(f.name);
+  const symbol=discoveryTickerIdentity(f.symbol).toLowerCase(), name=discoveryIdentityText(f.name);
   if(!symbol&&!name)return null;
   const matches=[];
   for(const officialChain of chainKeys){
@@ -12513,7 +12534,7 @@ function discoveryPredefinedIdentityMismatch(f){
       const labelTicker=/^[A-Za-z0-9.$€£_-]{2,12}$/.test(officialLabel) ? officialLabel : "";
       const officialSymbol=storedSymbol||labelTicker;
       const officialName=String(predefinedTokenNames[key]||(!labelTicker?officialLabel:"")).trim();
-      const symbolMatch=!!symbol && symbol.length>=2 && !!officialSymbol && discoveryIdentityText(officialSymbol)===symbol;
+      const symbolMatch=!!symbol && symbol.length>=2 && !!officialSymbol && discoveryTickerIdentity(officialSymbol).toLowerCase()===symbol;
       const nameMatch=!!name && name.length>=4 && !!officialName && discoveryIdentityText(officialName)===name;
       if(symbolMatch||nameMatch)matches.push({chain:officialChain,address:officialAddress,symbol:officialSymbol||null,name:officialName||null,symbolMatch,nameMatch});
     }
@@ -13108,7 +13129,7 @@ function renderDiscoveryResults(findings) {
       const reasons = [];
       if (f.userMarkedScam) reasons.push("vom Benutzer als Spam markiert");
       const refMismatch=discoveryReferenceSymbolMismatch(f);
-      if(refMismatch)reasons.push(`${refMismatch.symbol}: Contract stimmt nicht mit der bekannten ${refMismatch.chain.toUpperCase()}-Referenz überein (mögliche Nachahmung)`);
+      if(refMismatch)reasons.push(`${refMismatch.symbol}: Contract stimmt nicht mit der bekannten ${refMismatch.chain.toUpperCase()}-Referenz überein (mögliche Nachahmung)${refMismatch.unicodeImpersonation?"; täuschend ähnliche Unicode-Zeichen im Token-Symbol erkannt":""}`);
       if (isKnownExplorerFraudContract(f)) reasons.push("BscScan: Fake_Phishing1123827 (bekannte Contract-Warnung)");
       if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       const identityMismatch=discoveryPredefinedIdentityMismatch(f);

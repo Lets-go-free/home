@@ -691,3 +691,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Spam-Verdachtszähler zählt ausschliesslich noch nicht manuell markierte Kandidaten. Manuell markierte erscheinen, falls eingeblendet, mit eigener Kennzeichnung statt einem erneuten GoPlus-Verdacht.
 - Explizite Contract-Referenz für BSC-USDT `0x55d398326f99059ff775485246999027b3197955` und Ethereum-USDT `0xdac17f958d2ee523a2206206994597c13d831ec7`. Gleicher Ticker mit abweichendem Contract erzeugt einen Adress-/Identitätsverdacht, keine automatische Spam-Klassifizierung; andere Chains bleiben bei verifizierten Stammdaten. Bridged-Token können legitime Ausnahmen sein.
 - Regressionstests 9.06, 9.05 und Mehrwallet-Bulk bestanden; Syntaxprüfung bestanden. Noch produktiv zu testen. Keine SQL-Migration oder Edge-Änderung.
+
+### Phase 9.07 – Unicode-Nachahmung bekannter Token-Symbole (18.11.2026)
+- 9.06 verglich bekannte Ticker zu streng: Auf BSC optisch als `USDT` angezeigte Einträge trugen tatsächlich `U឵S឵DΤ` und wurden trotz falscher Contract-Adresse nicht erkannt.
+- Ticker-Normalisierung für den Vergleich mit bekannten Token-Referenzen eingeführt, inklusive Unicode-Markierungen, Fullwidth und ausgewählten Homoglyphen. Betrifft nur Nachahmungen bereits bekannter Symbole, kein pauschales Verbot anderer Schriftzeichen.
+- Ein abweichender Contract löst unabhängig von GoPlus einen Nachahmungsverdacht aus, keine automatische Spam-Markierung. Manuell markierte Token bleiben von Verdacht/Nachprüfung ausgeschlossen.
+- Tests 9.07 + 9.06 und JS-Syntax bestanden; produktive Browser-Abnahme offen. Nur Frontend, keine SQL- oder Edge-Änderung. Details: `docs/releases/9.07-discovery-unicode-token-impersonation.md`.
