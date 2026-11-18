@@ -717,3 +717,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Geschützter neuer `delta-scan-preview` liest BSC-ERC20-Transfer-Events walletbezogen über `eth_getLogs` für vier bereits verifizierte Token-Adressen und ein einziges 5'000-Block-Fenster. Nur aggregierte Ereigniszähler, kein Reward-Beweis. Providerfehler blockiert den Test ohne Cursorfortschritt.
 - Produktive Rewards-Automatik **weiterhin offen**: alle Reward-Verträge/Events, genaue Klassifikation gegen bestehende Discovery, kryptografisch sichere Walletberechtigung, persistente Cursor, Daily-Cron, Backfill und Regression gegen verifizierte Snapshots.
 - `docs/releases/9.12-tln-vow-wallet-scoped-log-inspection.md`; sichtbare Phase 9.12 / Build 20261118-220758.
+
+
+### Phase 9.13 – TLN/VOW Delta-Scan-Diagnose (20261118-221933)
+
+- `delta-scan-preview` akzeptiert `maxBlocks` von 1 bis 5'000 (Standard 5'000); Werte ausserhalb des Bereichs werden mit HTTP 400 abgewiesen. Chunkgrenzen, Restblöcke und Folgeabschnitt hängen vom tatsächlich gewählten Wert ab.
+- RPC-Fehler werden ohne URL, Authentisierung oder Rohantwort diagnostiziert: `phase`, `category`, optional `httpStatus` und `rpcCode`. Keine sensiblen Providerdetails in Logs oder Antwort.
+- Test bleibt vollständig read-only. Kein neuer Reward-Worker, kein Cron, kein Cursorfortschritt, keine neue Klassifikation.
+- Edge Function neu deployen; Test zuerst mit `{"mode":"delta-scan-preview","maxBlocks":100}`.

@@ -1,4 +1,4 @@
-// WalletTracking 9.12 – TLN/VOW reward-refresh READ-ONLY preflight, chunk plan, and wallet-scoped ERC20 log inspection.
+// WalletTracking 9.13 – TLN/VOW reward-refresh READ-ONLY preflight, chunk plan, and wallet-scoped ERC20 log inspection.
 // Bounded eth_getLogs inspection only; no reward/cursor/cache writes and NO cron activation.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -9,6 +9,32 @@ const ALCHEMY_API_KEY = Deno.env.get('ALCHEMY_API_KEY') || ''
 const DELTA_OVERLAP_BLOCKS = 128
 const MAX_DELTA_WINDOW_BLOCKS = 100_000
 const DELTA_CHUNK_BLOCKS = 5_000
+// Deliberately bounded; caller may request fewer blocks but never expand the range.
+function previewBlockBudget(value:unknown):number|null {
+  if(value===undefined || value===null) return DELTA_CHUNK_BLOCKS
+  return typeof value==='number' && Number.isSafeInteger(value) && value>=1 && value<=DELTA_CHUNK_BLOCKS ? value : null
+}
+// RPC provider diagnostics must never expose URL paths, query keys, wallet addresses,
+// tokens, or arbitrary response bodies to the caller. Keep only machine-readable codes.
+class RpcDiagnosticError extends Error {
+  readonly phase:string
+  readonly category:string
+  readonly httpStatus:number|null
+  readonly rpcCode:number|null
+  constructor(phase:string, category:string, httpStatus:number|null=null, rpcCode:number|null=null) {
+    super(`BSC RPC ${phase}: ${category}`)
+    this.phase=phase; this.category=category; this.httpStatus=httpStatus; this.rpcCode=rpcCode
+  }
+}
+function rpcCodeOf(error:unknown):number|null {
+  const code=(error as {code?:unknown}|null)?.code
+  return typeof code==='number' && Number.isSafeInteger(code) ? code : null
+}
+function safeRpcDiagnostic(error:unknown) {
+  if(error instanceof RpcDiagnosticError)
+    return {phase:error.phase,category:error.category,httpStatus:error.httpStatus,rpcCode:error.rpcCode}
+  return {phase:'eth_getLogs',category:error instanceof Error && error.name==='AbortError'?'timeout':'unexpected',httpStatus:null,rpcCode:null}
+}
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 // BSC contracts already identified in the TLN/VOW application (vow trading, TLN+ and TLN GOLD).
 // NOT a complete or authoritative registry of all TLN/VOW staking or reward contracts.
@@ -21,11 +47,11 @@ const SCAN_CONTRACTS = Object.freeze({
 const MAX_LOGS_PER_DIRECTION = 3000
 const evmAddress = (v:unknown) => typeof v==='string' && /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : null
 const hexBlock = (n:number)=>'0x'+n.toString(16)
-async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number) {
+async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number) {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
   const address=evmAddress(wallet)
   if(!address)throw new Error('Invalid verified snapshot wallet address')
-  if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||fromBlock<0||toBlock<fromBlock||toBlock-fromBlock+1>DELTA_CHUNK_BLOCKS)
+  if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||fromBlock<0||toBlock<fromBlock||toBlock-fromBlock+1>maxBlocks||maxBlocks>DELTA_CHUNK_BLOCKS)
     throw new Error('Unsafe scan window')
   const walletTopic='0x'+address.slice(2).padStart(64,'0')
   const contracts=Object.keys(SCAN_CONTRACTS)
@@ -42,10 +68,12 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
         body:JSON.stringify({jsonrpc:'2.0',id:direction==='incoming'?2:3,method:'eth_getLogs',params:[{
           fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock),address:contracts,topics
         }]})})
-      if(!res.ok)throw new Error('BSC log RPC HTTP failure')
-      const body=await res.json()
-      if(body?.error || !Array.isArray(body?.result))throw new Error('BSC log RPC rejected or invalid response')
-      if(body.result.length>MAX_LOGS_PER_DIRECTION)throw new Error('Log result exceeds bounded preview limit')
+      if(!res.ok)throw new RpcDiagnosticError('eth_getLogs','http_error',res.status)
+      let body:any
+      try {body=await res.json()}catch{throw new RpcDiagnosticError('eth_getLogs','invalid_json')}
+      if(body?.error)throw new RpcDiagnosticError('eth_getLogs','rpc_error',null,rpcCodeOf(body.error))
+      if(!Array.isArray(body?.result))throw new RpcDiagnosticError('eth_getLogs','invalid_response')
+      if(body.result.length>MAX_LOGS_PER_DIRECTION)throw new RpcDiagnosticError('eth_getLogs','too_many_logs')
       for(const log of body.result){
         const c=evmAddress(log?.address)
         const bn=typeof log?.blockNumber==='string' && /^0x[0-9a-f]+$/i.test(log.blockNumber)?Number(BigInt(log.blockNumber)):NaN
@@ -59,6 +87,10 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
         unique.add(tx)
         observedLogs++
       }
+    }catch(error){
+      if(error instanceof RpcDiagnosticError) throw error
+      if(error instanceof Error && error.name==='AbortError')throw new RpcDiagnosticError('eth_getLogs','timeout')
+      throw new RpcDiagnosticError('eth_getLogs','network_or_validation_failure')
     }finally{clearTimeout(timer)}
   }
   return {events:observedLogs,uniqueTransactions:unique.size,
@@ -102,6 +134,8 @@ Deno.serve(async (req) => {
     const body=await req.json().catch(()=>({}))
     const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' ? body.mode : 'read-only-preflight'
     if(body?.mode && !['delta-preview','delta-scan-preview','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const maxBlocks=previewBlockBudget(body?.maxBlocks)
+    if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
     const rows: any[]=[]
     let complete=false
@@ -144,25 +178,29 @@ Deno.serve(async (req) => {
       const fromBlock=Math.max(0,lastBlock-DELTA_OVERLAP_BLOCKS)
       const blocks=head-fromBlock+1
       // This is only a hypothetical first chunk, not an executed or persisted scan.
-      // Inclusive endpoints: 5,000 blocks means [fromBlock, fromBlock + 4,999].
+      // Inclusive endpoints: maxBlocks=100 means [fromBlock, fromBlock + 99].
       // After a verified successful future scan, the next *unprocessed* block would be
       // chunkToBlock + 1. No progress is stored and no scan is executed in this mode.
-      const chunkToBlock=Math.min(head,fromBlock+DELTA_CHUNK_BLOCKS-1)
+      const chunkToBlock=Math.min(head,fromBlock+maxBlocks-1)
       const chunkBlocks=chunkToBlock-fromBlock+1
       const remainingBlocks=head-chunkToBlock
-      const remainingChunks=Math.ceil(remainingBlocks/DELTA_CHUNK_BLOCKS)
+      const remainingChunks=Math.ceil(remainingBlocks/maxBlocks)
       if(mode==='delta-scan-preview') {
         // The verified snapshot wallet is the only permitted target; do not accept a wallet supplied in the request.
         const wallet=evmAddress(payload?.wallet)
         if(!wallet)return reply({ok:false,mode,error:'Verified snapshot has no valid wallet address; no log scan'},409)
         let inspection
-        try {inspection=await inspectWalletTransfers(wallet,fromBlock,chunkToBlock)}
-        catch(e){console.error('TLN wallet-scoped RPC log scan failed',e)
+        try {inspection=await inspectWalletTransfers(wallet,fromBlock,chunkToBlock,maxBlocks)}
+        catch(e){
+          const diagnostic=safeRpcDiagnostic(e)
+          // Log only typed/sanitized metadata; never log the RPC URL, key or raw provider body.
+          console.error('TLN wallet-scoped RPC log scan failed',diagnostic)
           return reply({ok:false,mode,error:'BSC scoped log scan unavailable or rejected; no progress saved',
-            chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,persisted:false},scanCompleted:false},503)}
+            rpcDiagnostic:diagnostic,
+            chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,persisted:false},scanCompleted:false},503)}
         return reply({ok:true,mode,day:dayCH(),source:{completedStep:Number(payload.completedStep),
           sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:true,referralVerified:true},
-          chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks:DELTA_CHUNK_BLOCKS,
+          chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,
             nextFromBlock:chunkToBlock<head?chunkToBlock+1:null,persisted:false,executed:true},
           inspection,selectedWallets:1,scanCompleted:true,
           notice:'Read-only wallet-scoped ERC20 Transfer logs for four known BSC token contracts. No reward/referral classification, no claim/discovery import, no cache/cursor/queue writes and no cron. This cannot prove reward completeness.'})
@@ -170,7 +208,7 @@ Deno.serve(async (req) => {
       return reply({ok:true,mode,day:dayCH(),source:{completedStep:Number(payload.completedStep),
         sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:true,referralVerified:true},
         window:{chain:'bsc',fromBlock,toBlock:head,overlapBlocks:DELTA_OVERLAP_BLOCKS,blocks,withinPreviewBudget:blocks<=MAX_DELTA_WINDOW_BLOCKS},
-        chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks:DELTA_CHUNK_BLOCKS,
+        chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,
           nextFromBlock:chunkToBlock<head?chunkToBlock+1:null,
           remainingBlocks,remainingChunks,requiresVerifiedCommitBeforeAdvance:true,
           persisted:false,executed:false},selectedWallets:1,
