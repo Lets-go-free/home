@@ -1,4 +1,4 @@
-// WalletTracking 9.10 – TLN/VOW reward-refresh READ-ONLY preflight and single-wallet delta window preview.
+// WalletTracking 9.11 – TLN/VOW reward-refresh READ-ONLY preflight and bounded single-wallet delta chunk preview.
 // No blockchain scan, no reward/cursor/cache writes and NO cron activation.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -8,6 +8,7 @@ const SECRET = Deno.env.get('TLN_REWARD_CRON_SECRET') || ''
 const ALCHEMY_API_KEY = Deno.env.get('ALCHEMY_API_KEY') || ''
 const DELTA_OVERLAP_BLOCKS = 128
 const MAX_DELTA_WINDOW_BLOCKS = 100_000
+const DELTA_CHUNK_BLOCKS = 5_000
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
 async function bscHead(): Promise<number> {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
@@ -85,11 +86,22 @@ Deno.serve(async (req) => {
       if(head<lastBlock) return reply({ok:false,mode,error:'Snapshot cursor ahead of chain head; no delta scan'},409)
       const fromBlock=Math.max(0,lastBlock-DELTA_OVERLAP_BLOCKS)
       const blocks=head-fromBlock+1
+      // This is only a hypothetical first chunk, not an executed or persisted scan.
+      // Inclusive endpoints: 5,000 blocks means [fromBlock, fromBlock + 4,999].
+      // After a verified successful future scan, the next *unprocessed* block would be
+      // chunkToBlock + 1. No progress is stored and no scan is executed in this mode.
+      const chunkToBlock=Math.min(head,fromBlock+DELTA_CHUNK_BLOCKS-1)
+      const chunkBlocks=chunkToBlock-fromBlock+1
+      const remainingBlocks=head-chunkToBlock
+      const remainingChunks=Math.ceil(remainingBlocks/DELTA_CHUNK_BLOCKS)
       return reply({ok:true,mode,day:dayCH(),source:{completedStep:Number(payload.completedStep),
         sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:true,referralVerified:true},
         window:{chain:'bsc',fromBlock,toBlock:head,overlapBlocks:DELTA_OVERLAP_BLOCKS,blocks,withinPreviewBudget:blocks<=MAX_DELTA_WINDOW_BLOCKS},
-        candidatesWithCompleteSnapshots:candidate.length,selectedWallets:1,
-        notice:'Read-only one-wallet window plan only. No eth_getLogs, no reward/claim discovery, no RPC data import, no cache/cursor writes, no leases, no cron. No proof that new rewards were found or that all eligible wallets are covered.'})
+        chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks:DELTA_CHUNK_BLOCKS,
+          nextFromBlock:chunkToBlock<head?chunkToBlock+1:null,
+          remainingBlocks,remainingChunks,requiresVerifiedCommitBeforeAdvance:true,
+          persisted:false,executed:false},selectedWallets:1,
+        notice:'Read-only one-wallet first-chunk plan only. nextFromBlock is hypothetical: no cursor is persisted or advanced. No eth_getLogs, no reward/claim discovery, no RPC data import, no cache/cursor writes, no leases, no cron. No proof that new rewards were found or all eligible wallets were covered.'})
     }
     const result={complete:0,missingRewardStep:0,stale24h:0,stale48h:0,invalid:0}
     for(const row of byWallet.values()){

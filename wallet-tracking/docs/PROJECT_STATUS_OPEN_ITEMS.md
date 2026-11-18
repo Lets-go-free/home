@@ -1,3 +1,5 @@
+> **9.11 (18.11.2026 21:59:19 CET):** TLN/VOW-Edge `delta-preview` liefert zusätzlich einen read-only **ersten 5'000-Block-Chunk** mit inklusivem Endblock, hypothetischem Folgestart und Restanzahl. Keine Blockchain-Logs, keine Reward-Verarbeitung, keine Datenbank-/Cursor-Schreibzugriffe und **kein Cron**. Sichtbare Phase und Build aktualisiert. Nach ZIP-Installation Edge Function deployen, danach Live-Preview prüfen. `docs/releases/9.11-tln-vow-bounded-delta-chunk-preview.md`.
+
 > 9.10 (18.11.2026): TLN/VOW-Edge-Preflight um **rein lesende Einzelwallet-Delta-Fenstervorschau** ergänzt (`mode=delta-preview`, BSC-Head via Alchemy, 128 Block Overlap, Guards, keine Writes). **Kein vollständiger Rewards-Delta-Worker; kein Cron!** Siehe `docs/releases/9.10-tln-vow-single-wallet-delta-preview.md`.
 
 > 9.09 (18.11.2026 21:20:18 CET): TLN/VOW read-only Edge-Preflight hinzugefügt, **kein Reward-Delta-Worker oder Cron**. Discovery Claim-Link-Heuristik gegen Unicode-Formatzeichen gehärtet; Live-Abnahme offen. Siehe `docs/releases/9.09-tln-rewards-preflight-and-discovery.md`.
