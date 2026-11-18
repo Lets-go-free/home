@@ -8066,7 +8066,7 @@ function renderDashboard(){
     const stats=dashboardProjectCacheStats[key]||{rewards:{}};
     const rewards=stats.rewards||{},referralRewards=stats.referralRewards||{},bonusRewards=stats.bonusRewards||{};
     const rewardState=stats.rewardDataState||"complete";
-    const rewardBlock=(title,data)=>{const order=dashboardRewardAssetOrder(data);return `<div class="dashboard-reward-group"><div class="dashboard-reward-group-title">${title}</div><div class="dashboard-reward-lines"><div><span>Gesamt</span>${dashboardRewardPeriodHtml(data.total,order,rewardState)}</div><div><span>Vorjahr</span>${dashboardRewardPeriodHtml(data.previousYear,order,rewardState)}</div><div><span>Jahr</span>${dashboardRewardPeriodHtml(data.year,order,rewardState)}</div><div><span>Monat</span>${dashboardRewardPeriodHtml(data.month,order,rewardState)}</div></div></div>`;};
+    const rewardBlock=(title,data)=>{const order=dashboardRewardAssetOrder(data);return `<div class="dashboard-reward-group"><div class="dashboard-reward-group-title">${title}</div><div class="dashboard-reward-lines"><div><span>Gesamt</span>${dashboardRewardPeriodHtml(data.total,order,rewardState)}</div><div><span>Monat</span>${dashboardRewardPeriodHtml(data.month,order,rewardState)}</div><div><span>Jahr</span>${dashboardRewardPeriodHtml(data.year,order,rewardState)}</div><div><span>Vorjahr</span>${dashboardRewardPeriodHtml(data.previousYear,order,rewardState)}</div></div></div>`;};
     const teamStats=key==="dao1"?`<div><span>Partner-Wallets</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>DAO1 Bezug</span><strong>${dashboardMetric(stats.dao1Partners)}</strong></div><div><span>APTMDAO Bezug</span><strong>${dashboardMetric(stats.aptmdaoPartners)}</strong></div>`:`<div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardActivePartners(stats)}</strong></div>`;
     return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
       <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Frei verfügbar</span><strong>${money(p.freeUsd||0)}</strong></div><div><span>Aktuell gebunden</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Projektwert gesamt</span><strong>${money(p.valueUsd||0)}</strong></div>${teamStats}</div>
@@ -8075,7 +8075,7 @@ function renderDashboard(){
   }).join("");
   const globalRewards=dashboardMergeRewardPeriods("rewards"),globalReferralRewards=dashboardMergeRewardPeriods("referralRewards");
   const globalRewardState=dashboardCombinedRewardState([...involvedProjects]);
-  const rewardKpi=(title,group)=>{const order=dashboardRewardAssetOrder(group);return `<article class="dashboard-kpi dashboard-kpi-gold dashboard-reward-kpi"><span>${title}</span><div class="dashboard-kpi-reward-lines"><div><small>Gesamt</small>${dashboardRewardPeriodHtml(group.total,order,globalRewardState)}</div><div><small>Vorjahr</small>${dashboardRewardPeriodHtml(group.previousYear,order,globalRewardState)}</div><div><small>Jahr</small>${dashboardRewardPeriodHtml(group.year,order,globalRewardState)}</div><div><small>Monat</small>${dashboardRewardPeriodHtml(group.month,order,globalRewardState)}</div></div></article>`;};
+  const rewardKpi=(title,group)=>{const order=dashboardRewardAssetOrder(group);return `<article class="dashboard-kpi dashboard-kpi-gold dashboard-reward-kpi"><span>${title}</span><div class="dashboard-kpi-reward-lines"><div><small>Gesamt</small>${dashboardRewardPeriodHtml(group.total,order,globalRewardState)}</div><div><small>Monat</small>${dashboardRewardPeriodHtml(group.month,order,globalRewardState)}</div><div><small>Jahr</small>${dashboardRewardPeriodHtml(group.year,order,globalRewardState)}</div><div><small>Vorjahr</small>${dashboardRewardPeriodHtml(group.previousYear,order,globalRewardState)}</div></div></article>`;};
   const balanceCheck=dashboardBalanceCheckSummary(targetWallets);
   const actionItems=dashboardActionItems(targetWallets,involvedProjects,balanceCheck);
   const actionCount=actionItems.length;
@@ -8879,7 +8879,8 @@ function renderTable(rows, skipHeader) {
     </tr>`;
   }).join("");
 
-  return `<div class="wallet-synced-scroll" style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%">${colgroup}${headerRow}<tbody>${bodyRows}</tbody></table></div>`;
+  const tableHtml = `<table class="balance-table" style="width:${skipHeader?'100%':'max-content'};min-width:100%">${colgroup}${headerRow}<tbody>${bodyRows}</tbody></table>`;
+  return skipHeader ? tableHtml : `<div style="overflow-x:auto">${tableHtml}</div>`;
 }
 
 // Eine einzige Spaltenüberschrift-Zeile pro Wallet, mit dem Wallet-Namen anstelle von
@@ -8909,7 +8910,7 @@ function renderWalletHeader(walletLabel) {
   </colgroup>`;
   const sticky = `position:sticky;left:0px;background:var(--card2);z-index:2;`;
 
-  return `<div class="wallet-synced-scroll" style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%;margin-bottom:2px">
+  return `<table class="balance-table" style="width:100%;margin-bottom:2px">
     ${colgroup}
     <thead><tr>
       <th style="${sticky}${titleStyle}">💼 ${escapeAttr(walletLabel)}</th>
@@ -8919,23 +8920,7 @@ function renderWalletHeader(walletLabel) {
       <th style="text-align:right">Wert (USD)</th>
       ${snaps.map(s => `<th style="text-align:right;white-space:normal">${s.source==="daily"?escapeAttr(s.label):fmtSnapshotDateTime(s.createdAt)}<span class="price-source">Anzahl · Kurs damals</span></th>`).join("")}
     </tr></thead>
-  </table></div>`;
-}
-
-// Header und Chain-Tabellen behalten ihre eigenen Tabellen, teilen aber pro Wallet
-// dieselbe horizontale Scrollposition. Andere Wallets bleiben unabhängig.
-function connectWalletHorizontalScroll(container) {
-  container.querySelectorAll(".wallet-block").forEach(wallet => {
-    const scrollers = [...wallet.querySelectorAll(".wallet-synced-scroll")];
-    scrollers.forEach(source => source.addEventListener("scroll", () => {
-      const left = source.scrollLeft;
-      scrollers.forEach(target => {
-        if (target !== source && Math.abs(target.scrollLeft - left) > 0.5) {
-          target.scrollLeft = left;
-        }
-      });
-    }, { passive: true }));
-  });
+  </table>`;
 }
 
 function explorerUrlForWallet(chain, wallet) {
@@ -9061,14 +9046,18 @@ function renderResults() {
         </div>`;
       }).join("");
 
+      const snapshots = visibleSnapshots();
+      const widths = SNAPSHOT_COL_WIDTHS;
+      const tableWidth = snapshots.length ? widths.token + widths.amount + widths.price + widths.change + widths.value + snapshots.length * widths.snap : 0;
       return `<div class="wallet-block" id="wallet-block-${w.id}">
-        ${renderWalletHeader(w.label)}
-        ${chainCards || '<div class="empty">Keine Bestände gefunden.</div>'}
+        <div class="wallet-horizontal-scroll"><div class="wallet-scroll-content" ${tableWidth ? `style="width:${tableWidth}px"` : ""}>
+          ${renderWalletHeader(w.label)}
+          ${chainCards || '<div class="empty">Keine Bestände gefunden.</div>'}
+        </div></div>
       </div>`;
     }).join("");
   }
 
-  connectWalletHorizontalScroll(resultsContainer);
   renderWalletNav();
   renderChartChainSelect(); // Verfügbare Chains/Token für die Grafik hängen von Bestand+Snapshots ab, hier immer aktuell halten
 

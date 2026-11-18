@@ -655,3 +655,15 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - 8.98 ergänzt ausschliesslich den manuellen `cron-staged-batch-898` mit demselben Single-Wallet-Guard, maximal fünf Schritten, Zeitbudget und Stop bei jeder Abweichung. SQL-Migration keine; ZIP/Edge-Deploy und Live-Abnahme noch offen. Historischen gezielten Queue-Reset nicht erneut ausführen.
 - **Nächster Schritt:** ZIP installieren und Edge Function deployen, danach **zuerst nur** `cron-staged-preview` (read-only). DAO-Live-Worker/Cron AUS. `docs/releases/8.98-dao-reward-staged-batch.md`.
 
+### Phase 9.01 – Dashboard-Rewards und VOW/v$-Handel Dunkelmodus (18.11.2026)
+
+- Die Dashboard-Kacheln Rewards und Referral Rewards zeigen die Perioden in der Reihenfolge Gesamt/Monat oben und Jahr/Vorjahr unten. Auch die projektbezogenen Reward-Blöcke erhalten dieselbe Reihenfolge.
+- Im TLN/VOW-Handel erhalten alle Chain-Zeilen im Dunkelmodus explizit dunkle Hintergründe und helle Schrift; Zebra- und Hover-Darstellung bleiben erhalten.
+- Ausschliesslich Frontend, keine SQL-Migration und keine Edge-Funktion. Browser-/Live-Abnahme ausstehend. `docs/releases/9.01-dashboard-trade-darkmode.md`.
+
+### Phase 9.02 – Wallet-Bestand: gemeinsame Spaltenbasis (18.11.2026)
+
+- Korrektur des in 9.00 eingeführten synchronisierten Scrollens: Bisher hatten Header und Chain-Karten unterschiedliche nutzbare Breiten; die Spalten konnten deshalb versetzt erscheinen und beim weiteren Scrollen scheinbar nachrücken.
+- Jede Wallet erhält einen einzigen horizontalen Scrollcontainer für Header und sämtliche Chains. Einheitliche Tabellenbreite, ohne horizontales Innenpadding der Chain-Tabellen. Summary-Tabellen behalten eigenständiges Scrollen.
+- Keine Daten-/SQL-/Edge-Änderungen. Syntaxprüfung abgeschlossen, visuelle Browserabnahme ausstehend. `docs/releases/9.02-wallet-unified-scroll-grid.md`.
+

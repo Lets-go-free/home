@@ -245,6 +245,18 @@
     padding: 18px 18px 4px;
   }
 
+  /* Ein Scrollcontainer und eine gemeinsame Spaltenbreite je Wallet.
+     Chain-Padding verschiebt die Tabellen damit nicht mehr relativ zum Header. */
+  .wallet-horizontal-scroll { overflow-x:auto; }
+  .wallet-scroll-content { min-width:100%; }
+  .wallet-scroll-content > .balance-table,
+  .wallet-scroll-content > .chain-card .balance-table { width:100%!important; }
+  .wallet-scroll-content > .chain-card { box-sizing:border-box;width:100%;padding:16px 0; }
+  .wallet-scroll-content > .chain-card .chain-title,
+  .wallet-scroll-content > .chain-card > .note,
+  .wallet-scroll-content > .chain-card > .error,
+  .wallet-scroll-content > .chain-card > .empty { margin-left:16px;margin-right:16px; }
+
   .badge {
     display: inline-block; font-size: 0.66rem; padding: 2px 7px; border-radius: 10px;
     margin-left: 6px; font-weight: 600; vertical-align: middle;
