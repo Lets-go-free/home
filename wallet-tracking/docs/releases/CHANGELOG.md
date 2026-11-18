@@ -1,3 +1,6 @@
+## 8.97 · 18.11.2026 14:28:07 CET · Build 20261118-142807
+- SQLSTATE 42702 im ersten DAO-`cron-staged-one` nach 15/15 erfolgreichen Tages-Staging-Wallets: Record und Tabellenalias `c` kollidierten in `wallettracking_dao_next_native_claim_candidate`. Nur PL/pgSQL-Record auf `v_candidate` umbenannt; Kandidatenlogik und Service-Role-Gates unverändert. Fehlgeschlagene Queue-Wallet muss **separat** kontrolliert erneut staged werden; Migration setzt sie nicht zurück. Kein Edge-Deploy/Cron/Live-Worker. `8.97-dao-reward-candidate-sql-alias-fix.md`.
+
 ## 8.96 · 18.11.2026 14:12:07 CET · Build 20261118-141207
 - Historische DAO-Gesamtabnahme 2'807/2'807 ohne festgestellte Unstimmigkeit; alle 15 Wallet-Rohscans `complete` oder `empty_verified`. Korrigiert ausschliesslich `wallettracking_dao_reward_readiness_v3`: die 16 unabhängig belegten `failed_transaction`-Kandidaten der Reto-Wallet blockieren die Reward-Phase nicht mehr; bei unbekannten/ungeschützten Fehlerfällen bleibt sie blockiert. SQL-only, keine Daten-/Cursor-/Reward-/Cron-Writes, kein Edge-Deploy. `8.96-dao-readiness-failed-transaction-exception.md`.
 

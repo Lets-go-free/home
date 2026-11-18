@@ -34,6 +34,12 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.97 – DAO1: Kandidatenabruf nach SQLSTATE 42702 reparieren (18.11.2026)
+
+- 8.96 installiert und live geprüft: 542 Reto-Kandidaten, 0 unresolved; alle 16 bekannten Fehltransaktionen erfüllen belegte Ausnahme-Guards. 15/15 heutige Wallets in zwei manuellen Import-Batches plus Einzeltest auf `staged`, 0 Importfehler, 0 neue kanonische Claims/Rewards. Staged-Read-only-Preview: 15, Live-Worker aus.
+- Erster `cron-staged-one` **fehlgeschlagen mit SQL 42702** (`c.user_id ambiguous`). Queue-Wallet `e8b5c835…` steht auf `failed`, attempt_count=2, step_count=2, failure_count=1; übrige 14 staged. Ursache: in service-only 8.42-RPC `wallettracking_dao_next_native_claim_candidate` heisst der PL/pgSQL-Record und der UPDATE-Tabellenalias beide `c`.
+- **8.97 SQL-only-Fix:** Record `v_candidate`, unveränderte UPDATE-/Select-Guards, keine DML beim Installieren. Nächster Schritt: ZIP installieren, neue Migration ausführen, unabhängige read-only SQL-Prüfung; danach **separaten kontrollierten Retry der einen failed-Queue-Zeile** planen. Ungeprüftes wiederholtes `cron-staged-one` würde andere Wallets bearbeiten, nicht diese `failed`-Zeile. DAO-Cron/Live-Worker AUS. `docs/releases/8.97-dao-reward-candidate-sql-alias-fix.md`.
+
 ### Phase 8.96 – DAO1: DailyJob-Readiness für 16 belegte Fehltransaktionen korrigieren (18.11.2026)
 
 - **8.95 live abgeschlossen:** 16/16 erfolgreiche Transaktionen ohne Auszahlungsnachweis (9+6+1 Wallets) in maximal drei Einzelfällen pro Admin-Aufruf klassifiziert. Unabhängige SQL-Abnahme: 16/16 vollständige Coverage, kein positiver Flow/Reward, keine kanonische oder Preisänderung.
