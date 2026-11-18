@@ -12357,11 +12357,14 @@ function isLikelyScamName(text) {
 // 9.08: Identifiziert direkte Webseiten-/Claim-Aufforderungen im Token-Namen.
 // Nur zusammen mit einer URL-/Domain-Struktur; das Wort "claim" allein genuegt nicht.
 function discoveryClaimLinkPhishing(f){
-  const value=[f?.symbol,f?.name].filter(Boolean).join(' ');
-  const hasWebAddress=/(?:https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]{1,62}\.(?:com|net|org|io|app|xyz|finance|site|click|link|gift|bonus|vip|top|art|mobi|dog|uno|claim|airdrop)\b)/iu.test(value);
-  if(!hasWebAddress)return false;
-  return /\b(?:access|claim|check\s*\/?\s*claim|connect\s*(?:your\s*)?wallet|airdrop|redeem|visit|free\s*(?:tokens?|rewards?))\b/iu.test(value)
-    || /(?:claim|airdrop|reward|gift|bonus|vip)[-.]/iu.test(value);
+  // Re-evaluate cached discoveries at render time, never rely on an older nameScamFlag.
+  // Token metadata may contain invisible characters, full-width dots or homoglyphs.
+  const raw=[f?.symbol,f?.name,f?.tokenSymbol,f?.tokenName].filter(v=>typeof v==='string').join(' ');
+  const value=raw.normalize('NFKC').replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u034F]/gu,'');
+  const domain=/(?:https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]{1,62}\.(?:com|net|org|io|app|xyz|finance|site|click|link|gift|bonus|vip|top|art|mobi|dog|uno|claim|airdrop)\b)/iu;
+  if(!domain.test(value))return false;
+  const imperative=/(?:\b(?:access|claim|check\s*\/?\s*claim|connect\s*(?:your\s*)?wallet|airdrop|redeem|visit|free\s*(?:tokens?|rewards?))\b|(?:claim|airdrop|reward|gift|bonus|vip)[-.])/iu;
+  return imperative.test(value);
 }
 
 // Alchemy Token API: liest alle ERC20-Bestände einer Wallet auf der gewählten Chain.

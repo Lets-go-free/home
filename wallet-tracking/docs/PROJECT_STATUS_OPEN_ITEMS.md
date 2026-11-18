@@ -1,3 +1,7 @@
+> 9.10 (18.11.2026): TLN/VOW-Edge-Preflight um **rein lesende Einzelwallet-Delta-Fenstervorschau** ergänzt (`mode=delta-preview`, BSC-Head via Alchemy, 128 Block Overlap, Guards, keine Writes). **Kein vollständiger Rewards-Delta-Worker; kein Cron!** Siehe `docs/releases/9.10-tln-vow-single-wallet-delta-preview.md`.
+
+> 9.09 (18.11.2026 21:20:18 CET): TLN/VOW read-only Edge-Preflight hinzugefügt, **kein Reward-Delta-Worker oder Cron**. Discovery Claim-Link-Heuristik gegen Unicode-Formatzeichen gehärtet; Live-Abnahme offen. Siehe `docs/releases/9.09-tln-rewards-preflight-and-discovery.md`.
+
 ### Phase 9.08 – Discovery und TLN/VOW-Rewards-Audit (18.11.2026 20:30:20 CET)
 
 - Discovery: Link-/Claim-/Airdrop-Phishingmuster unabhängig von GoPlus, für vorhandene Funde ohne Blockchain-Neuscan; manuelle Spam-Entscheidungen haben Vorrang. Offene Spam-Verdachte und manuell markierte Spam-Token werden getrennt gezählt.
