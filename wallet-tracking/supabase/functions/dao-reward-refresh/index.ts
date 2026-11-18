@@ -2698,7 +2698,7 @@ Deno.serve(async request=>{
  }
  // Only explicit DAO cron routes are accepted, never an implicit default request.
  // Read-only authentication probe is safe even when the live worker is disabled.
- if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one'&&body?.mode!=='cron-multi-wallet-preview'&&body?.mode!=='cron-multi-wallet-one'&&body?.mode!=='cron-multi-wallet-batch'&&body?.mode!=='cron-staged-preview'&&body?.mode!=='cron-staged-one'&&body?.mode!=='cron-staged-batch-898')
+ if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one'&&body?.mode!=='cron-multi-wallet-preview'&&body?.mode!=='cron-multi-wallet-one'&&body?.mode!=='cron-multi-wallet-batch'&&body?.mode!=='cron-staged-preview'&&body?.mode!=='cron-staged-one'&&body?.mode!=='cron-staged-batch-898'&&body?.mode!=='cron-daily-step-899')
   return Response.json({error:'Unsupported DAO cron mode'},{status:400});
  if(!await authorizedDaoCron(request))return Response.json({error:'Unauthorized DAO cron request'},{status:401});
  if(body.mode==='cron-auth-check')return Response.json({ok:true,mode:'cron-auth-check',authenticated:true,
@@ -2778,6 +2778,57 @@ Deno.serve(async request=>{
    stepsCompleted:steps.length,completed,claimsCreated,stopped,steps,
    liveWorkerEnabled:false,referralPosting:'disabled-existing-canonical-flows-only',
    notice:'Guarded one-wallet SQL lease per step. Stop on error or non-completed wallet; no implicit retries, independent reward posting, raw import or cron activation.'});
+ }
+ // 8.99: one manually invoked end-to-end queue step. First exhaust raw staging;
+ // only then claim an already-staged reward wallet with the same v3 guards.
+ // No recurring scheduler is created and the legacy live worker remains OFF.
+ if(body.mode==='cron-daily-step-899'){
+  if(Object.keys(body).some(k=>k!=='mode'))return Response.json({error:'Daily rehearsal accepts only mode'},{status:400});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return Response.json({error:'Disable DAO live worker before rehearsal'},{status:409});
+  if(Deno.env.get('DAO_REWARD_ENABLE_MULTI_WALLET_TEST')!=='true')return Response.json({error:'DAO manual test disabled'},{status:403});
+  const day=localDay();let job:any=null;
+  try{
+   const picked=await sb.rpc('wallettracking_dao_reward_claim_v2',{p_day:day});
+   if(picked.error)throw picked.error;
+   job=picked.data?.[0];
+   if(job){
+    const imported=await process({user_id:job.user_id,wallet_id:job.wallet_id},true);
+    const proved=(scan:any)=>!!scan&&scan.complete===true&&scan.coverageVerified===true
+     &&(scan.block>0||scan.verifiedEmpty===true);
+    const incomplete=!proved(imported.transactionScan)||!proved(imported.flowScan)
+     ||(imported.referralScan!==null&&!proved(imported.referralScan));
+    const state=incomplete?'partial':'staged';
+    const finished=await sb.rpc('wallettracking_dao_reward_transition_v2',{
+     p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:state,p_error:null});
+    if(finished.error)throw finished.error;
+    return Response.json({ok:true,mode:'cron-daily-step-899',day,phase:'raw-staging',status:state,
+     walletId:job.wallet_id,queueStep:job.step_count,claimsCreated:0,
+     transactionsObserved:imported.transactionsObserved,flowsObserved:imported.flowsObserved,
+     claimCandidatesObserved:imported.claimCandidatesObserved,
+     notice:'One leased raw staging step; reward phase not run in the same invocation. No cron or independent referral posting.'});
+   }
+  }catch(e){
+   const error=daoErrorSummary(e);
+   if(job){
+    const failed=await sb.rpc('wallettracking_dao_reward_transition_v2',{
+     p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:'failed',p_error:error});
+    if(failed.error)return Response.json({ok:false,mode:'cron-daily-step-899',day,phase:'raw-staging',walletId:job.wallet_id,error,leaseError:daoErrorSummary(failed.error)},{status:500});
+   }
+   return Response.json({ok:false,mode:'cron-daily-step-899',day,phase:'raw-staging',walletId:job?.wallet_id??null,error},{status:500});
+  }
+  if(localDay()!==day)return Response.json({ok:false,mode:'cron-daily-step-899',day,error:'Swiss day changed before reward phase; retry on new day'},{status:409});
+  const reward=await runOneStagedReward();
+  if(!reward.body.ok||reward.statusCode!==200)return Response.json({ok:false,mode:'cron-daily-step-899',day,
+   phase:'reward',walletId:reward.walletId,error:reward.body.error||'Reward processing failed',leaseError:reward.body.leaseError??null},{status:reward.statusCode});
+  if(reward.body.status==='no_staged_wallet')return Response.json({ok:true,mode:'cron-daily-step-899',day,
+   phase:'idle',status:'no_eligible_wallet',claimsCreated:0,
+   notice:'No pending raw or staged reward wallet. This is not an independent completeness audit.'});
+  return Response.json({ok:true,mode:'cron-daily-step-899',day,phase:'reward',walletId:reward.walletId,
+   status:reward.body.status,queueStep:reward.body.queueStep,claimStatus:reward.body.claimStatus,
+   claimsCreated:reward.body.claimsCreated,readiness:reward.body.readiness,
+   referralCoverage:reward.body.referralCoverage,referralFlowsVerified:reward.body.referralFlowsVerified,
+   unreviewedWusdt:reward.body.unreviewedWusdt,
+   notice:'One guarded reward step. No independent referral posting, scheduler activation or automatic retries.'});
  }
  // 8.19: manual bounded batch of the SAME staging-only v2 queue used by
  // cron-multi-wallet-one. No body-supplied wallet, count, cursor or time limit.

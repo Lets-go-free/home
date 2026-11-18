@@ -639,6 +639,12 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 
 > **Aktuell 8.87 (17.11.2026, vorbereitet):** 8.86 wurde installiert und deployed; erster read-only Preview der 164 Flow-losen Claims stoppte bei Block 1'794'927/NFT #89892 wegen nicht verifiziertem gespeicherten Ownership-Flag (0 Writes). SQL-Audit: 131/164 Claims durch acht vollständig gespeicherte NFT-Transferhistorien eindeutig gedeckt; weitere 33 Claims betreffen nur NFT #89892 (17) und #90054 (16), für beide 0 Cache-Transfers / kein Coverage. **8.87 korrigiert ausschliesslich den lesenden Prüfpfad:** Bei jeder Vorschau Live-ERC-721-Transferhistorie aus Explorer für historischen Besitzer, keine automatische Übernahme oder Änderung von Ownership/Claims/Flows. Nächster Schritt ZIP installieren, Edge `dao-reward-refresh/index.ts` mit vorhandenen Hilfsmodulen deployen, nur erste 3 erneut prüfen. SQL und Cron unverändert. `docs/releases/8.87-dao-live-historical-nft-proof.md`.
 
+### Phase 8.99 – DAO1: manuell testbarer Rohdaten-/Reward-Tagesablauf (18.11.2026)
+
+- Live-Abnahme 8.98: Drei Reward-Batches (5+5+1 Wallets) alle erfolgreich; anschliessend read-only `cron-staged-preview` mit exakt 15 `completed`, 0 `staged`, 0 `failed`. Keine neuen Claims. Live-Worker aus.
+- Supabase-Cron-Audit 0 DAO-Jobs; v2-Claim erstellt Queue-Einträge bei erstem heutigen Aufruf und verwendet eigene Raw-Leases, v3 beansprucht nur `staged` und abgelaufene Reward-Leases. Transition-/Finish-Funktionen und Fehlerzähler unverändert.
+- 8.99: neuer manueller, eng begrenzter Orchestrator `cron-daily-step-899` (ein Raw- **oder** Reward-Schritt pro Request), keine Cron-Aktivierung, keine SQL-Migration. Erst installieren und Edge deployen; anschliessend read-only Tagesstatus prüfen, erst dann ein bewusster Idle-Test. Die tatsächliche unbeaufsichtigte Tagesautomatik sowie unabhängige Completeness-/Monitoring-Guards bleiben offen. `docs/releases/8.99-dao-manual-daily-orchestration.md`.
+
 ### Phase 8.98 – DAO1: verbliebene elf Wallets kontrolliert in Reward-Phase abarbeiten (18.11.2026)
 
 - 8.97 SQL installiert und Fehler behoben. Alle 15 Wallets für den 18.11. gestaged (0 unresolved); vier erfolgreiche `cron-staged-one`-Schritte, alle `completed`, 0 neue Claims. Elf weitere `staged`; genau ein älterer, inzwischen kontrolliert zurückgesetzter SQL-Fehlversuch bleibt als failure_count=1 sichtbar.

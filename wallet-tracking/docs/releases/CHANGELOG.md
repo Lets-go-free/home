@@ -1,3 +1,6 @@
+## 8.99 · 18.11.2026 16:06:16 CET · Build 20261118-160616
+- Neuer strikt manueller `cron-daily-step-899` verbindet die bewährte v2-Rohdaten-Queue und die v3-Reward-Phase, jeweils höchstens ein geleaster Schritt pro Request. Neue Tageswallets werden durch v2 initialisiert; Reward erst wenn kein auswählbarer Raw-Schritt verbleibt. Keine SQL-Migration, kein Cron, kein Live-Worker oder unabhängiges Referral-Posting. 15/15 der Testwallets am 18.11. bereits abgeschlossen. `8.99-dao-manual-daily-orchestration.md`.
+
 ## 8.98 · 18.11.2026 14:47:26 CET · Build 20261118-144726
 - Manueller DAO-Reward-Stage-Batch `cron-staged-batch-898`: bis zu fünf Wallets je Call über denselben guardierten Reward-Einzelschritt, eigene Leases, Stop bei Fehler oder unvollständiger Readiness, 45s Startzeitbudget. Für 11 verbleibende Staged-Wallets nach vier erfolgreich abgeschlossenen Einzeltests. Keine SQL-Migration, kein Cron/Live-Worker/Referral-Posting. Historischer einmaliger Queue-Recovery-Reset ausschliesslich im nicht ausführbaren Manual-Archiv dokumentiert. `8.98-dao-reward-staged-batch.md`.
 
