@@ -5,7 +5,7 @@ const source=fs.readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
 function extract(start,end){const a=source.indexOf(start);assert.ok(a>=0,start);const b=source.indexOf(end,a+start.length);assert.ok(b>a,end);return source.slice(a,b);}
 const helpers=extract('// 9.06: chain-specific reference contracts','function discoveryPredefinedIdentityMismatch(f){');
 const suspected=extract('function isFindingScamSuspect(f) {','function isFindingScam(f)');
-const context={isKnownExplorerFraudContract:()=>false,discoveryPredefinedIdentityMismatch:()=>null};
+const context={discoveryClaimLinkPhishing:()=>false,isKnownExplorerFraudContract:()=>false,discoveryPredefinedIdentityMismatch:()=>null};
 vm.createContext(context);vm.runInContext(helpers+'\n'+suspected+'\nthis.suspect=isFindingScamSuspect;this.mismatch=discoveryReferenceSymbolMismatch;',context);
 const fake={chain:'bsc',address:'0x0e64db7f94524c15bdc69793c78e57ac255bc4c1',symbol:'USDT',risk:[]};
 assert.equal(!!context.mismatch(fake),true,'unofficial BSC USDT must warn');

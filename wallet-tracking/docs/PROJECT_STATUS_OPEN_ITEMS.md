@@ -1,3 +1,10 @@
+### Phase 9.08 – Discovery und TLN/VOW-Rewards-Audit (18.11.2026 20:30:20 CET)
+
+- Discovery: Link-/Claim-/Airdrop-Phishingmuster unabhängig von GoPlus, für vorhandene Funde ohne Blockchain-Neuscan; manuelle Spam-Entscheidungen haben Vorrang. Offene Spam-Verdachte und manuell markierte Spam-Token werden getrennt gezählt.
+- Admin → Vordefinierte Token: Spalte Kursübersicht mit `(Bestand > 1 USD)` ergänzt (Immer-anzeigen-Ausnahme unverändert).
+- TLN/VOW-Rewards: rein statischer Bestandsaudit zeigt vorhandene Discovery-/sanitisierte Summary-Caches, aber keinen belegten fertigen eigenständigen täglichen Worker. Zuerst Live-Cron-/Cache-Audit, dann kontrolliertes Delta-Testdesign. Kein Job aktiviert.
+- Details: `docs/releases/9.08-discovery-claim-links-and-labels.md`, `docs/audits/9.08-tln-vow-rewards-inventory.md`. Browser-/Live-Audit noch offen.
+
 ### Phase 9.00 – Wallet-Bestand: horizontales Scrollen je Wallet (18.11.2026)
 
 - Frontend-Update vorbereitet: Header und alle Chain-Tabellen desselben Wallets teilen sich beim Scrollen die horizontale Position. Andere Wallets bleiben unabhängig. Keine SQL-/Edge-Änderungen. Browser-Test nach Installation offen. Details: `docs/releases/9.00-wallet-horizontal-scroll.md`.

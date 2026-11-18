@@ -5004,7 +5004,7 @@ function renderSafeTokenTable() {
   const DEFI_CATEGORY_LABELS = { voucher_currency:"Voucher-Währung", lp_token:"LP Token", defi_token:"DeFi-Token" };
 
   const tableHeader = isAdmin
-    ? `<tr><th>Chain</th><th>Symbol</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:center">Im Dashboard<br>immer anzeigen</th><th style="text-align:center">In der Dashboard-<br>Kursübersicht anzeigen</th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th><th></th></tr>`
+    ? `<tr><th>Chain</th><th>Symbol</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:center">Im Dashboard<br>immer anzeigen</th><th style="text-align:center">In der Dashboard-<br>Kursübersicht anzeigen<br><span class="meta">(Bestand &gt; 1 USD)</span></th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th><th></th></tr>`
     : `<tr><th>Chain</th><th>Symbol</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr>`;
   el.innerHTML = `<table class="project-data-table"><thead>${tableHeader}</thead><tbody>
     ${filtered.map(r => {
@@ -5067,7 +5067,7 @@ function renderSafeTokenTable() {
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--danger,#ef4444)">nicht konfiguriert</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
       <td style="text-align:center"><input type="checkbox" style="width:auto" ${r.dashboardVisible?"checked":""} ${r.nativeMissing?"disabled":""} onchange="setPredefinedTokenDashboardVisible('${r.chain}','${r.address}',this.checked)"></td>
-      <td style="text-align:center"><input type="checkbox" style="width:auto" aria-label="In der Dashboard-Kursübersicht anzeigen" title="Gilt auch für allgemeine Token. Ein Projekt-Token benötigt weiterhin ein vorhandenes Projekt; für die Anzeige gelten ausserdem die bestehenden Bestands-/Immer-anzeigen-Regeln." ${predefinedTokenDashboardPriceVisible[categoryKey]!==false?"checked":""} onchange="setPredefinedTokenDashboardPriceVisible('${r.chain}','${r.address}',this.checked)"></td>
+      <td style="text-align:center"><input type="checkbox" style="width:auto" aria-label="In der Dashboard-Kursübersicht anzeigen" title="Zeigt den Token bei Bestand über 1 USD; bei zusätzlich aktiviertem Immer anzeigen gilt die Bestandsschwelle nicht. Ein Projekt-Token erfordert ein vorhandenes Projekt." ${predefinedTokenDashboardPriceVisible[categoryKey]!==false?"checked":""} onchange="setPredefinedTokenDashboardPriceVisible('${r.chain}','${r.address}',this.checked)"></td>
       <td style="text-align:right">${priceCell}</td>
       <td>${projectCell}</td>
       <td>${categoryCell}</td>
@@ -12354,6 +12354,16 @@ function isLikelyScamName(text) {
   return /https?:\/\/|www\.|\.(com|io|net|org|xyz|app|finance|claim|airdrop|site|click|link|gift|bonus|vip|top)\b|visit |claim now|reward|bonus|voucher/i.test(text);
 }
 
+// 9.08: Identifiziert direkte Webseiten-/Claim-Aufforderungen im Token-Namen.
+// Nur zusammen mit einer URL-/Domain-Struktur; das Wort "claim" allein genuegt nicht.
+function discoveryClaimLinkPhishing(f){
+  const value=[f?.symbol,f?.name].filter(Boolean).join(' ');
+  const hasWebAddress=/(?:https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]{1,62}\.(?:com|net|org|io|app|xyz|finance|site|click|link|gift|bonus|vip|top|art|mobi|dog|uno|claim|airdrop)\b)/iu.test(value);
+  if(!hasWebAddress)return false;
+  return /\b(?:access|claim|check\s*\/?\s*claim|connect\s*(?:your\s*)?wallet|airdrop|redeem|visit|free\s*(?:tokens?|rewards?))\b/iu.test(value)
+    || /(?:claim|airdrop|reward|gift|bonus|vip)[-.]/iu.test(value);
+}
+
 // Alchemy Token API: liest alle ERC20-Bestände einer Wallet auf der gewählten Chain.
 // Die Scam-Einschätzung erfolgt weiterhin über Namens-Heuristik + GoPlus; Moralis-spezifische
 // possible_spam-Daten gibt es hier nicht mehr.
@@ -13033,6 +13043,7 @@ function isKnownExplorerFraudContract(f){
 function isFindingScamSuspect(f) {
   if(f?.userMarkedScam||f?._retainedSpamMarker)return false;
   if (discoveryReferenceSymbolMismatch(f))return true;
+  if (discoveryClaimLinkPhishing(f))return true;
   if (isKnownExplorerFraudContract(f)) return true;
   if (f.nameScamFlag) return true;
   if (f.risk && f.risk.length > 0) return true;
@@ -13101,16 +13112,17 @@ function renderDiscoveryResults(findings) {
   if(markedEl) discoveryHideMarkedScam=markedEl.checked;
   const visible = actionableFindings.filter(f => !(discoveryHideMarkedScam && f.userMarkedScam) && !(discoveryHideSuspect && isFindingScamSuspect(f)));
   const suspectCount=actionableFindings.filter(f=>isFindingScamSuspect(f)).length, markedCount=actionableFindings.filter(f=>f.userMarkedScam).length;
+  const openCount=actionableFindings.length-markedCount;
   const filterBar = `<div class="custom-token-card" style="margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;align-items:center">
     ${discoverySpamBulkCandidates().length?`<button class="remove" onclick="markAllDiscoveredTokensAsSpam()">Alle entdeckten Tokens als Spam markieren (${discoverySpamBulkCandidates().length})</button>`:""}
     ${suspectCount?`<button class="remove" onclick="markAllDiscoverySuspectsAsSpam()">Alle Spam-Verdachte als Spam markieren</button>`:""}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideScamSuspectToggle" style="width:auto" onchange="discoveryHideSuspect=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideSuspect ? "checked" : ""} />
-      Spam-Verdacht ausblenden (${suspectCount} von ${actionableFindings.length})
+      Offenen Spam-Verdacht ausblenden (${suspectCount} von ${openCount} nicht markierten)
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideMarkedScamToggle" style="width:auto" onchange="discoveryHideMarkedScam=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideMarkedScam ? "checked" : ""} />
-      Als Spam markierte ausblenden (${markedCount} von ${actionableFindings.length})
+      Bereits als Spam markierte ausblenden (${markedCount} von ${actionableFindings.length} gesamt)
     </label>
   </div>`;
 
@@ -13131,7 +13143,8 @@ function renderDiscoveryResults(findings) {
       const refMismatch=discoveryReferenceSymbolMismatch(f);
       if(refMismatch)reasons.push(`${refMismatch.symbol}: Contract stimmt nicht mit der bekannten ${refMismatch.chain.toUpperCase()}-Referenz überein (mögliche Nachahmung)${refMismatch.unicodeImpersonation?"; täuschend ähnliche Unicode-Zeichen im Token-Symbol erkannt":""}`);
       if (isKnownExplorerFraudContract(f)) reasons.push("BscScan: Fake_Phishing1123827 (bekannte Contract-Warnung)");
-      if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
+      if (discoveryClaimLinkPhishing(f)) reasons.push("verdächtiger Claim-/Airdrop-Link im Token-Namen oder Symbol");
+      if (f.nameScamFlag && !discoveryClaimLinkPhishing(f)) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       const identityMismatch=discoveryPredefinedIdentityMismatch(f);
       if(identityMismatch){
         const official=identityMismatch.matches[0];

@@ -5,7 +5,7 @@ const source=fs.readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
 function extract(start,end){const a=source.indexOf(start);assert.ok(a>=0,start);const b=source.indexOf(end,a+start.length);assert.ok(b>a,end);return source.slice(a,b);}
 const refs=extract('// 9.06: chain-specific reference contracts','function discoveryPredefinedIdentityMismatch(f){');
 const suspected=extract('function isFindingScamSuspect(f) {','function isFindingScam(f)');
-const context={isKnownExplorerFraudContract:()=>false,discoveryPredefinedIdentityMismatch:()=>null};
+const context={discoveryClaimLinkPhishing:()=>false,isKnownExplorerFraudContract:()=>false,discoveryPredefinedIdentityMismatch:()=>null};
 vm.createContext(context);
 vm.runInContext(refs+'\n'+suspected+'\nthis.suspect=isFindingScamSuspect;this.mismatch=discoveryReferenceSymbolMismatch;this.normalize=discoveryTickerIdentity;',context);
 const fakeAddress='0x724f22f2bf92cbfcb50cc8adc010cdd56fd3a91a';
