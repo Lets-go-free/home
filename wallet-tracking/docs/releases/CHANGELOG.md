@@ -1,3 +1,6 @@
+## 8.96 · 18.11.2026 14:12:07 CET · Build 20261118-141207
+- Historische DAO-Gesamtabnahme 2'807/2'807 ohne festgestellte Unstimmigkeit; alle 15 Wallet-Rohscans `complete` oder `empty_verified`. Korrigiert ausschliesslich `wallettracking_dao_reward_readiness_v3`: die 16 unabhängig belegten `failed_transaction`-Kandidaten der Reto-Wallet blockieren die Reward-Phase nicht mehr; bei unbekannten/ungeschützten Fehlerfällen bleibt sie blockiert. SQL-only, keine Daten-/Cursor-/Reward-/Cron-Writes, kein Edge-Deploy. `8.96-dao-readiness-failed-transaction-exception.md`.
+
 ## 8.95 · 18.11.2026 06:45:30 CET · Build 20261118-064530
 - Admin-only, ausdrücklich bestätigter Maximal-3er-Commit für die 16 per 8.94 vollständig lesend geprüften DAO-Claim-Aufrufe ohne belegten Payout. Pro Stapel erneute vollständige Explorer-Prüfung **vor** jeder Änderung; bestehendes guarded `wallettracking_dao_record_payout_check` schreibt nur Payout-Evidenz/History je Transaktion. Kein SQL, Cron, Claim, Flow, Reward oder Preisupdate. `8.95-dao-zero-payout-guarded-commit.md`.
 

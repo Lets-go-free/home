@@ -34,6 +34,14 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.96 – DAO1: DailyJob-Readiness für 16 belegte Fehltransaktionen korrigieren (18.11.2026)
+
+- **8.95 live abgeschlossen:** 16/16 erfolgreiche Transaktionen ohne Auszahlungsnachweis (9+6+1 Wallets) in maximal drei Einzelfällen pro Admin-Aufruf klassifiziert. Unabhängige SQL-Abnahme: 16/16 vollständige Coverage, kein positiver Flow/Reward, keine kanonische oder Preisänderung.
+- **DAO-Gesamtaudit live:** 2'807 Kandidaten über alle Wallets: 2'768 regulär kanonisch/Flow/Reward konsistent, vier weitere Prelaunch mit positivem APTM aber beabsichtigt fehlender USD-Bewertung, 19 ohne belegte Auszahlung korrekt klassifiziert, 16 fehlgeschlagene TX ohne Claim/Flow. Keine festgestellte Abweichung.
+- Rohscans 15 Wallets je Scanart: 7 `complete`, 8 `empty_verified` (alle 15 gültig). Ältere Tagesqueue: am letzten Lauf 14.11. alle 15 `staged`, `last_error` null. **Kein DAO-Cron registriert**. Separate historische Queue-Tage 09.–14.11. nicht löschen oder pauschal als completed markieren.
+- **Readiness-Blocker bestätigt:** Alle 15 Wallets `unresolved=0`; Reto `8a3c5dc6…` hat 16 `unrecognizedExceptions` ausschliesslich wegen der bereits geprüften `failed_transaction`. 8.96 installiert eine **SQL-only**, service-only Guard-Korrektur: nur nachweislich fehlgeschlagene TX ohne Claim/positiven Eingangsflow werden als bekannte Ausnahme akzeptiert. Unbekannte/zweifelhafte Klassifizierungen bleiben blockiert.
+- **Nächster Schritt:** ZIP 8.96 installieren, **nur** SQL-Migration ausführen, Rückmeldung abwarten; danach kontrollierte read-only Prüfung der neuen Readiness. Noch kein Edge-Deploy, kein neuer Cron, Live-Worker AUS. `docs/releases/8.96-dao-readiness-failed-transaction-exception.md`.
+
 ### Phase 8.95 – DAO1: 16 historische Claims begründet als ohne Payout-Beleg klassifizieren (18.11.2026)
 
 - 8.94 deployed: read-only über alle 16 Claims in drei Wallets, 9+6+1 geprüft, alle `no_payout_evidence_preview`, vollständige indizierte Transaktion/Token-/Internal-Transfers, **kein beobachteter Eingang** und 0 Writes. Kein unabhängiger Beweis für on-chain Null.
