@@ -1,0 +1,8 @@
+-- 8.98 historical audit archive only – NEVER execute as a migration.
+-- This records the already-performed one-wallet reset following the 8.97
+-- alias fix. The retry preserved the existing failure_count=1.
+-- This file intentionally contains NO executable UPDATE statement to avoid
+-- accidental production re-execution.
+-- Date: 2026-11-18, wallet: e8b5c835-0db2-4449-bbee-258e28b42bbb
+-- Prior state: failed, attempt_count=2, step_count=2, failure_count=1.
+-- Confirmed final state after manual recovery: staged; counts unchanged.

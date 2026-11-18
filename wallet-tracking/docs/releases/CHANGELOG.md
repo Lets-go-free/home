@@ -1,3 +1,6 @@
+## 8.98 · 18.11.2026 14:47:26 CET · Build 20261118-144726
+- Manueller DAO-Reward-Stage-Batch `cron-staged-batch-898`: bis zu fünf Wallets je Call über denselben guardierten Reward-Einzelschritt, eigene Leases, Stop bei Fehler oder unvollständiger Readiness, 45s Startzeitbudget. Für 11 verbleibende Staged-Wallets nach vier erfolgreich abgeschlossenen Einzeltests. Keine SQL-Migration, kein Cron/Live-Worker/Referral-Posting. Historischer einmaliger Queue-Recovery-Reset ausschliesslich im nicht ausführbaren Manual-Archiv dokumentiert. `8.98-dao-reward-staged-batch.md`.
+
 ## 8.97 · 18.11.2026 14:28:07 CET · Build 20261118-142807
 - SQLSTATE 42702 im ersten DAO-`cron-staged-one` nach 15/15 erfolgreichen Tages-Staging-Wallets: Record und Tabellenalias `c` kollidierten in `wallettracking_dao_next_native_claim_candidate`. Nur PL/pgSQL-Record auf `v_candidate` umbenannt; Kandidatenlogik und Service-Role-Gates unverändert. Fehlgeschlagene Queue-Wallet muss **separat** kontrolliert erneut staged werden; Migration setzt sie nicht zurück. Kein Edge-Deploy/Cron/Live-Worker. `8.97-dao-reward-candidate-sql-alias-fix.md`.
 

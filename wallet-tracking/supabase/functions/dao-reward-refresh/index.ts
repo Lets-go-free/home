@@ -1327,6 +1327,54 @@ async function authorizedDaoCron(request:Request){
  return diff===0;
 }
 const metadataCors={'access-control-allow-origin':'*','access-control-allow-headers':'authorization, apikey, content-type, x-client-info','access-control-allow-methods':'POST, OPTIONS'};
+// 8.98: One shared, unchanged guarded reward-stage step for manual single and batch.
+// Each call reserves and finalizes its own SQL lease. Never let a batch reuse a
+// lease or infer completion without the canonical and referral readiness checks.
+async function runOneStagedReward(){
+ const day=localDay();let job:any=null;
+ try{
+  const claim=await sb.rpc('wallettracking_dao_reward_claim_staged_v3',{p_day:day});
+  if(claim.error)throw claim.error;
+  job=claim.data?.[0];
+  if(!job)return {statusCode:200,walletId:null,body:{ok:true,mode:'cron-staged-one',status:'no_staged_wallet',claimsCreated:0}};
+  const address=await loadAddress(job);
+  const one=await processSingleNativeClaim({user_id:job.user_id,wallet_id:job.wallet_id},false,true,true);
+  const created=Number(one.claimsCreated||0);
+  if(!Number.isSafeInteger(created)||created<0||created>1)throw Error('Unexpected canonical claim count');
+  const {data:readiness,error:readinessError}=await sb.rpc('wallettracking_dao_reward_readiness_v3',{
+   p_user:job.user_id,p_wallet:job.wallet_id});
+  if(readinessError)throw readinessError;
+  const {count:incomingWusdt,error:incomingError}=await sb.from('project_transaction_asset_flows')
+   .select('id',{count:'exact',head:true}).eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('direction','eingang')
+   .eq('token_address',REFERRAL_WUSDT_TOKEN);
+  if(incomingError)throw incomingError;
+  const referral=await verifiedReferralSummary(job,address);
+  const {data:referralCursor,error:referralCursorError}=await sb.from('project_scan_state')
+   .select('last_scan_result').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+   .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('scan_type',REFERRAL_FLOW_SCAN).maybeSingle();
+  if(referralCursorError)throw referralCursorError;
+  const referralCoverage=['complete','empty_verified'].includes(String(referralCursor?.last_scan_result||''));
+  const unresolved=Number(readiness?.unresolved??-1);
+  const exceptionCount=Number(readiness?.unrecognizedExceptions??-1);
+  const complete=created===0&&one.status==='no_eligible_claim'&&unresolved===0
+   &&exceptionCount===0&&referralCoverage;
+  const state=complete?'completed':'staged';
+  const transition=await sb.rpc('wallettracking_dao_reward_finish_staged_v3',{
+   p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:state,p_error:null});
+  if(transition.error)throw transition.error;
+  return {statusCode:200,walletId:job.wallet_id,body:{ok:true,mode:'cron-staged-one',status:state,queueStep:job.step_count,
+   claimStatus:one.status||'unknown',claimsCreated:created,readiness,
+   referralFlowsVerified:referral?.verifiedFlows??null,unreviewedWusdt:referral?referral.unverifiedIncomingWusdt:null,
+   referralCoverage,notice:'One previously staged wallet. At most one canonical claim with existing strict guards. No new referral postings or raw cursor updates. Completed only after conservative candidate and referral checks.'}};
+ }catch(e){
+  const error=daoErrorSummary(e);
+  if(job){const failed=await sb.rpc('wallettracking_dao_reward_finish_staged_v3',{
+   p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:'failed',p_error:error});
+   if(failed.error)return {statusCode:500,walletId:job.wallet_id,body:{ok:false,error:'Reward phase failed; lease transition failed; inspect logs',leaseError:failed.error.message}};}
+  return {statusCode:500,walletId:job?.wallet_id??null,body:{ok:false,mode:'cron-staged-one',error}};
+ }
+}
 Deno.serve(async request=>{
  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:metadataCors});
  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
@@ -2650,7 +2698,7 @@ Deno.serve(async request=>{
  }
  // Only explicit DAO cron routes are accepted, never an implicit default request.
  // Read-only authentication probe is safe even when the live worker is disabled.
- if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one'&&body?.mode!=='cron-multi-wallet-preview'&&body?.mode!=='cron-multi-wallet-one'&&body?.mode!=='cron-multi-wallet-batch'&&body?.mode!=='cron-staged-preview'&&body?.mode!=='cron-staged-one')
+ if(body?.mode!=='cron-auth-check'&&body?.mode!=='cron-stage-one'&&body?.mode!=='cron-test-wallet-one'&&body?.mode!=='cron-multi-wallet-preview'&&body?.mode!=='cron-multi-wallet-one'&&body?.mode!=='cron-multi-wallet-batch'&&body?.mode!=='cron-staged-preview'&&body?.mode!=='cron-staged-one'&&body?.mode!=='cron-staged-batch-898')
   return Response.json({error:'Unsupported DAO cron mode'},{status:400});
  if(!await authorizedDaoCron(request))return Response.json({error:'Unauthorized DAO cron request'},{status:401});
  if(body.mode==='cron-auth-check')return Response.json({ok:true,mode:'cron-auth-check',authenticated:true,
@@ -2695,54 +2743,41 @@ Deno.serve(async request=>{
   if(Object.keys(body).some(k=>k!=='mode'))return Response.json({error:'No wallet selection or batch parameters supported'},{status:400});
   if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return Response.json({error:'Disable live DAO worker before rehearsal'},{status:409});
   if(Deno.env.get('DAO_REWARD_ENABLE_MULTI_WALLET_TEST')!=='true')return Response.json({error:'DAO staged test disabled'},{status:403});
-  const day=localDay();let job:any=null;
-  try{
-   const claim=await sb.rpc('wallettracking_dao_reward_claim_staged_v3',{p_day:day});
-   if(claim.error)throw claim.error;
-   job=claim.data?.[0];
-   if(!job)return Response.json({ok:true,mode:'cron-staged-one',status:'no_staged_wallet',claimsCreated:0});
-   const address=await loadAddress(job);
-   // Reuse current single-claim proof and canonical SQL transaction. No raw import.
-   const one=await processSingleNativeClaim({user_id:job.user_id,wallet_id:job.wallet_id},false,true,true);
-   const created=Number(one.claimsCreated||0);
-   if(!Number.isSafeInteger(created)||created<0||created>1)throw Error('Unexpected canonical claim count');
-   const {data:readiness,error:readinessError}=await sb.rpc('wallettracking_dao_reward_readiness_v3',{
-    p_user:job.user_id,p_wallet:job.wallet_id});
-   if(readinessError)throw readinessError;
-   const {count:incomingWusdt,error:incomingError}=await sb.from('project_transaction_asset_flows')
-    .select('id',{count:'exact',head:true}).eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-    .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('direction','eingang')
-    .eq('token_address',REFERRAL_WUSDT_TOKEN);
-   if(incomingError)throw incomingError;
-   // Coverage must be based on an actually completed referral scan, not on
-   // the wallet address or on the absence of already-staged wUSDT flows.
-   const referral=await verifiedReferralSummary(job,address);
-   const {data:referralCursor,error:referralCursorError}=await sb.from('project_scan_state')
-    .select('last_scan_result').eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
-    .eq('project_key',PROJECT).eq('chain_key',CHAIN).eq('scan_type',REFERRAL_FLOW_SCAN).maybeSingle();
-   if(referralCursorError)throw referralCursorError;
-   const referralCoverage=['complete','empty_verified'].includes(String(referralCursor?.last_scan_result||''));
-   const unresolved=Number(readiness?.unresolved??-1);
-   const exceptionCount=Number(readiness?.unrecognizedExceptions??-1);
-   // If one claim was created, leave staged for a fresh isolated pass. A missing
-   // payout or unknown NFT must never be converted into 'completed'.
-   const complete=created===0&&one.status==='no_eligible_claim'&&unresolved===0
-    &&exceptionCount===0&&referralCoverage;
-   const state=complete?'completed':'staged';
-   const transition=await sb.rpc('wallettracking_dao_reward_finish_staged_v3',{
-    p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:state,p_error:null});
-   if(transition.error)throw transition.error;
-   return Response.json({ok:true,mode:'cron-staged-one',status:state,queueStep:job.step_count,
-    claimStatus:one.status||'unknown',claimsCreated:created,readiness,
-    referralFlowsVerified:referral?.verifiedFlows??null,unreviewedWusdt:referral?referral.unverifiedIncomingWusdt:null,
-    referralCoverage,notice:'One previously staged wallet. At most one canonical claim with existing strict guards. No new referral postings or raw cursor updates. Completed only after conservative candidate and referral checks.'});
-  }catch(e){
-   const error=daoErrorSummary(e);
-   if(job){const failed=await sb.rpc('wallettracking_dao_reward_finish_staged_v3',{
-    p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:'failed',p_error:error});
-    if(failed.error)return Response.json({ok:false,error:'Reward phase failed; lease transition failed; inspect logs',leaseError:failed.error.message},{status:500});}
-   return Response.json({ok:false,mode:'cron-staged-one',error},{status:500});
+  const result=await runOneStagedReward();
+  return Response.json(result.body,{status:result.statusCode});
+ }
+ // 8.98: manual, shared guarded single-step path, maximum five wallet steps.
+ // Stop on ANY failed or still-staged step. No user-selected wallet or auto-cron.
+ if(body.mode==='cron-staged-batch-898'){
+  if(Object.keys(body).some(k=>k!=='mode'))return Response.json({error:'Batch does not accept parameters'},{status:400});
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')return Response.json({error:'Disable live DAO worker before rehearsal'},{status:409});
+  if(Deno.env.get('DAO_REWARD_ENABLE_MULTI_WALLET_TEST')!=='true')return Response.json({error:'DAO staged test disabled'},{status:403});
+  const maxSteps=5,maxElapsedMs=45000,started=Date.now(),steps:any[]=[];
+  let stopped='max_steps',completed=0,claimsCreated=0;
+  for(let i=0;i<maxSteps;i++){
+   if(Date.now()-started>=maxElapsedMs){stopped='time_budget';break;}
+   const result=await runOneStagedReward();
+   const row=result.body;
+   if(row.status==='no_staged_wallet'){stopped='no_staged_wallet';break;}
+   const step={walletId:result.walletId,status:row.status??'failed',queueStep:row.queueStep??null,
+    claimStatus:row.claimStatus??null,claimsCreated:row.claimsCreated??0,
+    readiness:row.readiness??null,referralCoverage:row.referralCoverage??null,
+    referralFlowsVerified:row.referralFlowsVerified??null,unreviewedWusdt:row.unreviewedWusdt??null,
+    ...(row.error?{error:row.error}:{})};
+   steps.push(step);
+   claimsCreated+=Number(row.claimsCreated||0);
+   if(!row.ok||result.statusCode!==200){
+    return Response.json({ok:false,mode:'cron-staged-batch-898',day:localDay(),stopped:'step_failed',
+     stepsCompleted:steps.length,completed,claimsCreated,steps,
+     error:row.error||row.leaseError||'Reward step failed; inspect queue before retry'}, {status:500});
+   }
+   if(row.status!=='completed'){stopped='needs_review';break;}
+   completed++;
   }
+  return Response.json({ok:true,mode:'cron-staged-batch-898',day:localDay(),maxSteps,
+   stepsCompleted:steps.length,completed,claimsCreated,stopped,steps,
+   liveWorkerEnabled:false,referralPosting:'disabled-existing-canonical-flows-only',
+   notice:'Guarded one-wallet SQL lease per step. Stop on error or non-completed wallet; no implicit retries, independent reward posting, raw import or cron activation.'});
  }
  // 8.19: manual bounded batch of the SAME staging-only v2 queue used by
  // cron-multi-wallet-one. No body-supplied wallet, count, cursor or time limit.

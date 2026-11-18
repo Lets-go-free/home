@@ -639,3 +639,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 
 > **Aktuell 8.87 (17.11.2026, vorbereitet):** 8.86 wurde installiert und deployed; erster read-only Preview der 164 Flow-losen Claims stoppte bei Block 1'794'927/NFT #89892 wegen nicht verifiziertem gespeicherten Ownership-Flag (0 Writes). SQL-Audit: 131/164 Claims durch acht vollständig gespeicherte NFT-Transferhistorien eindeutig gedeckt; weitere 33 Claims betreffen nur NFT #89892 (17) und #90054 (16), für beide 0 Cache-Transfers / kein Coverage. **8.87 korrigiert ausschliesslich den lesenden Prüfpfad:** Bei jeder Vorschau Live-ERC-721-Transferhistorie aus Explorer für historischen Besitzer, keine automatische Übernahme oder Änderung von Ownership/Claims/Flows. Nächster Schritt ZIP installieren, Edge `dao-reward-refresh/index.ts` mit vorhandenen Hilfsmodulen deployen, nur erste 3 erneut prüfen. SQL und Cron unverändert. `docs/releases/8.87-dao-live-historical-nft-proof.md`.
 
+### Phase 8.98 – DAO1: verbliebene elf Wallets kontrolliert in Reward-Phase abarbeiten (18.11.2026)
+
+- 8.97 SQL installiert und Fehler behoben. Alle 15 Wallets für den 18.11. gestaged (0 unresolved); vier erfolgreiche `cron-staged-one`-Schritte, alle `completed`, 0 neue Claims. Elf weitere `staged`; genau ein älterer, inzwischen kontrolliert zurückgesetzter SQL-Fehlversuch bleibt als failure_count=1 sichtbar.
+- 8.98 ergänzt ausschliesslich den manuellen `cron-staged-batch-898` mit demselben Single-Wallet-Guard, maximal fünf Schritten, Zeitbudget und Stop bei jeder Abweichung. SQL-Migration keine; ZIP/Edge-Deploy und Live-Abnahme noch offen. Historischen gezielten Queue-Reset nicht erneut ausführen.
+- **Nächster Schritt:** ZIP installieren und Edge Function deployen, danach **zuerst nur** `cron-staged-preview` (read-only). DAO-Live-Worker/Cron AUS. `docs/releases/8.98-dao-reward-staged-batch.md`.
+
