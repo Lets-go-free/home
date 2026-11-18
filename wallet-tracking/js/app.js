@@ -3194,6 +3194,7 @@ function showTab(name) {
     ensureDiscoveryCacheLoaded().then(()=>{
       renderDiscoveryCacheState();
       if (lastDiscoveryFindings.length > 0) renderDiscoveryResults(lastDiscoveryFindings);
+      void refreshMissingDiscoveryRisks();
     }).catch(e=>console.warn("Discovery-Cache:",e));
   }
   if (name === "tlnvow" && window.TLNVOWProject) {
@@ -12596,7 +12597,78 @@ function onDiscoveryWalletChange() {
   renderDiscoveryChainFilter();
   renderDiscoveryCacheState();
   renderDiscoveryResults(lastDiscoveryFindings);
+  if(document.getElementById('tab-discovery')?.classList.contains('active'))void refreshMissingDiscoveryRisks();
 }
+
+// Phase 9.04: Follow-up of missing contract safety signals is independent of
+// the 30-day blockchain discovery cooldown. At most 10 contracts per run;
+// inaccessible providers never turn an unverified token into a safe token.
+const DISCOVERY_RISK_RETRY_MS=15*60*1000;
+const DISCOVERY_RISK_BATCH_SIZE=10;
+const discoveryRiskAttempted=new Map();
+let discoveryRiskRefreshRunning=false;
+const discoveryRiskSupportedChains=new Set(['eth','bsc','matic','polygon','pol','arb','arbitrum','base','avax','avalanche']);
+async function refreshMissingDiscoveryRisks(){
+  if(discoveryRiskRefreshRunning||discoveryScanRunning||!currentUser||!discoveryCacheLoaded)return;
+  if(!document.getElementById('tab-discovery')?.classList.contains('active'))return;
+  const now=Date.now(),targets=new Map();
+  for(const w of selectedDiscoveryWallets()){
+    const cache=getDiscoveryCacheForWallet(w.id);
+    for(const f of cache?.findings||[]){
+      const chain=String(f.chain||'').toLowerCase(),address=String(f.address||'').toLowerCase();
+      if(f.risk!=null||!discoveryRiskSupportedChains.has(chain)||!/^0x[0-9a-f]{40}$/.test(address))continue;
+      if(!activeDiscoveryChains.has(f.chain)||isSafeTokenAddress(f.address,f.chain))continue;
+      const key=chain+'|'+address;
+      if(now-(discoveryRiskAttempted.get(key)||0)<DISCOVERY_RISK_RETRY_MS)continue;
+      if(!targets.has(key))targets.set(key,{chain,address});
+      if(targets.size>=DISCOVERY_RISK_BATCH_SIZE)break;
+    }
+    if(targets.size>=DISCOVERY_RISK_BATCH_SIZE)break;
+  }
+  if(!targets.size)return;
+  discoveryRiskRefreshRunning=true;
+  const selected=[...targets.values()],results=new Map();
+  selected.forEach(x=>discoveryRiskAttempted.set(x.chain+'|'+x.address,now));
+  try{
+    for(const chain of [...new Set(selected.map(x=>x.chain))]){
+      const addresses=selected.filter(x=>x.chain===chain).map(x=>x.address);
+      const assessed=await checkGoPlusRisk(chain,addresses);
+      for(const address of addresses)results.set(chain+'|'+address,assessed[address]);
+    }
+    // Always re-read each wallet before modifying its JSON findings. This
+    // preserves spam markings made while the remote provider was loading.
+    for(const w of selectedDiscoveryWallets()){
+      const cache=getDiscoveryCacheForWallet(w.id);if(!cache)continue;
+      const walletId=String(cache.wallet_id);
+      const {data:latest,error:readError}=await sb.from('discovery_cache').select('*')
+        .eq('user_id',currentUser.id).eq('wallet_id',walletId).single();
+      if(readError||!latest)throw readError||new Error('Discovery cache missing');
+      let changed=false;
+      const findings=(latest.findings||[]).map(f=>{
+        const result=results.get(String(f.chain||'').toLowerCase()+'|'+String(f.address||'').toLowerCase());
+        if(!result||f.risk!=null)return f;
+        changed=true;
+        return {...f,risk:result.checked?(Array.isArray(result.flags)?result.flags:[]):null,
+          riskCheckStatus:result.checked?'checked':'unavailable',riskCheckReason:String(result.reason||'')};
+      });
+      if(!changed)continue;
+      const {data:saved,error:writeError}=await sb.from('discovery_cache')
+        .update({findings}).eq('user_id',currentUser.id).eq('wallet_id',walletId).select().single();
+      if(writeError)throw writeError;
+      discoveryCaches.set(walletId,saved);
+    }
+    discoveryCache=getDiscoveryCacheForWallet(currentDiscoveryWalletId());
+    lastDiscoveryFindings=selectedDiscoveryFindings();
+    renderDiscoveryResults(lastDiscoveryFindings);
+    renderDashboard();
+  }catch(error){console.warn('Discovery Sicherheits-Nachprüfung:',error);}
+  finally{discoveryRiskRefreshRunning=false;}
+}
+// Only while Discovery is open. The 15-minute per-contract guard also handles
+// repeated tab switches; normal blockchain discovery remains manual/30-day gated.
+setInterval(()=>{if(document.getElementById('tab-discovery')?.classList.contains('active')){
+  void refreshMissingDiscoveryRisks();
+}},5*60*1000);
 
 function renderDiscoveryCacheState(extraMessage) {
   const btn = document.getElementById("discoveryBtn");
@@ -12988,7 +13060,8 @@ function renderDiscoveryResults(findings) {
       riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ SPAM-VERDACHT: ${reasons.map(escapeAttr).join(", ")}</span>`;
       if(f.risk===null)riskHtml+=` <span class="badge">${f.riskCheckReason==='Sicherheitsprüfung für diese Chain nicht unterstützt'?'Sicherheitsprüfung für diese Chain nicht unterstützt':'Sicherheitsdienst nicht verfügbar'}</span>`;
     } else if (f.risk === null) {
-      riskHtml = `<span class="badge unsafe">Sicherheitsprüfung nicht verfügbar – kein Sicherheitsurteil</span>`;
+      const reason=f.riskCheckReason?` · ${escapeAttr(f.riskCheckReason)}`:'';
+      riskHtml = `<span class="badge unsafe">Sicherheitsprüfung nicht verfügbar – kein Sicherheitsurteil${reason}</span>`;
     } else {
       riskHtml = `<span class="badge">Keine Warnsignale aus den verfügbaren Prüfungen – keine Sicherheitsgarantie</span>`;
     }

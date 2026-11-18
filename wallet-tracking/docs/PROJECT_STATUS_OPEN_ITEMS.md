@@ -673,3 +673,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Der bestehende 5-Minuten-Indexer aktualisiert die Zusammenfassung nach seinen Chain-Läufen; die verifizierten Einzel-Swaps bleiben unverändert. Frontend nutzt frischen Rollup und fällt bei fehlendem/veraltetem Rollup auf den bisherigen Rohdaten-Ladeweg zurück.
 - Installation **noch offen**: zuerst SQL-Migration, dann Edge-Funktion `tln-vow-trade-sync` deployen, anschliessend Frontend 9.03 installieren. Keine Aktivierung neuer Cron-Jobs. Unabhängiger Produktivvergleich (Volumen, Händler, Zeitfenster) und Zeitmessung noch offen. `docs/releases/9.03-tln-vow-trade-rollups.md`.
 
+### Phase 9.04 – Automatische Sicherheits-Nachprüfung offener Token (18.11.2026)
+
+- Bestehende Discovery-Cache-Einträge ohne verwertbares Risikoergebnis werden bei Öffnung/Wechsel in den Discovery-Tab und danach alle fünf Minuten **nur solange dieser Tab aktiv ist** in begrenzten Stapeln von maximal zehn unterschiedlichen EVM-Contracts nachgeprüft; pro Contract mindestens 15 Minuten Abstand innerhalb der laufenden Sitzung.
+- Kein neuer Blockchain-Scan und keine Aufhebung der 30-Tage-Sperre. Andere Chains ohne unterstützten Provider bleiben offen; Fehlschläge ergeben weiterhin kein Sicherheitsurteil. Bestehende manuelle Spam-Markierungen bleiben erhalten.
+- Anzeige ergänzt die vom Anbieter gelieferte Fehler-/Limitbegründung, falls vorhanden. Keine SQL-Migration oder Edge-Änderung. JavaScript-Syntax erfolgreich, Live-Abnahme ausstehend. `docs/releases/9.04-token-risk-background-recheck.md`.
+
