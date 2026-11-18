@@ -710,3 +710,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Ticker-Normalisierung für den Vergleich mit bekannten Token-Referenzen eingeführt, inklusive Unicode-Markierungen, Fullwidth und ausgewählten Homoglyphen. Betrifft nur Nachahmungen bereits bekannter Symbole, kein pauschales Verbot anderer Schriftzeichen.
 - Ein abweichender Contract löst unabhängig von GoPlus einen Nachahmungsverdacht aus, keine automatische Spam-Markierung. Manuell markierte Token bleiben von Verdacht/Nachprüfung ausgeschlossen.
 - Tests 9.07 + 9.06 und JS-Syntax bestanden; produktive Browser-Abnahme offen. Nur Frontend, keine SQL- oder Edge-Änderung. Details: `docs/releases/9.07-discovery-unicode-token-impersonation.md`.
+
+
+### Phase 9.12 – TLN/VOW Read-only Wallet-Transfer-Logscan (20261118-220758)
+
+- Geschützter neuer `delta-scan-preview` liest BSC-ERC20-Transfer-Events walletbezogen über `eth_getLogs` für vier bereits verifizierte Token-Adressen und ein einziges 5'000-Block-Fenster. Nur aggregierte Ereigniszähler, kein Reward-Beweis. Providerfehler blockiert den Test ohne Cursorfortschritt.
+- Produktive Rewards-Automatik **weiterhin offen**: alle Reward-Verträge/Events, genaue Klassifikation gegen bestehende Discovery, kryptografisch sichere Walletberechtigung, persistente Cursor, Daily-Cron, Backfill und Regression gegen verifizierte Snapshots.
+- `docs/releases/9.12-tln-vow-wallet-scoped-log-inspection.md`; sichtbare Phase 9.12 / Build 20261118-220758.

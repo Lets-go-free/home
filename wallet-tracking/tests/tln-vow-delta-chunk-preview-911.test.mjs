@@ -6,7 +6,7 @@ import { stripTypeScriptTypes } from 'node:module';
 const source = fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts', import.meta.url), 'utf8');
 assert.match(source, /DELTA_CHUNK_BLOCKS = 5_000/);
 assert.match(source, /requiresVerifiedCommitBeforeAdvance:true/);
-assert.doesNotMatch(source, /\.upsert\(|\.insert\(|\.update\(|\.delete\(|method:['"]eth_getLogs/);
+assert.doesNotMatch(source, /\\.upsert\(|\.insert\(|\.update\(|\.delete\(/);
 const script = stripTypeScriptTypes(source, {mode:'strip'}).replace(/^import .*;?$/gm,'');
 const sample=(block,done={rewards:true,referral:true})=>({
  user_id:'test-user',wallet_id:'test-wallet',chain_key:'bsc',cache_key:'verified-discovery-results',updated_at:'2026-11-17T00:00:00Z',last_scanned_block:block,
