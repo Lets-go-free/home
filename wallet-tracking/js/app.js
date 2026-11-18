@@ -12469,6 +12469,23 @@ function discoveryEquivalentChainKeys(chain){
 // Erkennt Tokens, die Symbol oder Namen eines sicheren vordefinierten Tokens derselben Chain
 // uebernehmen, aber unter einer anderen Contract-/Mint-Adresse laufen. Das ist ein starkes
 // Warnsignal, aber kein kryptographischer Echtheitsbeweis; massgeblich bleibt die Adresse.
+// 9.06: chain-specific reference contracts for prominent impersonated tickers.
+// An address mismatch is a review signal, not proof of fraud; bridged variants
+// may be legitimate and can be manually approved as safe.
+const DISCOVERY_REFERENCE_TOKENS={
+  bsc:{USDT:['0x55d398326f99059ff775485246999027b3197955']},
+  eth:{USDT:['0xdac17f958d2ee523a2206206994597c13d831ec7']}
+};
+function discoveryReferenceSymbolMismatch(f){
+  if(!f?.chain||!f?.address)return null;
+  const chain=String(f.chain).toLowerCase();
+  const symbol=String(f.symbol||'').trim().toUpperCase();
+  const reference=DISCOVERY_REFERENCE_TOKENS[chain]?.[symbol];
+  if(!reference)return null;
+  const actual=String(f.address).toLowerCase();
+  if(reference.includes(actual))return null;
+  return {symbol,reference,chain};
+}
 function discoveryPredefinedIdentityMismatch(f){
   if(!f?.chain||!f?.address)return null;
   const sourceChain=f.chain;
@@ -12652,7 +12669,7 @@ async function refreshMissingDiscoveryRisks(){
       let changed=false;
       const findings=(latest.findings||[]).map(f=>{
         const result=results.get(String(f.chain||'').toLowerCase()+'|'+String(f.address||'').toLowerCase());
-        if(!result||f.risk!=null)return f;
+        if(!result||f.risk!=null||f.userMarkedScam||f._retainedSpamMarker)return f;
         changed=true;
         return {...f,risk:result.checked?(Array.isArray(result.flags)?result.flags:[]):null,
           riskCheckStatus:result.checked?'checked':'unavailable',riskCheckReason:String(result.reason||'')};
@@ -12875,10 +12892,20 @@ async function scanDiscoveryForWallet(w,{chains=null}={}) {
     }
   }
 
-  // GoPlus-Risiko-Check, gebündelt pro Chain
+  // 9.06: Manually marked spam is final for automated security scanning.
+  // Read the latest DB state before requesting GoPlus, not just stale local state.
+  const walletId=persistedWalletDbId(w,{required:true,context:'Discovery Risiko-Ausschluss'});
+  const {data:oldRiskCache,error:oldRiskError}=await sb.from('discovery_cache')
+    .select('findings').eq('user_id',currentUser.id).eq('wallet_id',walletId).maybeSingle();
+  if(oldRiskError)throw new Error('Manuelle Spam-Entscheidungen konnten nicht geladen werden: '+oldRiskError.message);
+  const markedRiskKeys=new Set((oldRiskCache?.findings||[]).filter(f=>f?.userMarkedScam)
+    .map(f=>String(f.chain||'').toLowerCase()+'|'+String(f.address||'').toLowerCase()));
+  allFindings.forEach(f=>{if(markedRiskKeys.has(String(f.chain).toLowerCase()+'|'+String(f.address).toLowerCase()))f.userMarkedScam=true;});
+
+  // GoPlus-Risiko-Check, gebündelt pro Chain; no marked spam contracts.
   const byChain = {};
   allFindings.forEach(f => {
-    if (!CHAIN_CONFIG[f.chain]?.evmChainId) return;
+    if (f.userMarkedScam || !CHAIN_CONFIG[f.chain]?.evmChainId) return;
     byChain[f.chain] = byChain[f.chain] || new Set();
     byChain[f.chain].add(f.address);
   });
@@ -12886,7 +12913,7 @@ async function scanDiscoveryForWallet(w,{chains=null}={}) {
     const addrs = [...byChain[chain]];
     const result = await checkGoPlusRisk(chain, addrs);
     allFindings.forEach(f => {
-      if(f.chain!==chain)return;
+      if(f.chain!==chain||f.userMarkedScam)return;
       const check=result[String(f.address||'').toLowerCase()];
       f.risk=check?.checked?Array.isArray(check.flags)?check.flags:[]:null;
       f.riskCheckStatus=check?.checked?'checked':'unavailable';
@@ -12983,6 +13010,8 @@ function isKnownExplorerFraudContract(f){
     String(f?.address||'').toLowerCase()==='0xa2afaf65004551ad9c11f8b68d72d63980fd9b62';
 }
 function isFindingScamSuspect(f) {
+  if(f?.userMarkedScam||f?._retainedSpamMarker)return false;
+  if (discoveryReferenceSymbolMismatch(f))return true;
   if (isKnownExplorerFraudContract(f)) return true;
   if (f.nameScamFlag) return true;
   if (f.risk && f.risk.length > 0) return true;
@@ -13073,9 +13102,13 @@ function renderDiscoveryResults(findings) {
     const meta = CHAIN_META[f.chain];
     const scam = isFindingScam(f);
     let riskHtml = "";
-    if (scam) {
+    if(f.userMarkedScam){
+      riskHtml='<span class="badge unsafe">Manuell als Spam markiert – keine erneute Sicherheitsprüfung</span>';
+    } else if (scam) {
       const reasons = [];
       if (f.userMarkedScam) reasons.push("vom Benutzer als Spam markiert");
+      const refMismatch=discoveryReferenceSymbolMismatch(f);
+      if(refMismatch)reasons.push(`${refMismatch.symbol}: Contract stimmt nicht mit der bekannten ${refMismatch.chain.toUpperCase()}-Referenz überein (mögliche Nachahmung)`);
       if (isKnownExplorerFraudContract(f)) reasons.push("BscScan: Fake_Phishing1123827 (bekannte Contract-Warnung)");
       if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       const identityMismatch=discoveryPredefinedIdentityMismatch(f);

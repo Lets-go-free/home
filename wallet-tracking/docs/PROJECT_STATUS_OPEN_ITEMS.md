@@ -685,3 +685,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Die GoPlus-Risikofunktion wird nicht mehr für Apertum oder andere nicht unterstützte Chains aufgerufen; stattdessen bleibt ein ehrliches `nicht unterstützt` ohne Sicherheitsurteil.
 - Regressionstest `tests/discovery-preserve-spam-905.mjs` und JavaScript-Syntax erfolgreich; Live-Test ausstehend. Keine SQL-/Edge-Änderungen. Details: `docs/releases/9.05-discovery-spam-persistence.md`.
 
+
+### Phase 9.06 – Discovery: manuelle Priorität und USDT-Adressprüfung (18.11.2026)
+- Bereits manuell als Spam markierte Contracts werden vor der GoPlus-Abfrage aus dem neuen Discovery-Scan entfernt (aus dem zuletzt gespeicherten Wallet-Cache gelesen). Auch die automatische Nachprüfung überspringt markierte Contracts nach dem erneuten DB-Read.
+- Spam-Verdachtszähler zählt ausschliesslich noch nicht manuell markierte Kandidaten. Manuell markierte erscheinen, falls eingeblendet, mit eigener Kennzeichnung statt einem erneuten GoPlus-Verdacht.
+- Explizite Contract-Referenz für BSC-USDT `0x55d398326f99059ff775485246999027b3197955` und Ethereum-USDT `0xdac17f958d2ee523a2206206994597c13d831ec7`. Gleicher Ticker mit abweichendem Contract erzeugt einen Adress-/Identitätsverdacht, keine automatische Spam-Klassifizierung; andere Chains bleiben bei verifizierten Stammdaten. Bridged-Token können legitime Ausnahmen sein.
+- Regressionstests 9.06, 9.05 und Mehrwallet-Bulk bestanden; Syntaxprüfung bestanden. Noch produktiv zu testen. Keine SQL-Migration oder Edge-Änderung.

@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const source=fs.readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
+function extract(start,end){const a=source.indexOf(start);assert.ok(a>=0,start);const b=source.indexOf(end,a+start.length);assert.ok(b>a,end);return source.slice(a,b);}
+const helpers=extract('// 9.06: chain-specific reference contracts','function discoveryPredefinedIdentityMismatch(f){');
+const suspected=extract('function isFindingScamSuspect(f) {','function isFindingScam(f)');
+const context={isKnownExplorerFraudContract:()=>false,discoveryPredefinedIdentityMismatch:()=>null};
+vm.createContext(context);vm.runInContext(helpers+'\n'+suspected+'\nthis.suspect=isFindingScamSuspect;this.mismatch=discoveryReferenceSymbolMismatch;',context);
+const fake={chain:'bsc',address:'0x0e64db7f94524c15bdc69793c78e57ac255bc4c1',symbol:'USDT',risk:[]};
+assert.equal(!!context.mismatch(fake),true,'unofficial BSC USDT must warn');
+assert.equal(context.suspect(fake),true);
+assert.equal(context.suspect({...fake,userMarkedScam:true}),false,'marked spam not counted again as suspicion');
+assert.equal(context.suspect({...fake,_retainedSpamMarker:true}),false);
+assert.equal(context.suspect({...fake,address:'0x55d398326f99059ff775485246999027b3197955'}),false);
+assert.equal(context.suspect({...fake,symbol:'SOMETHING'}),false);
+assert.match(source,/if \(f\.userMarkedScam \|\| !CHAIN_CONFIG\[f\.chain\]\?\.evmChainId\) return;/);
+assert.match(source,/if\(!result\|\|f\.risk!=null\|\|f\.userMarkedScam\|\|f\._retainedSpamMarker\)return f;/);
+assert.match(source,/markedRiskKeys\.has/);
+console.log('9.06 discovery security priorities: passed');
