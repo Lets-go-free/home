@@ -8879,7 +8879,7 @@ function renderTable(rows, skipHeader) {
     </tr>`;
   }).join("");
 
-  return `<div style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%">${colgroup}${headerRow}<tbody>${bodyRows}</tbody></table></div>`;
+  return `<div class="wallet-synced-scroll" style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%">${colgroup}${headerRow}<tbody>${bodyRows}</tbody></table></div>`;
 }
 
 // Eine einzige Spaltenüberschrift-Zeile pro Wallet, mit dem Wallet-Namen anstelle von
@@ -8909,7 +8909,7 @@ function renderWalletHeader(walletLabel) {
   </colgroup>`;
   const sticky = `position:sticky;left:0px;background:var(--card2);z-index:2;`;
 
-  return `<div style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%;margin-bottom:2px">
+  return `<div class="wallet-synced-scroll" style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%;margin-bottom:2px">
     ${colgroup}
     <thead><tr>
       <th style="${sticky}${titleStyle}">💼 ${escapeAttr(walletLabel)}</th>
@@ -8920,6 +8920,22 @@ function renderWalletHeader(walletLabel) {
       ${snaps.map(s => `<th style="text-align:right;white-space:normal">${s.source==="daily"?escapeAttr(s.label):fmtSnapshotDateTime(s.createdAt)}<span class="price-source">Anzahl · Kurs damals</span></th>`).join("")}
     </tr></thead>
   </table></div>`;
+}
+
+// Header und Chain-Tabellen behalten ihre eigenen Tabellen, teilen aber pro Wallet
+// dieselbe horizontale Scrollposition. Andere Wallets bleiben unabhängig.
+function connectWalletHorizontalScroll(container) {
+  container.querySelectorAll(".wallet-block").forEach(wallet => {
+    const scrollers = [...wallet.querySelectorAll(".wallet-synced-scroll")];
+    scrollers.forEach(source => source.addEventListener("scroll", () => {
+      const left = source.scrollLeft;
+      scrollers.forEach(target => {
+        if (target !== source && Math.abs(target.scrollLeft - left) > 0.5) {
+          target.scrollLeft = left;
+        }
+      });
+    }, { passive: true }));
+  });
 }
 
 function explorerUrlForWallet(chain, wallet) {
@@ -9052,6 +9068,7 @@ function renderResults() {
     }).join("");
   }
 
+  connectWalletHorizontalScroll(resultsContainer);
   renderWalletNav();
   renderChartChainSelect(); // Verfügbare Chains/Token für die Grafik hängen von Bestand+Snapshots ab, hier immer aktuell halten
 
