@@ -1,4 +1,4 @@
-// WalletTracking 9.14 – TLN/VOW reward-refresh READ-ONLY preflight, chunk plan, and wallet-scoped ERC20 log inspection.
+// WalletTracking 9.15 – TLN/VOW reward-refresh READ-ONLY preflight, chunk plan, and wallet-scoped ERC20 log inspection.
 // Bounded eth_getLogs inspection only; no reward/cursor/cache writes and NO cron activation.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -100,6 +100,27 @@ async function rpcFilterDiagnosis(wallet:string,fromBlock:number,toBlock:number,
   }
   return {probes,probeBlocks:toBlock-fromBlock+1,scope:'Read-only RPC filter compatibility tests; no reward classification or cursor progression'}
 }
+// Fixed, bounded compatibility check for provider block-range policy.
+// All probes share the same single approved contract and Transfer topic, changing
+// only the inclusive block count. No user-provided RPC URL/contract/wallet accepted.
+async function rpcRangeLimitDiagnosis(fromBlock:number, head:number) {
+  if(!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
+  if(!Number.isSafeInteger(fromBlock)||fromBlock<0||!Number.isSafeInteger(head)||head<fromBlock+99)
+    throw new Error('Unsafe range-limit diagnostic window')
+  const rpcUrl=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const single=Object.keys(SCAN_CONTRACTS)[0]
+  const probeSizes=[1,2,5,10,11,100] as const
+  const probes=[]
+  for(const count of probeSizes){
+    const filter={fromBlock:hexBlock(fromBlock),toBlock:hexBlock(fromBlock+count-1),address:single,topics:[TRANSFER_TOPIC]}
+    probes.push({name:`historical_${count}_blocks`,blocks:count,...await rpcProbe(rpcUrl,'eth_getLogs',[filter])})
+  }
+  // Check whether the same 10-block filter works near the latest chain head.
+  probes.push({name:'recent_10_blocks',blocks:10,...await rpcProbe(rpcUrl,'eth_getLogs',[{
+    fromBlock:hexBlock(head-9),toBlock:hexBlock(head),address:single,topics:[TRANSFER_TOPIC]
+  }])})
+  return {probes,provider:'alchemy_bnb_mainnet',scope:'Read-only single-contract ERC20 Transfer range-limit diagnosis; no reward classification, writes or cursor progression'}
+}
 const evmAddress = (v:unknown) => typeof v==='string' && /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : null
 const hexBlock = (n:number)=>'0x'+n.toString(16)
 async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number) {
@@ -187,8 +208,8 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' ? body.mode : 'read-only-preflight'
+    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -211,7 +232,7 @@ Deno.serve(async (req) => {
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
     }
-    if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic') {
+    if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic' || mode==='rpc-range-diagnostic') {
       // The snapshot is not authoritative proof of wallet eligibility. This preview never creates work.
       // Choose one deterministic stale candidate, without disclosing owner or wallet identity.
       const candidate=[...byWallet.values()].filter((r)=>r.payload?.kind==='verified_discovery_results' &&
@@ -240,6 +261,16 @@ Deno.serve(async (req) => {
       const chunkBlocks=chunkToBlock-fromBlock+1
       const remainingBlocks=head-chunkToBlock
       const remainingChunks=Math.ceil(remainingBlocks/maxBlocks)
+      if(mode==='rpc-range-diagnostic') {
+        let diagnosis
+        try { diagnosis=await rpcRangeLimitDiagnosis(fromBlock,head) }
+        catch(e){
+          console.error('TLN RPC range-limit diagnostic precondition failed',safeRpcDiagnostic(e))
+          return reply({ok:false,mode,error:'RPC range-limit diagnosis could not be prepared; no progress saved'},503)
+        }
+        return reply({ok:true,mode,day:dayCH(),diagnosis,selectedWallets:1,
+          notice:'Read-only fixed 1/2/5/10/11/100-block historical probes plus recent 10 blocks. No raw RPC bodies, keys, wallet addresses, rewards, cache/cursor writes or cron.'})
+      }
       if(mode==='rpc-diagnostic') {
         const wallet=evmAddress(payload?.wallet)
         if(!wallet)return reply({ok:false,mode,error:'Verified snapshot has no valid wallet address; no RPC diagnosis'},409)
