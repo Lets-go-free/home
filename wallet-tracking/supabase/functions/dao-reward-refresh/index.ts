@@ -1405,6 +1405,95 @@ Deno.serve(async request=>{
     notice:'Read-only indexed transaction coverage; no independent proof of on-chain zero. No candidate, transaction, claim, flow, price, cursor, queue or cron writes.'});
   }catch(e){return reply({ok:false,error:String(e instanceof Error?e.message:e),writesPerformed:0},500)}
  }
+ // 8.95: explicitly approved, bounded evidence classification for only the
+ // 16 historic no-flow candidates. All selected claims are rechecked before
+ // any write; guarded existing SQL RPC records staging payout evidence only.
+ if(body?.mode==='admin-zero-payout-commit-895'){
+  const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
+  const expectedByWallet:Record<string,number>={
+   'ecbc2543-98fe-4b67-bf24-141c7ff20b15':9,
+   '8b93754f-983d-4693-bafd-53267205a29c':6,
+   'd82b6059-dc99-4900-9e2b-078f3defd7a2':1
+  };
+  const walletId=String(body.walletId||'').toLowerCase();
+  if(Object.keys(body).some(k=>!['mode','walletId','confirmation'].includes(k))||
+     !Object.hasOwn(expectedByWallet,walletId)||body.confirmation!=='CONFIRM-3-NEGATIVE-PAYOUTS')
+   return reply({ok:false,error:'Strict wallet and explicit confirmation required',writesPerformed:0},400);
+  if(Deno.env.get('DAO_REWARD_ENABLE_TEST_IMPORT')!=='true')
+   return reply({ok:false,error:'Manual payout classification disabled',writesPerformed:0},403);
+  if(Deno.env.get('DAO_REWARD_ENABLE_LIVE_WORKER')==='true')
+   return reply({ok:false,error:'Disable DAO live worker first',writesPerformed:0},409);
+  let writesPerformed=0;const results:any[]=[];
+  try{
+   const permission=await authenticateInspectAdmin(request);
+   if(!permission.ok)return reply({ok:false,error:permission.error,writesPerformed:0},permission.status);
+   const {data:wallet,error:walletError}=await sb.from('wallets').select('id,user_id').eq('id',walletId).maybeSingle();
+   if(walletError)throw walletError;
+   if(!wallet)return reply({ok:false,error:'Wallet not found',writesPerformed:0},404);
+   const job={user_id:wallet.user_id,wallet_id:wallet.id};
+   const {data:cohort,error:cohortError}=await sb.from('dao_reward_claim_candidates')
+    .select('tx_hash,claim_block,nft_id,payout_status,payout_checked_at')
+    .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id)
+    .eq('project_key',PROJECT).eq('chain_key',CHAIN)
+    .eq('status','pending').eq('claim_pipeline_status','pending')
+    .is('audit_classification',null).eq('canonical_existing_verified',false)
+    .in('payout_status',['pending','no_payout_evidence'])
+    .order('claim_block',{ascending:true}).order('tx_hash',{ascending:true}).limit(20);
+   if(cohortError)throw cohortError;
+   if(cohort?.length!==expectedByWallet[walletId])
+    return reply({ok:false,error:'Strict 16-claim cohort changed',expected:expectedByWallet[walletId],actual:cohort?.length,writesPerformed:0},409);
+   const pending=cohort.filter((c:any)=>c.payout_status==='pending');
+   if(pending.some((c:any)=>c.payout_checked_at!==null))
+    return reply({ok:false,error:'Unexpected prior payout check in pending cohort',writesPerformed:0},409);
+   if(!pending.length)return reply({ok:true,mode:'admin-zero-payout-commit-895',walletId,
+    remaining:0,alreadyClassified:cohort.length,results:[],writesPerformed:0,
+    notice:'Already classified; no duplicate writes.'});
+   const address=await loadAddress(job),proofs:any[]=[];
+   for(const candidate of pending.slice(0,3)){
+    const [{data:txRows,error:txError},{data:claimRows,error:claimError},{count:flowCount,error:flowError}]=await Promise.all([
+     sb.from('project_transactions').select('tx_hash,selector,status,to_address,block_number')
+      .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+      .eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).limit(2),
+     sb.from('project_nft_claims').select('nft_id,reward_aptm,reward_usd')
+      .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+      .eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).limit(2),
+     sb.from('project_transaction_asset_flows').select('id',{head:true,count:'exact'})
+      .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+      .eq('chain_key',CHAIN).eq('tx_hash',candidate.tx_hash).eq('direction','eingang')
+    ]);
+    if(txError||claimError||flowError)throw Error('Historical evidence read failed');
+    const tx=txRows?.[0],claim=claimRows?.[0];
+    if(txRows?.length!==1||claimRows?.length!==1||flowCount!==0||
+       !isSuccessfulClaim(tx)||lower(tx.to_address)!=='0x2096bd2e860b450498a7c908708757a1eb306416'||
+       tx.block_number!==candidate.claim_block||String(claim.nft_id)!==String(candidate.nft_id)||
+       (claim.reward_aptm!==null&&Number(claim.reward_aptm)>0)||claim.reward_usd!==null)
+     return reply({ok:false,stopped:'persisted-evidence-mismatch',txHash:candidate.tx_hash,writesPerformed:0,results:[]},409);
+    const checked=await inspectClaimPayoutCoverage(tx,address,json,EXPLORER);
+    if(!noPayoutEvidenceAllowed(checked.coverage,[]))
+     return reply({ok:false,stopped:'live-evidence-incomplete',txHash:candidate.tx_hash,
+      reason:checked.reason,coverage:checked.coverage,writesPerformed:0,results:[]},409);
+    proofs.push({candidate,coverage:checked.coverage,reason:checked.reason});
+   }
+   for(const proof of proofs){
+    const {data:applied,error:writeError}=await sb.rpc('wallettracking_dao_record_payout_check',{
+     p_user:job.user_id,p_wallet:job.wallet_id,p_tx:proof.candidate.tx_hash,
+     p_expected_checked_at:null,p_status:'no_payout_evidence',p_reason:proof.reason,
+     p_coverage:proof.coverage,p_token:null,p_amount:null,p_decimals:null,p_flow_count:null
+    });
+    if(writeError)throw writeError;
+    if(applied!==true)
+     return reply({ok:false,stopped:'concurrent-change-or-positive-flow',walletId,
+      writesPerformed,results,notice:'No further writes; prior successful row updates remain visible.'},409);
+    writesPerformed++;
+    results.push({txHash:proof.candidate.tx_hash,status:'no_payout_evidence',reason:proof.reason});
+   }
+   return reply({ok:true,mode:'admin-zero-payout-commit-895',walletId,
+    remaining:pending.length-writesPerformed,alreadyClassified:cohort.length-pending.length,
+    writesPerformed,claimsCreated:0,flowsCreated:0,results,
+    notice:'Only guarded payout evidence and bounded check history changed. No canonical claim, asset, reward, price, cursor, queue or cron changes.'});
+  }catch(e){return reply({ok:false,error:String(e instanceof Error?e.message:e),
+    writesPerformed,results,notice:'No additional writes after error; independently audit successful row updates.'},500)}
+ }
  if(['admin-historical-flow-preview-886','admin-historical-flow-commit-889'].includes(body?.mode)){
   const reply=(payload:any,status=200)=>Response.json(payload,{status,headers:metadataCors});
   const commit=body.mode==='admin-historical-flow-commit-889';

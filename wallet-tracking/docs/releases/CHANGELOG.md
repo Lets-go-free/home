@@ -1,3 +1,6 @@
+## 8.95 · 18.11.2026 06:45:30 CET · Build 20261118-064530
+- Admin-only, ausdrücklich bestätigter Maximal-3er-Commit für die 16 per 8.94 vollständig lesend geprüften DAO-Claim-Aufrufe ohne belegten Payout. Pro Stapel erneute vollständige Explorer-Prüfung **vor** jeder Änderung; bestehendes guarded `wallettracking_dao_record_payout_check` schreibt nur Payout-Evidenz/History je Transaktion. Kein SQL, Cron, Claim, Flow, Reward oder Preisupdate. `8.95-dao-zero-payout-guarded-commit.md`.
+
 ## 8.94 · 17.11.2026 21:33:35 CET · Build 20261117-213335
 - Streng begrenzte, nur lesende Edge-Admin-Vorschau der 16 erfolgreichen DAO-Claim-Transaktionen ohne positive Reward-/Flow-Daten: drei feste Wallets (9/6/1), maximal 3 pro Aufruf, bestehende Explorer-Transaktions-/Payout-Coverage wiederverwendet. Keine Status-, Claim-, Flow-, Preis- oder Cursor-Änderung; Live-Abnahme vor Klassifizierung offen. `8.94-dao-zero-claim-evidence-preview.md`.
 

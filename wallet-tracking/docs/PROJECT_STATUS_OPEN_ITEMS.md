@@ -34,6 +34,12 @@
 
 > **Historischer Eintrag 8.57:** 8.56 Drei-Miner-Preview live: 3/3 blockiert wegen mehrerer RewardClaimed-Events pro Transaktion, keine Writes. Explorer zeigt mehrere Collection-IDs für dieselbe NFT-ID/Staker. 8.57 addiert diese Ereignisse nur bei eindeutiger Identität und exakter Wei-/Payout-Gleichheit, weiterhin **nur read-only**. Nächster Schritt: Update-ZIP einspielen und vier Edge-Dateien gemeinsam deployen; Rückmeldung abwarten. Details `docs/releases/8.57-dao-multi-reward-event-aggregation.md`. DAO-Cron/Live-Worker AUS.
 
+### Phase 8.95 – DAO1: 16 historische Claims begründet als ohne Payout-Beleg klassifizieren (18.11.2026)
+
+- 8.94 deployed: read-only über alle 16 Claims in drei Wallets, 9+6+1 geprüft, alle `no_payout_evidence_preview`, vollständige indizierte Transaktion/Token-/Internal-Transfers, **kein beobachteter Eingang** und 0 Writes. Kein unabhängiger Beweis für on-chain Null.
+- 8.95 ergänzt expliziten Admin-Commit `admin-zero-payout-commit-895`: nur genau diese drei Wallets, feste 9/6/1-Kohorte, manuelle Bestätigung, maximal drei noch pending pro Aufruf. **Vor dem ersten Write werden alle ausgewählten TX erneut vollständig mit Explorer geprüft**; bei unvollständigem Beleg/Positiv-Flow keine Änderungen des Stapels. Bestehende guarded SQL-RPC führt je Kandidat Payout-Status/Begründung/Zeitpunkt/Coverage/History; vorherige erfolgreiche Einzelupdates bleiben bei späterem Fehler erkennbar (nicht 3er-atomar). Keine Claims/Flows/Preise oder Cron-Änderungen. ZIP/Deploy/erste kontrollierte 3er-Live-Abnahme offen. `docs/releases/8.95-dao-zero-payout-guarded-commit.md`.
+- Parallel TLN/VOW 8.92: vier Cron-HTTP-200 (20:56–21:11 UTC), keine Timeouts; BSC-Rückstand 514'218→441'405, ETH 14'737→6'884 Blöcke, noch vorläufig bis vollständig synchron.
+
 ### Phase 8.94 – DAO1: 16 Null-Reward-Claim-Aufrufe lesend auf Payout-Belege prüfen (17.11.2026)
 
 - 8.93 SQL installiert; 8.91-Reconciliation Preview 1706/1690/16/1 korrekt, `true` Commit erfolgreich (marked 1690, 0 neue Flows/Claims). Unabhängige SQL-Abnahme: 2094 Kandidaten insgesamt (388 früher + 1690 neu markiert + 16 ohne Flow), 2078/2078 korrekt, 0 fehlerhaft.
