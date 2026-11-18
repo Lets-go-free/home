@@ -12401,6 +12401,11 @@ async function discoverEvmTokens(chain, address) {
 async function checkGoPlusRisk(chain, addresses) {
   const unique=[...new Set(addresses.map(a=>String(a||'').toLowerCase()).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
   const result={};
+  // EVM-Kompatibilität allein bedeutet nicht, dass GoPlus die Chain unterstützt.
+  if(!['eth','bsc','matic','polygon','pol','arb','arbitrum','base','avax','avalanche'].includes(String(chain).toLowerCase())){
+    unique.forEach(addr=>{result[addr]={checked:false,flags:[],reason:'Sicherheitsprüfung für diese Chain nicht unterstützt'};});
+    return result;
+  }
   for(let i=0;i<unique.length;i+=10){
     const chunk=unique.slice(i,i+10);
     try {
@@ -12587,7 +12592,8 @@ function selectedDiscoveryWallets(){
 function selectedDiscoveryFindings(){
   return selectedDiscoveryWallets().flatMap(w=>{
     const cache=getDiscoveryCacheForWallet(w.id);
-    return (cache?.findings||[]).map(f=>({...f,walletLabel:w.label,_walletId:String(w.dbId||w.id)}));
+    return (cache?.findings||[]).filter(f=>!f._retainedSpamMarker)
+      .map(f=>({...f,walletLabel:w.label,_walletId:String(w.dbId||w.id)}));
   });
 }
 function onDiscoveryWalletChange() {
@@ -12616,7 +12622,7 @@ async function refreshMissingDiscoveryRisks(){
     const cache=getDiscoveryCacheForWallet(w.id);
     for(const f of cache?.findings||[]){
       const chain=String(f.chain||'').toLowerCase(),address=String(f.address||'').toLowerCase();
-      if(f.risk!=null||!discoveryRiskSupportedChains.has(chain)||!/^0x[0-9a-f]{40}$/.test(address))continue;
+      if(f.risk!=null||f.userMarkedScam||f._retainedSpamMarker||!discoveryRiskSupportedChains.has(chain)||!/^0x[0-9a-f]{40}$/.test(address))continue;
       if(!activeDiscoveryChains.has(f.chain)||isSafeTokenAddress(f.address,f.chain))continue;
       const key=chain+'|'+address;
       if(now-(discoveryRiskAttempted.get(key)||0)<DISCOVERY_RISK_RETRY_MS)continue;
@@ -12716,6 +12722,11 @@ async function saveDiscoveryCache(w, findings, scanNotes, selectedChains=[...act
   const scannedAt = new Date();
   const nextAt = new Date(scannedAt.getTime() + DISCOVERY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
   const walletId = persistedWalletDbId(w,{required:true,context:"Discovery-Cache"});
+  // Die neuesten manuellen Entscheidungen vor dem Überschreiben aus der DB holen.
+  const {data:previous,error:previousError}=await sb.from('discovery_cache')
+    .select('findings').eq('user_id',currentUser.id).eq('wallet_id',walletId).maybeSingle();
+  if(previousError)throw new Error('Spam-Markierungen konnten nicht geladen werden: '+previousError.message);
+  findings=mergeDiscoveryManualSpamMarks(findings,previous?.findings||[]);
 
   const payload = {
     user_id: currentUser.id,
@@ -12744,6 +12755,23 @@ async function saveDiscoveryCache(w, findings, scanNotes, selectedChains=[...act
   discoveryCaches.set(walletId, data);
   discoveryCache = data;
   renderDiscoveryCacheState();
+}
+
+// Bewahrt manuelle Spam-Entscheidungen auch über fehlende Zwischen-Scans.
+// Nicht mehr entdeckte markierte Contracts bleiben ausschliesslich als
+// unsichtbare Merker im Wallet-Cache; sie zählen nicht als neue Treffer.
+function mergeDiscoveryManualSpamMarks(newFindings,oldFindings){
+  const key=f=>String(f?.chain||'').toLowerCase()+'|'+String(f?.address||'').toLowerCase();
+  const marked=new Map((oldFindings||[]).filter(f=>f?.userMarkedScam).map(f=>[key(f),f]));
+  const seen=new Set();
+  const merged=(newFindings||[]).map(f=>{
+    const k=key(f);seen.add(k);
+    return marked.has(k)?{...f,userMarkedScam:true}:f;
+  });
+  for(const [k,f] of marked){
+    if(!seen.has(k))merged.push({chain:f.chain,address:f.address,userMarkedScam:true,_retainedSpamMarker:true});
+  }
+  return merged;
 }
 
 

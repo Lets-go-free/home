@@ -679,3 +679,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Kein neuer Blockchain-Scan und keine Aufhebung der 30-Tage-Sperre. Andere Chains ohne unterstützten Provider bleiben offen; Fehlschläge ergeben weiterhin kein Sicherheitsurteil. Bestehende manuelle Spam-Markierungen bleiben erhalten.
 - Anzeige ergänzt die vom Anbieter gelieferte Fehler-/Limitbegründung, falls vorhanden. Keine SQL-Migration oder Edge-Änderung. JavaScript-Syntax erfolgreich, Live-Abnahme ausstehend. `docs/releases/9.04-token-risk-background-recheck.md`.
 
+### Phase 9.05 – Discovery: manuelle Spam-Markierungen behalten (18.11.2026)
+
+- Fehler behoben: Ein erneuter Discovery-Scan ersetzte alle `findings` und verlor die zuvor manuell gesetzten `userMarkedScam`-Felder. Vor dem Schreiben wird nun der aktuelle Wallet-Cache gelesen; manuelle Markierungen werden nach Chain+Contract-Adresse in die neuen Treffer übernommen. Vorübergehend nicht erneut entdeckte markierte Adressen bleiben als nicht angezeigte Marker im selben Wallet-Cache erhalten.
+- Die GoPlus-Risikofunktion wird nicht mehr für Apertum oder andere nicht unterstützte Chains aufgerufen; stattdessen bleibt ein ehrliches `nicht unterstützt` ohne Sicherheitsurteil.
+- Regressionstest `tests/discovery-preserve-spam-905.mjs` und JavaScript-Syntax erfolgreich; Live-Test ausstehend. Keine SQL-/Edge-Änderungen. Details: `docs/releases/9.05-discovery-spam-persistence.md`.
+
