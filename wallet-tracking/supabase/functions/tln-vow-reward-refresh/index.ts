@@ -1,4 +1,4 @@
-// WalletTracking 9.13 – TLN/VOW reward-refresh READ-ONLY preflight, chunk plan, and wallet-scoped ERC20 log inspection.
+// WalletTracking 9.14 – TLN/VOW reward-refresh READ-ONLY preflight, chunk plan, and wallet-scoped ERC20 log inspection.
 // Bounded eth_getLogs inspection only; no reward/cursor/cache writes and NO cron activation.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -45,6 +45,61 @@ const SCAN_CONTRACTS = Object.freeze({
   '0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5':'TLNGOLD'
 })
 const MAX_LOGS_PER_DIRECTION = 3000
+// Diagnostic probes are fixed server-side. They never accept addresses, arbitrary filters or endpoints.
+// Only status/category/counts are returned. No raw logs, provider message, API key or wallet address.
+const DIAGNOSTIC_PROBE_BLOCKS = 100
+const DIAGNOSTIC_TIMEOUT_MS = 6500
+async function rpcProbe(rpcUrl:string, method:'eth_chainId'|'eth_getLogs', params:unknown[]):Promise<{
+  ok:boolean,category:string,httpStatus:number|null,rpcCode:number|null,resultCount:number|null,chainIdMatchesBsc?:boolean
+}> {
+  const controller=new AbortController()
+  const timer=setTimeout(()=>controller.abort(),DIAGNOSTIC_TIMEOUT_MS)
+  try {
+    const response=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+      body:JSON.stringify({jsonrpc:'2.0',id:14,method,params})})
+    if(!response.ok)return {ok:false,category:'http_error',httpStatus:response.status,rpcCode:null,resultCount:null}
+    let body:any
+    try {body=await response.json()}catch{return {ok:false,category:'invalid_json',httpStatus:response.status,rpcCode:null,resultCount:null}}
+    if(body?.error)return {ok:false,category:'rpc_error',httpStatus:response.status,rpcCode:rpcCodeOf(body.error),resultCount:null}
+    if(method==='eth_chainId'){
+      const valid=typeof body?.result==='string' && /^0x[0-9a-f]+$/i.test(body.result)
+      if(!valid)return {ok:false,category:'invalid_response',httpStatus:response.status,rpcCode:null,resultCount:null}
+      return {ok:true,category:'ok',httpStatus:response.status,rpcCode:null,resultCount:null,chainIdMatchesBsc:body.result.toLowerCase()==='0x38'}
+    }
+    if(!Array.isArray(body?.result))return {ok:false,category:'invalid_response',httpStatus:response.status,rpcCode:null,resultCount:null}
+    return {ok:true,category:'ok',httpStatus:response.status,rpcCode:null,resultCount:body.result.length}
+  }catch(error){
+    return {ok:false,category:error instanceof Error && error.name==='AbortError'?'timeout':'network_error',httpStatus:null,rpcCode:null,resultCount:null}
+  }finally{clearTimeout(timer)}
+}
+async function rpcFilterDiagnosis(wallet:string,fromBlock:number,toBlock:number,head:number) {
+  if(!ALCHEMY_API_KEY)throw new Error('BSC RPC not configured')
+  const address=evmAddress(wallet)
+  if(!address)throw new Error('Invalid verified snapshot wallet address')
+  if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||toBlock<fromBlock||
+    toBlock-fromBlock+1>DIAGNOSTIC_PROBE_BLOCKS||!Number.isSafeInteger(head)||head<toBlock)
+    throw new Error('Unsafe diagnostic scan window')
+  const rpcUrl=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const walletTopic='0x'+address.slice(2).padStart(64,'0')
+  const contracts=Object.keys(SCAN_CONTRACTS)
+  const single=contracts[0]
+  const atBlock={fromBlock:hexBlock(fromBlock),toBlock:hexBlock(fromBlock)}
+  const inRange={fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock)}
+  const atHead={fromBlock:hexBlock(head),toBlock:hexBlock(head)}
+  const cases:{name:string,method:'eth_chainId'|'eth_getLogs',params:unknown[]}[]=[
+    {name:'network_chain_id',method:'eth_chainId',params:[]},
+    {name:'historical_one_block_single_contract',method:'eth_getLogs',params:[{...atBlock,address:single,topics:[TRANSFER_TOPIC]}]},
+    {name:'historical_range_single_contract',method:'eth_getLogs',params:[{...inRange,address:single,topics:[TRANSFER_TOPIC]}]},
+    {name:'historical_range_contract_array',method:'eth_getLogs',params:[{...inRange,address:contracts,topics:[TRANSFER_TOPIC]}]},
+    {name:'historical_range_wallet_topic',method:'eth_getLogs',params:[{...inRange,address:contracts,topics:[TRANSFER_TOPIC,null,walletTopic]}]},
+    {name:'recent_one_block_single_contract',method:'eth_getLogs',params:[{...atHead,address:single,topics:[TRANSFER_TOPIC]}]}
+  ]
+  const probes=[]
+  for(const c of cases){
+    probes.push({name:c.name,...await rpcProbe(rpcUrl,c.method,c.params)})
+  }
+  return {probes,probeBlocks:toBlock-fromBlock+1,scope:'Read-only RPC filter compatibility tests; no reward classification or cursor progression'}
+}
 const evmAddress = (v:unknown) => typeof v==='string' && /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : null
 const hexBlock = (n:number)=>'0x'+n.toString(16)
 async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number) {
@@ -132,8 +187,8 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' ? body.mode : 'read-only-preflight'
+    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -156,7 +211,7 @@ Deno.serve(async (req) => {
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
     }
-    if(mode==='delta-preview' || mode==='delta-scan-preview') {
+    if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic') {
       // The snapshot is not authoritative proof of wallet eligibility. This preview never creates work.
       // Choose one deterministic stale candidate, without disclosing owner or wallet identity.
       const candidate=[...byWallet.values()].filter((r)=>r.payload?.kind==='verified_discovery_results' &&
@@ -185,6 +240,21 @@ Deno.serve(async (req) => {
       const chunkBlocks=chunkToBlock-fromBlock+1
       const remainingBlocks=head-chunkToBlock
       const remainingChunks=Math.ceil(remainingBlocks/maxBlocks)
+      if(mode==='rpc-diagnostic') {
+        const wallet=evmAddress(payload?.wallet)
+        if(!wallet)return reply({ok:false,mode,error:'Verified snapshot has no valid wallet address; no RPC diagnosis'},409)
+        const diagnosticTo=Math.min(head,fromBlock+Math.min(maxBlocks,DIAGNOSTIC_PROBE_BLOCKS)-1)
+        let diagnosis
+        try {diagnosis=await rpcFilterDiagnosis(wallet,fromBlock,diagnosticTo,head)}
+        catch(e){
+          console.error('TLN RPC diagnosis precondition failed',safeRpcDiagnostic(e))
+          return reply({ok:false,mode,error:'RPC diagnosis could not be prepared; no progress saved'},503)
+        }
+        return reply({ok:true,mode,day:dayCH(),chunk:{fromBlock,toBlock:diagnosticTo,
+          blocks:diagnosticTo-fromBlock+1,maxBlocks:Math.min(maxBlocks,DIAGNOSTIC_PROBE_BLOCKS),persisted:false},
+          diagnosis,selectedWallets:1,
+          notice:'Read-only, fixed BSC RPC compatibility probes, six bounded requests including network identity. No raw RPC bodies or keys returned; no rewards/claims/logs imported, no cursor/cache writes and no cron.'})
+      }
       if(mode==='delta-scan-preview') {
         // The verified snapshot wallet is the only permitted target; do not accept a wallet supplied in the request.
         const wallet=evmAddress(payload?.wallet)
