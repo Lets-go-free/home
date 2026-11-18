@@ -195,9 +195,16 @@ Deno.serve(async(req)=>{
     // Registered users who previously ran the analysis; no browser session required.
     const users=[...new Set((rows||[]).map((r:any)=>r.user_id))];
     const out:any[]=[];
-    for(const user of users){for(const chain of ['bsc','eth']){
-      try{out.push({user,...await syncChain(user,chain)});}catch(e){out.push({user,chain,error:String(e)});}
-    }}
+    for(const user of users){
+      for(const chain of ['bsc','eth']){
+        try{out.push({user,...await syncChain(user,chain)});}catch(e){out.push({user,chain,error:String(e)});}
+      }
+      // 9.03: Both chain cursors have been processed. Refresh compact, rolling
+      // 24h/7d/30d summaries and Top-20s from verified stored swaps only.
+      // Failures never roll back or advance blockchain scan checkpoints.
+      const {error:rollupError}=await sb.rpc('wallettracking_refresh_tln_vow_trade_rollup_903',{p_user_id:user});
+      if(rollupError)out.push({user,stage:'trade_rollup',error:rollupError.message});
+    }
     const {error:cleanError}=await sb.from('tln_vow_trade_cache').delete().lt('block_time',new Date(Date.now()-30*86400000).toISOString());
     if(cleanError)throw cleanError;
     return Response.json({ok:out.every(x=>!x.error),users:users.length,results:out},{status:out.some(x=>x.error)?500:200});

@@ -2423,6 +2423,35 @@ async function tradingReadCache(userId){
   }
   return events;
 }
+// Compact server-built result. Raw events are only a compatibility fallback
+// until migration and scheduled rollup have been installed and completed.
+async function tradingReadRollup(userId){
+  const {data,error}=await sb.from('tln_vow_trade_rollup')
+    .select('schema_version,computed_at,summary,traders,transaction_count')
+    .eq('user_id',userId).maybeSingle();
+  if(error){console.warn('Handels-Rollup nicht verfügbar; Rohdaten-Fallback',error.message);return null;}
+  const age=Date.now()-Date.parse(data?.computed_at||'');
+  if(data?.schema_version!==1||!Array.isArray(data.summary)||!Array.isArray(data.traders)
+    ||!Number.isFinite(age)||age<0||age>20*60*1000)return null;
+  return data;
+}
+function tradingSummaryFromRollup(rows){
+  const summary={};
+  for(const w of TRADE_WINDOWS){
+    summary[w.key]={};
+    for(const chain of ['bsc','eth','total']){
+      summary[w.key][chain]={};
+      for(const token of ['vow','vdollar'])summary[w.key][chain][token]={buy:0,sell:0,buyTrades:0,sellTrades:0};
+    }
+  }
+  for(const r of rows){
+    const target=summary[r.period]?.[r.chain]?.[r.token];
+    if(!target||!['buy','sell'].includes(r.side))continue;
+    target[r.side]=Number(r.amount)||0;
+    target[r.side+'Trades']=Number(r.trades)||0;
+  }
+  return summary;
+}
 async function tradingReadScanState(userId){
   const {data,error}=await sb.from(TRADING_STATE_TABLE)
     .select("chain_key,group_key,last_scanned_block,latest_observed_block,latest_observed_at,updated_at")
@@ -2808,6 +2837,16 @@ function tradingTraderRows(){
   const period=document.getElementById("tlnTradingPeriod")?.value||"30d";
   const chain=document.getElementById("tlnTradingChain")?.value||"total";
   const token=document.getElementById("tlnTradingToken")?.value||"vow";
+  if(data.precomputedTraders){
+    return data.precomputedTraders.filter(x=>x.period===period&&x.chain===chain&&x.token===token)
+      .sort((a,b)=>Number(a.rank)-Number(b.rank)).map(x=>({
+        wallet:x.wallet,buy:Number(x.buy)||0,sell:Number(x.sell)||0,
+        total:(Number(x.buy)||0)+(Number(x.sell)||0),
+        buyTrades:Number(x.buyTrades)||0,sellTrades:Number(x.sellTrades)||0,
+        tradeCount:(Number(x.buyTrades)||0)+(Number(x.sellTrades)||0),
+        chains:new Set(x.chains||[]),tlnId:data.identity.get(x.wallet)||null
+      }));
+  }
   const cutoff=data.cutoffs;
   const map=new Map();
   for(const e of data.events){
@@ -3096,14 +3135,22 @@ async function loadTradingAnalysis({force=false}={}){
   tradingState.promise=(async()=>{
     const userId=await tradingAuthUser();
     tradingSetStatus('Lade Handelsdaten aus Supabase…','loading');
-    const [events,states]=await Promise.all([tradingReadCache(userId),tradingReadScanState(userId)]);
+    const [rollup,states]=await Promise.all([tradingReadRollup(userId),tradingReadScanState(userId)]);
+    const events=rollup?[]:await tradingReadCache(userId);
     const nowTs=Math.floor(Date.now()/1000),cutoffs={};
     for(const chain of ['bsc','eth']){
       cutoffs[chain]={};
       for(const w of TRADE_WINDOWS)cutoffs[chain][w.key]=nowTs-w.seconds;
     }
-    const identity=await tradingLoadIdentityMap(events.map(e=>e.wallet));
-    tradingUpdateFromEvents(events,cutoffs,identity,{bsc:0,eth:0},new Date());
+    const identity=await tradingLoadIdentityMap(rollup
+      ?rollup.traders.map(e=>e.wallet):events.map(e=>e.wallet));
+    if(rollup){
+      tradingState.data={events:[],cutoffs,identity,poolCounts:{bsc:0,eth:0},
+        summary:tradingSummaryFromRollup(rollup.summary),precomputedTraders:rollup.traders,
+        capturedAt:new Date(rollup.computed_at)};
+      tradingState.loadedAt=Date.now();
+      renderTradingSummary();renderTradingTraders();
+    }else tradingUpdateFromEvents(events,cutoffs,identity,{bsc:0,eth:0},new Date());
     const coverage={};
     const details=['bsc','eth'].map(chain=>{
       const state=states.get(`${chain}|alchemy:transfers-v1`);
@@ -3119,9 +3166,9 @@ async function loadTradingAnalysis({force=false}={}){
     });
     tradingState.data.chainCoverage=coverage;
     renderTradingSummary();
-    const count=new Set(events.map(e=>`${e.chain}:${e.txHash}`)).size;
+    const count=rollup?Number(rollup.transaction_count)||0:new Set(events.map(e=>`${e.chain}:${e.txHash}`)).size;
     const incomplete=Object.values(coverage).some(x=>!x);
-    tradingSetStatus(`Supabase · ${count} gecachte Swap-Transaktionen (max. 30 Tage) · ${details.join(' · ')} · Cron alle 5 Minuten${incomplete?' · Handelszahlen sind vorläufig, fehlende Trades sind KEINE bestätigte Null':''}`,incomplete?'error':'success');
+    tradingSetStatus(`Supabase · ${count} gecachte Swap-Transaktionen (max. 30 Tage) · ${rollup?'serverseitige Auswertung':'Rohdaten-Fallback'} · ${details.join(' · ')} · Cron alle 5 Minuten${incomplete?' · Handelszahlen sind vorläufig, fehlende Trades sind KEINE bestätigte Null':''}`,incomplete?'error':'success');
     return tradingState.data;
   })().catch(e=>{tradingSetStatus(`Handels-Cache: ${String(e?.message||e)}`,'error');throw e;}).finally(()=>{tradingState.promise=null;});
   return tradingState.promise;

@@ -667,3 +667,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Jede Wallet erhält einen einzigen horizontalen Scrollcontainer für Header und sämtliche Chains. Einheitliche Tabellenbreite, ohne horizontales Innenpadding der Chain-Tabellen. Summary-Tabellen behalten eigenständiges Scrollen.
 - Keine Daten-/SQL-/Edge-Änderungen. Syntaxprüfung abgeschlossen, visuelle Browserabnahme ausstehend. `docs/releases/9.02-wallet-unified-scroll-grid.md`.
 
+### Phase 9.03 – TLN/VOW Handel: serverseitig vorverdichteter Cache (18.11.2026)
+
+- Einführung einer user-geschützten Tabelle `tln_vow_trade_rollup` mit 24-h-/7-d-/30-d-Volumen und Top-20-Händlern je Chain/Token, bereitgestellt durch service-only Funktion `wallettracking_refresh_tln_vow_trade_rollup_903`.
+- Der bestehende 5-Minuten-Indexer aktualisiert die Zusammenfassung nach seinen Chain-Läufen; die verifizierten Einzel-Swaps bleiben unverändert. Frontend nutzt frischen Rollup und fällt bei fehlendem/veraltetem Rollup auf den bisherigen Rohdaten-Ladeweg zurück.
+- Installation **noch offen**: zuerst SQL-Migration, dann Edge-Funktion `tln-vow-trade-sync` deployen, anschliessend Frontend 9.03 installieren. Keine Aktivierung neuer Cron-Jobs. Unabhängiger Produktivvergleich (Volumen, Händler, Zeitfenster) und Zeitmessung noch offen. `docs/releases/9.03-tln-vow-trade-rollups.md`.
+
