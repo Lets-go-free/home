@@ -1,4 +1,4 @@
-// WalletTracking 9.22 – shared top-up mint proof selection with read-only Edge preview.
+// WalletTracking 9.23 – bounded multi-wallet delta readiness inventory, read-only.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -388,8 +388,9 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' || body?.mode==='legacy-unmatched-detail' || body?.mode==='legacy-stake-lifecycle' || body?.mode==='verified-topup-mint-preview' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
+    if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -411,6 +412,51 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='multi-wallet-readiness'){
+      // Inventory only: encrypted-wallet eligibility cannot be established from the
+      // Discovery cache. No owner/wallet IDs or addresses leave this endpoint.
+      const summary={snapshotWallets:byWallet.size,readyForPlanning:0,legacyWithoutCoverage:0,
+        incompleteWorkflow:0,invalidSource:0,stale24h:0,stale48h:0}
+      const eligible:any[]=[]
+      for(const row of byWallet.values()){
+        const p=row.payload
+        const checkedAt=p?.lastCheckedAt||p?.savedAt||row.updated_at||null
+        const checkedMs=Date.parse(checkedAt||'')
+        const block=num(p?.lastCheckedBlock??p?.sourceLastBlock??row.last_scanned_block)
+        const valid=p?.kind==='verified_discovery_results' && evmAddress(p?.wallet) &&
+          block!==null && block>0 && Number.isFinite(checkedMs)
+        if(!valid){summary.invalidSource++;continue}
+        const age=Date.now()-checkedMs
+        if(age>86400000)summary.stale24h++
+        if(age>172800000)summary.stale48h++
+        if(num(p?.completedStep)===null || Number(p.completedStep)<5 ||
+          p?.process?.done?.rewards!==true || p?.process?.done?.referral!==true){
+          summary.incompleteWorkflow++;continue
+        }
+        const evidence=verificationCore.auditSnapshot(p)
+        if(!evidence.verified){summary.legacyWithoutCoverage++;continue}
+        summary.readyForPlanning++
+        eligible.push({checkedMs,lastBlock:block})
+      }
+      eligible.sort((a,b)=>a.checkedMs-b.checkedMs)
+      let head:number|null=null
+      if(eligible.length){
+        try{head=await bscHead()}catch{
+          return reply({ok:false,mode,error:'BSC head unavailable; no plan or writes',summary},503)
+        }
+      }
+      const selected=eligible.slice(0,25)
+      const plan=selected.map((p,i)=>{
+        const fromBlock=Math.max(0,p.lastBlock-DELTA_OVERLAP_BLOCKS)
+        if(head===null || p.lastBlock>head)return {ordinal:i+1,status:'cursor_ahead_of_head',persisted:false}
+        const toBlock=Math.min(head,fromBlock+maxBlocks-1)
+        return {ordinal:i+1,status:'hypothetical_only',fromBlock,toBlock,
+          remainingChunks:Math.ceil((head-toBlock)/maxBlocks),persisted:false,executed:false}
+      })
+      return reply({ok:true,mode,day:dayCH(),summary,chain:'bsc',head,
+        maxBlocks,plannedWallets:plan.length,truncated:eligible.length>plan.length,plan,
+        notice:'Global cache-only readiness inventory, at most 25 anonymous first chunks. It excludes legacy snapshots without independent coverage proof. Does NOT enumerate all eligible encrypted wallets, execute RPC log scans, classify rewards, persist cursors, change caches, reserve leases or enable cron.'})
     }
     if(mode==='snapshot-verification-audit'){
       const summary={snapshots:0,workflowDone:0,rewardCoverageVerified:0,referralEngineVerified:0,

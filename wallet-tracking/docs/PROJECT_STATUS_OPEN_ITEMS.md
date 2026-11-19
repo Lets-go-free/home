@@ -773,4 +773,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Produktiver SQL-Audit: `0xacf7cfc5…8509131` ist im Top-up der bestehenden offenen Position `0x2cedc90c…86687145` enthalten (Root 3, `storageProof.proven=true`), aber in `lot.rewardClaims` fehlend. Kein neuer Lot nötig.
 - Bestehende Step-4-Zuordnung erweitert: positive, bereits receipt-belegte Zero-Mints in eindeutig einer Position zugeordneten Storage-verifizierten Top-up-Tx werden als `verified_topup_tx_reward` ergänzt; Bonus-/Mehrfachzuordnungsschutz bleibt aktiv.
 - Neuer gemeinsamer reiner Selektor in `js/tln-reward-verification-core.js`; Edge nur als read-only `verified-topup-mint-preview`, kein eigener zweiter Berechnungsweg, kein automatischer Cache-Commit und kein Cron.
-- Lokale Positiv-/Negativtests und Edge-Test bestanden, produktive Prüfung ausstehend. Details: `docs/releases/9.22-tln-vow-verified-topup-rewards.md`.
+- Lokale Positiv-/Negativtests und Edge-Test bestanden; produktive Bestätigung am 19.11.2026 erfolgt (siehe 9.23). Details: `docs/releases/9.22-tln-vow-verified-topup-rewards.md`.
+
+### Phase 9.23 – TLN/VOW Mehr-Wallet-Delta-Bereitschaft ohne Writes (20261119-204746)
+
+- 9.22 produktiv bestätigt: die zusätzliche 5'500-TLN+-Mint der verifizierten Aufstockung wurde nach manuellem Step 4 als `verified_topup_tx_reward` gespeichert; Step 5 abgeschlossen. Testkonto war `chris.ua@icloud.com`, anschliessend Adminrechte entfernt.
+- Neuer geschützter Edge-Modus `multi-wallet-readiness` prüft die jüngsten Discovery-Snapshots über alle vorhandenen Cache-Wallets auf gültigen Ursprung, vollständigen Workflow und **unabhängige** Reward-/Referral-/Block-Abdeckungsnachweise. Legacy-Flags allein reichen nicht.
+- Bei tatsächlich verifizierten Quellen liefert er bis zu 25 anonymisierte, auf `maxBlocks` begrenzte hypothetische erste Delta-Blöcke. Keine Wallet-Adressen, User-IDs, DB-Writes, Claimerzeugung oder Cron-Aktivierung. Die Menge der verschlüsselten, tatsächlich berechtigten Wallets kann damit noch nicht nachgewiesen werden.
+- Nächste Freigabeschranke: produktive Read-only-Antwort prüfen und danach einen sauber authorisierten Wallet-Katalog sowie einen wiederaufnehmbaren, vollständig verifizierenden Delta-Worker entwerfen. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.23-tln-vow-multi-wallet-readiness.md`.
