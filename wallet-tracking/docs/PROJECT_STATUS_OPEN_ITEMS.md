@@ -755,3 +755,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - 9.18 wurde produktiv deployt; `snapshot-verification-audit` meldete 7/7 Legacy-Snapshots ohne neue Proof-Felder. Das ist kein Nachweis fehlender Rewards.
 - Neuer read-only Modus `legacy-evidence-audit`: aggregiert bestehende belegte Reward-Zeilen, strukturierte Claim-Zuordnungen, Referral-Referenzengine-Ergebnisse und gesonderte `erc20-history-v1`-Scanstände.
 - Bestehende Belege werden **nicht** zur vollen neuen Verifikation hochgestuft; kein Chain-RPC, kein Cron und keine Datenmutation. Live-Test nach Deploy offen. Details: `docs/releases/9.19-tln-vow-legacy-evidence-audit.md`.
+
+### Phase 9.20 – Gezielte forensische Prüfung eines historischen Reward-Eintrags (20261119-085819)
+
+- Produktiver 9.19-Audit: 7/7 historische ERC-20-Scan-Caches vorhanden, 3 belegte Reward-Zeilen, 2 strukturell zugeordnet, 1 offener Key. 7 Referral-Referenzresultate, 0 gespeicherte Fehler, 0 starke Referral-Zeilen.
+- Neuer geschützt/read-only Edge-Modus `legacy-unmatched-detail` liefert höchstens zehn strukturell nicht zugeordnete Reward-Zeilen mit öffentlichem Tx-Hash, Token, Betrag, Selector und Beweis-Merkmalen, ohne Wallet-/User-Identität oder Rohpayload.
+- Keine automatische fachliche Neu-Klassifikation, DB-Mutation oder Cron. Produktiver Detailtest offen. Dokumentation: `docs/releases/9.20-tln-vow-unmatched-reward-detail.md`.

@@ -1,4 +1,4 @@
-// WalletTracking 9.19 – standalone Edge and read-only reconstruction of legacy snapshot evidence.
+// WalletTracking 9.20 – standalone Edge and read-only detail for unmatched legacy evidence.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -46,25 +46,25 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
   }
   // Forensic-only reconstruction from historical payloads. Structural matches are
   // NOT the manual claim/bonus/referral classification and cannot certify a reward.
+  function historicalRewardKey(row){
+    const hash=typeof row?.hash==='string'?row.hash.toLowerCase():'';
+    const token=typeof row?.token==='string'?row.token.toLowerCase():'';
+    const amount=Number(row?.amount);
+    return /^0x[0-9a-f]{64}$/.test(hash)&&/^0x[0-9a-f]{40}$/.test(token)&&Number.isFinite(amount)&&amount>0
+      ?`${hash}|${token}|${amount.toPrecision(15)}`:null;
+  }
   function legacySnapshotEvidence(snapshot){
     const lots=Array.isArray(snapshot?.process?.lots)?snapshot.process.lots:[];
     const proven=Array.isArray(snapshot?.globals?.provenRewardRows)?snapshot.globals.provenRewardRows:[];
     const ref=snapshot?.globals?.claimReferenceResult;
-    const keyOf=row=>{
-      const hash=typeof row?.hash==='string'?row.hash.toLowerCase():'';
-      const token=typeof row?.token==='string'?row.token.toLowerCase():'';
-      const amount=Number(row?.amount);
-      return /^0x[0-9a-f]{64}$/.test(hash)&&/^0x[0-9a-f]{40}$/.test(token)&&Number.isFinite(amount)&&amount>0
-        ?`${hash}|${token}|${amount.toPrecision(15)}`:null;
-    };
     const claimed=new Set();let claimsWithIdentity=0;
     for(const lot of lots)for(const claim of (Array.isArray(lot?.rewardClaims)?lot.rewardClaims:[])){
-      const key=keyOf(claim);if(key){claimed.add(key);claimsWithIdentity++}
+      const key=historicalRewardKey(claim);if(key){claimed.add(key);claimsWithIdentity++}
     }
     let provenWithIdentity=0,matchedClaimKeys=0;
     const uniqueProven=new Set();
     for(const row of proven){
-      const key=keyOf(row);if(!key||uniqueProven.has(key))continue;
+      const key=historicalRewardKey(row);if(!key||uniqueProven.has(key))continue;
       uniqueProven.add(key);provenWithIdentity++;
       if(claimed.has(key))matchedClaimKeys++;
     }
@@ -76,7 +76,31 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       referencePresent,referenceError,strongCount,
       scope:'Historical structural evidence only; no independent correctness or completeness verdict'};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence});
+  function legacyUnmatchedProofRows(snapshot){
+    const wallet=String(snapshot?.wallet||'').toLowerCase();
+    const lots=Array.isArray(snapshot?.process?.lots)?snapshot.process.lots:[];
+    const proven=Array.isArray(snapshot?.globals?.provenRewardRows)?snapshot.globals.provenRewardRows:[];
+    const claimed=new Set(lots.flatMap(lot=>Array.isArray(lot?.rewardClaims)?lot.rewardClaims:[])
+      .map(historicalRewardKey).filter(Boolean));
+    const seen=new Set(),out=[];
+    for(const row of proven){
+      const key=historicalRewardKey(row);
+      if(!key||claimed.has(key)||seen.has(key))continue;
+      seen.add(key);
+      const hash=String(row.hash).toLowerCase(),selector=String(row.selector||'').toLowerCase();
+      out.push({hash,token:String(row.token).toLowerCase(),symbol:String(row.symbol||'').slice(0,32),
+        amount:Number(row.amount),selector:/^0x[0-9a-f]{8}$/.test(selector)?selector:null,
+        fromIsZero:String(row.from||'').toLowerCase()==='0x'+'0'.repeat(40),
+        recipientIsWallet:!!wallet&&String(row.to||'').toLowerCase()===wallet,
+        rewardProofPresent:!!row.rewardProof,rewardFlowEvidencePresent:!!row.rewardFlowEvidence,
+        calledContractPresent:!!row.calledContract,
+        referralStateDeltaPresent:Array.isArray(row.stateDeltaEvidence)&&row.stateDeltaEvidence.length>0,
+        lotStakeTxMatch:lots.some(l=>String(l?.stakeTx||'').toLowerCase()===hash),
+        lotUnstakeTxMatch:lots.some(l=>String(l?.unstakeTx||'').toLowerCase()===hash)});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -301,8 +325,8 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' || body?.mode==='legacy-unmatched-detail' ? body.mode : 'read-only-preflight'
+    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -391,6 +415,20 @@ Deno.serve(async (req) => {
       }
       return reply({ok:true,mode,day:dayCH(),summary,
         notice:'Historical structural evidence only. Matching rows and ERC20 cache ranges do NOT prove reward/referral completeness; no existing rows or cursor changed. Read-only, no RPC, no cron.'})
+    }
+    if(mode==='legacy-unmatched-detail'){
+      const limit=10,items:any[]=[]
+      let total=0
+      for(const row of byWallet.values()){
+        if(row.payload?.kind!=='verified_discovery_results')continue
+        const unmatched=verificationCore.legacyUnmatchedProofRows(row.payload)
+        total+=unmatched.length
+        for(const item of unmatched){
+          if(items.length<limit)items.push(item)
+        }
+      }
+      return reply({ok:true,mode,day:dayCH(),totalUnmatched:total,returned:items.length,truncated:total>limit,items,
+        notice:'Read-only forensic details of structurally unmatched proven rows. Tx hashes are public identifiers; no wallet identity, RPC call, classification change, write or cron. Do not infer a missing staking claim solely from this match.'})
     }
     if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic' || mode==='rpc-range-diagnostic') {
       // The snapshot is not authoritative proof of wallet eligibility. This preview never creates work.
