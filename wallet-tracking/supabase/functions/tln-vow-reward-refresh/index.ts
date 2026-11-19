@@ -1,4 +1,4 @@
-// WalletTracking 9.18 – standalone deployable Edge Function with generated shared verification core.
+// WalletTracking 9.19 – standalone Edge and read-only reconstruction of legacy snapshot evidence.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -44,7 +44,39 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       paginationComplete:b.coverageVerified});
     return {rewards,referral,blocks,verified:rewards.verified&&referral.verified&&blocks.coverageVerified};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot});
+  // Forensic-only reconstruction from historical payloads. Structural matches are
+  // NOT the manual claim/bonus/referral classification and cannot certify a reward.
+  function legacySnapshotEvidence(snapshot){
+    const lots=Array.isArray(snapshot?.process?.lots)?snapshot.process.lots:[];
+    const proven=Array.isArray(snapshot?.globals?.provenRewardRows)?snapshot.globals.provenRewardRows:[];
+    const ref=snapshot?.globals?.claimReferenceResult;
+    const keyOf=row=>{
+      const hash=typeof row?.hash==='string'?row.hash.toLowerCase():'';
+      const token=typeof row?.token==='string'?row.token.toLowerCase():'';
+      const amount=Number(row?.amount);
+      return /^0x[0-9a-f]{64}$/.test(hash)&&/^0x[0-9a-f]{40}$/.test(token)&&Number.isFinite(amount)&&amount>0
+        ?`${hash}|${token}|${amount.toPrecision(15)}`:null;
+    };
+    const claimed=new Set();let claimsWithIdentity=0;
+    for(const lot of lots)for(const claim of (Array.isArray(lot?.rewardClaims)?lot.rewardClaims:[])){
+      const key=keyOf(claim);if(key){claimed.add(key);claimsWithIdentity++}
+    }
+    let provenWithIdentity=0,matchedClaimKeys=0;
+    const uniqueProven=new Set();
+    for(const row of proven){
+      const key=keyOf(row);if(!key||uniqueProven.has(key))continue;
+      uniqueProven.add(key);provenWithIdentity++;
+      if(claimed.has(key))matchedClaimKeys++;
+    }
+    const referencePresent=!!ref&&typeof ref==='object';
+    const referenceError=referencePresent&&!!ref.error;
+    const strongCount=Array.isArray(ref?.strong)?ref.strong.length:null;
+    return {lots:lots.length,provenRows:proven.length,provenWithIdentity,
+      claimsWithIdentity,matchedClaimKeys,unmatchedProvenKeys:provenWithIdentity-matchedClaimKeys,
+      referencePresent,referenceError,strongCount,
+      scope:'Historical structural evidence only; no independent correctness or completeness verdict'};
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -269,8 +301,8 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' ? body.mode : 'read-only-preflight'
+    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -310,6 +342,55 @@ Deno.serve(async (req) => {
       }
       return reply({ok:true,mode,day:dayCH(),summary,
         notice:'Read-only historical cache audit using the same pure verification core as manual Discovery. Legacy workflow flags alone do not prove coverage. No RPC, writes or cron.'})
+    }
+    if(mode==='legacy-evidence-audit'){
+      // This independent ERC20-history cache can prove that a transfer index has
+      // a recorded scan range. It cannot retroactively certify reward semantics.
+      const rawRows:any[]=[]
+      let rawComplete=false
+      for(let p=0;p<maxPages;p++){
+        const {data,error}=await sb.from('tln_vow_staking_scan_cache')
+          .select('user_id,wallet_id,scanner_version,complete_from_block,last_scanned_block,payload')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1')
+          .range(p*pageSize,(p+1)*pageSize-1)
+        if(error)throw new Error(error.message)
+        rawRows.push(...(data||[]))
+        if((data||[]).length<pageSize){rawComplete=true;break}
+      }
+      if(!rawComplete)return reply({ok:false,mode,error:'Raw-cache pagination limit; audit incomplete'},409)
+      const rawByWallet=new Map<string,any>()
+      for(const r of rawRows){
+        if(!r.user_id||!r.wallet_id)continue
+        const key=String(r.user_id)+'|'+String(r.wallet_id)
+        const old=rawByWallet.get(key)
+        if(!old||Number(r.last_scanned_block||0)>Number(old.last_scanned_block||0))rawByWallet.set(key,r)
+      }
+      const summary={snapshots:0,withProvenRows:0,provenRows:0,provenWithIdentity:0,
+        assignedClaimsWithIdentity:0,matchingProvenClaimKeys:0,unmatchedProvenKeys:0,
+        withReferralReference:0,referralReferenceErrors:0,strongReferralRows:0,
+        withRecordedErc20Range:0,rawCacheMissingOrUnproven:0}
+      for(const [key,row] of byWallet){
+        if(row.payload?.kind!=='verified_discovery_results')continue
+        summary.snapshots++
+        const evidence=verificationCore.legacySnapshotEvidence(row.payload)
+        if(evidence.provenRows>0)summary.withProvenRows++
+        summary.provenRows+=evidence.provenRows
+        summary.provenWithIdentity+=evidence.provenWithIdentity
+        summary.assignedClaimsWithIdentity+=evidence.claimsWithIdentity
+        summary.matchingProvenClaimKeys+=evidence.matchedClaimKeys
+        summary.unmatchedProvenKeys+=evidence.unmatchedProvenKeys
+        if(evidence.referencePresent)summary.withReferralReference++
+        if(evidence.referenceError)summary.referralReferenceErrors++
+        summary.strongReferralRows+=evidence.strongCount||0
+        const raw=rawByWallet.get(key)
+        const from=Number(raw?.complete_from_block),to=Number(raw?.last_scanned_block)
+        if(raw?.scanner_version==='erc20-raw-v1'&&Array.isArray(raw?.payload)&&
+          Number.isSafeInteger(from)&&from>=0&&Number.isSafeInteger(to)&&to>=from&&to>0)
+          summary.withRecordedErc20Range++
+        else summary.rawCacheMissingOrUnproven++
+      }
+      return reply({ok:true,mode,day:dayCH(),summary,
+        notice:'Historical structural evidence only. Matching rows and ERC20 cache ranges do NOT prove reward/referral completeness; no existing rows or cursor changed. Read-only, no RPC, no cron.'})
     }
     if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic' || mode==='rpc-range-diagnostic') {
       // The snapshot is not authoritative proof of wallet eligibility. This preview never creates work.

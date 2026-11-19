@@ -749,3 +749,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - 9.17 konnte wegen relativem Import ausserhalb des Edge-Bundles nicht aus dem Supabase-Dashboard deployt werden (`Module not found`). 9.18 entfernt diese Laufzeitabhängigkeit.
 - Kanonische Verifikationsregeln bleiben in `js/tln-reward-verification-core.js`; `tools/build-tln-reward-edge.mjs` bettet dieselbe Datei generiert in die eigenständig deploybare Edge Function ein. Test 9.18 prüft exakte Parität.
 - Nur Deploy-Korrektur; keine Jobs/DB-/Reward-Schreibpfade aktiviert. Live-Deploy und `snapshot-verification-audit` stehen aus. Details: `docs/releases/9.18-tln-vow-edge-standalone-deploy.md`.
+
+### Phase 9.19 – Historischer TLN/VOW-Reward-Belegaudit (20261119-080551)
+
+- 9.18 wurde produktiv deployt; `snapshot-verification-audit` meldete 7/7 Legacy-Snapshots ohne neue Proof-Felder. Das ist kein Nachweis fehlender Rewards.
+- Neuer read-only Modus `legacy-evidence-audit`: aggregiert bestehende belegte Reward-Zeilen, strukturierte Claim-Zuordnungen, Referral-Referenzengine-Ergebnisse und gesonderte `erc20-history-v1`-Scanstände.
+- Bestehende Belege werden **nicht** zur vollen neuen Verifikation hochgestuft; kein Chain-RPC, kein Cron und keine Datenmutation. Live-Test nach Deploy offen. Details: `docs/releases/9.19-tln-vow-legacy-evidence-audit.md`.
