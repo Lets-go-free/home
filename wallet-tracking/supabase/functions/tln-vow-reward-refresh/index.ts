@@ -1,4 +1,4 @@
-// WalletTracking 9.26 – non-authoritative delta bootstrap preview, no writes.
+// WalletTracking 9.27 – one legacy wallet first-chunk Alchemy scan preview, no writes.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -388,7 +388,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -516,6 +516,63 @@ Deno.serve(async (req) => {
       return reply({ok:true,mode,day:dayCH(),chain:'bsc',head,maxBlocks,summary,
         plannedWallets:plan.length,truncated:candidates.length>plan.length,plan,
         notice:'Read-only proposed forward scan anchors from historic ERC20 caches, not approved verified checkpoints. Prior block history remains unverified. Encrypted-wallet eligibility is not enumerated. No transfers scanned, reward or referral classification, cursor/lease/cache writes, cron or identity disclosure.'})
+    }
+    if(mode==='legacy-first-chunk-scan-preview'){
+      // Fixed one-wallet scope from persisted caches; callers cannot supply a
+      // wallet, block range, arbitrary token contract or RPC endpoint.
+      const rawRows:any[]=[]
+      let rawComplete=false
+      for(let p=0;p<maxPages;p++){
+        const {data,error}=await sb.from('tln_vow_staking_scan_cache')
+          .select('user_id,wallet_id,scanner_version,complete_from_block,last_scanned_block,payload')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1')
+          .range(p*pageSize,(p+1)*pageSize-1)
+        if(error)throw new Error(error.message)
+        rawRows.push(...(data||[]))
+        if((data||[]).length<pageSize){rawComplete=true;break}
+      }
+      if(!rawComplete)return reply({ok:false,mode,error:'Raw-cache pagination incomplete; no transfer scan'},409)
+      const rawByWallet=new Map<string,any>()
+      for(const raw of rawRows){
+        if(!raw.user_id||!raw.wallet_id)continue
+        const key=String(raw.user_id)+'|'+String(raw.wallet_id)
+        if(!rawByWallet.has(key)||Number(raw.last_scanned_block||0)>Number(rawByWallet.get(key).last_scanned_block||0))rawByWallet.set(key,raw)
+      }
+      const candidates:any[]=[]
+      for(const [key,row] of byWallet){
+        const p=row.payload
+        if(p?.kind!=='verified_discovery_results'||verificationCore.auditSnapshot(p).verified)continue
+        const wallet=evmAddress(p.wallet),raw=rawByWallet.get(key)
+        const from=num(raw?.complete_from_block),to=num(raw?.last_scanned_block)
+        if(!wallet||raw?.scanner_version!=='erc20-raw-v1'||!Array.isArray(raw?.payload)||
+          from===null||to===null||to<from||to===0)continue
+        candidates.push({wallet,recordedTo:to})
+      }
+      candidates.sort((a,b)=>a.recordedTo-b.recordedTo)
+      const selected=candidates[0]
+      if(!selected)return reply({ok:false,mode,error:'No valid legacy candidate; no scan performed'},409)
+      let head:number
+      try{head=await bscHead()}catch{
+        return reply({ok:false,mode,error:'BSC head unavailable; no scan performed'},503)
+      }
+      if(selected.recordedTo>head)return reply({ok:false,mode,error:'Legacy anchor ahead of BSC head; no scan'},409)
+      const fromBlock=Math.max(0,selected.recordedTo-DELTA_OVERLAP_BLOCKS)
+      const toBlock=Math.min(head,fromBlock+maxBlocks-1)
+      let inspection:any
+      try{inspection=await inspectWalletTransfers(selected.wallet,fromBlock,toBlock,maxBlocks)}
+      catch(e){
+        const diagnostic=safeRpcDiagnostic(e)
+        console.error('TLN legacy first-chunk scan preview failed',diagnostic)
+        return reply({ok:false,mode,error:'Scoped Alchemy transfer scan failed; no progress saved',
+          rpcDiagnostic:diagnostic,chunk:{fromBlock,toBlock,maxBlocks,persisted:false},scanCompleted:false},503)
+      }
+      return reply({ok:true,mode,day:dayCH(),selectedWallets:1,
+        source:{recordedToBlock:selected.recordedTo,historicalCompletenessVerified:false},
+        chunk:{fromBlock,toBlock,blocks:toBlock-fromBlock+1,maxBlocks,
+          hypotheticalNextFromBlock:inspection.complete&&toBlock<head?toBlock+1:null,
+          persisted:false,executed:true},inspection,scanCompleted:inspection.complete,
+        rewardClassificationCompleted:false,referralClassificationCompleted:false,
+        notice:'Read-only one-legacy-wallet Alchemy ERC20 AssetTransfers for FOUR fixed token contracts only. Pagination completeness refers ONLY to these scoped transfers, not all possible reward/staking contracts. No reward/claim classification, cursor/cache/lease writes, identity output or cron.'})
     }
     if(mode==='snapshot-verification-audit'){
       const summary={snapshots:0,workflowDone:0,rewardCoverageVerified:0,referralEngineVerified:0,
