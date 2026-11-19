@@ -795,3 +795,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Neue geschützte Edge-Diagnose `cached-range-integrity` analysiert nur diese sechs Rohcaches: aufgezeichnete From-/To-Blöcke, tatsächliche Transfer-Blöcke, ungültige Transferzeilen, Zeilen ausserhalb des notierten Intervalls, doppelte Identitäten und Snapshot-Cursor vor dem Rohcache.
 - Max. 250'000 untersuchte rohe Transferzeilen und 25 anonymisierte Detailblöcke; bei Überschreitung Abbruch ohne Vollständigkeitsbehauptung. **Keine rückwirkende RPC-Paginierungsbestätigung** aus einer gespeicherten Range möglich.
 - Lokale Negativtests bestanden; Live-Auswertung ausstehend. Nächster Schritt: Auffälligkeiten gezielt eingrenzen und gesonderten belegten Scan-/Reward-Fortschritt konzipieren. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.25-tln-vow-cached-range-integrity.md`.
+
+### Phase 9.26 – Hypothetischer Delta-Bootstrap ab Legacy-Rohcache (20261119-224110)
+
+- Produktiv 9.25: 6/6 Legacy-Rohcaches enthalten 947 intern valide Transfers; null ungültige Zeilen, Out-of-Range, Duplikate oder Cursor-Widersprüche. Scanstart jeweils `0`, aber keine originale Provider-Pagination beweisbar.
+- Neuer geschützter Read-only-Modus `delta-bootstrap-preview`: liefert je Legacy-Cache mit gültigem Wallet und Rohscan-Endblock einen **hypothetischen** ersten Overlap-Chunk bis zum aktuellen BSC-Head. Max. 25 anonyme Wallet-Vorschläge und `maxBlocks` höchstens 5'000.
+- Der Rohcache-Endblock ist ausdrücklich ein unbewiesener Startanker; Historie bleibt unverifiziert. `historicalCompletenessVerified=false`, `verifiedCursorCreated=false`, `persisted=false`, `executed=false`. Keine Reward-/Referral-Klassifikation oder User-/Wallet-Identitätsausgabe.
+- Lokale Tests bestanden; Live-Abnahme offen. Danach: echte serverseitige, autorisierte Wallet-Eligibility, nachweisbare Vollständigkeit/Pagination, idempotente Fortschritts-Commits und Retry-Semantik separat entwickeln. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.26-tln-vow-delta-bootstrap-preview.md`.
