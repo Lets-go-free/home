@@ -9318,6 +9318,37 @@ async function attachRewardClaimsToLots(lots,calls){
     }
   }
 
+  // Top-ups may mint rewards during the *same* transaction without opening a
+  // new staking position. The shared proof selector demands verified on-chain
+  // storage continuity, unique lot ownership, a proven zero-address mint and
+  // the same recipient wallet. Do not infer rewards from arbitrary ERC20 inflows.
+  const verifiedTopUpMints=globalThis.WT_TLN_REWARD_VERIFICATION_CORE.verifiedTopUpMintCandidates(
+    lots,CURRENT_PROVEN_REWARD_ROWS,wallet);
+  let attachedTopUpMints=0;
+  for(const match of verifiedTopUpMints){
+    const lot=lots[match.lotIndex],ev=match.row,topUp=match.topUp;
+    const token=norm(ev.token),amount=Number(ev.amount),hash=String(ev.hash||'').toLowerCase();
+    // A proven zero-address mint is distinct from returned LP/underlying
+    // principal, even when its token is also an underlying asset.
+    if(!lot||!token||!(amount>0)||selectorBonusIntent(ev.selector||''))continue;
+    const key=`${hash}|${token}|${amount}`;
+    if(lot.rewardClaims.some(x=>`${String(x?.hash||'').toLowerCase()}|${norm(x?.token)}|${Number(x?.amount||0)}`===key))continue;
+    lot.rewardClaims.push({
+      hash,time:ev.time||topUp.time||null,block:ev.block??topUp.block??null,
+      token,symbol:ev.symbol||'Token',decimals:ev.decimals??null,amount,
+      from:norm(ev.from),to:norm(ev.to),
+      assignmentScope:'position',assignmentReasonCode:'verified_topup_tx_reward',positionAmbiguous:false,
+      method:'Mint beim verifizierten Top-up',selector:ev.selector||null,
+      calledContract:ev.calledContract||null,
+      assignmentReason:'verifizierte Aufstockung mit identischem Wallet-Positions-State + belegter Mint an dieselbe Wallet im selben Receipt',
+      source:ev.source||'Wallet-weiter Reward-Beweis aus vollständigem Transaction Receipt',assignmentScore:1000,
+      rewardProof:ev.rewardProof,rewardFlowEvidence:ev.rewardFlowEvidence,
+      eventType:'stake_reward',finalUnstakeReward:false,finalUnstakeRewardEvidence:null
+    });
+    attachedTopUpMints++;
+  }
+  if(attachedTopUpMints)log(`Verifizierte Top-up-Rewards: ${attachedTopUpMints} positionsgenaue Zero-Mint-Zuordnung(en) auf Grundlage unveränderter Storage-Kontinuität.`,'ok');
+
   const unresolvedRewardIdentityKeys=new Set();
   const unresolvedRewardHashes=new Set();
   const unresolvedReferenceByHash=new Map();

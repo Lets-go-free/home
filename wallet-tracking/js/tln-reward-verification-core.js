@@ -128,5 +128,32 @@
       contractCallsAtTx:matches(calls),stakingCallsAtTx:matches(stakingCalls),
       nearestLots:nearest,scope:'Cached lifecycle comparison only; no chain verification or position rewrite'};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence});
+  // Shared strict selection of receipt-proven zero-address mints during a
+  // storage-verified same-wallet top-up. Classification is not granted to
+  // arbitrary ERC20 inflows or a top-up recorded under multiple positions.
+  function verifiedTopUpMintCandidates(lots,provenRows,wallet){
+    const address=String(wallet||'').toLowerCase();
+    if(!/^0x[0-9a-f]{40}$/.test(address))return [];
+    const zero='0x'+'0'.repeat(40),owners=new Map();
+    for(let i=0;i<(lots||[]).length;i++)for(const topUp of (Array.isArray(lots[i]?.topUps)?lots[i].topUps:[])){
+      const hash=String(topUp?.tx||'').toLowerCase();
+      if(!/^0x[0-9a-f]{64}$/.test(hash)||topUp?.evidence!=='onchain_same_wallet_position_state'||topUp?.storageProof?.proven!==true)continue;
+      if(!owners.has(hash))owners.set(hash,[]);
+      owners.get(hash).push({lotIndex:i,topUp});
+    }
+    const out=[],seen=new Set();
+    for(const row of (provenRows||[])){
+      const hash=String(row?.hash||'').toLowerCase(),token=String(row?.token||'').toLowerCase();
+      const amount=Number(row?.amount),matches=owners.get(hash)||[];
+      if(matches.length!==1||!/^0x[0-9a-f]{40}$/.test(token)||!(Number.isFinite(amount)&&amount>0)||
+        String(row?.from||'').toLowerCase()!==zero||String(row?.to||'').toLowerCase()!==address||
+        !row?.rewardProof||!row?.rewardFlowEvidence)continue;
+      const key=historicalRewardKey(row);
+      if(!key||seen.has(key))continue;
+      seen.add(key);
+      out.push({lotIndex:matches[0].lotIndex,topUp:matches[0].topUp,row});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates});
 })(globalThis);

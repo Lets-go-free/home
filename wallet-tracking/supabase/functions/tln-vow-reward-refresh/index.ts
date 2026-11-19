@@ -1,4 +1,4 @@
-// WalletTracking 9.21 – standalone Edge and read-only fixed historical stake-lifecycle audit.
+// WalletTracking 9.22 – shared top-up mint proof selection with read-only Edge preview.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -133,7 +133,34 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       contractCallsAtTx:matches(calls),stakingCallsAtTx:matches(stakingCalls),
       nearestLots:nearest,scope:'Cached lifecycle comparison only; no chain verification or position rewrite'};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence});
+  // Shared strict selection of receipt-proven zero-address mints during a
+  // storage-verified same-wallet top-up. Classification is not granted to
+  // arbitrary ERC20 inflows or a top-up recorded under multiple positions.
+  function verifiedTopUpMintCandidates(lots,provenRows,wallet){
+    const address=String(wallet||'').toLowerCase();
+    if(!/^0x[0-9a-f]{40}$/.test(address))return [];
+    const zero='0x'+'0'.repeat(40),owners=new Map();
+    for(let i=0;i<(lots||[]).length;i++)for(const topUp of (Array.isArray(lots[i]?.topUps)?lots[i].topUps:[])){
+      const hash=String(topUp?.tx||'').toLowerCase();
+      if(!/^0x[0-9a-f]{64}$/.test(hash)||topUp?.evidence!=='onchain_same_wallet_position_state'||topUp?.storageProof?.proven!==true)continue;
+      if(!owners.has(hash))owners.set(hash,[]);
+      owners.get(hash).push({lotIndex:i,topUp});
+    }
+    const out=[],seen=new Set();
+    for(const row of (provenRows||[])){
+      const hash=String(row?.hash||'').toLowerCase(),token=String(row?.token||'').toLowerCase();
+      const amount=Number(row?.amount),matches=owners.get(hash)||[];
+      if(matches.length!==1||!/^0x[0-9a-f]{40}$/.test(token)||!(Number.isFinite(amount)&&amount>0)||
+        String(row?.from||'').toLowerCase()!==zero||String(row?.to||'').toLowerCase()!==address||
+        !row?.rewardProof||!row?.rewardFlowEvidence)continue;
+      const key=historicalRewardKey(row);
+      if(!key||seen.has(key))continue;
+      seen.add(key);
+      out.push({lotIndex:matches[0].lotIndex,topUp:matches[0].topUp,row});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -361,8 +388,8 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' || body?.mode==='legacy-unmatched-detail' || body?.mode==='legacy-stake-lifecycle' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','legacy-stake-lifecycle','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' || body?.mode==='legacy-unmatched-detail' || body?.mode==='legacy-stake-lifecycle' || body?.mode==='verified-topup-mint-preview' ? body.mode : 'read-only-preflight'
+    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -477,6 +504,28 @@ Deno.serve(async (req) => {
       return reply({ok:true,mode,day:dayCH(),targetFoundInSnapshots:matches.length,
         inspections:matches.slice(0,3),truncated:matches.length>3,
         notice:'Read-only comparison against persisted lifecycle and contract-call rows for the fixed 14-Dec-2024 stake. No wallet identity, RPC, new classification, writes or cron.'})
+    }
+    if(mode==='verified-topup-mint-preview'){
+      let candidateCount=0
+      const examples:any[]=[]
+      for(const row of byWallet.values()){
+        const payload=row.payload
+        if(payload?.kind!=='verified_discovery_results')continue
+        const candidates=verificationCore.verifiedTopUpMintCandidates(
+          payload?.process?.lots||[],payload?.globals?.provenRewardRows||[],payload?.wallet)
+        candidateCount+=candidates.length
+        for(const candidate of candidates){
+          if(examples.length>=10)break
+          const lot=payload.process.lots[candidate.lotIndex]
+          examples.push({hash:String(candidate.row.hash).toLowerCase(),token:String(candidate.row.token).toLowerCase(),
+            symbol:String(candidate.row.symbol||'').slice(0,32),amount:Number(candidate.row.amount),
+            lotStakeTx:String(lot?.stakeTx||'').toLowerCase(),
+            storageProofVerified:true,existingClaimSameHash:(Array.isArray(lot?.rewardClaims)?lot.rewardClaims:[]).some((x:any)=>
+              String(x?.hash||'').toLowerCase()===String(candidate.row.hash).toLowerCase())})
+        }
+      }
+      return reply({ok:true,mode,day:dayCH(),candidateCount,examples,truncated:candidateCount>10,
+        notice:'Read-only shared-rule preview for uniquely verified top-up zero mints; no additional manual proof, cache writes, claim creation, cursor update, RPC or cron.'})
     }
     if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic' || mode==='rpc-range-diagnostic') {
       // The snapshot is not authoritative proof of wallet eligibility. This preview never creates work.
