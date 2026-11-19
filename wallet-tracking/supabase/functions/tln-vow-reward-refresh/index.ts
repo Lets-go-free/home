@@ -1,4 +1,4 @@
-// WalletTracking 9.27 – one legacy wallet first-chunk Alchemy scan preview, no writes.
+// WalletTracking 9.28 – read-only manual-versus-Edge reward source parity audit.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -388,7 +388,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -412,6 +412,44 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='reward-source-parity-audit'){
+      // Compare the manual Discovery registries with the existing Edge preview.
+      // Never suggest that token-scoped transfer counting is equivalent to
+      // contract calls, receipt evidence, staking lots or the referral engine.
+      const [stakingResult,tokensResult]=await Promise.all([
+        sb.from('defi_staking_contracts').select('contract_address,role,classify_transfers,pair_address')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
+        sb.from('defi_project_tokens').select('contract_address,role')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+      ])
+      if(stakingResult.error||tokensResult.error)
+        return reply({ok:false,mode,error:'Configured TLN/VOW contract registry unavailable; no parity verdict'},503)
+      const staking=stakingResult.data||[],tokens=tokensResult.data||[]
+      const recognized=new Set(Object.keys(SCAN_CONTRACTS))
+      const unique=(items:any[])=>new Set<string>(items.map((r:any)=>evmAddress(r.contract_address)).filter((v):v is string=>!!v))
+      const tokenAddresses=unique(tokens),stakingAddresses=unique(staking)
+      const classify=staking.filter((r:any)=>r.classify_transfers===true)
+      const entry=staking.filter((r:any)=>r.classify_transfers!==true)
+      const knownTokens=[...tokenAddresses].filter(x=>recognized.has(x)).length
+      const knownStaking=[...stakingAddresses].filter(x=>recognized.has(x)).length
+      const counts={fixedEdgeTokenContracts:recognized.size,
+        configuredProjectTokenContracts:tokenAddresses.size,
+        configuredProjectTokensOutsideFixedEdgeSet:tokenAddresses.size-knownTokens,
+        configuredStakingOrEntryContracts:stakingAddresses.size,
+        stakingOrEntryContractsOutsideFixedEdgeSet:stakingAddresses.size-knownStaking,
+        classifyTransferRegistryRows:classify.length,entryOrAuxiliaryRegistryRows:entry.length}
+      const manualSources=[
+        {source:'wallet_erc20_transfers',manual:true,edgePreview:true,edgeScope:'all wallet ERC20 transfers fetched, only four fixed contracts counted'},
+        {source:'enabled_project_token_registry',manual:true,edgePreview:false,edgeScope:'not loaded'},
+        {source:'staking_entry_contract_registry',manual:true,edgePreview:false,edgeScope:'not loaded'},
+        {source:'contract_calls_and_receipts',manual:true,edgePreview:false,edgeScope:'not classified'},
+        {source:'stake_topup_lifecycle_storage_proofs',manual:true,edgePreview:false,edgeScope:'not classified'},
+        {source:'reward_claim_and_bonus_classification',manual:true,edgePreview:false,edgeScope:'not classified'},
+        {source:'referral_reference_engine',manual:true,edgePreview:false,edgeScope:'not executed'}]
+      return reply({ok:true,mode,day:dayCH(),counts,manualSources,
+        parityVerified:false,rewardCompletenessVerified:false,referralCompletenessVerified:false,
+        notice:'Read-only registry/feature inventory. The Edge preview fetches wallet ERC20 transfers but counts only four fixed contracts. No parity with manual staking, contract-call, receipt, top-up, reward or referral classification. No identities, chain RPC, cache/cursor writes or cron.'})
     }
     if(mode==='multi-wallet-readiness'){
       // Inventory only: encrypted-wallet eligibility cannot be established from the
