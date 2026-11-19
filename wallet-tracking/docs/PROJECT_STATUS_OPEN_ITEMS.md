@@ -781,3 +781,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Neuer geschützter Edge-Modus `multi-wallet-readiness` prüft die jüngsten Discovery-Snapshots über alle vorhandenen Cache-Wallets auf gültigen Ursprung, vollständigen Workflow und **unabhängige** Reward-/Referral-/Block-Abdeckungsnachweise. Legacy-Flags allein reichen nicht.
 - Bei tatsächlich verifizierten Quellen liefert er bis zu 25 anonymisierte, auf `maxBlocks` begrenzte hypothetische erste Delta-Blöcke. Keine Wallet-Adressen, User-IDs, DB-Writes, Claimerzeugung oder Cron-Aktivierung. Die Menge der verschlüsselten, tatsächlich berechtigten Wallets kann damit noch nicht nachgewiesen werden.
 - Nächste Freigabeschranke: produktive Read-only-Antwort prüfen und danach einen sauber authorisierten Wallet-Katalog sowie einen wiederaufnehmbaren, vollständig verifizierenden Delta-Worker entwerfen. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.23-tln-vow-multi-wallet-readiness.md`.
+
+### Phase 9.24 – Legacy-Proof-Lücken je anonymem Snapshot sichtbar machen (20261119-221236)
+
+- 9.23 produktiv: 7 Snapshot-Wallets, nur 1 `readyForPlanning`, 6 `legacyWithoutCoverage`, 0 invalid/incomplete; der erste hypothetische 5'000-Block-Chunk benötigt danach noch 2'011 weitere Chunks. **Kein produktiver Scan-/Cursor-Fortschritt daraus.**
+- Geschützter Read-only-Modus `legacy-proof-gaps`: für jeden nicht vollständig unabhängig verifizierten Snapshot aggregierte Gründe (Reward-, Referral-, Block-Coverage) und erhaltene strukturierte Evidence (ERC20-Range, belegte Mint/Reward-Zeilen, Claim-Key-Matches, Referenz-Ergebnis). Max. 25 anonyme Detailzeilen, keine User-/Wallet-Identität.
+- Alte Proof-Lücken werden nicht durch reine Claim-Matches oder gespeicherte ERC20-Bereiche geschlossen. Kein RPC, keine DB-Mutation und kein Cron. Produktive Diagnose nach Deploy ausstehend.
+- Nächste Freigabeschranke: Ergebnisse prüfen und pro fehlendem Beweistyp entscheiden, was sich aus vorhandenen Rohdaten unabhängig reproduzieren lässt und was tatsächlich nachgescannt werden muss. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.24-tln-vow-legacy-proof-gaps.md`.

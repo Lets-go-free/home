@@ -1,4 +1,4 @@
-// WalletTracking 9.23 – bounded multi-wallet delta readiness inventory, read-only.
+// WalletTracking 9.24 – structural proof-gap diagnostic for legacy TLN/VOW snapshots.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -388,7 +388,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -475,6 +475,64 @@ Deno.serve(async (req) => {
       }
       return reply({ok:true,mode,day:dayCH(),summary,
         notice:'Read-only historical cache audit using the same pure verification core as manual Discovery. Legacy workflow flags alone do not prove coverage. No RPC, writes or cron.'})
+    }
+    if(mode==='legacy-proof-gaps'){
+      // Cached ERC20 scan ranges are useful forensic evidence but are not proof
+      // that all reward/claim contract events were classified or paginated.
+      const rawRows:any[]=[]
+      let rawComplete=false
+      for(let p=0;p<maxPages;p++){
+        const {data,error}=await sb.from('tln_vow_staking_scan_cache')
+          .select('user_id,wallet_id,scanner_version,complete_from_block,last_scanned_block,payload')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1')
+          .range(p*pageSize,(p+1)*pageSize-1)
+        if(error)throw new Error(error.message)
+        rawRows.push(...(data||[]))
+        if((data||[]).length<pageSize){rawComplete=true;break}
+      }
+      if(!rawComplete)return reply({ok:false,mode,error:'Raw-cache pagination limit; no complete diagnosis'},409)
+      const rawByWallet=new Map<string,any>()
+      for(const r of rawRows){
+        if(!r.user_id||!r.wallet_id)continue
+        const k=String(r.user_id)+'|'+String(r.wallet_id)
+        if(!rawByWallet.has(k)||Number(r.last_scanned_block||0)>Number(rawByWallet.get(k).last_scanned_block||0))rawByWallet.set(k,r)
+      }
+      const summary={snapshotWallets:byWallet.size,legacyWallets:0,missingRewardCoverage:0,
+        missingReferralVerification:0,missingBlockCoverage:0,recordedErc20Ranges:0,
+        noRecordedErc20Range:0,withProvenRewardRows:0,withMatchingClaimKeys:0,
+        withUnmatchedClaimKeys:0,withReferralReference:0,referralReferenceErrors:0}
+      const details:any[]=[]
+      for(const [key,row] of byWallet){
+        const p=row.payload
+        if(p?.kind!=='verified_discovery_results')continue
+        const a=verificationCore.auditSnapshot(p)
+        if(a.verified)continue
+        summary.legacyWallets++
+        if(!a.rewards.verified)summary.missingRewardCoverage++
+        if(!a.referral.verified)summary.missingReferralVerification++
+        if(!a.blocks.coverageVerified)summary.missingBlockCoverage++
+        const evidence=verificationCore.legacySnapshotEvidence(p)
+        if(evidence.provenRows>0)summary.withProvenRewardRows++
+        if(evidence.matchedClaimKeys>0)summary.withMatchingClaimKeys++
+        if(evidence.unmatchedProvenKeys>0)summary.withUnmatchedClaimKeys++
+        if(evidence.referencePresent)summary.withReferralReference++
+        if(evidence.referenceError)summary.referralReferenceErrors++
+        const raw=rawByWallet.get(key)
+        const from=Number(raw?.complete_from_block),to=Number(raw?.last_scanned_block)
+        const hasRawRange=raw?.scanner_version==='erc20-raw-v1'&&Array.isArray(raw?.payload)&&
+          Number.isSafeInteger(from)&&from>=0&&Number.isSafeInteger(to)&&to>=from&&to>0
+        if(hasRawRange)summary.recordedErc20Ranges++
+        else summary.noRecordedErc20Range++
+        if(details.length<25)details.push({ordinal:details.length+1,
+          missing:{rewardCoverage:!a.rewards.verified,referralVerification:!a.referral.verified,
+            blockCoverage:!a.blocks.coverageVerified},
+          existing:{recordedErc20Range:hasRawRange,provenRewardRows:evidence.provenRows,
+            matchedClaimKeys:evidence.matchedClaimKeys,unmatchedProvenKeys:evidence.unmatchedProvenKeys,
+            referralReferencePresent:evidence.referencePresent,referralReferenceError:evidence.referenceError}})
+      }
+      return reply({ok:true,mode,day:dayCH(),summary,returned:details.length,
+        truncated:summary.legacyWallets>details.length,details,
+        notice:'Anonymized historical proof-gap inventory only. ERC20 cache ranges, reference results and claim-key matches are structural evidence, NOT independent proof of complete rewards, referrals or block coverage. No wallet/user identifiers, RPC, writes, cursor changes or cron.'})
     }
     if(mode==='legacy-evidence-audit'){
       // This independent ERC20-history cache can prove that a transfer index has
