@@ -1,4 +1,4 @@
-// WalletTracking 9.20 – standalone Edge and read-only detail for unmatched legacy evidence.
+// WalletTracking 9.21 – standalone Edge and read-only fixed historical stake-lifecycle audit.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -100,7 +100,40 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows});
+  function legacyStakeLifecycleEvidence(snapshot,hash,blockNumber){
+    const tx=String(hash||'').toLowerCase(),targetBlock=Number(blockNumber);
+    if(!/^0x[0-9a-f]{64}$/.test(tx)||!Number.isSafeInteger(targetBlock)||targetBlock<0)return null;
+    const process=snapshot?.process||{};
+    const lots=Array.isArray(process.lots)?process.lots:[];
+    const blockOf=v=>{
+      if(typeof v==='number')return Number.isSafeInteger(v)&&v>=0?v:null;
+      if(typeof v!=='string'||!(/^(?:0x[0-9a-f]+|\d+)$/i).test(v))return null;
+      const n=Number(v.startsWith('0x')?BigInt(v):BigInt(v));
+      return Number.isSafeInteger(n)&&n>=0?n:null;
+    };
+    const project=(lot)=>{
+      const b=blockOf(lot?.stakeBlockHex??lot?.stakeBlock);
+      const stakeTx=String(lot?.stakeTx||'').toLowerCase();
+      return {stakeTx:/^0x[0-9a-f]{64}$/.test(stakeTx)?stakeTx:null,
+        stakeBlock:b,blockDistance:b===null?null:Math.abs(b-targetBlock),
+        sameTransaction:stakeTx===tx,sameBlock:b===targetBlock,
+        status:String(lot?.status||'').slice(0,32),stakeTime:String(lot?.stakeTime||'').slice(0,40),
+        stakingContract:String(lot?.staking?.contract_address||lot?.counterparty||'').toLowerCase().slice(0,42),
+        entryContract:String(lot?.entry_contract||'').toLowerCase().slice(0,42),
+        pairSymbol:String(lot?.pair?.symbol||'').slice(0,32)};
+    };
+    const projected=lots.map(project);
+    const calls=Array.isArray(process.contractCalls)?process.contractCalls:[];
+    const stakingCalls=Array.isArray(process.stakingContractCalls)?process.stakingContractCalls:[];
+    const matches=xs=>xs.filter(c=>String(c?.hash||'').toLowerCase()===tx).length;
+    const nearest=[...projected].sort((a,b)=>(a.blockDistance??Number.MAX_SAFE_INTEGER)-(b.blockDistance??Number.MAX_SAFE_INTEGER)).slice(0,10);
+    return {targetHash:tx,targetBlock,lotsTotal:lots.length,
+      exactStakeTxLots:projected.filter(x=>x.sameTransaction).length,
+      sameBlockLots:projected.filter(x=>x.sameBlock).length,
+      contractCallsAtTx:matches(calls),stakingCallsAtTx:matches(stakingCalls),
+      nearestLots:nearest,scope:'Cached lifecycle comparison only; no chain verification or position rewrite'};
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -109,6 +142,9 @@ const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const SECRET = Deno.env.get('TLN_REWARD_CRON_SECRET') || ''
 const ALCHEMY_API_KEY = Deno.env.get('ALCHEMY_API_KEY') || ''
 const DELTA_OVERLAP_BLOCKS = 128
+// Fixed historical verification target from the independently inspected BscScan transaction.
+const LEGACY_STAKE_AUDIT_HASH='0xacf7cfc506809bdb57435995267e1592cd7ce537296581a55be60e6668509131'
+const LEGACY_STAKE_AUDIT_BLOCK=44871018
 const MAX_DELTA_WINDOW_BLOCKS = 100_000
 const DELTA_CHUNK_BLOCKS = 5_000
 // Deliberately bounded; caller may request fewer blocks but never expand the range.
@@ -325,8 +361,8 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' || body?.mode==='legacy-unmatched-detail' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' || body?.mode==='legacy-evidence-audit' || body?.mode==='legacy-unmatched-detail' || body?.mode==='legacy-stake-lifecycle' ? body.mode : 'read-only-preflight'
+    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-unmatched-detail','legacy-stake-lifecycle','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -429,6 +465,18 @@ Deno.serve(async (req) => {
       }
       return reply({ok:true,mode,day:dayCH(),totalUnmatched:total,returned:items.length,truncated:total>limit,items,
         notice:'Read-only forensic details of structurally unmatched proven rows. Tx hashes are public identifiers; no wallet identity, RPC call, classification change, write or cron. Do not infer a missing staking claim solely from this match.'})
+    }
+    if(mode==='legacy-stake-lifecycle'){
+      const matches=[]
+      for(const row of byWallet.values()){
+        if(row.payload?.kind!=='verified_discovery_results')continue
+        const unmatched=verificationCore.legacyUnmatchedProofRows(row.payload)
+        if(!unmatched.some((x:any)=>x.hash===LEGACY_STAKE_AUDIT_HASH))continue
+        matches.push(verificationCore.legacyStakeLifecycleEvidence(row.payload,LEGACY_STAKE_AUDIT_HASH,LEGACY_STAKE_AUDIT_BLOCK))
+      }
+      return reply({ok:true,mode,day:dayCH(),targetFoundInSnapshots:matches.length,
+        inspections:matches.slice(0,3),truncated:matches.length>3,
+        notice:'Read-only comparison against persisted lifecycle and contract-call rows for the fixed 14-Dec-2024 stake. No wallet identity, RPC, new classification, writes or cron.'})
     }
     if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic' || mode==='rpc-range-diagnostic') {
       // The snapshot is not authoritative proof of wallet eligibility. This preview never creates work.

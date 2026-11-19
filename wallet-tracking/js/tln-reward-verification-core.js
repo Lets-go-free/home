@@ -95,5 +95,38 @@
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows});
+  function legacyStakeLifecycleEvidence(snapshot,hash,blockNumber){
+    const tx=String(hash||'').toLowerCase(),targetBlock=Number(blockNumber);
+    if(!/^0x[0-9a-f]{64}$/.test(tx)||!Number.isSafeInteger(targetBlock)||targetBlock<0)return null;
+    const process=snapshot?.process||{};
+    const lots=Array.isArray(process.lots)?process.lots:[];
+    const blockOf=v=>{
+      if(typeof v==='number')return Number.isSafeInteger(v)&&v>=0?v:null;
+      if(typeof v!=='string'||!(/^(?:0x[0-9a-f]+|\d+)$/i).test(v))return null;
+      const n=Number(v.startsWith('0x')?BigInt(v):BigInt(v));
+      return Number.isSafeInteger(n)&&n>=0?n:null;
+    };
+    const project=(lot)=>{
+      const b=blockOf(lot?.stakeBlockHex??lot?.stakeBlock);
+      const stakeTx=String(lot?.stakeTx||'').toLowerCase();
+      return {stakeTx:/^0x[0-9a-f]{64}$/.test(stakeTx)?stakeTx:null,
+        stakeBlock:b,blockDistance:b===null?null:Math.abs(b-targetBlock),
+        sameTransaction:stakeTx===tx,sameBlock:b===targetBlock,
+        status:String(lot?.status||'').slice(0,32),stakeTime:String(lot?.stakeTime||'').slice(0,40),
+        stakingContract:String(lot?.staking?.contract_address||lot?.counterparty||'').toLowerCase().slice(0,42),
+        entryContract:String(lot?.entry_contract||'').toLowerCase().slice(0,42),
+        pairSymbol:String(lot?.pair?.symbol||'').slice(0,32)};
+    };
+    const projected=lots.map(project);
+    const calls=Array.isArray(process.contractCalls)?process.contractCalls:[];
+    const stakingCalls=Array.isArray(process.stakingContractCalls)?process.stakingContractCalls:[];
+    const matches=xs=>xs.filter(c=>String(c?.hash||'').toLowerCase()===tx).length;
+    const nearest=[...projected].sort((a,b)=>(a.blockDistance??Number.MAX_SAFE_INTEGER)-(b.blockDistance??Number.MAX_SAFE_INTEGER)).slice(0,10);
+    return {targetHash:tx,targetBlock,lotsTotal:lots.length,
+      exactStakeTxLots:projected.filter(x=>x.sameTransaction).length,
+      sameBlockLots:projected.filter(x=>x.sameBlock).length,
+      contractCallsAtTx:matches(calls),stakingCallsAtTx:matches(stakingCalls),
+      nearestLots:nearest,scope:'Cached lifecycle comparison only; no chain verification or position rewrite'};
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence});
 })(globalThis);

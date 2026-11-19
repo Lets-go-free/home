@@ -761,3 +761,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Produktiver 9.19-Audit: 7/7 historische ERC-20-Scan-Caches vorhanden, 3 belegte Reward-Zeilen, 2 strukturell zugeordnet, 1 offener Key. 7 Referral-Referenzresultate, 0 gespeicherte Fehler, 0 starke Referral-Zeilen.
 - Neuer geschützt/read-only Edge-Modus `legacy-unmatched-detail` liefert höchstens zehn strukturell nicht zugeordnete Reward-Zeilen mit öffentlichem Tx-Hash, Token, Betrag, Selector und Beweis-Merkmalen, ohne Wallet-/User-Identität oder Rohpayload.
 - Keine automatische fachliche Neu-Klassifikation, DB-Mutation oder Cron. Produktiver Detailtest offen. Dokumentation: `docs/releases/9.20-tln-vow-unmatched-reward-detail.md`.
+
+### Phase 9.21 – Historische Staking-Position zur TLN+-Mint-Tx prüfen (20261119-100209)
+
+- Produktiver 9.20-Test: 1 unzugeordnete Reward-Zeile, 5'500 TLN+-Zero-Mint an dieselbe Wallet; Hash `0xacf7cfc5…8509131`, Selector `0xa7d545db`, kein Lot-Stake-/Unstake-Hash-Match. BscScan-Screenshot bestätigt erfolgreiche `Stake`-Tx vom 14.12.2024 in Block 44871018 mit 11'000 USDT und LP-Transfers.
+- Neuer fest auf diese historische Tx begrenzter Read-only-Modus `legacy-stake-lifecycle`: vergleicht bestehende Lot-Stake-Hashes/-Blöcke, Contract-Call-Aufzeichnungen und nächste gespeicherte Positionen; kein RPC, keine Schreiboperationen und kein Cron.
+- Lokaler Test bestanden; produktiver Audit offen. Dokumentation: `docs/releases/9.21-tln-vow-historical-stake-lifecycle.md`.
