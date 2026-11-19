@@ -1,5 +1,5 @@
-// WalletTracking 9.15 – TLN/VOW reward-refresh READ-ONLY preflight, chunk plan, and wallet-scoped ERC20 log inspection.
-// Bounded eth_getLogs inspection only; no reward/cursor/cache writes and NO cron activation.
+// WalletTracking 9.16 – TLN/VOW reward-refresh READ-ONLY preflight and Alchemy transfer inspection.
+// Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 const URL = Deno.env.get('SUPABASE_URL') || ''
@@ -33,7 +33,7 @@ function rpcCodeOf(error:unknown):number|null {
 function safeRpcDiagnostic(error:unknown) {
   if(error instanceof RpcDiagnosticError)
     return {phase:error.phase,category:error.category,httpStatus:error.httpStatus,rpcCode:error.rpcCode}
-  return {phase:'eth_getLogs',category:error instanceof Error && error.name==='AbortError'?'timeout':'unexpected',httpStatus:null,rpcCode:null}
+  return {phase:'alchemy_getAssetTransfers',category:error instanceof Error && error.name==='AbortError'?'timeout':'unexpected',httpStatus:null,rpcCode:null}
 }
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 // BSC contracts already identified in the TLN/VOW application (vow trading, TLN+ and TLN GOLD).
@@ -44,7 +44,8 @@ const SCAN_CONTRACTS = Object.freeze({
   '0x29280091fa7f3abe4739ad5f1f7c5287feaf7736':'TLN+',
   '0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5':'TLNGOLD'
 })
-const MAX_LOGS_PER_DIRECTION = 3000
+const MAX_TRANSFER_PAGES_PER_DIRECTION = 8
+const MAX_TRANSFERS_PER_DIRECTION = MAX_TRANSFER_PAGES_PER_DIRECTION * 1000
 // Diagnostic probes are fixed server-side. They never accept addresses, arbitrary filters or endpoints.
 // Only status/category/counts are returned. No raw logs, provider message, API key or wallet address.
 const DIAGNOSTIC_PROBE_BLOCKS = 100
@@ -129,50 +130,64 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
   if(!address)throw new Error('Invalid verified snapshot wallet address')
   if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||fromBlock<0||toBlock<fromBlock||toBlock-fromBlock+1>maxBlocks||maxBlocks>DELTA_CHUNK_BLOCKS)
     throw new Error('Unsafe scan window')
-  const walletTopic='0x'+address.slice(2).padStart(64,'0')
   const contracts=Object.keys(SCAN_CONTRACTS)
   const byContract=new Map<string,{incoming:number,outgoing:number}>(contracts.map(c=>[c,{incoming:0,outgoing:0}]))
   const unique=new Set<string>()
-  let observedLogs=0
+  const directions=[]
+  let observedTransfers=0
   const rpcUrl=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
   for(const direction of ['incoming','outgoing'] as const){
-    const controller=new AbortController()
-    const timer=setTimeout(()=>controller.abort(),15000)
-    try {
-      const topics=direction==='incoming'?[TRANSFER_TOPIC,null,walletTopic]:[TRANSFER_TOPIC,walletTopic]
-      const res=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
-        body:JSON.stringify({jsonrpc:'2.0',id:direction==='incoming'?2:3,method:'eth_getLogs',params:[{
-          fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock),address:contracts,topics
-        }]})})
-      if(!res.ok)throw new RpcDiagnosticError('eth_getLogs','http_error',res.status)
-      let body:any
-      try {body=await res.json()}catch{throw new RpcDiagnosticError('eth_getLogs','invalid_json')}
-      if(body?.error)throw new RpcDiagnosticError('eth_getLogs','rpc_error',null,rpcCodeOf(body.error))
-      if(!Array.isArray(body?.result))throw new RpcDiagnosticError('eth_getLogs','invalid_response')
-      if(body.result.length>MAX_LOGS_PER_DIRECTION)throw new RpcDiagnosticError('eth_getLogs','too_many_logs')
-      for(const log of body.result){
-        const c=evmAddress(log?.address)
-        const bn=typeof log?.blockNumber==='string' && /^0x[0-9a-f]+$/i.test(log.blockNumber)?Number(BigInt(log.blockNumber)):NaN
-        const tx=typeof log?.transactionHash==='string' && /^0x[0-9a-f]{64}$/i.test(log.transactionHash)?log.transactionHash.toLowerCase():null
-        if(!c||!byContract.has(c)||!Number.isSafeInteger(bn)||bn<fromBlock||bn>toBlock||!tx||log?.removed===true)
-          throw new Error('RPC returned invalid or out-of-range event')
-        if(!Array.isArray(log.topics)||String(log.topics[0]).toLowerCase()!==TRANSFER_TOPIC||
-          (direction==='incoming'?String(log.topics[2]).toLowerCase():String(log.topics[1]).toLowerCase())!==walletTopic)
-          throw new Error('RPC returned nonmatching wallet transfer')
-        byContract.get(c)![direction]++
-        unique.add(tx)
-        observedLogs++
-      }
-    }catch(error){
-      if(error instanceof RpcDiagnosticError) throw error
-      if(error instanceof Error && error.name==='AbortError')throw new RpcDiagnosticError('eth_getLogs','timeout')
-      throw new RpcDiagnosticError('eth_getLogs','network_or_validation_failure')
-    }finally{clearTimeout(timer)}
+    let pageKey:string|null=null
+    const seenKeys=new Set<string>()
+    let pages=0, total=0, matched=0, complete=false
+    while(pages<MAX_TRANSFER_PAGES_PER_DIRECTION){
+      const controller=new AbortController()
+      const timer=setTimeout(()=>controller.abort(),15000)
+      try {
+        const q:Record<string,unknown>={fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock),
+          category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',
+          [direction==='incoming'?'toAddress':'fromAddress']:address}
+        if(pageKey)q.pageKey=pageKey
+        const res=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+          body:JSON.stringify({jsonrpc:'2.0',id:direction==='incoming'?2:3,method:'alchemy_getAssetTransfers',params:[q]})})
+        if(!res.ok)throw new RpcDiagnosticError('alchemy_getAssetTransfers','http_error',res.status)
+        let body:any
+        try {body=await res.json()}catch{throw new RpcDiagnosticError('alchemy_getAssetTransfers','invalid_json')}
+        if(body?.error)throw new RpcDiagnosticError('alchemy_getAssetTransfers','rpc_error',null,rpcCodeOf(body.error))
+        if(!Array.isArray(body?.result?.transfers))throw new RpcDiagnosticError('alchemy_getAssetTransfers','invalid_response')
+        pages++
+        total+=body.result.transfers.length
+        if(total>MAX_TRANSFERS_PER_DIRECTION)throw new RpcDiagnosticError('alchemy_getAssetTransfers','too_many_transfers')
+        for(const transfer of body.result.transfers){
+          const c=evmAddress(transfer?.rawContract?.address)
+          const side=evmAddress(direction==='incoming'?transfer?.to:transfer?.from)
+          const bn=typeof transfer?.blockNum==='string' && /^0x[0-9a-f]+$/i.test(transfer.blockNum)?Number(BigInt(transfer.blockNum)):NaN
+          const tx=typeof transfer?.hash==='string' && /^0x[0-9a-f]{64}$/i.test(transfer.hash)?transfer.hash.toLowerCase():null
+          if(!side||side!==address||!Number.isSafeInteger(bn)||bn<fromBlock||bn>toBlock||!tx)
+            throw new RpcDiagnosticError('alchemy_getAssetTransfers','invalid_transfer')
+          if(!c||!byContract.has(c))continue
+          byContract.get(c)![direction]++
+          unique.add(tx)
+          matched++;observedTransfers++
+        }
+        const next=body.result.pageKey
+        if(!next){complete=true;break}
+        if(typeof next!=='string'||next.length>2000||seenKeys.has(next))
+          throw new RpcDiagnosticError('alchemy_getAssetTransfers','invalid_pagination')
+        seenKeys.add(next);pageKey=next
+      }catch(error){
+        if(error instanceof RpcDiagnosticError)throw error
+        if(error instanceof Error && error.name==='AbortError')throw new RpcDiagnosticError('alchemy_getAssetTransfers','timeout')
+        throw new RpcDiagnosticError('alchemy_getAssetTransfers','network_or_validation_failure')
+      }finally{clearTimeout(timer)}
+    }
+    directions.push({direction,pages,totalTransfers:total,matchedKnownContracts:matched,complete})
   }
-  return {events:observedLogs,uniqueTransactions:unique.size,
+  return {provider:'alchemy_bnb_mainnet',method:'alchemy_getAssetTransfers',
+    complete:directions.every(d=>d.complete),directions,events:observedTransfers,uniqueTransactions:unique.size,
     contracts:contracts.map(address=>({symbol:SCAN_CONTRACTS[address as keyof typeof SCAN_CONTRACTS],
       incoming:byContract.get(address)!.incoming,outgoing:byContract.get(address)!.outgoing})),
-    scope:'wallet-scoped ERC20 Transfer events only; not proof of a staking, referral or bonus reward'}
+    scope:'Wallet-scoped ERC20 AssetTransfers for four known token contracts; not proof of a staking, referral or bonus reward'}
 }
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
 async function bscHead(): Promise<number> {
@@ -296,15 +311,15 @@ Deno.serve(async (req) => {
           const diagnostic=safeRpcDiagnostic(e)
           // Log only typed/sanitized metadata; never log the RPC URL, key or raw provider body.
           console.error('TLN wallet-scoped RPC log scan failed',diagnostic)
-          return reply({ok:false,mode,error:'BSC scoped log scan unavailable or rejected; no progress saved',
+          return reply({ok:false,mode,error:'BSC scoped transfer scan unavailable or rejected; no progress saved',
             rpcDiagnostic:diagnostic,
             chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,persisted:false},scanCompleted:false},503)}
         return reply({ok:true,mode,day:dayCH(),source:{completedStep:Number(payload.completedStep),
           sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:true,referralVerified:true},
           chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,
-            nextFromBlock:chunkToBlock<head?chunkToBlock+1:null,persisted:false,executed:true},
-          inspection,selectedWallets:1,scanCompleted:true,
-          notice:'Read-only wallet-scoped ERC20 Transfer logs for four known BSC token contracts. No reward/referral classification, no claim/discovery import, no cache/cursor/queue writes and no cron. This cannot prove reward completeness.'})
+            nextFromBlock:inspection.complete&&chunkToBlock<head?chunkToBlock+1:null,persisted:false,executed:true},
+          inspection,selectedWallets:1,scanCompleted:inspection.complete,
+          notice:'Read-only Alchemy AssetTransfers like manual discovery. An incomplete pagination window cannot advance a cursor. No reward/referral classification, claim import, cache/cursor writes or cron. This cannot prove reward completeness.'})
       }
       return reply({ok:true,mode,day:dayCH(),source:{completedStep:Number(payload.completedStep),
         sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:true,referralVerified:true},

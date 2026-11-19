@@ -729,3 +729,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - RPC-Fehler werden ohne URL, Authentisierung oder Rohantwort diagnostiziert: `phase`, `category`, optional `httpStatus` und `rpcCode`. Keine sensiblen Providerdetails in Logs oder Antwort.
 - Test bleibt vollständig read-only. Kein neuer Reward-Worker, kein Cron, kein Cursorfortschritt, keine neue Klassifikation.
 - Edge Function neu deployen; Test zuerst mit `{"mode":"delta-scan-preview","maxBlocks":100}`.
+
+### Phase 9.16 – TLN/VOW Delta-Scan mit manueller Alchemy-Transfer-API (20261119-063502)
+
+- Der geschützte `delta-scan-preview` verwendet statt des auf BSC auf zehn Blöcke beschränkten `eth_getLogs` nun `alchemy_getAssetTransfers`, wie die bestehende manuelle Discovery.
+- Walletbezogene ERC-20-Eingänge und -Ausgänge werden paginiert und auf vier bekannte Contracts ausgewertet. Acht Seiten je Richtung begrenzen den Test; bei unvollständiger Pagination ist `scanCompleted=false` und kein `nextFromBlock` freigegeben.
+- Keine Reward-Klassifikation, Cache-/Cursor-Schreiboperationen oder Cron-Aktivierung. Der tägliche TLN/VOW-Rewards-Worker bleibt offen; Live-Test nach Deploy erforderlich.
+- Details und Testaufruf: `docs/releases/9.16-tln-vow-alchemy-transfer-preview.md`.
