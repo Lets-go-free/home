@@ -4901,14 +4901,21 @@ function discoveryResultCheckedBlock(wallet=DISCOVERY_PROCESS.wallet){
 }
 function buildDiscoveryResultPayload(completedStep){
   const d=DISCOVERY_PROCESS.done||{};
+  const core=globalThis.WT_TLN_REWARD_VERIFICATION_CORE;
+  const transferCoverage=ERC20_TRANSFER_SESSION_CACHE.get(norm(DISCOVERY_PROCESS.wallet||''))||null;
+  const blockEvidence=core.scanBlockEvidence({lastEventBlock:discoveryResultLastBlock(),
+    completeFromBlock:transferCoverage?.completeFromBlock,completeToBlock:transferCoverage?.completeToBlock,
+    paginationComplete:!!transferCoverage&&transferCoverage.completeToBlock>=transferCoverage.completeFromBlock&&
+      Number(transferCoverage.completeToBlock)>0});
   return cacheJsonSafe({
     kind:'verified_discovery_results',schemaVersion:2,wallet:DISCOVERY_PROCESS.wallet,completedStep:Number(completedStep||0),
-    savedAt:new Date().toISOString(),lastCheckedAt:new Date().toISOString(),lastCheckedBlock:discoveryResultCheckedBlock(),sourceLastBlock:discoveryResultLastBlock(),buildId:BUILD_ID,
+    savedAt:new Date().toISOString(),lastCheckedAt:new Date().toISOString(),lastCheckedBlock:discoveryResultCheckedBlock(),sourceLastBlock:discoveryResultLastBlock(),blockEvidence,buildId:BUILD_ID,
     process:{
       pairs:DISCOVERY_PROCESS.pairs||[],rows:DISCOVERY_PROCESS.rows||[],stakingRows:DISCOVERY_PROCESS.stakingRows||[],
       entryTargets:DISCOVERY_PROCESS.entryTargets||[],stakingContractCalls:DISCOVERY_PROCESS.stakingContractCalls||[],contractCalls:DISCOVERY_PROCESS.contractCalls||[],
       contractEvents:DISCOVERY_PROCESS.contractEvents||[],lots:DISCOVERY_PROCESS.lots||[],unmatched:DISCOVERY_PROCESS.unmatched||[],pricePairs:DISCOVERY_PROCESS.pricePairs||[],
-      done:{base:!!d.base,staking:!!d.staking,duration:!!d.duration,rewards:!!d.rewards,referral:!!d.referral}
+      done:{base:!!d.base,staking:!!d.staking,duration:!!d.duration,rewards:!!d.rewards,referral:!!d.referral},
+      verification:DISCOVERY_PROCESS.verification||{}
     },
     globals:{unassignedRewards:CURRENT_UNASSIGNED_REWARDS||[],provenRewardRows:CURRENT_PROVEN_REWARD_ROWS||[],claimReferenceResult:CURRENT_CLAIM_REFERENCE_RESULT||null}
   });
@@ -5178,6 +5185,7 @@ async function restoreDiscoveryResultSnapshot(wallet){
   DISCOVERY_PROCESS.pairs=Array.isArray(p.pairs)?p.pairs:[];DISCOVERY_PROCESS.rows=Array.isArray(p.rows)?p.rows:[];DISCOVERY_PROCESS.stakingRows=Array.isArray(p.stakingRows)?p.stakingRows:[];
   DISCOVERY_PROCESS.entryTargets=Array.isArray(p.entryTargets)?p.entryTargets:[];DISCOVERY_PROCESS.stakingContractCalls=Array.isArray(p.stakingContractCalls)?p.stakingContractCalls:[];DISCOVERY_PROCESS.contractCalls=Array.isArray(p.contractCalls)?p.contractCalls:[];
   DISCOVERY_PROCESS.contractEvents=Array.isArray(p.contractEvents)?p.contractEvents:[];DISCOVERY_PROCESS.lots=Array.isArray(p.lots)?p.lots:[];DISCOVERY_PROCESS.unmatched=Array.isArray(p.unmatched)?p.unmatched:[];DISCOVERY_PROCESS.pricePairs=Array.isArray(p.pricePairs)?p.pricePairs:[];
+  DISCOVERY_PROCESS.verification=p.verification&&typeof p.verification==='object'?p.verification:{};
   DISCOVERY_PROCESS.done={base:step>=1,staking:step>=2,duration:step>=3,rewards:step>=4,referral:step>=5,team:false,valuation:false};
   CURRENT_UNASSIGNED_REWARDS=Array.isArray(payload.globals?.unassignedRewards)?payload.globals.unassignedRewards:[];
   CURRENT_PROVEN_REWARD_ROWS=Array.isArray(payload.globals?.provenRewardRows)?payload.globals.provenRewardRows:[];
@@ -12262,10 +12270,12 @@ function renderProjectUserView(){renderProjectOverview();renderProjectAggregateD
 
 const DISCOVERY_PROCESS={
   wallet:'',transfers:[],counts:new Map(),pairs:[],pairMap:new Map(),rows:[],stakingRows:[],entryTargets:[],stakingContractCalls:[],contractCalls:[],contractEvents:[],lots:[],unmatched:[],pricePairs:[],
+  verification:{},
   done:{base:false,staking:false,duration:false,rewards:false,referral:false,valuation:false}
 };
 function resetDiscoveryProcess(wallet=''){
   DISCOVERY_PROCESS.wallet=norm(wallet||'');DISCOVERY_PROCESS.transfers=[];DISCOVERY_PROCESS.counts=new Map();DISCOVERY_PROCESS.pairs=[];DISCOVERY_PROCESS.pairMap=new Map();DISCOVERY_PROCESS.rows=[];DISCOVERY_PROCESS.stakingRows=[];DISCOVERY_PROCESS.entryTargets=[];DISCOVERY_PROCESS.stakingContractCalls=[];DISCOVERY_PROCESS.contractCalls=[];DISCOVERY_PROCESS.contractEvents=[];DISCOVERY_PROCESS.lots=[];DISCOVERY_PROCESS.unmatched=[];DISCOVERY_PROCESS.pricePairs=[];
+  DISCOVERY_PROCESS.verification={};
   // Der Team-Baum ist projektweit und unabhängig vom oberen DEV-Wallet. Ein Wechsel
   // des technischen Wallets darf den bereits aus Supabase restaurierten Step-7-State
   // daher nicht zurücksetzen.
@@ -13370,6 +13380,8 @@ async function processStakingRewards(){
     const bonusRows=collectBonusRewardRows(lots),bonusCount=bonusRows.length;
     const finalCoverage=primaryRewardCoverage(lots),finalUnassigned=collectUnassignedClaimRows(lots);
     const step4RegressionOk=finalCoverage.missing.length===0&&finalCoverage.assigned===finalCoverage.normal&&finalUnassigned.length===0;
+    DISCOVERY_PROCESS.verification.rewards=globalThis.WT_TLN_REWARD_VERIFICATION_CORE.rewardCoverageVerdict({
+      normal:finalCoverage.normal,assigned:finalCoverage.assigned,unassigned:finalUnassigned.length});
     log(`Step-4 Abschlusscheck: ${finalCoverage.assigned}/${finalCoverage.normal} normale belegte Reward-Transfers zugeordnet · ${finalCoverage.missing.length} Primär-Reward(s) fehlen · ${finalUnassigned.length} Claim(s) ohne klare Zuordnung · ${step4RegressionOk?'PASS':'PRÜFEN'}.`,step4RegressionOk?'ok':'warn');
     if(bonusCount){
       const bonusTxCount=new Set(bonusRows.map(x=>String(x?.claim?.hash||'').toLowerCase()).filter(Boolean)).size;
@@ -17963,7 +17975,7 @@ async function prepareTeamTree(){
 
 async function processReferralRewards(){
   const b=$('stepReferral');b.disabled=true;setStepState(5,'läuft …','running');$('status').textContent='Schritt 5/7: Claim-/Referral-Referenzengine …';
-  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok');renderProjectOverview();await saveDiscoveryResultSnapshot(5)}
+  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();const referralInput={completed:!!ref&&!ref.error,error:ref?.error||null,strongCount:ref?.strong?.length};const verdict=globalThis.WT_TLN_REWARD_VERIFICATION_CORE.referralVerdict(referralInput);DISCOVERY_PROCESS.verification.referral=referralInput;if(!verdict.verified)throw new Error('Referral-Referenzengine nicht erfolgreich abgeschlossen; keine verifizierte Speicherung.');if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok');renderProjectOverview();await saveDiscoveryResultSnapshot(5)}
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 function teamRegressionSummary(forest){

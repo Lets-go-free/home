@@ -736,3 +736,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Walletbezogene ERC-20-Eingänge und -Ausgänge werden paginiert und auf vier bekannte Contracts ausgewertet. Acht Seiten je Richtung begrenzen den Test; bei unvollständiger Pagination ist `scanCompleted=false` und kein `nextFromBlock` freigegeben.
 - Keine Reward-Klassifikation, Cache-/Cursor-Schreiboperationen oder Cron-Aktivierung. Der tägliche TLN/VOW-Rewards-Worker bleibt offen; Live-Test nach Deploy erforderlich.
 - Details und Testaufruf: `docs/releases/9.16-tln-vow-alchemy-transfer-preview.md`.
+
+### Phase 9.17 – Gemeinsame TLN/VOW-Verifikationsregeln (20261119-075000)
+
+- Neue browser- und Edge-kompatible reine JS-Regeln `js/tln-reward-verification-core.js`: Reward-Coverage, Referral-Engine-Abschluss, vollständig geprüfter Blockbereich versus letzter Event-Block, bestehende Snapshot-Belege.
+- Manuelle Discovery speichert explizite Verifikationsbelege; Step-5-Fehler werden nicht mehr als erfolgreicher Workflow-Abschluss gespeichert. Bestehende historische Snapshots bleiben unverändert und gelten ohne zusätzliche Proof-Felder als unbewiesen, nicht als falsch.
+- Edge-Modus `snapshot-verification-audit` wertet alle bekannten Snapshot-Proof-Felder ausschliesslich aggregiert und read-only aus. Der Delta-Preview lässt alte Workflow-Flags nicht mehr als vollständige Reward-Verifikation erscheinen.
+- Lokale Tests bestanden, Live-Abnahme offen. Die eigentliche Reward-/Referral-Klassifikation ist **noch nicht** serverseitig geteilt. Kein Cron. Dokumentation: `docs/releases/9.17-tln-vow-shared-verification-core.md`.

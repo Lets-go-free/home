@@ -1,7 +1,9 @@
-// WalletTracking 9.16 – TLN/VOW reward-refresh READ-ONLY preflight and Alchemy transfer inspection.
+// WalletTracking 9.17 – TLN/VOW read-only preview with shared verification core.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
+import '../../../js/tln-reward-verification-core.js'
+const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
 const URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const SECRET = Deno.env.get('TLN_REWARD_CRON_SECRET') || ''
@@ -223,8 +225,8 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' ? body.mode : 'read-only-preflight'
-    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='delta-preview' || body?.mode==='delta-scan-preview' || body?.mode==='rpc-diagnostic' || body?.mode==='rpc-range-diagnostic' || body?.mode==='snapshot-verification-audit' ? body.mode : 'read-only-preflight'
+    if(body?.mode && !['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','read-only-preflight'].includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
     const pageSize=500, maxPages=20
@@ -247,6 +249,24 @@ Deno.serve(async (req) => {
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
     }
+    if(mode==='snapshot-verification-audit'){
+      const summary={snapshots:0,workflowDone:0,rewardCoverageVerified:0,referralEngineVerified:0,
+        scanCoverageVerified:0,fullyVerified:0,legacyWithoutVerification:0}
+      for(const row of byWallet.values()){
+        const p=row.payload
+        if(p?.kind!=='verified_discovery_results')continue
+        summary.snapshots++
+        if(p?.process?.done?.rewards===true&&p?.process?.done?.referral===true)summary.workflowDone++
+        if(!p?.process?.verification||!p?.blockEvidence)summary.legacyWithoutVerification++
+        const audit=verificationCore.auditSnapshot(p)
+        if(audit.rewards.verified)summary.rewardCoverageVerified++
+        if(audit.referral.verified)summary.referralEngineVerified++
+        if(audit.blocks.coverageVerified)summary.scanCoverageVerified++
+        if(audit.verified)summary.fullyVerified++
+      }
+      return reply({ok:true,mode,day:dayCH(),summary,
+        notice:'Read-only historical cache audit using the same pure verification core as manual Discovery. Legacy workflow flags alone do not prove coverage. No RPC, writes or cron.'})
+    }
     if(mode==='delta-preview' || mode==='delta-scan-preview' || mode==='rpc-diagnostic' || mode==='rpc-range-diagnostic') {
       // The snapshot is not authoritative proof of wallet eligibility. This preview never creates work.
       // Choose one deterministic stale candidate, without disclosing owner or wallet identity.
@@ -259,6 +279,7 @@ Deno.serve(async (req) => {
       const lastBlock=num(payload?.lastCheckedBlock ?? payload?.sourceLastBlock ?? candidate.last_scanned_block)
       const checkedAt=payload?.lastCheckedAt||payload?.savedAt||candidate.updated_at||null
       const done=payload?.process?.done||{}
+      const sourceAudit=verificationCore.auditSnapshot(payload)
       if(lastBlock===null || lastBlock<=0 || !Number.isFinite(Date.parse(checkedAt||'')))
         return reply({ok:false,mode,error:'Snapshot cursor or timestamp invalid; cannot safely plan delta'},409)
       if(!(done.rewards===true && done.referral===true))
@@ -315,14 +336,16 @@ Deno.serve(async (req) => {
             rpcDiagnostic:diagnostic,
             chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,persisted:false},scanCompleted:false},503)}
         return reply({ok:true,mode,day:dayCH(),source:{completedStep:Number(payload.completedStep),
-          sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:true,referralVerified:true},
+          sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:sourceAudit.rewards.verified,referralVerified:sourceAudit.referral.verified,
+          scanCoverageVerified:sourceAudit.blocks.coverageVerified,legacyWorkflowDone:true},
           chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,
             nextFromBlock:inspection.complete&&chunkToBlock<head?chunkToBlock+1:null,persisted:false,executed:true},
           inspection,selectedWallets:1,scanCompleted:inspection.complete,
           notice:'Read-only Alchemy AssetTransfers like manual discovery. An incomplete pagination window cannot advance a cursor. No reward/referral classification, claim import, cache/cursor writes or cron. This cannot prove reward completeness.'})
       }
       return reply({ok:true,mode,day:dayCH(),source:{completedStep:Number(payload.completedStep),
-        sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:true,referralVerified:true},
+        sourceCheckedAt:checkedAt,sourceLastBlock:lastBlock,rewardsVerified:sourceAudit.rewards.verified,referralVerified:sourceAudit.referral.verified,
+        scanCoverageVerified:sourceAudit.blocks.coverageVerified,legacyWorkflowDone:true},
         window:{chain:'bsc',fromBlock,toBlock:head,overlapBlocks:DELTA_OVERLAP_BLOCKS,blocks,withinPreviewBudget:blocks<=MAX_DELTA_WINDOW_BLOCKS},
         chunk:{fromBlock,toBlock:chunkToBlock,blocks:chunkBlocks,maxBlocks,
           nextFromBlock:chunkToBlock<head?chunkToBlock+1:null,

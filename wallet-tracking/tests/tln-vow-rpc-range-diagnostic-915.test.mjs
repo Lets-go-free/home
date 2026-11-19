@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 const source=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const sharedCore=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
 assert.doesNotMatch(source,/\.upsert\(|\.insert\(|\.update\(|\.delete\(/);
 const script=stripTypeScriptTypes(source,{mode:'strip'}).replace(/^import .*;?$/gm,'');
 const wallet='0x'+'a'.repeat(40);
@@ -17,7 +18,7 @@ async function run(secret='secret') {
   if(count>10)return new Response('API KEY private-provider-key',{status:400});
   return new Response(JSON.stringify({jsonrpc:'2.0',result:[]}));
  }};
- vm.runInNewContext(script,ctx);
+ vm.runInNewContext(sharedCore,ctx);vm.runInNewContext(script,ctx);
  const r=await handler(new Request('https://mock.test',{method:'POST',headers:{'x-tln-reward-secret':secret},body:JSON.stringify({mode:'rpc-range-diagnostic'})}));
  return {status:r.status,body:await r.json(),requests};
 }

@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 
 const ts=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const sharedCore=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
 assert.doesNotMatch(ts,/\.upsert\(|\.insert\(|\.update\(|\.delete\(/);
 const source=stripTypeScriptTypes(ts,{mode:'strip'}).replace(/^import .*;?$/gm,'');
 const wallet='0x'+'a'.repeat(40), tx='0x'+'b'.repeat(64);
@@ -29,7 +30,7 @@ async function run({incomplete=false,badSecret=false}={}) {
         rawContract:{address:contract},from:'0x'+'c'.repeat(40),to:wallet}]:[];
       return new Response(JSON.stringify({result:{transfers,pageKey:incomplete?`nextpage-${requests.length}`:null}}));
     }};
-  vm.runInNewContext(source,ctx);
+  vm.runInNewContext(sharedCore,ctx);vm.runInNewContext(source,ctx);
   const res=await handler(new Request('https://mock.test',{method:'POST',headers:{'x-tln-reward-secret':badSecret?'wrong':'secret'},
     body:JSON.stringify({mode:'delta-scan-preview',maxBlocks:250})}));
   return {status:res.status,body:await res.json(),requests};
