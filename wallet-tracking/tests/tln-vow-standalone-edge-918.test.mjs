@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {stripTypeScriptTypes} from 'node:module';
+const core=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8').trimEnd();
+const edge=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const begin='// BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs';
+const end='// END GENERATED TLN VERIFICATION CORE';
+const start=edge.indexOf(begin),finish=edge.indexOf(end);
+assert.ok(start>0&&finish>start);
+assert.equal(edge.slice(start+begin.length,finish).trim(),core);
+assert.doesNotMatch(edge,/import\s+['"]\.\.\//);
+assert.match(edge,/import \{ createClient \} from 'npm:@supabase\/supabase-js@\^2'/);
+assert.doesNotThrow(()=>stripTypeScriptTypes(edge,{mode:'strip'}));
+console.log('PASS 9.18: standalone Edge file, exact generated browser/Edge core parity');

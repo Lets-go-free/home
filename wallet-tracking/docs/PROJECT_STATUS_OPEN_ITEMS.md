@@ -743,3 +743,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Manuelle Discovery speichert explizite Verifikationsbelege; Step-5-Fehler werden nicht mehr als erfolgreicher Workflow-Abschluss gespeichert. Bestehende historische Snapshots bleiben unverändert und gelten ohne zusätzliche Proof-Felder als unbewiesen, nicht als falsch.
 - Edge-Modus `snapshot-verification-audit` wertet alle bekannten Snapshot-Proof-Felder ausschliesslich aggregiert und read-only aus. Der Delta-Preview lässt alte Workflow-Flags nicht mehr als vollständige Reward-Verifikation erscheinen.
 - Lokale Tests bestanden, Live-Abnahme offen. Die eigentliche Reward-/Referral-Klassifikation ist **noch nicht** serverseitig geteilt. Kein Cron. Dokumentation: `docs/releases/9.17-tln-vow-shared-verification-core.md`.
+
+### Phase 9.18 – Supabase-Editor-Deploy repariert (20261119-080025)
+
+- 9.17 konnte wegen relativem Import ausserhalb des Edge-Bundles nicht aus dem Supabase-Dashboard deployt werden (`Module not found`). 9.18 entfernt diese Laufzeitabhängigkeit.
+- Kanonische Verifikationsregeln bleiben in `js/tln-reward-verification-core.js`; `tools/build-tln-reward-edge.mjs` bettet dieselbe Datei generiert in die eigenständig deploybare Edge Function ein. Test 9.18 prüft exakte Parität.
+- Nur Deploy-Korrektur; keine Jobs/DB-/Reward-Schreibpfade aktiviert. Live-Deploy und `snapshot-verification-audit` stehen aus. Details: `docs/releases/9.18-tln-vow-edge-standalone-deploy.md`.
