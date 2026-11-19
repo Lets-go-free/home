@@ -1,4 +1,4 @@
-// WalletTracking 9.24 – structural proof-gap diagnostic for legacy TLN/VOW snapshots.
+// WalletTracking 9.25 – read-only integrity audit of persisted ERC20 scan ranges.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -388,7 +388,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -533,6 +533,78 @@ Deno.serve(async (req) => {
       return reply({ok:true,mode,day:dayCH(),summary,returned:details.length,
         truncated:summary.legacyWallets>details.length,details,
         notice:'Anonymized historical proof-gap inventory only. ERC20 cache ranges, reference results and claim-key matches are structural evidence, NOT independent proof of complete rewards, referrals or block coverage. No wallet/user identifiers, RPC, writes, cursor changes or cron.'})
+    }
+    if(mode==='cached-range-integrity'){
+      // Inspect historical rows but do not infer that an empty block has been
+      // scanned, or that the original provider pagination was exhaustive.
+      const rawRows:any[]=[]
+      let rawComplete=false
+      for(let p=0;p<maxPages;p++){
+        const {data,error}=await sb.from('tln_vow_staking_scan_cache')
+          .select('user_id,wallet_id,scanner_version,complete_from_block,last_scanned_block,payload')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1')
+          .range(p*pageSize,(p+1)*pageSize-1)
+        if(error)throw new Error(error.message)
+        rawRows.push(...(data||[]))
+        if((data||[]).length<pageSize){rawComplete=true;break}
+      }
+      if(!rawComplete)return reply({ok:false,mode,error:'Raw-cache pagination incomplete; no diagnosis'},409)
+      const rawByWallet=new Map<string,any>()
+      for(const row of rawRows){
+        if(!row.user_id||!row.wallet_id)continue
+        const k=String(row.user_id)+'|'+String(row.wallet_id)
+        if(!rawByWallet.has(k)||Number(row.last_scanned_block||0)>Number(rawByWallet.get(k).last_scanned_block||0))rawByWallet.set(k,row)
+      }
+      const summary={legacyWallets:0,withCache:0,validRecordedRanges:0,invalidRecordedRanges:0,
+        rowsExamined:0,invalidRows:0,outsideRecordedRange:0,duplicateIdentities:0,
+        snapshotCursorAhead:0,rawRowsExceedBudget:false}
+      const details:any[]=[]
+      for(const [key,snapshot] of byWallet){
+        const p=snapshot.payload
+        if(p?.kind!=='verified_discovery_results'||verificationCore.auditSnapshot(p).verified)continue
+        summary.legacyWallets++
+        const raw=rawByWallet.get(key)
+        if(raw)summary.withCache++
+        const from=num(raw?.complete_from_block),to=num(raw?.last_scanned_block)
+        const validRange=raw?.scanner_version==='erc20-raw-v1'&&Array.isArray(raw?.payload)&&
+          from!==null&&to!==null&&to>=from&&to>0
+        if(validRange)summary.validRecordedRanges++
+        else summary.invalidRecordedRanges++
+        const rows=Array.isArray(raw?.payload)?raw.payload:[]
+        if(summary.rowsExamined+rows.length>250000){summary.rawRowsExceedBudget=true;break}
+        const identities=new Set<string>()
+        let invalidRows=0,outsideRange=0,duplicates=0,lowBlock:number|null=null,highBlock:number|null=null
+        for(const t of rows){
+          const block=typeof t?.blockNum==='string' && /^0x[0-9a-f]+$/i.test(t.blockNum)
+            ?Number(BigInt(t.blockNum)):num(t?.blockNum)
+          const hash=String(t?.hash||'').toLowerCase()
+          const token=String(t?.rawContract?.address||'').toLowerCase()
+          if(block===null||!Number.isSafeInteger(block)||!/^0x[0-9a-f]{64}$/.test(hash)||
+             !/^0x[0-9a-f]{40}$/.test(token)) {invalidRows++;continue}
+          lowBlock=lowBlock===null?block:Math.min(lowBlock,block)
+          highBlock=highBlock===null?block:Math.max(highBlock,block)
+          if(!validRange||block<from||block>to)outsideRange++
+          const id=String(t?.uniqueId||'')||`${hash}|${token}|${block}|${String(t?.from||'')}|${String(t?.to||'')}`
+          if(identities.has(id))duplicates++
+          else identities.add(id)
+        }
+        summary.rowsExamined+=rows.length
+        summary.invalidRows+=invalidRows
+        summary.outsideRecordedRange+=outsideRange
+        summary.duplicateIdentities+=duplicates
+        const snapshotBlock=num(p?.lastCheckedBlock??p?.sourceLastBlock)
+        const cursorAhead=snapshotBlock!==null&&to!==null&&snapshotBlock>to
+        if(cursorAhead)summary.snapshotCursorAhead++
+        if(details.length<25)details.push({ordinal:details.length+1,validRecordedRange:validRange,
+          recordedFromBlock:validRange?from:null,recordedToBlock:validRange?to:null,
+          transfers:rows.length,earliestEventBlock:lowBlock,latestEventBlock:highBlock,
+          invalidRows,outsideRange,duplicateIdentities:duplicates,snapshotCursorAhead:cursorAhead,
+          paginationProofPresent:false})
+      }
+      if(summary.rawRowsExceedBudget)return reply({ok:false,mode,error:'Raw row audit budget exceeded; no completeness inference',summary},409)
+      return reply({ok:true,mode,day:dayCH(),summary,returned:details.length,
+        truncated:summary.legacyWallets>details.length,details,
+        notice:'Historical row/range integrity only. A persisted contiguous range and valid events cannot prove original RPC pagination, completeness of empty blocks, relevant-contract coverage, or reward/referral classification. No identity exposure, RPC, writes, cursor changes or cron.'})
     }
     if(mode==='legacy-evidence-audit'){
       // This independent ERC20-history cache can prove that a transfer index has

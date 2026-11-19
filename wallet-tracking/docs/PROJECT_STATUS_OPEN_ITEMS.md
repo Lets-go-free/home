@@ -788,3 +788,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Geschützter Read-only-Modus `legacy-proof-gaps`: für jeden nicht vollständig unabhängig verifizierten Snapshot aggregierte Gründe (Reward-, Referral-, Block-Coverage) und erhaltene strukturierte Evidence (ERC20-Range, belegte Mint/Reward-Zeilen, Claim-Key-Matches, Referenz-Ergebnis). Max. 25 anonyme Detailzeilen, keine User-/Wallet-Identität.
 - Alte Proof-Lücken werden nicht durch reine Claim-Matches oder gespeicherte ERC20-Bereiche geschlossen. Kein RPC, keine DB-Mutation und kein Cron. Produktive Diagnose nach Deploy ausstehend.
 - Nächste Freigabeschranke: Ergebnisse prüfen und pro fehlendem Beweistyp entscheiden, was sich aus vorhandenen Rohdaten unabhängig reproduzieren lässt und was tatsächlich nachgescannt werden muss. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.24-tln-vow-legacy-proof-gaps.md`.
+
+### Phase 9.25 – Gespeicherte ERC20-Bereiche auf interne Konsistenz prüfen (20261119-223134)
+
+- Produktiver 9.24-Audit: 6/6 Legacy-Wallets haben aufgezeichnete ERC20-Bereiche und Referral-Referenzresultate ohne gespeicherte Fehler. 1 Wallet besitzt eine belegte, strukturell zugeordnete Reward-Zeile; keine offenen bewiesenen Claim-Keys. Alle 6 ohne neue unabhängige Reward-/Referral-/Block-Coverage-Proofs. **Kein Beweis, dass sie vollständig sind.**
+- Neue geschützte Edge-Diagnose `cached-range-integrity` analysiert nur diese sechs Rohcaches: aufgezeichnete From-/To-Blöcke, tatsächliche Transfer-Blöcke, ungültige Transferzeilen, Zeilen ausserhalb des notierten Intervalls, doppelte Identitäten und Snapshot-Cursor vor dem Rohcache.
+- Max. 250'000 untersuchte rohe Transferzeilen und 25 anonymisierte Detailblöcke; bei Überschreitung Abbruch ohne Vollständigkeitsbehauptung. **Keine rückwirkende RPC-Paginierungsbestätigung** aus einer gespeicherten Range möglich.
+- Lokale Negativtests bestanden; Live-Auswertung ausstehend. Nächster Schritt: Auffälligkeiten gezielt eingrenzen und gesonderten belegten Scan-/Reward-Fortschritt konzipieren. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.25-tln-vow-cached-range-integrity.md`.
