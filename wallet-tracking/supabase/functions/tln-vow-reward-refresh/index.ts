@@ -1,4 +1,4 @@
-// WalletTracking 9.32 – bounded cache-derived top-up mint RPC verifier, no commits.
+// WalletTracking 9.33 – bounded historical inflow candidate discovery, no commits.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -506,6 +506,44 @@ async function inspectHistoricalTopUpProof(wallet:string,expectedAmount:number,h
     mintAmountMatches,independentlyConfirmed,
     scope:'One cache-derived transaction and mint. Does not independently redo storage continuity or prove reward/referral completeness.'}
 }
+async function inspectHistoricalInflowReceipt(wallet:string,hash:string,token:string,block:number) {
+  const address=evmAddress(wallet),contract=evmAddress(token)
+  if(!address||!contract||!/^0x[0-9a-f]{64}$/.test(hash)||!Number.isSafeInteger(block)||block<1||!ALCHEMY_API_KEY)
+    throw new RpcDiagnosticError('candidate_receipt','invalid_anchor')
+  const url=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const call=async(method:string)=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000)
+    try {
+      const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+        body:JSON.stringify({jsonrpc:'2.0',id:33,method,params:[hash]})})
+      if(!res.ok)throw new RpcDiagnosticError(method,'http_error',res.status)
+      let body:any
+      try{body=await res.json()}catch{throw new RpcDiagnosticError(method,'invalid_json')}
+      if(body?.error)throw new RpcDiagnosticError(method,'rpc_error',null,rpcCodeOf(body.error))
+      if(!body?.result)throw new RpcDiagnosticError(method,'missing_result')
+      return body.result
+    }catch(e){if(e instanceof RpcDiagnosticError)throw e
+      throw new RpcDiagnosticError(method,e instanceof Error&&e.name==='AbortError'?'timeout':'network_error')
+    }finally{clearTimeout(timer)}
+  }
+  const tx=await call('eth_getTransactionByHash')
+  const receipt=await call('eth_getTransactionReceipt')
+  const txMatches=String(tx?.hash||'').toLowerCase()===hash&&
+    typeof tx?.blockNumber==='string'&&/^0x[0-9a-f]+$/i.test(tx.blockNumber)&&Number(BigInt(tx.blockNumber))===block
+  const receiptMatches=String(receipt?.transactionHash||'').toLowerCase()===hash&&
+    typeof receipt?.blockNumber==='string'&&/^0x[0-9a-f]+$/i.test(receipt.blockNumber)&&Number(BigInt(receipt.blockNumber))===block
+  if(!Array.isArray(receipt?.logs))throw new RpcDiagnosticError('eth_getTransactionReceipt','invalid_logs')
+  const recipientTopic='0x'+address.slice(2).padStart(64,'0'),zeroTopic='0x'+'0'.repeat(64)
+  const logs=receipt.logs.filter((l:any)=>evmAddress(l?.address)===contract&&
+    Array.isArray(l?.topics)&&String(l.topics[0]||'').toLowerCase()===TRANSFER_TOPIC&&
+    String(l.topics[2]||'').toLowerCase()===recipientTopic&&
+    typeof l.data==='string'&&/^0x[0-9a-f]{1,64}$/i.test(l.data))
+  return {txMatches,receiptMatches,receiptSuccessful:receipt?.status==='0x1',
+    selector:typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null,
+    matchingTokenInflowLogs:logs.length,zeroMintLogs:logs.filter((l:any)=>String(l.topics[1]||'').toLowerCase()===zeroTopic).length,
+    transferEvidenceConfirmed:txMatches&&receiptMatches&&receipt?.status==='0x1'&&logs.length>0,
+    rewardClassified:false}
+}
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
 async function bscHead(): Promise<number> {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
@@ -540,7 +578,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -1113,6 +1151,84 @@ Deno.serve(async (req) => {
         verifiedAgreementCount:results.filter(x=>x.verifiedAgreement).length,
         rewardCoverageVerified:false,referralCoverageVerified:false,claimsCreated:0,persisted:false,
         notice:'Read-only shared cached top-up proof rule plus bounded generic Tx/receipt/token-decimals verification. No new candidate discovery, storage reproof, reward or referral completeness, cache/cursor/claim writes or cron.'})
+    }
+    if(mode==='historical-inflow-candidate-preview'){
+      // Candidate search in already persisted ERC20 raw history only. This
+      // does NOT claim the original history pagination was exhaustive.
+      const rawRows:any[]=[]
+      let rawComplete=false
+      for(let p=0;p<maxPages;p++){
+        const {data,error}=await sb.from('tln_vow_staking_scan_cache')
+          .select('user_id,wallet_id,scanner_version,complete_from_block,last_scanned_block,payload')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1')
+          .range(p*pageSize,(p+1)*pageSize-1)
+        if(error)return reply({ok:false,mode,error:'Raw history unavailable; no scan'},503)
+        rawRows.push(...(data||[]))
+        if((data||[]).length<pageSize){rawComplete=true;break}
+      }
+      if(!rawComplete)return reply({ok:false,mode,error:'Raw history pagination incomplete'},409)
+      const rawByWallet=new Map<string,any>()
+      for(const row of rawRows){
+        if(!row.user_id||!row.wallet_id)continue
+        const key=String(row.user_id)+'|'+String(row.wallet_id)
+        if(!rawByWallet.has(key)||Number(rawByWallet.get(key).last_scanned_block||0)<Number(row.last_scanned_block||0))
+          rawByWallet.set(key,row)
+      }
+      const accepted=new Set(Object.keys(SCAN_CONTRACTS))
+      for(const snapshot of byWallet.values())for(const row of (snapshot.payload?.globals?.provenRewardRows||[])){
+        const token=evmAddress(row?.token)
+        if(token&&row?.rewardProof&&row?.rewardFlowEvidence)accepted.add(token)
+      }
+      if(accepted.size>100)return reply({ok:false,mode,error:'Proven-token scope exceeds safe budget'},409)
+      const candidates:any[]=[],seen=new Set<string>()
+      let examinedRows=0,invalidRows=0,excludedPreviouslyProven=0
+      for(const [key,snapshot] of byWallet){
+        const p=snapshot.payload,raw=rawByWallet.get(key)
+        const wallet=evmAddress(p?.wallet)
+        if(p?.kind!=='verified_discovery_results'||!wallet||raw?.scanner_version!=='erc20-raw-v1'||
+          !Array.isArray(raw?.payload))continue
+        const from=num(raw.complete_from_block),to=num(raw.last_scanned_block)
+        if(from===null||to===null||to<from||to===0)continue
+        const known=new Set((p?.globals?.provenRewardRows||[]).map((r:any)=>
+          String(r?.hash||'').toLowerCase()+'|'+String(r?.token||'').toLowerCase()))
+        for(const lot of (p?.process?.lots||[]))for(const claim of (lot?.rewardClaims||[]))
+          known.add(String(claim?.hash||'').toLowerCase()+'|'+String(claim?.token||'').toLowerCase())
+        for(const t of raw.payload){
+          if(++examinedRows>250000)return reply({ok:false,mode,error:'Raw history exceeds read-only inspection budget'},409)
+          const hash=String(t?.hash||'').toLowerCase(),token=evmAddress(t?.rawContract?.address)
+          const block=typeof t?.blockNum==='string'&&/^0x[0-9a-f]+$/i.test(t.blockNum)?
+            Number(BigInt(t.blockNum)):num(t?.blockNum)
+          if(!/^0x[0-9a-f]{64}$/.test(hash)||block===null||!Number.isSafeInteger(block)||
+            block<from||block>to){invalidRows++;continue}
+          if(!token||!accepted.has(token)||evmAddress(t?.to)!==wallet||!(Number(t?.value)>0))continue
+          if(known.has(hash+'|'+token)){excludedPreviouslyProven++;continue}
+          const identity=key+'|'+hash+'|'+token
+          if(seen.has(identity))continue
+          seen.add(identity)
+          candidates.push({hash,token,block,wallet})
+        }
+      }
+      candidates.sort((a,b)=>b.block-a.block||a.hash.localeCompare(b.hash))
+      const selected=candidates.slice(0,3),results=[]
+      for(let i=0;i<selected.length;i++){
+        const c=selected[i]
+        try{
+          const evidence=await inspectHistoricalInflowReceipt(c.wallet,c.hash,c.token,c.block)
+          results.push({ordinal:i+1,block:c.block,...evidence})
+        }catch(e){const diagnostic=safeRpcDiagnostic(e)
+          console.error('TLN raw-history candidate receipt preview failed',diagnostic)
+          return reply({ok:false,mode,error:'Candidate receipt unavailable; no progress saved',
+            rpcDiagnostic:diagnostic,inspected:i,persisted:false},503)
+        }
+      }
+      return reply({ok:true,mode,day:dayCH(),examinedRows,invalidRows,
+        eligibleTokenContracts:accepted.size,
+        excludedPreviouslyProven,candidatesFound:candidates.length,inspected:selected.length,
+        truncated:candidates.length>selected.length,results,
+        confirmedTransferEvidence:results.filter(r=>r.transferEvidenceConfirmed).length,
+        rewardClassificationCompleted:false,referralClassificationCompleted:false,
+        historicalCoverageVerified:false,claimsCreated:0,persisted:false,
+        notice:'Read-only unclassified positive inflow candidates from existing ERC20 caches for fixed token contracts plus previously proof-backed reward tokens. Receipt-confirmed token inflow is NOT a reward proof; no historical scan completeness, staking/bonus/referral classification, cursor/cache/claim writes or cron.'})
     }
     if(mode==='verified-topup-mint-preview'){
       let candidateCount=0
