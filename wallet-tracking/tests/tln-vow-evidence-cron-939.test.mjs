@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../supabase/migrations/20261120104700_tln_vow_reward_evidence_jobs_939.sql',import.meta.url),'utf8');
+const edge=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.equal((sql.match(/v_jobid := cron\.schedule\(/gi)||[]).length,2);
+assert.equal((sql.match(/perform cron\.alter_job\(v_jobid, active := false\)/gi)||[]).length,2);
+assert.equal((sql.match(/do \$install\$/gi)||[]).length,2);
+assert.ok(sql.includes("tln-vow-evidence-stage-5m"));
+assert.ok(sql.includes("tln-vow-evidence-receipts-5m"));
+assert.ok(sql.includes("'{\"mode\":\"delta-work-cycle\"}'::jsonb"));
+assert.ok(sql.includes("'{\"mode\":\"delta-receipt-verify\"}'::jsonb"));
+assert.ok(sql.includes("tln_vow_trade_sync_url"));
+assert.ok(sql.includes("tln_vow_reward_refresh_auth"));
+assert.ok(sql.includes("'x-tln-reward-secret'"));
+assert.ok(!sql.includes('service_role_key'));
+assert.ok(!/reward_claims|reward_amount|canonical_claims/i.test(sql));
+assert.ok(edge.includes("(e.category==='stage_event_budget_exceeded'||e.category==='too_many_transfers')&&chunkSize>1"));
+console.log('9.39 evidence cron: two distinct inactive jobs, Vault auth, no reward writes');

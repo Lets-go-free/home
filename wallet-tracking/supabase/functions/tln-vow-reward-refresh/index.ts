@@ -1,6 +1,5 @@
-// WalletTracking 9.37 – receipt-verified staged transfers with lifecycle hints; cron off.
-// Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
-// Deploy only for a protected staging inspection. This is NOT a reward worker.
+// WalletTracking 9.39 – evidence-only jobs may run; canonical rewards/claims remain untouched.
+// Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
 // WalletTracking 9.17 – pure shared TLN/VOW verification rules.
@@ -913,8 +912,8 @@ Deno.serve(async (req) => {
           try{inspection=await inspectWalletTransfers(target.wallet,cursor,toBlock,chunkSize,contracts,true);break}
           catch(e){
             if(workCycle&&e instanceof RpcDiagnosticError&&
-              (e.category==='stage_event_budget_exceeded'||e.category==='too_many_transfers')&&chunkSize>1000){
-              chunkSize=Math.max(1000,Math.floor(chunkSize/2));continue
+              (e.category==='stage_event_budget_exceeded'||e.category==='too_many_transfers')&&chunkSize>1){
+              chunkSize=Math.max(1,Math.floor(chunkSize/2));continue
             }
             console.error('TLN staged transfer scan failed',safeRpcDiagnostic(e))
             return reply({ok:false,mode,error:'Transfer scan failed; prior chunks (if any) remain persisted',

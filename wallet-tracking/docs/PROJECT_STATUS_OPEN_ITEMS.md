@@ -886,3 +886,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Bis zu vier gefundene Transaktionen je Abschnitt werden im selben Durchlauf per Tx/Receipt- und ERC20-Rohbetrag-Beleg geprüft und in `tln_vow_reward_receipt_stage` gespeichert. Grösserer Backlog bleibt für den vorhandenen `delta-receipt-verify`-Weg erhalten; er wird **nicht** als erledigt gewertet.
 - Es gibt weiterhin **keine** vollständige automatische Reward-/Referral-Klassifikation, keine Änderung kanonischer Claims, keine unabhängige Vollständigkeitsprüfung historischer Altbestände und **keinen TLN/VOW-Cron**. Details `docs/releases/9.38-tln-vow-work-cycle.md`.
 
+### Phase 9.39 – Geplante automatische Belegsicherung, getrennt vom Rewards-Cron (20261120-113941)
+
+- Neue Migration `20261120104700_tln_vow_reward_evidence_jobs_939.sql` registriert zwei **zunächst inaktive** pg_cron-Jobs: Transfer-Windows (`delta-work-cycle` zu Minuten 3,8,…,58) und Receipt-Backlog (`delta-receipt-verify` zu Minuten 4,9,…,59).
+- Bestehende Vault-URL `tln_vow_trade_sync_url` wird wiederverwendet; für den neuen Header ist **ein** Vault-Secret `tln_vow_reward_refresh_auth` erforderlich, das dem bereits in der Edge Function gesetzten `TLN_REWARD_CRON_SECRET` entsprechen muss. Keine Geheimnisse im SQL-Klartext.
+- Staging-only: kein automatischer Import kanonischer TLN/VOW-Rewards oder Referrals; diese Pipeline ist weiterhin unvollständig. Die zwei neuen Jobs dürfen erst nach Prüfung von Secret/URL und Einzellauf aktiviert werden. **TLN/VOW-Rewards-Cron AUS.**
+- Kleinere technische Korrektur: Work-Cycle verkleinert zu grosse Fenster bei Bedarf bis auf einen Block, statt bei 1'000 Blöcken stehenzubleiben.
+- Tests der TLN/VOW-Module bestanden. Details `docs/releases/9.39-tln-vow-evidence-cron.md`.
+
