@@ -1,4 +1,4 @@
-// WalletTracking 9.29 – read-only registry-driven legacy transfer scan, no commits.
+// WalletTracking 9.30 – read-only wallet contract calls and receipts, no commits.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -358,6 +358,88 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
     scope:contractOverrides?'Wallet ERC20 transfers matched against bounded configured contract set; not reward classification':
       'Wallet-scoped ERC20 AssetTransfers for four known token contracts; not proof of a staking, referral or bonus reward'}
 }
+// Mirrors manual allExternalCallsToStaking discovery's external -> tx -> receipt
+// evidence chain, but deliberately does not import or classify any reward.
+async function inspectStakingContractCalls(wallet:string,fromBlock:number,toBlock:number,targets:string[]) {
+  const address=evmAddress(wallet)
+  if(!ALCHEMY_API_KEY||!address||targets.length<1||targets.length>100||
+    targets.some(t=>evmAddress(t)!==t)||new Set(targets).size!==targets.length)
+    throw new RpcDiagnosticError('external_calls','unsafe_scope')
+  const allowed=new Set(targets)
+  const rpcUrl=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const call=async(method:string,params:unknown[])=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000)
+    try {
+      const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+        body:JSON.stringify({jsonrpc:'2.0',id:31,method,params})})
+      if(!r.ok)throw new RpcDiagnosticError(method,'http_error',r.status)
+      let result:any
+      try{result=await r.json()}catch{throw new RpcDiagnosticError(method,'invalid_json')}
+      if(result?.error)throw new RpcDiagnosticError(method,'rpc_error',null,rpcCodeOf(result.error))
+      if(!Object.hasOwn(result||{},'result'))throw new RpcDiagnosticError(method,'invalid_response')
+      return result.result
+    }catch(e){if(e instanceof RpcDiagnosticError)throw e
+      throw new RpcDiagnosticError(method,e instanceof Error&&e.name==='AbortError'?'timeout':'network_error')
+    }finally{clearTimeout(timer)}
+  }
+  const hashes=new Set<string>(),seenPages=new Set<string>()
+  let pageKey:string|null=null,pages=0,totalExternal=0
+  const selected:string[]=[]
+  // Fixed per-preview caps protect Alchemy, execution time and data exposure.
+  const MAX_INSPECTED_CALLS=12
+  let truncated=false,complete=false
+  while(pages<MAX_TRANSFER_PAGES_PER_DIRECTION){
+    const q:Record<string,unknown>={fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock),
+      fromAddress:address,category:['external'],excludeZeroValue:false,withMetadata:true,maxCount:'0x3e8'}
+    if(pageKey)q.pageKey=pageKey
+    const result=await call('alchemy_getAssetTransfers',[q])
+    if(!Array.isArray(result?.transfers))throw new RpcDiagnosticError('external_calls','invalid_response')
+    pages++;totalExternal+=result.transfers.length
+    for(const item of result.transfers){
+      const from=evmAddress(item?.from),to=evmAddress(item?.to)
+      const hash=typeof item?.hash==='string'&&/^0x[0-9a-f]{64}$/i.test(item.hash)?item.hash.toLowerCase():null
+      const block=typeof item?.blockNum==='string'&&/^0x[0-9a-f]+$/i.test(item.blockNum)?Number(BigInt(item.blockNum)):NaN
+      if(from!==address||!hash||!Number.isSafeInteger(block)||block<fromBlock||block>toBlock)
+        throw new RpcDiagnosticError('external_calls','invalid_transfer')
+      if(!to||!allowed.has(to)||hashes.has(hash))continue
+      hashes.add(hash)
+      if(selected.length<MAX_INSPECTED_CALLS)selected.push(hash)
+      else truncated=true
+    }
+    const next=result.pageKey
+    if(!next){complete=true;break}
+    if(typeof next!=='string'||next.length>2000||seenPages.has(next))
+      throw new RpcDiagnosticError('external_calls','invalid_pagination')
+    seenPages.add(next);pageKey=next
+  }
+  const selectors=new Map<string,number>()
+  let successfulReceipts=0,failedReceipts=0,receiptLogs=0,erc20TransferLogs=0
+  for(const hash of selected){
+    const tx=await call('eth_getTransactionByHash',[hash])
+    if(!tx||evmAddress(tx.from)!==address||!allowed.has(evmAddress(tx.to)||'')||
+      typeof tx.blockNumber!=='string'||Number(BigInt(tx.blockNumber))<fromBlock||
+      Number(BigInt(tx.blockNumber))>toBlock)throw new RpcDiagnosticError('eth_getTransactionByHash','tx_mismatch')
+    const input=typeof tx.input==='string'&&/^0x[0-9a-f]*$/i.test(tx.input)?tx.input.toLowerCase():null
+    if(input===null)throw new RpcDiagnosticError('eth_getTransactionByHash','invalid_input')
+    const selector=input.length>=10?input.slice(0,10):'none'
+    selectors.set(selector,(selectors.get(selector)||0)+1)
+    const rec=await call('eth_getTransactionReceipt',[hash])
+    if(!rec||String(rec.transactionHash||'').toLowerCase()!==hash||!Array.isArray(rec.logs))
+      throw new RpcDiagnosticError('eth_getTransactionReceipt','receipt_mismatch')
+    if(rec.status==='0x1')successfulReceipts++
+    else if(rec.status==='0x0')failedReceipts++
+    else throw new RpcDiagnosticError('eth_getTransactionReceipt','invalid_status')
+    receiptLogs+=rec.logs.length
+    erc20TransferLogs+=rec.logs.filter((l:any)=>Array.isArray(l?.topics)&&
+      String(l.topics[0]||'').toLowerCase()===TRANSFER_TOPIC).length
+  }
+  return {method:'alchemy_getAssetTransfers + eth_getTransactionByHash + eth_getTransactionReceipt',
+    externalPages:pages,externalTransfers:totalExternal,externalPaginationComplete:complete,
+    matchingContractCalls:hashes.size,callsInspected:selected.length,callsTruncated:truncated,
+    selectorCounts:[...selectors].map(([selector,count])=>({selector,count})),
+    successfulReceipts,failedReceipts,receiptLogs,erc20TransferLogs,
+    evidenceComplete:complete&&!truncated,classificationPerformed:false}
+}
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
 async function bscHead(): Promise<number> {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
@@ -392,7 +474,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -559,7 +641,7 @@ Deno.serve(async (req) => {
         plannedWallets:plan.length,truncated:candidates.length>plan.length,plan,
         notice:'Read-only proposed forward scan anchors from historic ERC20 caches, not approved verified checkpoints. Prior block history remains unverified. Encrypted-wallet eligibility is not enumerated. No transfers scanned, reward or referral classification, cursor/lease/cache writes, cron or identity disclosure.'})
     }
-    if(mode==='legacy-first-chunk-scan-preview'||mode==='registry-first-chunk-scan-preview'){
+    if(mode==='legacy-first-chunk-scan-preview'||mode==='registry-first-chunk-scan-preview'||mode==='staking-call-receipt-preview'){
       // Fixed one-wallet scope from persisted caches; callers cannot supply a
       // wallet, block range, arbitrary token contract or RPC endpoint.
       const rawRows:any[]=[]
@@ -602,7 +684,7 @@ Deno.serve(async (req) => {
       const toBlock=Math.min(head,fromBlock+maxBlocks-1)
       let registryContracts:string[]|undefined
       let registrySummary:any=undefined
-      if(mode==='registry-first-chunk-scan-preview'){
+      if(mode==='registry-first-chunk-scan-preview'||mode==='staking-call-receipt-preview'){
         const [stakingResult,tokenResult]=await Promise.all([
           sb.from('defi_staking_contracts').select('contract_address,role,classify_transfers')
             .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
@@ -620,6 +702,28 @@ Deno.serve(async (req) => {
           uniqueContractsInspected:registryContracts.length,
           transferClassifyingStakingRows:staking.filter((r:any)=>r.classify_transfers===true).length,
           classificationPerformed:false}
+      }
+      if(mode==='staking-call-receipt-preview'){
+        const {data,error}=await sb.from('defi_staking_contracts').select('contract_address')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+        if(error)return reply({ok:false,mode,error:'Staking registry unavailable; no scan'},503)
+        const targets=(data||[]).map((x:any)=>evmAddress(x.contract_address))
+        if(!targets.length||targets.some(x=>!x))return reply({ok:false,mode,error:'Invalid staking registry; no scan'},409)
+        const distinct=[...new Set(targets)] as string[]
+        if(distinct.length>100)return reply({ok:false,mode,error:'Staking registry exceeds safe scope; no scan'},409)
+        try {
+          const evidence=await inspectStakingContractCalls(selected.wallet,fromBlock,toBlock,distinct)
+          return reply({ok:true,mode,day:dayCH(),selectedWallets:1,
+            registry:{stakingContracts:distinct.length},
+            chunk:{fromBlock,toBlock,maxBlocks,executed:true,persisted:false},
+            evidence,scanCompleted:evidence.evidenceComplete,
+            rewardClassificationCompleted:false,referralClassificationCompleted:false,
+            notice:'Read-only wallet external calls to enabled staking contracts, bounded tx selectors and receipts. Incomplete pagination or truncated calls cannot establish complete evidence. No staking-lot/reward/referral classification, cache/cursor/lease writes or cron.'})
+        }catch(e){const diagnostic=safeRpcDiagnostic(e)
+          console.error('TLN staking call/receipt preview failed',diagnostic)
+          return reply({ok:false,mode,error:'Staking call/receipt inspection failed; no progress saved',
+            rpcDiagnostic:diagnostic,chunk:{fromBlock,toBlock,persisted:false},scanCompleted:false},503)
+        }
       }
       let inspection:any
       try{inspection=await inspectWalletTransfers(selected.wallet,fromBlock,toBlock,maxBlocks,registryContracts)}
