@@ -872,3 +872,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Technischer Stand **nicht** mit fertigen Rewards verwechseln: Auch bei vollständig abgelegten Transfers fehlen Receipt-, State-, Lifecycle- und Referral-Beweise. Historische Scan-Abdeckung vor dem Raw-Cache-Anker bleibt unbewiesen. Noch keine Rewards, Claims, Referral-Ergebnisse oder autoritativen Cursor schreiben; **TLN/VOW-Cron AUS.**
 - SQL-Migration muss vor der neuen Edge Function eingerichtet werden. Testskripte 9.36 inkl. Laufzeit-Simulation erfolgreich. Details `docs/releases/9.36-tln-vow-delta-stage.md`.
 
+### Phase 9.37 – On-Chain-Receipt-Abgleich der gespeicherten Delta-Belege (20261120-102429)
+
+- `delta-receipt-verify` liest bereits in 9.36 abgelegte Transfer-Evidenz, vergleicht höchstens vier neue Transaktionen pro Aufruf mit `eth_getTransactionByHash` und `eth_getTransactionReceipt` und verlangt eine **1:1-Zuordnung** zu ERC20-Receipt-Logs inklusive Rohbetrag.
+- Der Modus referenziert die bestehenden Staking-Lots/TopUps im Discovery-Snapshot, verwendet die in 9.35 gemeinsam geteilte Reward-Flow-Klassifikation und speichert vollständige verifizierte Receipt-Transfers in einer **zweiten, separaten** Service-Role-only-Tabelle (`tln_vow_reward_receipt_stage`). Die Zuordnung ist nur Hinweis, kein endgültiger Reward-Beweis.
+- Die neue Tabelle wird durch `20261120103000_tln_vow_reward_receipt_stage_937.sql` angelegt. Ein Schreibvorgang erfolgt erst nach erfolgreicher Prüfung des ganzen Batches; der Primärschlüssel verhindert doppelte Transaktionsbelege.
+- Unverändert offen: verifizierte Reward-/Referral-Klassifikation und vollständige historische Abdeckung, sichere kanonische Claim-Übernahme, Job-Orchestrierung und alle verschlüsselten Wallets. **TLN/VOW-Cron AUS.** Details `docs/releases/9.37-tln-vow-receipt-stage.md`.
+

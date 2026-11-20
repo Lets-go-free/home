@@ -1,4 +1,4 @@
-// WalletTracking 9.36 – bounded idempotent transfer-evidence staging, no reward commits.
+// WalletTracking 9.37 – receipt-verified staged transfers with lifecycle hints; cron off.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -627,6 +627,73 @@ async function inspectHistoricalInflowReceipt(wallet:string,hash:string,token:st
     transferEvidenceConfirmed:txMatches&&receiptMatches&&receipt?.status==='0x1'&&logs.length>0,
     rewardClassified:false}
 }
+// Receipt proof for previously staged transfers. No new wallet discovery and
+// no reward allocation: all original transfer rows must match on-chain logs.
+async function verifyStagedReceipt(wallet:string,hash:string,block:number,events:any[],lots:any[]){
+  const address=evmAddress(wallet)
+  if(!address||!/^0x[0-9a-f]{64}$/.test(hash)||!Number.isSafeInteger(block)||block<1||
+    events.length<1||events.length>250||!ALCHEMY_API_KEY)
+    throw new RpcDiagnosticError('staged_receipt','invalid_evidence')
+  const url=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const call=async(method:string)=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000)
+    try{
+      const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+        body:JSON.stringify({jsonrpc:'2.0',id:37,method,params:[hash]})})
+      if(!res.ok)throw new RpcDiagnosticError(method,'http_error',res.status)
+      const body=await res.json()
+      if(body?.error)throw new RpcDiagnosticError(method,'rpc_error',null,rpcCodeOf(body.error))
+      if(!body?.result)throw new RpcDiagnosticError(method,'missing_result')
+      return body.result
+    }catch(e){if(e instanceof RpcDiagnosticError)throw e
+      throw new RpcDiagnosticError(method,e instanceof Error&&e.name==='AbortError'?'timeout':'network_error')
+    }finally{clearTimeout(timer)}
+  }
+  const [tx,receipt]=await Promise.all([call('eth_getTransactionByHash'),call('eth_getTransactionReceipt')])
+  if(String(tx?.hash||'').toLowerCase()!==hash||String(receipt?.transactionHash||'').toLowerCase()!==hash||
+    Number(BigInt(tx?.blockNumber||0))!==block||Number(BigInt(receipt?.blockNumber||0))!==block||
+    receipt?.status!=='0x1'||!Array.isArray(receipt?.logs))
+    throw new RpcDiagnosticError('staged_receipt','tx_receipt_mismatch')
+  const transferLogs=receipt.logs.filter((l:any)=>evmAddress(l?.address)&&
+    Array.isArray(l?.topics)&&l.topics.length>=3&&
+    String(l.topics[0]||'').toLowerCase()===TRANSFER_TOPIC&&
+    /^0x[0-9a-f]{64}$/i.test(String(l.topics[1]||''))&&
+    /^0x[0-9a-f]{64}$/i.test(String(l.topics[2]||''))&&
+    /^0x[0-9a-f]{1,64}$/i.test(String(l.data||'')))
+    .map((l:any)=>({token:evmAddress(l.address),from:'0x'+String(l.topics[1]).slice(-40).toLowerCase(),
+      to:'0x'+String(l.topics[2]).slice(-40).toLowerCase(),amountRaw:String(l.data),
+      logIndex:Number(BigInt(l.logIndex||0))}))
+  if(transferLogs.length>400)throw new RpcDiagnosticError('staged_receipt','receipt_log_budget_exceeded')
+  const matchedIndexes=new Set<number>()
+  for(const event of events){
+    const token=evmAddress(event?.token),from=evmAddress(event?.from),to=evmAddress(event?.to)
+    const raw=String(event?.rawValue||'')
+    if(!token||!from||!to||!/^0x[0-9a-f]+$/i.test(raw))
+      throw new RpcDiagnosticError('staged_receipt','transfer_log_mismatch')
+    const match=transferLogs.findIndex((l,i)=>!matchedIndexes.has(i)&&l.token===token&&
+      l.from===from&&l.to===to&&BigInt(l.amountRaw)===BigInt(raw))
+    if(match<0)throw new RpcDiagnosticError('staged_receipt','transfer_log_mismatch')
+    matchedIndexes.add(match)
+  }
+  const bridge=evmAddress(tx.to)==='0xa7c14010afa616fa23a2bb0a94d76dd57dde644d'||
+    receipt.logs.some((l:any)=>String(l?.topics?.[0]||'').toLowerCase()===
+      '0xcd6ac346191b4b7531743e58f243dd4d350a52a9186641c1e5eac22b95aaedbe')
+  const relatedLots=(lots||[]).filter((lot:any)=>[lot?.stakeTx,lot?.unstakeTx,
+    ...(Array.isArray(lot?.topUps)?lot.topUps.map((x:any)=>x?.tx):[])].some(t=>String(t||'').toLowerCase()===hash))
+  const lifecycle=relatedLots.length>0
+  const flow=verificationCore.classifyRewardTransferFlow({wallet:address,callTo:evmAddress(tx?.to)||'',
+    transfers:transferLogs,bridge,lifecycle,explicitRewardIntent:false,
+    stateDeltaEvidence:[],traceSources:[]})
+  const verifiedTopup=relatedLots.filter((lot:any)=>(lot?.topUps||[]).some((x:any)=>
+    String(x?.tx||'').toLowerCase()===hash&&x?.evidence==='onchain_same_wallet_position_state'&&
+    x?.storageProof?.proven===true)).length
+  return {receiptVerified:true,transferLogsMatched:events.length,receiptTransfers:transferLogs.length,
+    transfers:transferLogs,
+    selector:typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null,
+    flowKind:flow.kind,flowPayoutCandidates:flow.payoutTransfers.length,
+    lifecycleLotMatches:relatedLots.length,verifiedTopupLotMatches:verifiedTopup,
+    knownBridge:bridge,classificationVerified:false}
+}
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
 async function bscHead(): Promise<number> {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
@@ -661,7 +728,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -685,6 +752,76 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='delta-receipt-verify'){
+      const staged:any[]=[],verified:any[]=[]
+      for(const [table,destination,columns] of [
+        ['tln_vow_reward_delta_stage',staged,'user_id,wallet_id,from_block,to_block,transfer_events'],
+        ['tln_vow_reward_receipt_stage',verified,'user_id,wallet_id,tx_hash']
+      ] as const){
+        let complete=false
+        for(let p=0;p<maxPages;p++){
+          const {data,error}=await sb.from(table).select(columns).eq('chain_key','bsc')
+            .order(table==='tln_vow_reward_delta_stage'?'from_block':'tx_hash',{ascending:true})
+            .range(p*pageSize,(p+1)*pageSize-1)
+          if(error)return reply({ok:false,mode,error:'Receipt staging table unavailable; apply 9.37 SQL'},503)
+          destination.push(...(data||[]))
+          if((data||[]).length<pageSize){complete=true;break}
+        }
+        if(!complete)return reply({ok:false,mode,error:'Evidence pagination incomplete; no receipt writes'},409)
+      }
+      const completed=new Set(verified.map(r=>String(r.user_id)+'|'+String(r.wallet_id)+'|'+String(r.tx_hash).toLowerCase()))
+      const grouped=new Map<string,any>()
+      for(const row of staged){
+        const owner=String(row.user_id)+'|'+String(row.wallet_id)
+        const snapshot=byWallet.get(owner),wallet=evmAddress(snapshot?.payload?.wallet)
+        if(!wallet||snapshot?.payload?.kind!=='verified_discovery_results'||!Array.isArray(row.transfer_events))
+          continue
+        const from=num(row.from_block),to=num(row.to_block)
+        if(from===null||to===null||to<from)continue
+        for(const event of row.transfer_events){
+          const hash=String(event?.hash||'').toLowerCase(),block=num(event?.block)
+          if(!/^0x[0-9a-f]{64}$/.test(hash)||block===null||block<from||block>to)
+            return reply({ok:false,mode,error:'Invalid persisted transfer evidence; no receipts saved'},409)
+          const identity=owner+'|'+hash
+          if(completed.has(identity))continue
+          if(!grouped.has(identity))grouped.set(identity,{owner,hash,block,wallet,
+            userId:row.user_id,walletId:row.wallet_id,events:[],lots:snapshot.payload?.process?.lots||[]})
+          const item=grouped.get(identity)
+          if(item.block!==block)return reply({ok:false,mode,error:'Transaction block conflict; no receipts saved'},409)
+          item.events.push(event)
+        }
+      }
+      const pending=[...grouped.values()].sort((a,b)=>a.block-b.block||a.hash.localeCompare(b.hash))
+      if(!pending.length)return reply({ok:true,mode,day:dayCH(),status:'no_pending_receipts',
+        verifiedTransactions:0,persisted:false,
+        notice:'No receipt candidates from the currently staged transfer windows.'})
+      // Bounded on-chain reads. All must pass before one atomic batch insert.
+      const batch=pending.slice(0,4)
+      const evidence:any[]=[]
+      try{
+        for(const item of batch)evidence.push(await verifyStagedReceipt(item.wallet,item.hash,item.block,
+          item.events,item.lots))
+      }catch(e){console.error('TLN receipt evidence failed',safeRpcDiagnostic(e))
+        return reply({ok:false,mode,error:'Receipt or staged transfer mismatch; no receipt evidence saved',
+          rpcDiagnostic:safeRpcDiagnostic(e),persisted:false},503)}
+      const insertRows=batch.map((item,i)=>({user_id:item.userId,wallet_id:item.walletId,
+        chain_key:'bsc',tx_hash:item.hash,block_number:item.block,evidence:evidence[i],
+        reward_classification_verified:false}))
+      const {error:insertError}=await sb.from('tln_vow_reward_receipt_stage').insert(insertRows)
+      if(insertError){
+        if(insertError.code==='23505')return reply({ok:true,mode,status:'already_verified_concurrently',persisted:false,
+          notice:'Overlapping receipt batch was staged by another invocation.'})
+        return reply({ok:false,mode,error:'Receipt evidence insert failed; no canonical rewards changed'},503)
+      }
+      return reply({ok:true,mode,day:dayCH(),status:'receipt_evidence_staged',
+        verifiedTransactions:batch.length,remainingTransactions:pending.length-batch.length,
+        verifiedTransferLogs:evidence.reduce((n,e)=>n+e.transferLogsMatched,0),
+        matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
+        knownBridges:evidence.filter(e=>e.knownBridge).length,
+        persisted:true,rewardClassificationCompleted:false,referralClassificationCompleted:false,
+        claimsCreated:0,
+        notice:'Receipt-backed facts staged only. No reward/claim/referral allocation, historical completeness or cron.'})
     }
     if(mode==='delta-transfer-stage'){
       // Intentionally only transfer *evidence*. A committed staging chunk is
