@@ -1,4 +1,4 @@
-// WalletTracking 9.40 – shared proof reconciliation on automatic receipts; canonical rewards untouched.
+// WalletTracking 9.41 – independently discover new unverified mint candidates; canonical rewards untouched.
 // Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -229,7 +229,38 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt});
+  // Independently discover possible NEW staking-related zero-mints without
+  // relying on an earlier browser snapshot. These are NOT confirmed rewards.
+  function discoverNewMintRewardCandidates(input){
+    const wallet=String(input?.wallet||'').toLowerCase();
+    const hash=String(input?.hash||'').toLowerCase();
+    const to=String(input?.calledContract||'').toLowerCase();
+    const known=new Set((Array.isArray(input?.stakingContracts)?input.stakingContracts:[])
+      .map(x=>String(x||'').toLowerCase()));
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+       input?.receipt?.receiptVerified!==true||input?.receipt?.knownBridge===true||
+       (!known.has(to)&&input?.knownLifecycle!==true))return [];
+    const transfers=Array.isArray(input.receipt.transfers)?input.receipt.transfers:[];
+    const flow=classifyRewardTransferFlow({wallet,callTo:to,transfers,
+      lifecycle:input?.knownLifecycle===true,bridge:false,explicitRewardIntent:false,
+      stateDeltaEvidence:[],traceSources:[]});
+    const zero='0x'+'0'.repeat(40),seen=new Set(),out=[];
+    for(const tr of flow.payoutTransfers){
+      if(String(tr.from||'').toLowerCase()!==zero||
+        !/^0x[0-9a-f]{40}$/.test(String(tr.token||'').toLowerCase())||
+        !/^0x[0-9a-f]+$/i.test(String(tr.amountRaw||''))||BigInt(tr.amountRaw)<=0n)continue;
+      const logIndex=Number(tr.logIndex);
+      if(!Number.isSafeInteger(logIndex)||logIndex<0)continue;
+      const token=String(tr.token).toLowerCase(),key=token+'|'+logIndex;
+      if(seen.has(key))continue;
+      seen.add(key);
+      out.push({hash,token,amountRaw:String(tr.amountRaw),logIndex,
+        kind:'unverified_staking_related_mint',rewardVerified:false,
+        reason:'mint and staking relationship only; independent reward/lifecycle proof required'});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -718,17 +749,22 @@ async function verifyStagedReceipt(wallet:string,hash:string,block:number,events
     x?.storageProof?.proven===true)).length
   return {receiptVerified:true,transferLogsMatched:events.length,receiptTransfers:transferLogs.length,
     transfers:transferLogs,
+    calledContract:evmAddress(tx?.to)||null,
     selector:typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null,
     flowKind:flow.kind,flowPayoutCandidates:flow.payoutTransfers.length,
     lifecycleLotMatches:relatedLots.length,verifiedTopupLotMatches:verifiedTopup,
     knownBridge:bridge,classificationVerified:false}
 }
-function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any){
+function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any,stakingContracts:string[]){
   const matches=verificationCore.reconcileVerifiedTopUpReceipt({wallet,hash,receipt,
     lots:snapshot?.process?.lots||[],provenRows:snapshot?.globals?.provenRewardRows||[]})
+  const newCandidates=verificationCore.discoverNewMintRewardCandidates({wallet,hash,receipt,
+    calledContract:receipt.calledContract,stakingContracts,
+    knownLifecycle:receipt.lifecycleLotMatches>0})
   // A matched historical proof is only a reconciliation hint: this does not
   // establish complete reward or referral coverage or create a claim.
-  return {...receipt,manualRewardProofMatches:matches,
+  return {...receipt,manualRewardProofMatches:matches,newRewardMintCandidates:newCandidates,
+    newRewardMintCandidateCount:newCandidates.length,
     manualRewardProofMatchCount:matches.length,classificationVerified:false}
 }
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
@@ -838,10 +874,15 @@ Deno.serve(async (req) => {
         notice:'No receipt candidates from the currently staged transfer windows.'})
       // Bounded on-chain reads. All must pass before one atomic batch insert.
       const batch=pending.slice(0,4)
+      const registry=await sb.from('defi_staking_contracts').select('contract_address')
+        .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+      if(registry.error||registry.data?.some((r:any)=>!evmAddress(r.contract_address)))
+        return reply({ok:false,mode,error:'Staking registry unavailable or invalid; no receipt writes'},503)
+      const stakingContracts=(registry.data||[]).map((r:any)=>evmAddress(r.contract_address)!)
       const evidence:any[]=[]
       try{
         for(const item of batch)evidence.push(attachManualRewardProofMatches(item.wallet,item.hash,
-          await verifyStagedReceipt(item.wallet,item.hash,item.block,item.events,item.lots),item.snapshot))
+          await verifyStagedReceipt(item.wallet,item.hash,item.block,item.events,item.lots),item.snapshot,stakingContracts))
       }catch(e){console.error('TLN receipt evidence failed',safeRpcDiagnostic(e))
         return reply({ok:false,mode,error:'Receipt or staged transfer mismatch; no receipt evidence saved',
           rpcDiagnostic:safeRpcDiagnostic(e),persisted:false},503)}
@@ -858,6 +899,7 @@ Deno.serve(async (req) => {
         verifiedTransactions:batch.length,remainingTransactions:pending.length-batch.length,
         verifiedTransferLogs:evidence.reduce((n,e)=>n+e.transferLogsMatched,0),
         matchingManualRewardProofs:evidence.reduce((n,e)=>n+e.manualRewardProofMatchCount,0),
+        newUnverifiedMintCandidates:evidence.reduce((n,e)=>n+e.newRewardMintCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
         knownBridges:evidence.filter(e=>e.knownBridge).length,
         persisted:true,rewardClassificationCompleted:false,referralClassificationCompleted:false,
@@ -933,12 +975,13 @@ Deno.serve(async (req) => {
       const configured=[...(stakingResult.data||[]),...(tokenResult.data||[])]
       if(configured.some((r:any)=>!evmAddress(r.contract_address)))return reply({ok:false,mode,error:'Invalid registry; no staging'},409)
       const contracts=[...new Set([...Object.keys(SCAN_CONTRACTS),...configured.map((r:any)=>evmAddress(r.contract_address)!)])]
+      const stakingContracts=(stakingResult.data||[]).map((r:any)=>evmAddress(r.contract_address)!)
       if(contracts.length>100)return reply({ok:false,mode,error:'Registry scope too broad'},409)
       // A work cycle advances one selected wallet through a bounded number of
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -987,7 +1030,7 @@ Deno.serve(async (req) => {
           try{
             for(const [hash,events] of txs)receipts.push({hash,block:events[0].block,
               evidence:attachManualRewardProofMatches(target.wallet,hash,
-                await verifyStagedReceipt(target.wallet,hash,events[0].block,events,matchingLots),targetSnapshot)})
+                await verifyStagedReceipt(target.wallet,hash,events[0].block,events,matchingLots),targetSnapshot,stakingContracts)})
           }catch(e){
             console.error('TLN immediate receipt verification failed',safeRpcDiagnostic(e))
             return reply({ok:false,mode,error:'Transfer chunk staged; receipt proof failed and is retryable',
@@ -1004,11 +1047,12 @@ Deno.serve(async (req) => {
           }
           receiptVerified+=receipts.length
           manualProofMatches+=receipts.reduce((n,r)=>n+r.evidence.manualRewardProofMatchCount,0)
+          newUnverifiedMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.newRewardMintCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,

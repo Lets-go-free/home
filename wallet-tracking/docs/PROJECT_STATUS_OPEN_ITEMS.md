@@ -899,3 +899,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Für neu geprüfte Receipts speichern sowohl Work-Cycle als auch Receipt-Backlog eine konservative, gemeinsame Browser-/Edge-Abgleichsentscheidung auf Basis eindeutiger, bereits manuell belegter Top-ups. Nur technisches Receipt-JSON; keine kanonischen Rewards/Claims.
 - **Offen:** Der tägliche Job muss neue Proofs und Referral-Zuordnungen selbständig nach manueller Logik ermitteln. 9.40 erkennt nur bestehende manuelle Proofs und ersetzt keine vollständige Klassifizierung. Details `docs/releases/9.40-tln-vow-automatic-proof-reconciliation.md`.
 
+### Phase 9.41 – Neue automatische, unbestätigte Staking-Mint-Kandidaten (20261120-144422)
+
+- Server-Receipt-Worker erkennt nun auch ohne vorherige Browser-Discovery potentielle Mint-Rewards aus bestätigten On-chain-Logs mit registriertem Staking-/Lifecycle-Kontext und persistiert sie ausschliesslich im Evidence-Staging.
+- **Offen:** Tatsächliche Staking-/Bonus-/Referral-Beweise und vollständige automatische Reward-Zuordnung fehlen weiterhin; weder 9.40 noch 9.41 darf kanonische Claims erzeugen. Details `docs/releases/9.41-tln-vow-new-mint-candidates.md`.
+

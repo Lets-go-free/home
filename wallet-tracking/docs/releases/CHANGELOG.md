@@ -243,3 +243,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.40 · 20.11.2026 14:09:41 CET · Build 20261120-140941
 - Gemeinsame pure Reward-Top-up-Reconciliation wird bei jedem neuen Edge-Receipt automatisch ausgeführt: nur eindeutige manuelle Storage-/Reward-Belege plus bestätigte Mint-Logs werden als Hinweise im separaten Receipt-Staging gespeichert. Keine kanonischen Claims, keine neue Migration, Rewards-Cron aus. `9.40-tln-vow-automatic-proof-reconciliation.md`.
 
+## 9.41 · 20.11.2026 14:44:22 CET · Build 20261120-144422
+- Server erkennt in echten verifizierten Receipts selbständig neue, noch nicht bewertete Zero-Mint-Kandidaten mit Staking-/Lifecycle-Bezug, ohne vorheriges Browser-Discovery-Proof. Separate technische Evidence-Persistenz; keine Reward-/Referral-/Claim-Klassifizierung, kein Cron-Wechsel, keine SQL-Migration. `9.41-tln-vow-new-mint-candidates.md`.
+

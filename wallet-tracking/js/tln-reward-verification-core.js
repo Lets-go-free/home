@@ -225,5 +225,36 @@
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt});
+  // Independently discover possible NEW staking-related zero-mints without
+  // relying on an earlier browser snapshot. These are NOT confirmed rewards.
+  function discoverNewMintRewardCandidates(input){
+    const wallet=String(input?.wallet||'').toLowerCase();
+    const hash=String(input?.hash||'').toLowerCase();
+    const to=String(input?.calledContract||'').toLowerCase();
+    const known=new Set((Array.isArray(input?.stakingContracts)?input.stakingContracts:[])
+      .map(x=>String(x||'').toLowerCase()));
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+       input?.receipt?.receiptVerified!==true||input?.receipt?.knownBridge===true||
+       (!known.has(to)&&input?.knownLifecycle!==true))return [];
+    const transfers=Array.isArray(input.receipt.transfers)?input.receipt.transfers:[];
+    const flow=classifyRewardTransferFlow({wallet,callTo:to,transfers,
+      lifecycle:input?.knownLifecycle===true,bridge:false,explicitRewardIntent:false,
+      stateDeltaEvidence:[],traceSources:[]});
+    const zero='0x'+'0'.repeat(40),seen=new Set(),out=[];
+    for(const tr of flow.payoutTransfers){
+      if(String(tr.from||'').toLowerCase()!==zero||
+        !/^0x[0-9a-f]{40}$/.test(String(tr.token||'').toLowerCase())||
+        !/^0x[0-9a-f]+$/i.test(String(tr.amountRaw||''))||BigInt(tr.amountRaw)<=0n)continue;
+      const logIndex=Number(tr.logIndex);
+      if(!Number.isSafeInteger(logIndex)||logIndex<0)continue;
+      const token=String(tr.token).toLowerCase(),key=token+'|'+logIndex;
+      if(seen.has(key))continue;
+      seen.add(key);
+      out.push({hash,token,amountRaw:String(tr.amountRaw),logIndex,
+        kind:'unverified_staking_related_mint',rewardVerified:false,
+        reason:'mint and staking relationship only; independent reward/lifecycle proof required'});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates});
 })(globalThis);
