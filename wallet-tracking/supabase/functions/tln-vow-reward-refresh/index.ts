@@ -1,4 +1,4 @@
-// WalletTracking 9.35 – shared browser/Edge reward-flow decision core, no commits.
+// WalletTracking 9.36 – bounded idempotent transfer-evidence staging, no reward commits.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -334,7 +334,7 @@ async function rpcRangeLimitDiagnosis(fromBlock:number, head:number) {
 const evmAddress = (v:unknown) => typeof v==='string' && /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : null
 const hexBlock = (n:number)=>'0x'+n.toString(16)
 async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number,
-  contractOverrides?:string[]) {
+  contractOverrides?:string[],collectEvents=false) {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
   const address=evmAddress(wallet)
   if(!address)throw new Error('Invalid verified snapshot wallet address')
@@ -345,6 +345,8 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
     throw new Error('Unsafe registry scope')
   const byContract=new Map<string,{incoming:number,outgoing:number}>(contracts.map(c=>[c,{incoming:0,outgoing:0}]))
   const unique=new Set<string>()
+  const capturedEvents:any[]=[]
+  const capturedKeys=new Set<string>()
   const directions=[]
   let observedTransfers=0
   const rpcUrl=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
@@ -378,6 +380,19 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
           if(!side||side!==address||!Number.isSafeInteger(bn)||bn<fromBlock||bn>toBlock||!tx)
             throw new RpcDiagnosticError('alchemy_getAssetTransfers','invalid_transfer')
           if(!c||!byContract.has(c))continue
+          if(collectEvents){
+            const id=String(transfer.uniqueId||'')
+            if(!id||id.length>300)throw new RpcDiagnosticError('alchemy_getAssetTransfers','missing_event_identity')
+            const key=direction+'|'+id
+            if(!capturedKeys.has(key)){
+              capturedKeys.add(key)
+              if(capturedEvents.length>=250)throw new RpcDiagnosticError('alchemy_getAssetTransfers','stage_event_budget_exceeded')
+              capturedEvents.push({id,hash:tx,block:bn,token:c,
+                from:evmAddress(transfer.from),to:evmAddress(transfer.to),
+                rawValue:typeof transfer?.rawContract?.value==='string'?transfer.rawContract.value:null,
+                direction})
+            }
+          }
           byContract.get(c)![direction]++
           unique.add(tx)
           matched++;observedTransfers++
@@ -397,6 +412,7 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
   }
   return {provider:'alchemy_bnb_mainnet',method:'alchemy_getAssetTransfers',
     complete:directions.every(d=>d.complete),directions,events:observedTransfers,uniqueTransactions:unique.size,
+    ...(collectEvents?{capturedEvents}:{}),
     contracts:contractOverrides?[]:contracts.map(address=>({symbol:SCAN_CONTRACTS[address as keyof typeof SCAN_CONTRACTS],
       incoming:byContract.get(address)!.incoming,outgoing:byContract.get(address)!.outgoing})),
     scope:contractOverrides?'Wallet ERC20 transfers matched against bounded configured contract set; not reward classification':
@@ -645,7 +661,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -669,6 +685,99 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='delta-transfer-stage'){
+      // Intentionally only transfer *evidence*. A committed staging chunk is
+      // never an authoritative reward/claim/referral or historical cursor.
+      const rawRows:any[]=[]
+      let rawComplete=false
+      for(let p=0;p<maxPages;p++){
+        const {data,error}=await sb.from('tln_vow_staking_scan_cache')
+          .select('user_id,wallet_id,scanner_version,complete_from_block,last_scanned_block,payload')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1')
+          .range(p*pageSize,(p+1)*pageSize-1)
+        if(error)return reply({ok:false,mode,error:'Raw cache unavailable; no staging'},503)
+        rawRows.push(...(data||[]))
+        if((data||[]).length<pageSize){rawComplete=true;break}
+      }
+      if(!rawComplete)return reply({ok:false,mode,error:'Raw-cache pagination incomplete'},409)
+      const rawByWallet=new Map<string,any>()
+      for(const r of rawRows){
+        if(!r.user_id||!r.wallet_id)continue
+        const key=String(r.user_id)+'|'+String(r.wallet_id)
+        if(!rawByWallet.has(key)||Number(r.last_scanned_block||0)>Number(rawByWallet.get(key).last_scanned_block||0))rawByWallet.set(key,r)
+      }
+      const stageRows:any[]=[]
+      let stageComplete=false
+      for(let p=0;p<maxPages;p++){
+        const {data,error}=await sb.from('tln_vow_reward_delta_stage')
+          .select('user_id,wallet_id,from_block,to_block')
+          .eq('chain_key','bsc').order('from_block',{ascending:true})
+          .range(p*pageSize,(p+1)*pageSize-1)
+        if(error)return reply({ok:false,mode,error:'Staging table unavailable; apply 9.36 SQL first'},503)
+        stageRows.push(...(data||[]))
+        if((data||[]).length<pageSize){stageComplete=true;break}
+      }
+      if(!stageComplete)return reply({ok:false,mode,error:'Staging pagination incomplete'},409)
+      const chunksByWallet=new Map<string,any[]>()
+      for(const row of stageRows){
+        const key=String(row.user_id)+'|'+String(row.wallet_id)
+        if(!chunksByWallet.has(key))chunksByWallet.set(key,[])
+        chunksByWallet.get(key)!.push(row)
+      }
+      let head:number
+      try{head=await bscHead()}catch{return reply({ok:false,mode,error:'BSC head unavailable; no staging'},503)}
+      const candidates:any[]=[]
+      for(const [key,snapshot] of byWallet){
+        const payload=snapshot.payload,raw=rawByWallet.get(key)
+        const wallet=evmAddress(payload?.wallet),from=num(raw?.complete_from_block),to=num(raw?.last_scanned_block)
+        if(payload?.kind!=='verified_discovery_results'||!wallet||raw?.scanner_version!=='erc20-raw-v1'||
+          !Array.isArray(raw?.payload)||from===null||to===null||to<from||to===0||to>head)continue
+        const first=Math.max(0,to-DELTA_OVERLAP_BLOCKS)
+        let next=first,valid=true
+        for(const row of (chunksByWallet.get(key)||[])){
+          const a=num(row.from_block),b=num(row.to_block)
+          if(a===null||b===null||b<a||a!==next){valid=false;break}
+          next=b+1
+        }
+        if(!valid)return reply({ok:false,mode,error:'Noncontiguous staged range; refusing to advance'},409)
+        if(next<=head)candidates.push({userId:snapshot.user_id,walletId:snapshot.wallet_id,wallet,next,anchor:first})
+      }
+      candidates.sort((a,b)=>a.next-b.next)
+      if(!candidates.length)return reply({ok:true,mode,day:dayCH(),status:'nothing_to_stage',persisted:false,
+        notice:'No known cached wallet with a valid forward range. Encrypted-wallet eligibility remains separate.'})
+      const target=candidates[0],toBlock=Math.min(head,target.next+maxBlocks-1)
+      const [stakingResult,tokenResult]=await Promise.all([
+        sb.from('defi_staking_contracts').select('contract_address').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
+        sb.from('defi_project_tokens').select('contract_address').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+      ])
+      if(stakingResult.error||tokenResult.error)return reply({ok:false,mode,error:'Registry unavailable; no staging'},503)
+      const configured=[...(stakingResult.data||[]),...(tokenResult.data||[])]
+      if(configured.some((r:any)=>!evmAddress(r.contract_address)))return reply({ok:false,mode,error:'Invalid registry; no staging'},409)
+      const contracts=[...new Set([...Object.keys(SCAN_CONTRACTS),...configured.map((r:any)=>evmAddress(r.contract_address)!)])]
+      if(contracts.length>100)return reply({ok:false,mode,error:'Registry scope too broad'},409)
+      let inspection:any
+      try{inspection=await inspectWalletTransfers(target.wallet,target.next,toBlock,maxBlocks,contracts,true)}
+      catch(e){console.error('TLN staged transfer scan failed',safeRpcDiagnostic(e));return reply({ok:false,mode,error:'Transfer scan failed; nothing persisted',rpcDiagnostic:safeRpcDiagnostic(e)},503)}
+      if(!inspection.complete)return reply({ok:false,mode,error:'Pagination incomplete; nothing persisted'},409)
+      const {error:insertError}=await sb.from('tln_vow_reward_delta_stage').insert({
+        user_id:target.userId,wallet_id:target.walletId,chain_key:'bsc',
+        from_block:target.next,to_block:toBlock,registry_contracts:contracts,
+        transfer_events:inspection.capturedEvents,pagination_complete:true,
+        historical_completeness_verified:false,reward_classification_verified:false
+      })
+      if(insertError){
+        if(insertError.code==='23505')return reply({ok:true,mode,status:'already_staged',persisted:false,
+          notice:'Concurrent identical chunk already exists; no duplicate row.'})
+        return reply({ok:false,mode,error:'Evidence staging failed; no canonical rewards changed'},503)
+      }
+      return reply({ok:true,mode,day:dayCH(),status:'staged_transfer_evidence',
+        chunk:{fromBlock:target.next,toBlock,events:inspection.capturedEvents.length,
+          nextFromBlock:toBlock+1,persisted:true},
+        scopedContracts:contracts.length,selectedWallets:1,
+        historicalCompletenessVerified:false,rewardClassificationCompleted:false,
+        referralClassificationCompleted:false,claimsCreated:0,
+        notice:'Only bounded transfer evidence persisted idempotently. No reward, referral, claim, verified historical cursor or cron writes.'})
     }
     if(mode==='reward-source-parity-audit'){
       // Compare the manual Discovery registries with the existing Edge preview.

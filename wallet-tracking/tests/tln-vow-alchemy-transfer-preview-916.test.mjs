@@ -5,7 +5,8 @@ import {stripTypeScriptTypes} from 'node:module';
 
 const ts=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
 const sharedCore=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
-assert.doesNotMatch(ts,/\.upsert\(|\.insert\(|\.update\(|\.delete\(/);
+assert.doesNotMatch(ts,/\.upsert\(|\.update\(|\.delete\(/);
+assert.match(ts,/from\('tln_vow_reward_delta_stage'\)\.insert\(/);
 const source=stripTypeScriptTypes(ts,{mode:'strip'}).replace(/^import .*;?$/gm,'');
 const wallet='0x'+'a'.repeat(40), tx='0x'+'b'.repeat(64);
 const contract='0xf585b5b4f22816baf7629aea55b701662630397b';

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const edge=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const sql=fs.readFileSync(new URL('../supabase/migrations/20261120101500_tln_vow_reward_delta_stage_936.sql',import.meta.url),'utf8');
+assert.ok(edge.includes("mode==='delta-transfer-stage'"));
+assert.ok(edge.includes('if(!inspection.complete)return reply'));
+assert.ok(edge.includes('capturedEvents.length>=250'));
+assert.ok(edge.includes('stage_event_budget_exceeded'));
+assert.ok(edge.includes('Noncontiguous staged range; refusing to advance'));
+assert.ok(edge.includes("insert({\n        user_id:target.userId"));
+assert.ok(edge.includes('reward_classification_verified:false'));
+assert.ok(edge.includes('historical_completeness_verified:false'));
+assert.ok(sql.includes('primary key(user_id,wallet_id,chain_key,from_block,to_block)'));
+assert.ok(sql.includes('grant select,insert on public.tln_vow_reward_delta_stage to service_role'));
+assert.ok(!/create\s+(?:or\s+replace\s+)?(?:job|cron)/i.test(sql));
+console.log('TLN/VOW 9.36 staging source guards OK');

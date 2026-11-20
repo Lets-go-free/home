@@ -19,7 +19,8 @@ assert.equal(core.auditSnapshot({process:{verification:{rewards:{normal:2,assign
   completeToBlock:100,coverageVerified:true}}).verified,true);
 
 const edge=stripTypeScriptTypes(fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8'),{mode:'strip'}).replace(/^import .*;?$/gm,'');
-assert.doesNotMatch(edge,/\.upsert\(|\.insert\(|\.update\(|\.delete\(/);
+assert.doesNotMatch(edge,/\.upsert\(|\.update\(|\.delete\(/);
+assert.match(edge,/from\('tln_vow_reward_delta_stage'\)\.insert\(/);
 const wallet='0x'+'a'.repeat(40);
 const legacy={kind:'verified_discovery_results',wallet,completedStep:5,lastCheckedAt:'2026-09-28T00:00:00Z',
   lastCheckedBlock:100,process:{done:{rewards:true,referral:true}}};

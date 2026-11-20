@@ -865,3 +865,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Die on-chain Beweiserfassung (vollständige historische Scans, Receipt/Trace/State-Delta, Lifecycle, Referrals) ist **noch nicht** vollständig im Serverjob; kein Produktions-Cron und keine persistierten Rewards. Der Befund wird nicht als fertige tägliche Automatik bezeichnet.
 - Neue Tests decken Mint, Bridge-Ausschluss, Swap, Claim-Intent, State-Delta, Lifecycle und nicht kausale Transfers ab; alle TLN/VOW-Tests lokal bestanden. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.35-tln-vow-shared-reward-flow.md`.
 
+### Phase 9.36 – Persistente Delta-Transferbelege als Vorstufe der TLN/VOW-Rewards-Automatik (20261120-101543)
+
+- `delta-transfer-stage` führt **einen** begrenzten, automatisch aus dem bestehenden Wallet-/Raw-Cache gewählten BSC-Abschnitt mit Alchemy durch; alle aktivierten Staking-/Token-Registeradressen plus feste Token sind umfasst.
+- Neue separate Tabelle `tln_vow_reward_delta_stage`: atomar pro Abschnitt gespeichert, nachvollziehbare Transfer-IDs, idempotenter Primärschlüssel; der nächste Durchlauf setzt nur nach lückenlosen Staging-Abschnitten fort. Bei Fehler/Pagination-Limit kein Speichern.
+- Technischer Stand **nicht** mit fertigen Rewards verwechseln: Auch bei vollständig abgelegten Transfers fehlen Receipt-, State-, Lifecycle- und Referral-Beweise. Historische Scan-Abdeckung vor dem Raw-Cache-Anker bleibt unbewiesen. Noch keine Rewards, Claims, Referral-Ergebnisse oder autoritativen Cursor schreiben; **TLN/VOW-Cron AUS.**
+- SQL-Migration muss vor der neuen Edge Function eingerichtet werden. Testskripte 9.36 inkl. Laufzeit-Simulation erfolgreich. Details `docs/releases/9.36-tln-vow-delta-stage.md`.
+
