@@ -1,4 +1,4 @@
-// WalletTracking 9.33 – bounded historical inflow candidate discovery, no commits.
+// WalletTracking 9.34 – bounded historical inflow triage, no reward classification or commits.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -506,7 +506,8 @@ async function inspectHistoricalTopUpProof(wallet:string,expectedAmount:number,h
     mintAmountMatches,independentlyConfirmed,
     scope:'One cache-derived transaction and mint. Does not independently redo storage continuity or prove reward/referral completeness.'}
 }
-async function inspectHistoricalInflowReceipt(wallet:string,hash:string,token:string,block:number) {
+async function inspectHistoricalInflowReceipt(wallet:string,hash:string,token:string,block:number,
+  stakingAddresses?:Set<string>) {
   const address=evmAddress(wallet),contract=evmAddress(token)
   if(!address||!contract||!/^0x[0-9a-f]{64}$/.test(hash)||!Number.isSafeInteger(block)||block<1||!ALCHEMY_API_KEY)
     throw new RpcDiagnosticError('candidate_receipt','invalid_anchor')
@@ -541,6 +542,9 @@ async function inspectHistoricalInflowReceipt(wallet:string,hash:string,token:st
   return {txMatches,receiptMatches,receiptSuccessful:receipt?.status==='0x1',
     selector:typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null,
     matchingTokenInflowLogs:logs.length,zeroMintLogs:logs.filter((l:any)=>String(l.topics[1]||'').toLowerCase()===zeroTopic).length,
+    directStakingContractCall:!!stakingAddresses?.has(evmAddress(tx?.to)||''),
+    txSenderIsStakingContract:!!stakingAddresses?.has(evmAddress(tx?.from)||''),
+    tokenTransferFromStakingContract:logs.some((l:any)=>stakingAddresses?.has('0x'+String(l.topics[1]||'').toLowerCase().slice(-40))),
     transferEvidenceConfirmed:txMatches&&receiptMatches&&receipt?.status==='0x1'&&logs.length>0,
     rewardClassified:false}
 }
@@ -578,7 +582,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -1152,7 +1156,20 @@ Deno.serve(async (req) => {
         rewardCoverageVerified:false,referralCoverageVerified:false,claimsCreated:0,persisted:false,
         notice:'Read-only shared cached top-up proof rule plus bounded generic Tx/receipt/token-decimals verification. No new candidate discovery, storage reproof, reward or referral completeness, cache/cursor/claim writes or cron.'})
     }
-    if(mode==='historical-inflow-candidate-preview'){
+    if(mode==='historical-inflow-candidate-preview'||mode==='historical-inflow-triage-preview'){
+      const triage=mode==='historical-inflow-triage-preview'
+      const offset=triage?(body?.offset??0):0
+      if(!Number.isSafeInteger(offset)||offset<0||offset>10000)
+        return reply({ok:false,mode,error:'offset must be an integer from 0 to 10000'},400)
+      let stakingAddresses:Set<string>|undefined
+      if(triage){
+        const {data,error}=await sb.from('defi_staking_contracts').select('contract_address')
+          .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+        if(error)return reply({ok:false,mode,error:'Staking registry unavailable; no triage'},503)
+        const contracts=(data||[]).map((r:any)=>evmAddress(r.contract_address))
+        if(contracts.some(x=>!x)||contracts.length>100)return reply({ok:false,mode,error:'Unsafe staking registry'},409)
+        stakingAddresses=new Set(contracts as string[])
+      }
       // Candidate search in already persisted ERC20 raw history only. This
       // does NOT claim the original history pagination was exhaustive.
       const rawRows:any[]=[]
@@ -1209,12 +1226,26 @@ Deno.serve(async (req) => {
         }
       }
       candidates.sort((a,b)=>b.block-a.block||a.hash.localeCompare(b.hash))
-      const selected=candidates.slice(0,3),results=[]
+      const pageSizeForMode=triage?8:3
+      const selected=candidates.slice(offset,offset+pageSizeForMode),results=[]
       for(let i=0;i<selected.length;i++){
         const c=selected[i]
         try{
-          const evidence=await inspectHistoricalInflowReceipt(c.wallet,c.hash,c.token,c.block)
-          results.push({ordinal:i+1,block:c.block,...evidence})
+          const evidence=await inspectHistoricalInflowReceipt(c.wallet,c.hash,c.token,c.block,stakingAddresses)
+          if(triage){
+            const selector=evidence.selector
+            const hint=evidence.zeroMintLogs>0?'mint_requires_position_proof':
+              evidence.directStakingContractCall||evidence.txSenderIsStakingContract||evidence.tokenTransferFromStakingContract?
+                'staking_contract_relation_requires_proof':
+              selector==='0x3593564c'?'router_like_selector_unverified':'unresolved_inflow'
+            results.push({ordinal:offset+i+1,block:c.block,selector,
+              transferEvidenceConfirmed:evidence.transferEvidenceConfirmed,
+              zeroMintLogs:evidence.zeroMintLogs,
+              directStakingContractCall:evidence.directStakingContractCall,
+              txSenderIsStakingContract:evidence.txSenderIsStakingContract,
+              tokenTransferFromStakingContract:evidence.tokenTransferFromStakingContract,
+              triageHint:hint,requiresRewardReview:true,rewardClassified:false})
+          }else results.push({ordinal:i+1,block:c.block,...evidence})
         }catch(e){const diagnostic=safeRpcDiagnostic(e)
           console.error('TLN raw-history candidate receipt preview failed',diagnostic)
           return reply({ok:false,mode,error:'Candidate receipt unavailable; no progress saved',
@@ -1224,11 +1255,17 @@ Deno.serve(async (req) => {
       return reply({ok:true,mode,day:dayCH(),examinedRows,invalidRows,
         eligibleTokenContracts:accepted.size,
         excludedPreviouslyProven,candidatesFound:candidates.length,inspected:selected.length,
-        truncated:candidates.length>selected.length,results,
+        offset,remainingCandidates:Math.max(0,candidates.length-offset-selected.length),
+        truncated:candidates.length>offset+selected.length,results,
+        ...(triage?{stakingContractsChecked:stakingAddresses!.size,
+          triageHintCounts:results.reduce((m:any,r:any)=>(m[r.triageHint]=(m[r.triageHint]||0)+1,m),{} as Record<string,number>),
+          triagedTotalNotYetKnown:true}:{}),
         confirmedTransferEvidence:results.filter(r=>r.transferEvidenceConfirmed).length,
         rewardClassificationCompleted:false,referralClassificationCompleted:false,
         historicalCoverageVerified:false,claimsCreated:0,persisted:false,
-        notice:'Read-only unclassified positive inflow candidates from existing ERC20 caches for fixed token contracts plus previously proof-backed reward tokens. Receipt-confirmed token inflow is NOT a reward proof; no historical scan completeness, staking/bonus/referral classification, cursor/cache/claim writes or cron.'})
+        notice:triage?
+          'Read-only heuristics for a bounded page of existing inflow candidates. Router selector is not definitive DEX proof; contract relation or mint is not a reward proof. No global classification, uninspected candidate verdict, historical completeness, writes or cron.':
+          'Read-only unclassified positive inflow candidates from existing ERC20 caches for fixed token contracts plus previously proof-backed reward tokens. Receipt-confirmed token inflow is NOT a reward proof; no historical scan completeness, staking/bonus/referral classification, cursor/cache/claim writes or cron.'})
     }
     if(mode==='verified-topup-mint-preview'){
       let candidateCount=0
