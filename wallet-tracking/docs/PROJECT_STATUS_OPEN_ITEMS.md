@@ -879,3 +879,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Die neue Tabelle wird durch `20261120103000_tln_vow_reward_receipt_stage_937.sql` angelegt. Ein Schreibvorgang erfolgt erst nach erfolgreicher Prüfung des ganzen Batches; der Primärschlüssel verhindert doppelte Transaktionsbelege.
 - Unverändert offen: verifizierte Reward-/Referral-Klassifikation und vollständige historische Abdeckung, sichere kanonische Claim-Übernahme, Job-Orchestrierung und alle verschlüsselten Wallets. **TLN/VOW-Cron AUS.** Details `docs/releases/9.37-tln-vow-receipt-stage.md`.
 
+### Phase 9.38 – Mehrere Server-Abschnitte pro Lauf, direkte Receipt-Weitergabe (20261120-103653)
+
+- `delta-work-cycle`: bis zu drei lückenlose Alchemy-Transferabschnitte für ein vorhandenes Snapshot-Wallet in einem Aufruf; Standard 50'000, maximal 100'000 BSC-Blöcke je Abschnitt. Nur vollständige Abschnitte persistieren.
+- Ein Transfer-Budget-Überlauf verkleinert den Abschnitt bis mindestens 1'000 Blöcke; sonst bleiben bei Abbruch die bereits persistierten Abschnitte erhalten, der nächste Aufruf setzt anhand der DB fort.
+- Bis zu vier gefundene Transaktionen je Abschnitt werden im selben Durchlauf per Tx/Receipt- und ERC20-Rohbetrag-Beleg geprüft und in `tln_vow_reward_receipt_stage` gespeichert. Grösserer Backlog bleibt für den vorhandenen `delta-receipt-verify`-Weg erhalten; er wird **nicht** als erledigt gewertet.
+- Es gibt weiterhin **keine** vollständige automatische Reward-/Referral-Klassifikation, keine Änderung kanonischer Claims, keine unabhängige Vollständigkeitsprüfung historischer Altbestände und **keinen TLN/VOW-Cron**. Details `docs/releases/9.38-tln-vow-work-cycle.md`.
+

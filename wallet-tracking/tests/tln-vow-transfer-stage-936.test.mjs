@@ -7,7 +7,7 @@ assert.ok(edge.includes('if(!inspection.complete)return reply'));
 assert.ok(edge.includes('capturedEvents.length>=250'));
 assert.ok(edge.includes('stage_event_budget_exceeded'));
 assert.ok(edge.includes('Noncontiguous staged range; refusing to advance'));
-assert.ok(edge.includes("insert({\n        user_id:target.userId"));
+assert.match(edge,/insert\(\{\s*user_id:target\.userId/);
 assert.ok(edge.includes('reward_classification_verified:false'));
 assert.ok(edge.includes('historical_completeness_verified:false'));
 assert.ok(sql.includes('primary key(user_id,wallet_id,chain_key,from_block,to_block)'));

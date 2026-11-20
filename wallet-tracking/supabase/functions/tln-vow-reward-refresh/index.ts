@@ -218,6 +218,7 @@ const LEGACY_STAKE_AUDIT_BLOCK=44871018
 const LEGACY_TOPUP_MINT_TOKEN='0x29280091fa7f3abe4739ad5f1f7c5287feaf7736'
 const MAX_DELTA_WINDOW_BLOCKS = 100_000
 const DELTA_CHUNK_BLOCKS = 5_000
+const MAX_WORK_CYCLE_BLOCKS = 100_000
 // Deliberately bounded; caller may request fewer blocks but never expand the range.
 function previewBlockBudget(value:unknown):number|null {
   if(value===undefined || value===null) return DELTA_CHUNK_BLOCKS
@@ -338,7 +339,8 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
   const address=evmAddress(wallet)
   if(!address)throw new Error('Invalid verified snapshot wallet address')
-  if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||fromBlock<0||toBlock<fromBlock||toBlock-fromBlock+1>maxBlocks||maxBlocks>DELTA_CHUNK_BLOCKS)
+  if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||fromBlock<0||toBlock<fromBlock||toBlock-fromBlock+1>maxBlocks||
+    maxBlocks>(collectEvents?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS))
     throw new Error('Unsafe scan window')
   const contracts=contractOverrides||Object.keys(SCAN_CONTRACTS)
   if(contracts.length===0||contracts.length>100||contracts.some(c=>evmAddress(c)!==c)||new Set(contracts).size!==contracts.length)
@@ -632,7 +634,8 @@ async function inspectHistoricalInflowReceipt(wallet:string,hash:string,token:st
 async function verifyStagedReceipt(wallet:string,hash:string,block:number,events:any[],lots:any[]){
   const address=evmAddress(wallet)
   if(!address||!/^0x[0-9a-f]{64}$/.test(hash)||!Number.isSafeInteger(block)||block<1||
-    events.length<1||events.length>250||!ALCHEMY_API_KEY)
+    events.length<1||events.length>250||events.some(e=>num(e?.block)!==block||
+      String(e?.hash||'').toLowerCase()!==hash)||!ALCHEMY_API_KEY)
     throw new RpcDiagnosticError('staged_receipt','invalid_evidence')
   const url=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
   const call=async(method:string)=>{
@@ -728,11 +731,13 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
-    const maxBlocks=previewBlockBudget(body?.maxBlocks)
-    if(maxBlocks===null)return reply({ok:false,mode,error:'maxBlocks must be an integer from 1 to 5000'},400)
+    const workCycle=mode==='delta-work-cycle'
+    const maxBlocks=workCycle?(body?.maxBlocks??50000):previewBlockBudget(body?.maxBlocks)
+    if(maxBlocks===null||!Number.isSafeInteger(maxBlocks)||maxBlocks<1||maxBlocks>(workCycle?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS))
+      return reply({ok:false,mode,error:`maxBlocks must be an integer from 1 to ${workCycle?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS}`},400)
     const pageSize=500, maxPages=20
     const rows: any[]=[]
     let complete=false
@@ -823,7 +828,7 @@ Deno.serve(async (req) => {
         claimsCreated:0,
         notice:'Receipt-backed facts staged only. No reward/claim/referral allocation, historical completeness or cron.'})
     }
-    if(mode==='delta-transfer-stage'){
+    if(mode==='delta-transfer-stage'||workCycle){
       // Intentionally only transfer *evidence*. A committed staging chunk is
       // never an authoritative reward/claim/referral or historical cursor.
       const rawRows:any[]=[]
@@ -883,7 +888,7 @@ Deno.serve(async (req) => {
       candidates.sort((a,b)=>a.next-b.next)
       if(!candidates.length)return reply({ok:true,mode,day:dayCH(),status:'nothing_to_stage',persisted:false,
         notice:'No known cached wallet with a valid forward range. Encrypted-wallet eligibility remains separate.'})
-      const target=candidates[0],toBlock=Math.min(head,target.next+maxBlocks-1)
+      const target=candidates[0]
       const [stakingResult,tokenResult]=await Promise.all([
         sb.from('defi_staking_contracts').select('contract_address').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
         sb.from('defi_project_tokens').select('contract_address').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
@@ -893,28 +898,82 @@ Deno.serve(async (req) => {
       if(configured.some((r:any)=>!evmAddress(r.contract_address)))return reply({ok:false,mode,error:'Invalid registry; no staging'},409)
       const contracts=[...new Set([...Object.keys(SCAN_CONTRACTS),...configured.map((r:any)=>evmAddress(r.contract_address)!)])]
       if(contracts.length>100)return reply({ok:false,mode,error:'Registry scope too broad'},409)
-      let inspection:any
-      try{inspection=await inspectWalletTransfers(target.wallet,target.next,toBlock,maxBlocks,contracts,true)}
-      catch(e){console.error('TLN staged transfer scan failed',safeRpcDiagnostic(e));return reply({ok:false,mode,error:'Transfer scan failed; nothing persisted',rpcDiagnostic:safeRpcDiagnostic(e)},503)}
-      if(!inspection.complete)return reply({ok:false,mode,error:'Pagination incomplete; nothing persisted'},409)
-      const {error:insertError}=await sb.from('tln_vow_reward_delta_stage').insert({
-        user_id:target.userId,wallet_id:target.walletId,chain_key:'bsc',
-        from_block:target.next,to_block:toBlock,registry_contracts:contracts,
-        transfer_events:inspection.capturedEvents,pagination_complete:true,
-        historical_completeness_verified:false,reward_classification_verified:false
-      })
-      if(insertError){
-        if(insertError.code==='23505')return reply({ok:true,mode,status:'already_staged',persisted:false,
-          notice:'Concurrent identical chunk already exists; no duplicate row.'})
-        return reply({ok:false,mode,error:'Evidence staging failed; no canonical rewards changed'},503)
+      // A work cycle advances one selected wallet through a bounded number of
+      // contiguous, independently committed chunks. Each chunk is durable even
+      // if a later scan fails; the next invocation resumes from persisted rows.
+      const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,stopReason='max_chunks'
+      for(let i=0;i<limit&&cursor<=head;i++){
+        if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
+        let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
+        // Reduce block count only for an explicitly exceeded event budget.
+        // Network and pagination failures stop immediately without advancing.
+        while(true){
+          toBlock=Math.min(head,cursor+chunkSize-1)
+          try{inspection=await inspectWalletTransfers(target.wallet,cursor,toBlock,chunkSize,contracts,true);break}
+          catch(e){
+            if(workCycle&&e instanceof RpcDiagnosticError&&
+              (e.category==='stage_event_budget_exceeded'||e.category==='too_many_transfers')&&chunkSize>1000){
+              chunkSize=Math.max(1000,Math.floor(chunkSize/2));continue
+            }
+            console.error('TLN staged transfer scan failed',safeRpcDiagnostic(e))
+            return reply({ok:false,mode,error:'Transfer scan failed; prior chunks (if any) remain persisted',
+              rpcDiagnostic:safeRpcDiagnostic(e),chunks,partial:chunks.length>0},503)
+          }
+        }
+        if(!inspection.complete)return reply({ok:false,mode,error:'Pagination incomplete; current chunk not persisted',chunks},409)
+        const {error:insertError}=await sb.from('tln_vow_reward_delta_stage').insert({
+          user_id:target.userId,wallet_id:target.walletId,chain_key:'bsc',
+          from_block:cursor,to_block:toBlock,registry_contracts:contracts,
+          transfer_events:inspection.capturedEvents,pagination_complete:true,
+          historical_completeness_verified:false,reward_classification_verified:false
+        })
+        if(insertError){
+          if(insertError.code==='23505')return reply({ok:true,mode,status:'already_staged',persisted:false,
+            chunks,notice:'Concurrent identical chunk already exists; rerun to resume.'})
+          return reply({ok:false,mode,error:'Evidence staging failed; no canonical rewards changed',chunks},503)
+        }
+        chunks.push({fromBlock:cursor,toBlock,events:inspection.capturedEvents.length,
+          nextFromBlock:toBlock+1,persisted:true})
+        cursor=toBlock+1
+        if(!workCycle)break
+        const byHash=new Map<string,any[]>()
+        for(const event of inspection.capturedEvents){
+          if(!byHash.has(event.hash))byHash.set(event.hash,[])
+          byHash.get(event.hash)!.push(event)
+        }
+        const txs=[...byHash.entries()]
+        if(txs.length>4){receiptDeferred+=txs.length;stopReason='receipt_backlog';break}
+        if(txs.length){
+          const matchingLots=byWallet.get(String(target.userId)+'|'+String(target.walletId))?.payload?.process?.lots||[]
+          const receipts:any[]=[]
+          try{
+            for(const [hash,events] of txs)receipts.push({hash,block:events[0].block,
+              evidence:await verifyStagedReceipt(target.wallet,hash,events[0].block,events,matchingLots)})
+          }catch(e){
+            console.error('TLN immediate receipt verification failed',safeRpcDiagnostic(e))
+            return reply({ok:false,mode,error:'Transfer chunk staged; receipt proof failed and is retryable',
+              rpcDiagnostic:safeRpcDiagnostic(e),chunks,partial:true},503)
+          }
+          const rows=receipts.map(r=>({user_id:target.userId,wallet_id:target.walletId,
+            chain_key:'bsc',tx_hash:r.hash,block_number:r.block,evidence:r.evidence,
+            reward_classification_verified:false}))
+          const {error:receiptError}=await sb.from('tln_vow_reward_receipt_stage').insert(rows)
+          if(receiptError){
+            // A duplicate may be an overlapping/previously verified hash; the
+            // standalone delta-receipt-verify mode safely handles the backlog.
+            receiptDeferred+=txs.length;stopReason='receipt_insert_retry';break
+          }
+          receiptVerified+=receipts.length
+        }
       }
-      return reply({ok:true,mode,day:dayCH(),status:'staged_transfer_evidence',
-        chunk:{fromBlock:target.next,toBlock,events:inspection.capturedEvents.length,
-          nextFromBlock:toBlock+1,persisted:true},
-        scopedContracts:contracts.length,selectedWallets:1,
+      if(cursor>head)stopReason='chain_head'
+      return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,stopReason,elapsedMs:Date.now()-start}:
+          {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,
-        notice:'Only bounded transfer evidence persisted idempotently. No reward, referral, claim, verified historical cursor or cron writes.'})
+        notice:'Contiguous transfer and receipt evidence only. No canonical rewards/claims, historical completeness or cron.'})
     }
     if(mode==='reward-source-parity-audit'){
       // Compare the manual Discovery registries with the existing Edge preview.
