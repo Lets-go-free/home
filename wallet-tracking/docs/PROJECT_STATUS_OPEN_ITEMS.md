@@ -858,3 +858,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Neuer `historical-inflow-triage-preview` verwendet dieselben Cache-Kandidaten, prüft aber nur maximal acht pro Seite (`offset`, serverseitig begrenzt), ergänzt die aktiven Staking-Verträge und liefert anonyme Hinweise für Nulladress-Mint, direkte Staking-Contract-Beziehung, Router-ähnlichen Selector oder unbestimmten Zufluss.
 - **Kein** Selector oder Mint ist allein ein Reward-Beweis: alle geprüften Zeilen bleiben `requiresRewardReview:true` und `rewardClassified:false`. Kategorien beziehen sich ausschliesslich auf die aktuell geprüfte Seite. Kein Cron, keine Claim-/Cursor-/Cache-Writes.
 - Lokaler Test bestanden, produktive Abnahme offen. Weiter offen: vollständige gemeinsame manuelle Reward-/Referral-Klassifikation, unabhängig belegte Scan-Abdeckung und idempotente Persistierung. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.34-tln-vow-inflow-triage.md`.
+### Phase 9.35 – Gemeinsame Reward-Flow-Klassifikation (20261120-100532)
+
+- Die bisher im Browser duplizierte Step-4-Entscheidung über belegte Reward-Zuflüsse liegt jetzt in `js/tln-reward-verification-core.js`; der Browser ruft sie unmittelbar auf.
+- Die Standalone-Edge-Function enthält dieselbe generierte Funktion und benutzt sie bei der vorhandenen historischen Receipt-Triage. Die Triage bleibt **read-only** und klassifiziert keine Zuflüsse endgültig.
+- Die on-chain Beweiserfassung (vollständige historische Scans, Receipt/Trace/State-Delta, Lifecycle, Referrals) ist **noch nicht** vollständig im Serverjob; kein Produktions-Cron und keine persistierten Rewards. Der Befund wird nicht als fertige tägliche Automatik bezeichnet.
+- Neue Tests decken Mint, Bridge-Ausschluss, Swap, Claim-Intent, State-Delta, Lifecycle und nicht kausale Transfers ab; alle TLN/VOW-Tests lokal bestanden. **TLN/VOW-Cron AUS.** Details: `docs/releases/9.35-tln-vow-shared-reward-flow.md`.
+

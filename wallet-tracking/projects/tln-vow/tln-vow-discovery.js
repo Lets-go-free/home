@@ -8580,7 +8580,6 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
 
   const incoming=transfers.filter(x=>norm(x.to)===w&&norm(x.from)!==w);
   const outgoing=transfers.filter(x=>norm(x.from)===w&&norm(x.to)!==w);
-
   const outgoingTokens=new Set(outgoing.map(x=>norm(x.token)));
   const incomingTokens=new Set(incoming.map(x=>norm(x.token)));
   const tokenExchange=!lifecycle&&outgoing.length>0&&incoming.length>0&&
@@ -8603,33 +8602,12 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   }
   if(callTo)traceSources.add(callTo);
 
-  const payoutTransfers=[],rejectedTransfers=[];
-  for(const tr of incoming){
-    const from=norm(tr.from);
-    let causalPath=null;
-    if(from===ZERO_ADDRESS)causalPath='mint_to_wallet';
-    else if(callTo&&from===callTo)causalPath='direct_from_called_contract';
-    else if(traceSources.has(from))causalPath='from_internal_call_chain';
-
-    let proof=null;
-    if(from===ZERO_ADDRESS)proof='mint';
-    else if(causalPath&&explicitIntent)proof='explicit_claim_method';
-    else if(causalPath&&stateProvesReward)proof='reward_state_delta';
-
-    if(causalPath&&proof)payoutTransfers.push({...tr,rewardFlowEvidence:causalPath,rewardProof:proof,rewardStateDelta:stateDeltaEvidence});
-    else rejectedTransfers.push({...tr,rejectReason:causalPath?'causal_transfer_without_reward_proof':'no_causal_payout_path',causalPath});
-  }
-
-  let kind='other';
-  if(lifecycle)kind='lifecycle';
-  else if(payoutTransfers.length)kind='reward_candidate';
-  else if(tokenExchange)kind='exchange_or_liquidity';
-  else if(incoming.length)kind='incoming_unproven';
-
-  return {hash,kind,lifecycle,exchangeLike:tokenExchange,callTo,selector,
-    explicitRewardIntent:explicitIntent,stateDeltaEvidence,incoming,outgoing,
-    payoutTransfers,rejectedTransfers,receiptTransferCount:receiptTransfers.length,
-    traceSources:[...traceSources],
+  const core=globalThis.WT_TLN_REWARD_VERIFICATION_CORE;
+  if(typeof core?.classifyRewardTransferFlow!=='function')throw new Error('Gemeinsame TLN/VOW Reward-Klassifikation fehlt');
+  const decision=core.classifyRewardTransferFlow({wallet:w,callTo,transfers,lifecycle,
+    explicitRewardIntent:explicitIntent,stateDeltaEvidence,traceSources:[...traceSources]});
+  return {hash,...decision,lifecycle,callTo,selector,
+    receiptTransferCount:receiptTransfers.length,
     time:call?.time||call?.timeStamp||call?._time||call?.metadata?.blockTimestamp||null,
     block:call?._blockNumber||call?.blockNum||call?.blockNumber||null};
 }

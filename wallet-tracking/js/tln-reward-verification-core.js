@@ -155,5 +155,48 @@
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates});
+  // Pure Step-4 transfer-flow decision shared by the manual browser discovery
+  // and the Edge worker. Evidence collection (receipts, traces, state probes)
+  // remains outside this function. Never infer intent from an unverified selector.
+  function classifyRewardTransferFlow(input){
+    const norm=v=>String(v||'').toLowerCase();
+    const wallet=norm(input?.wallet),callTo=norm(input?.callTo);
+    const zero='0x'+'0'.repeat(40);
+    const transfers=Array.isArray(input?.transfers)?input.transfers:[];
+    const lifecycle=input?.lifecycle===true;
+    const incoming=transfers.filter(t=>norm(t?.to)===wallet&&norm(t?.from)!==wallet);
+    const outgoing=transfers.filter(t=>norm(t?.from)===wallet&&norm(t?.to)!==wallet);
+    if(input?.bridge===true)return {kind:'bridge_ignored',exchangeLike:false,incoming:[],outgoing:[],
+      payoutTransfers:[],rejectedTransfers:[],explicitRewardIntent:false,stateDeltaEvidence:[],traceSources:[]};
+    const outgoingTokens=new Set(outgoing.map(t=>norm(t?.token)));
+    const incomingTokens=new Set(incoming.map(t=>norm(t?.token)));
+    const exchangeLike=!lifecycle&&outgoing.length>0&&incoming.length>0&&
+      [...incomingTokens].some(t=>!outgoingTokens.has(t));
+    const explicitRewardIntent=input?.explicitRewardIntent===true;
+    const stateDeltaEvidence=Array.isArray(input?.stateDeltaEvidence)?input.stateDeltaEvidence:[];
+    const stateProvesReward=stateDeltaEvidence.length>0;
+    const traceSources=new Set((Array.isArray(input?.traceSources)?input.traceSources:[]).map(norm));
+    if(callTo)traceSources.add(callTo);
+    const payoutTransfers=[],rejectedTransfers=[];
+    for(const tr of incoming){
+      const from=norm(tr.from);
+      let causalPath=null;
+      if(from===zero)causalPath='mint_to_wallet';
+      else if(callTo&&from===callTo)causalPath='direct_from_called_contract';
+      else if(traceSources.has(from))causalPath='from_internal_call_chain';
+      let proof=null;
+      if(from===zero)proof='mint';
+      else if(causalPath&&explicitRewardIntent)proof='explicit_claim_method';
+      else if(causalPath&&stateProvesReward)proof='reward_state_delta';
+      if(causalPath&&proof)payoutTransfers.push({...tr,rewardFlowEvidence:causalPath,
+        rewardProof:proof,rewardStateDelta:stateDeltaEvidence});
+      else rejectedTransfers.push({...tr,rejectReason:causalPath?
+        'causal_transfer_without_reward_proof':'no_causal_payout_path',causalPath});
+    }
+    const kind=lifecycle?'lifecycle':payoutTransfers.length?'reward_candidate':
+      exchangeLike?'exchange_or_liquidity':incoming.length?'incoming_unproven':'other';
+    return {kind,exchangeLike,incoming,outgoing,payoutTransfers,rejectedTransfers,
+      explicitRewardIntent,stateDeltaEvidence,traceSources:[...traceSources]};
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow});
 })(globalThis);

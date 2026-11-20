@@ -1,4 +1,4 @@
-// WalletTracking 9.34 – bounded historical inflow triage, no reward classification or commits.
+// WalletTracking 9.35 – shared browser/Edge reward-flow decision core, no commits.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -160,7 +160,50 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates});
+  // Pure Step-4 transfer-flow decision shared by the manual browser discovery
+  // and the Edge worker. Evidence collection (receipts, traces, state probes)
+  // remains outside this function. Never infer intent from an unverified selector.
+  function classifyRewardTransferFlow(input){
+    const norm=v=>String(v||'').toLowerCase();
+    const wallet=norm(input?.wallet),callTo=norm(input?.callTo);
+    const zero='0x'+'0'.repeat(40);
+    const transfers=Array.isArray(input?.transfers)?input.transfers:[];
+    const lifecycle=input?.lifecycle===true;
+    const incoming=transfers.filter(t=>norm(t?.to)===wallet&&norm(t?.from)!==wallet);
+    const outgoing=transfers.filter(t=>norm(t?.from)===wallet&&norm(t?.to)!==wallet);
+    if(input?.bridge===true)return {kind:'bridge_ignored',exchangeLike:false,incoming:[],outgoing:[],
+      payoutTransfers:[],rejectedTransfers:[],explicitRewardIntent:false,stateDeltaEvidence:[],traceSources:[]};
+    const outgoingTokens=new Set(outgoing.map(t=>norm(t?.token)));
+    const incomingTokens=new Set(incoming.map(t=>norm(t?.token)));
+    const exchangeLike=!lifecycle&&outgoing.length>0&&incoming.length>0&&
+      [...incomingTokens].some(t=>!outgoingTokens.has(t));
+    const explicitRewardIntent=input?.explicitRewardIntent===true;
+    const stateDeltaEvidence=Array.isArray(input?.stateDeltaEvidence)?input.stateDeltaEvidence:[];
+    const stateProvesReward=stateDeltaEvidence.length>0;
+    const traceSources=new Set((Array.isArray(input?.traceSources)?input.traceSources:[]).map(norm));
+    if(callTo)traceSources.add(callTo);
+    const payoutTransfers=[],rejectedTransfers=[];
+    for(const tr of incoming){
+      const from=norm(tr.from);
+      let causalPath=null;
+      if(from===zero)causalPath='mint_to_wallet';
+      else if(callTo&&from===callTo)causalPath='direct_from_called_contract';
+      else if(traceSources.has(from))causalPath='from_internal_call_chain';
+      let proof=null;
+      if(from===zero)proof='mint';
+      else if(causalPath&&explicitRewardIntent)proof='explicit_claim_method';
+      else if(causalPath&&stateProvesReward)proof='reward_state_delta';
+      if(causalPath&&proof)payoutTransfers.push({...tr,rewardFlowEvidence:causalPath,
+        rewardProof:proof,rewardStateDelta:stateDeltaEvidence});
+      else rejectedTransfers.push({...tr,rejectReason:causalPath?
+        'causal_transfer_without_reward_proof':'no_causal_payout_path',causalPath});
+    }
+    const kind=lifecycle?'lifecycle':payoutTransfers.length?'reward_candidate':
+      exchangeLike?'exchange_or_liquidity':incoming.length?'incoming_unproven':'other';
+    return {kind,exchangeLike,incoming,outgoing,payoutTransfers,rejectedTransfers,
+      explicitRewardIntent,stateDeltaEvidence,traceSources:[...traceSources]};
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -539,12 +582,32 @@ async function inspectHistoricalInflowReceipt(wallet:string,hash:string,token:st
     Array.isArray(l?.topics)&&String(l.topics[0]||'').toLowerCase()===TRANSFER_TOPIC&&
     String(l.topics[2]||'').toLowerCase()===recipientTopic&&
     typeof l.data==='string'&&/^0x[0-9a-f]{1,64}$/i.test(l.data))
+  // Apply exactly the browser Step-4 transfer decision, using all receipt
+  // ERC20 flows (including outgoing swap legs), not just the target token.
+  // Missing selector-intent/state-delta/trace evidence is deliberately false.
+  // Its verdict is exploratory until these proof sources are available.
+  const allTransfers=receipt.logs.filter((l:any)=>evmAddress(l?.address)&&
+    Array.isArray(l?.topics)&&l.topics.length>=3&&
+    String(l.topics[0]||'').toLowerCase()===TRANSFER_TOPIC&&
+    /^0x[0-9a-f]{64}$/i.test(String(l.topics[1]||''))&&
+    /^0x[0-9a-f]{64}$/i.test(String(l.topics[2]||''))&&
+    /^0x[0-9a-f]{1,64}$/i.test(String(l.data||'')))
+    .map((l:any)=>({token:evmAddress(l.address),
+      from:'0x'+String(l.topics[1]).slice(-40).toLowerCase(),
+      to:'0x'+String(l.topics[2]).slice(-40).toLowerCase(),amountRaw:String(l.data)}))
+  const bridge=evmAddress(tx?.to)==='0xa7c14010afa616fa23a2bb0a94d76dd57dde644d'||
+    receipt.logs.some((l:any)=>String(l?.topics?.[0]||'').toLowerCase()===
+      '0xcd6ac346191b4b7531743e58f243dd4d350a52a9186641c1e5eac22b95aaedbe')
+  const sharedFlow=verificationCore.classifyRewardTransferFlow({wallet:address,
+    callTo:evmAddress(tx?.to)||'',transfers:allTransfers,bridge,
+    lifecycle:false,explicitRewardIntent:false,stateDeltaEvidence:[],traceSources:[]})
   return {txMatches,receiptMatches,receiptSuccessful:receipt?.status==='0x1',
     selector:typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null,
     matchingTokenInflowLogs:logs.length,zeroMintLogs:logs.filter((l:any)=>String(l.topics[1]||'').toLowerCase()===zeroTopic).length,
     directStakingContractCall:!!stakingAddresses?.has(evmAddress(tx?.to)||''),
     txSenderIsStakingContract:!!stakingAddresses?.has(evmAddress(tx?.from)||''),
     tokenTransferFromStakingContract:logs.some((l:any)=>stakingAddresses?.has('0x'+String(l.topics[1]||'').toLowerCase().slice(-40))),
+    sharedFlowKind:sharedFlow.kind,sharedPayoutCandidates:sharedFlow.payoutTransfers.length,
     transferEvidenceConfirmed:txMatches&&receiptMatches&&receipt?.status==='0x1'&&logs.length>0,
     rewardClassified:false}
 }
@@ -1241,6 +1304,8 @@ Deno.serve(async (req) => {
             results.push({ordinal:offset+i+1,block:c.block,selector,
               transferEvidenceConfirmed:evidence.transferEvidenceConfirmed,
               zeroMintLogs:evidence.zeroMintLogs,
+              sharedFlowKind:evidence.sharedFlowKind,
+              sharedPayoutCandidates:evidence.sharedPayoutCandidates,
               directStakingContractCall:evidence.directStakingContractCall,
               txSenderIsStakingContract:evidence.txSenderIsStakingContract,
               tokenTransferFromStakingContract:evidence.tokenTransferFromStakingContract,
