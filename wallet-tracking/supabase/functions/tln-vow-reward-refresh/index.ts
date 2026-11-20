@@ -1,4 +1,4 @@
-// WalletTracking 9.28 – read-only manual-versus-Edge reward source parity audit.
+// WalletTracking 9.29 – read-only registry-driven legacy transfer scan, no commits.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -289,13 +289,16 @@ async function rpcRangeLimitDiagnosis(fromBlock:number, head:number) {
 }
 const evmAddress = (v:unknown) => typeof v==='string' && /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : null
 const hexBlock = (n:number)=>'0x'+n.toString(16)
-async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number) {
+async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number,
+  contractOverrides?:string[]) {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
   const address=evmAddress(wallet)
   if(!address)throw new Error('Invalid verified snapshot wallet address')
   if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||fromBlock<0||toBlock<fromBlock||toBlock-fromBlock+1>maxBlocks||maxBlocks>DELTA_CHUNK_BLOCKS)
     throw new Error('Unsafe scan window')
-  const contracts=Object.keys(SCAN_CONTRACTS)
+  const contracts=contractOverrides||Object.keys(SCAN_CONTRACTS)
+  if(contracts.length===0||contracts.length>100||contracts.some(c=>evmAddress(c)!==c)||new Set(contracts).size!==contracts.length)
+    throw new Error('Unsafe registry scope')
   const byContract=new Map<string,{incoming:number,outgoing:number}>(contracts.map(c=>[c,{incoming:0,outgoing:0}]))
   const unique=new Set<string>()
   const directions=[]
@@ -350,9 +353,10 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
   }
   return {provider:'alchemy_bnb_mainnet',method:'alchemy_getAssetTransfers',
     complete:directions.every(d=>d.complete),directions,events:observedTransfers,uniqueTransactions:unique.size,
-    contracts:contracts.map(address=>({symbol:SCAN_CONTRACTS[address as keyof typeof SCAN_CONTRACTS],
+    contracts:contractOverrides?[]:contracts.map(address=>({symbol:SCAN_CONTRACTS[address as keyof typeof SCAN_CONTRACTS],
       incoming:byContract.get(address)!.incoming,outgoing:byContract.get(address)!.outgoing})),
-    scope:'Wallet-scoped ERC20 AssetTransfers for four known token contracts; not proof of a staking, referral or bonus reward'}
+    scope:contractOverrides?'Wallet ERC20 transfers matched against bounded configured contract set; not reward classification':
+      'Wallet-scoped ERC20 AssetTransfers for four known token contracts; not proof of a staking, referral or bonus reward'}
 }
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
 async function bscHead(): Promise<number> {
@@ -388,7 +392,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -555,7 +559,7 @@ Deno.serve(async (req) => {
         plannedWallets:plan.length,truncated:candidates.length>plan.length,plan,
         notice:'Read-only proposed forward scan anchors from historic ERC20 caches, not approved verified checkpoints. Prior block history remains unverified. Encrypted-wallet eligibility is not enumerated. No transfers scanned, reward or referral classification, cursor/lease/cache writes, cron or identity disclosure.'})
     }
-    if(mode==='legacy-first-chunk-scan-preview'){
+    if(mode==='legacy-first-chunk-scan-preview'||mode==='registry-first-chunk-scan-preview'){
       // Fixed one-wallet scope from persisted caches; callers cannot supply a
       // wallet, block range, arbitrary token contract or RPC endpoint.
       const rawRows:any[]=[]
@@ -596,8 +600,29 @@ Deno.serve(async (req) => {
       if(selected.recordedTo>head)return reply({ok:false,mode,error:'Legacy anchor ahead of BSC head; no scan'},409)
       const fromBlock=Math.max(0,selected.recordedTo-DELTA_OVERLAP_BLOCKS)
       const toBlock=Math.min(head,fromBlock+maxBlocks-1)
+      let registryContracts:string[]|undefined
+      let registrySummary:any=undefined
+      if(mode==='registry-first-chunk-scan-preview'){
+        const [stakingResult,tokenResult]=await Promise.all([
+          sb.from('defi_staking_contracts').select('contract_address,role,classify_transfers')
+            .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
+          sb.from('defi_project_tokens').select('contract_address,role')
+            .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+        ])
+        if(stakingResult.error||tokenResult.error)return reply({ok:false,mode,error:'Contract registry unavailable; no scan'},503)
+        const staking=stakingResult.data||[],tokens=tokenResult.data||[]
+        if(staking.some((r:any)=>!evmAddress(r.contract_address))||tokens.some((r:any)=>!evmAddress(r.contract_address)))
+          return reply({ok:false,mode,error:'Invalid configured contract address; no scan'},409)
+        registryContracts=[...new Set([...Object.keys(SCAN_CONTRACTS),
+          ...staking.map((r:any)=>evmAddress(r.contract_address)!),...tokens.map((r:any)=>evmAddress(r.contract_address)! )])]
+        if(registryContracts.length>100)return reply({ok:false,mode,error:'Contract registry exceeds safe scope; no scan'},409)
+        registrySummary={configuredStakingRows:staking.length,configuredProjectTokenRows:tokens.length,
+          uniqueContractsInspected:registryContracts.length,
+          transferClassifyingStakingRows:staking.filter((r:any)=>r.classify_transfers===true).length,
+          classificationPerformed:false}
+      }
       let inspection:any
-      try{inspection=await inspectWalletTransfers(selected.wallet,fromBlock,toBlock,maxBlocks)}
+      try{inspection=await inspectWalletTransfers(selected.wallet,fromBlock,toBlock,maxBlocks,registryContracts)}
       catch(e){
         const diagnostic=safeRpcDiagnostic(e)
         console.error('TLN legacy first-chunk scan preview failed',diagnostic)
@@ -606,11 +631,13 @@ Deno.serve(async (req) => {
       }
       return reply({ok:true,mode,day:dayCH(),selectedWallets:1,
         source:{recordedToBlock:selected.recordedTo,historicalCompletenessVerified:false},
-        chunk:{fromBlock,toBlock,blocks:toBlock-fromBlock+1,maxBlocks,
+        registrySummary,chunk:{fromBlock,toBlock,blocks:toBlock-fromBlock+1,maxBlocks,
           hypotheticalNextFromBlock:inspection.complete&&toBlock<head?toBlock+1:null,
           persisted:false,executed:true},inspection,scanCompleted:inspection.complete,
         rewardClassificationCompleted:false,referralClassificationCompleted:false,
-        notice:'Read-only one-legacy-wallet Alchemy ERC20 AssetTransfers for FOUR fixed token contracts only. Pagination completeness refers ONLY to these scoped transfers, not all possible reward/staking contracts. No reward/claim classification, cursor/cache/lease writes, identity output or cron.'})
+        notice:mode==='registry-first-chunk-scan-preview'?
+          'Read-only configured staking, entry, token and fixed-contract transfer count. No calls/receipts, reward/referral classification or verified historical completeness; no cache/cursor/lease writes, identity output or cron.':
+          'Read-only one-legacy-wallet Alchemy ERC20 AssetTransfers for FOUR fixed token contracts only. Pagination completeness refers ONLY to these scoped transfers, not all possible reward/staking contracts. No reward/claim classification, cursor/cache/lease writes, identity output or cron.'})
     }
     if(mode==='snapshot-verification-audit'){
       const summary={snapshots:0,workflowDone:0,rewardCoverageVerified:0,referralEngineVerified:0,
