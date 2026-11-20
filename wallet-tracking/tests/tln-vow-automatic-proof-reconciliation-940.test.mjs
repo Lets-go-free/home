@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const core=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
+const edge=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const context={};vm.runInNewContext(core,context);
+const reconcile=context.WT_TLN_REWARD_VERIFICATION_CORE.reconcileVerifiedTopUpReceipt;
+const w='0x'+'a'.repeat(40),t='0x'+'b'.repeat(40),h='0x'+'c'.repeat(64),z='0x'+'0'.repeat(40);
+const row={hash:h,token:t,amount:5500,from:z,to:w,rewardProof:'mint',rewardFlowEvidence:'mint_to_wallet'};
+const topUp={tx:h,evidence:'onchain_same_wallet_position_state',storageProof:{proven:true}};
+const receipt={receiptVerified:true,knownBridge:false,transfers:[{token:t,from:z,to:w,amountRaw:'0x12a05f200'}]};
+const input={wallet:w,hash:h,receipt,lots:[{topUps:[topUp]}],provenRows:[row]};
+assert.equal(reconcile(input).length,1);
+assert.equal(reconcile(input)[0].canonicalRewardVerified,false);
+assert.equal(reconcile({...input,receipt:{...receipt,receiptVerified:false}}).length,0);
+assert.equal(reconcile({...input,receipt:{...receipt,knownBridge:true}}).length,0);
+assert.equal(reconcile({...input,lots:[{topUps:[{...topUp,storageProof:{proven:false}}]}]}).length,0);
+assert.equal(reconcile({...input,lots:[{topUps:[topUp]},{topUps:[topUp]}]}).length,0);
+assert.equal(reconcile({...input,receipt:{...receipt,transfers:[...receipt.transfers,...receipt.transfers]}}).length,0);
+assert.equal(reconcile({...input,provenRows:[]}).length,0);
+assert.ok(edge.includes('function reconcileVerifiedTopUpReceipt(input)'));
+assert.ok(edge.includes('attachManualRewardProofMatches'));
+assert.ok(edge.includes('reward_classification_verified:false'));
+console.log('9.40: shared automatic receipt/manual proof reconciliation and safety guards OK');

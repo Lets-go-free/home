@@ -894,3 +894,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Kleinere technische Korrektur: Work-Cycle verkleinert zu grosse Fenster bei Bedarf bis auf einen Block, statt bei 1'000 Blöcken stehenzubleiben.
 - Tests der TLN/VOW-Module bestanden. Details `docs/releases/9.39-tln-vow-evidence-cron.md`.
 
+### Phase 9.40 – Automatischer Receipt-Abgleich mit vorhandenen manuellen Proofs (20261120-140941)
+
+- Für neu geprüfte Receipts speichern sowohl Work-Cycle als auch Receipt-Backlog eine konservative, gemeinsame Browser-/Edge-Abgleichsentscheidung auf Basis eindeutiger, bereits manuell belegter Top-ups. Nur technisches Receipt-JSON; keine kanonischen Rewards/Claims.
+- **Offen:** Der tägliche Job muss neue Proofs und Referral-Zuordnungen selbständig nach manueller Logik ermitteln. 9.40 erkennt nur bestehende manuelle Proofs und ersetzt keine vollständige Klassifizierung. Details `docs/releases/9.40-tln-vow-automatic-proof-reconciliation.md`.
+

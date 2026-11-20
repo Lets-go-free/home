@@ -240,3 +240,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Neue streng lesende historische Besitzprüfung via vollständige erforderliche Explorer-ERC-721-Instanztransfer-Seiten für jeden Claim; nur bei eindeutigem Vor-Claim-Empfänger, ohne gleichzeitige/mehrdeutige Transfers und ohne Pagination-Probleme erfolgreich. Kein SQL, keine Flows, keine Preise, kein Cron.
 - Nur Edge `dao-reward-refresh/index.ts` und sichtbare Versionsanzeige verändert, plus Dokumentation/Testanpassung. Deployment/Live-Retest offen. Details `8.87-dao-live-historical-nft-proof.md`.
 
+## 9.40 · 20.11.2026 14:09:41 CET · Build 20261120-140941
+- Gemeinsame pure Reward-Top-up-Reconciliation wird bei jedem neuen Edge-Receipt automatisch ausgeführt: nur eindeutige manuelle Storage-/Reward-Belege plus bestätigte Mint-Logs werden als Hinweise im separaten Receipt-Staging gespeichert. Keine kanonischen Claims, keine neue Migration, Rewards-Cron aus. `9.40-tln-vow-automatic-proof-reconciliation.md`.
+

@@ -198,5 +198,32 @@
     return {kind,exchangeLike,incoming,outgoing,payoutTransfers,rejectedTransfers,
       explicitRewardIntent,stateDeltaEvidence,traceSources:[...traceSources]};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow});
+  // Deterministic receipt-to-manual-proof reconciliation. A mint by itself is
+  // not a reward; this requires the browser's independently verified top-up
+  // storage proof AND its proven reward row for the exact same transaction.
+  function reconcileVerifiedTopUpReceipt(input){
+    const wallet=String(input?.wallet||'').toLowerCase();
+    const hash=String(input?.hash||'').toLowerCase();
+    const receipt=input?.receipt||{};
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true)return [];
+    const candidates=verifiedTopUpMintCandidates(input?.lots||[],input?.provenRows||[],wallet)
+      .filter(x=>String(x.row.hash).toLowerCase()===hash);
+    const logs=Array.isArray(receipt.transfers)?receipt.transfers:[];
+    const out=[];
+    for(const candidate of candidates){
+      const token=String(candidate.row.token).toLowerCase();
+      const matches=logs.filter(log=>String(log?.token||'').toLowerCase()===token&&
+        String(log?.from||'').toLowerCase()==='0x'+'0'.repeat(40)&&
+        String(log?.to||'').toLowerCase()===wallet&&
+        /^0x[0-9a-f]+$/i.test(String(log?.amountRaw||''))&&BigInt(log.amountRaw)>0n);
+      // Multiple same-token mints cannot be associated with a single manual
+      // proof row without independently verifying each exact amount.
+      if(matches.length!==1)continue;
+      out.push({hash,token,amount:candidate.row.amount,lotIndex:candidate.lotIndex,
+        kind:'verified_manual_topup_receipt_match',canonicalRewardVerified:false});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt});
 })(globalThis);
