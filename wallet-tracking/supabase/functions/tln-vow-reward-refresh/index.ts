@@ -1,4 +1,4 @@
-// WalletTracking 9.31 – fixed historical top-up and mint RPC regression, no commits.
+// WalletTracking 9.32 – bounded cache-derived top-up mint RPC verifier, no commits.
 // Same wallet-scoped alchemy_getAssetTransfers API as manual discovery; NO reward/cursor/cache writes or cron.
 // Deploy only for a protected staging inspection. This is NOT a reward worker.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
@@ -441,9 +441,20 @@ async function inspectStakingContractCalls(wallet:string,fromBlock:number,toBloc
     successfulReceipts,failedReceipts,receiptLogs,erc20TransferLogs,
     evidenceComplete:complete&&!truncated,classificationPerformed:false}
 }
-async function inspectHistoricalTopUpProof(wallet:string,expectedAmount:number) {
+function amountInBaseUnits(amount:unknown,decimals:number):bigint|null {
+  const s=String(amount)
+  if(!/^\d+(?:\.\d+)?$/.test(s)||!Number.isSafeInteger(decimals)||decimals<0||decimals>36)return null
+  const [whole,fraction='']=s.split('.')
+  if(fraction.length>decimals)return null
+  const raw=BigInt(whole)*10n**BigInt(decimals)+BigInt((fraction.padEnd(decimals,'0'))||'0')
+  return raw>0n?raw:null
+}
+async function inspectHistoricalTopUpProof(wallet:string,expectedAmount:number,hash:string=LEGACY_STAKE_AUDIT_HASH,
+  token:string=LEGACY_TOPUP_MINT_TOKEN,block:number=LEGACY_STAKE_AUDIT_BLOCK) {
   const address=evmAddress(wallet)
-  if(!address||!ALCHEMY_API_KEY||expectedAmount!==5500)
+  const contract=evmAddress(token)
+  if(!address||!contract||!ALCHEMY_API_KEY||!/^0x[0-9a-f]{64}$/.test(hash)||
+    !Number.isSafeInteger(block)||block<1||amountInBaseUnits(expectedAmount,36)===null)
     throw new RpcDiagnosticError('historical_topup','invalid_cached_anchor')
   const url=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
   const call=async(method:string,params:unknown[])=>{
@@ -461,39 +472,39 @@ async function inspectHistoricalTopUpProof(wallet:string,expectedAmount:number) 
       throw new RpcDiagnosticError(method,e instanceof Error&&e.name==='AbortError'?'timeout':'network_error')
     }finally{clearTimeout(timer)}
   }
-  const tx=await call('eth_getTransactionByHash',[LEGACY_STAKE_AUDIT_HASH])
-  const txHashMatches=String(tx?.hash||'').toLowerCase()===LEGACY_STAKE_AUDIT_HASH
+  const tx=await call('eth_getTransactionByHash',[hash])
+  const txHashMatches=String(tx?.hash||'').toLowerCase()===hash
   const blockMatches=typeof tx?.blockNumber==='string'&&/^0x[0-9a-f]+$/i.test(tx.blockNumber)&&
-    Number(BigInt(tx.blockNumber))===LEGACY_STAKE_AUDIT_BLOCK
+    Number(BigInt(tx.blockNumber))===block
   const senderMatches=evmAddress(tx?.from)===address
   const selector=typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null
-  const receipt=await call('eth_getTransactionReceipt',[LEGACY_STAKE_AUDIT_HASH])
-  const receiptMatches=String(receipt?.transactionHash||'').toLowerCase()===LEGACY_STAKE_AUDIT_HASH&&
+  const receipt=await call('eth_getTransactionReceipt',[hash])
+  const receiptMatches=String(receipt?.transactionHash||'').toLowerCase()===hash&&
     typeof receipt?.blockNumber==='string'&&/^0x[0-9a-f]+$/i.test(receipt.blockNumber)&&
-    Number(BigInt(receipt.blockNumber))===LEGACY_STAKE_AUDIT_BLOCK
+    Number(BigInt(receipt.blockNumber))===block
   const receiptSuccessful=receipt?.status==='0x1'
   if(!Array.isArray(receipt?.logs))throw new RpcDiagnosticError('eth_getTransactionReceipt','invalid_logs')
   const zeroTopic='0x'+'0'.repeat(64)
   const walletTopic='0x'+address.slice(2).padStart(64,'0')
-  const matching=receipt.logs.filter((l:any)=>evmAddress(l?.address)===LEGACY_TOPUP_MINT_TOKEN&&
+  const matching=receipt.logs.filter((l:any)=>evmAddress(l?.address)===contract&&
     Array.isArray(l?.topics)&&String(l.topics[0]||'').toLowerCase()===TRANSFER_TOPIC&&
     String(l.topics[1]||'').toLowerCase()===zeroTopic&&
     String(l.topics[2]||'').toLowerCase()===walletTopic&&
     typeof l?.data==='string'&&/^0x[0-9a-f]{1,64}$/i.test(l.data))
   let decimals:number|null=null,decimalsVerified=false
   // Token decimals are read on-chain: never hard-code an assumption of 18.
-  const decimalsHex=await call('eth_call',[{to:LEGACY_TOPUP_MINT_TOKEN,data:'0x313ce567'},hexBlock(LEGACY_STAKE_AUDIT_BLOCK)])
+  const decimalsHex=await call('eth_call',[{to:contract,data:'0x313ce567'},hexBlock(block)])
   if(typeof decimalsHex==='string'&&/^0x[0-9a-f]{1,64}$/i.test(decimalsHex)){
     const d=Number(BigInt(decimalsHex));if(Number.isSafeInteger(d)&&d>=0&&d<=36){decimals=d;decimalsVerified=true}
   }
-  const expectedRaw=decimalsVerified?5500n*10n**BigInt(decimals!):null
+  const expectedRaw=decimalsVerified?amountInBaseUnits(expectedAmount,decimals!):null
   const rawAmounts=matching.map((l:any)=>BigInt(l.data))
-  const mintAmountMatches=expectedRaw!==null&&rawAmounts.some((x:bigint)=>x===expectedRaw)
+  const mintAmountMatches=expectedRaw!==null&&rawAmounts.length===1&&rawAmounts[0]===expectedRaw
   const independentlyConfirmed=txHashMatches&&blockMatches&&senderMatches&&receiptMatches&&receiptSuccessful&&mintAmountMatches
   return {txHashMatches,blockMatches,senderMatches,selector,receiptMatches,receiptSuccessful,
     matchingZeroMintsToWallet:matching.length,decimalsVerified,decimals,
     mintAmountMatches,independentlyConfirmed,
-    scope:'One fixed historical transaction, one cached wallet, TLN+ zero-address mint. Does not independently redo storage continuity or prove reward/referral completeness.'}
+    scope:'One cache-derived transaction and mint. Does not independently redo storage continuity or prove reward/referral completeness.'}
 }
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
 async function bscHead(): Promise<number> {
@@ -529,7 +540,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
     const maxBlocks=previewBlockBudget(body?.maxBlocks)
@@ -1051,6 +1062,57 @@ Deno.serve(async (req) => {
         return reply({ok:false,mode,error:'Historical on-chain regression unavailable; no changes',rpcDiagnostic:diagnostic,
           persisted:false},503)
       }
+    }
+    if(mode==='cached-topup-mint-rpc-preview'){
+      // Generalized 9.31 evidence verifier. Candidate discovery is entirely
+      // server-side, strictly rooted in the shared verified-top-up rule.
+      const candidates:any[]=[]
+      for(const row of byWallet.values()){
+        const p=row.payload
+        if(p?.kind!=='verified_discovery_results')continue
+        for(const candidate of verificationCore.verifiedTopUpMintCandidates(
+          p?.process?.lots||[],p?.globals?.provenRewardRows||[],p?.wallet)){
+          const hash=String(candidate.row?.hash||'').toLowerCase()
+          const token=evmAddress(candidate.row?.token)
+          const block=Number(candidate.topUp?.block??candidate.row?.block)
+          const amount=Number(candidate.row?.amount)
+          if(!token||!Number.isSafeInteger(block)||block<=0||!Number.isFinite(amount)||amount<=0||
+            amountInBaseUnits(amount,36)===null)continue
+          candidates.push({hash,token,block,amount,wallet:p.wallet})
+        }
+      }
+      const key=(c:any)=>`${c.hash}|${c.token}|${c.amount}`
+      const owners=new Map<string,number>()
+      for(const c of candidates)owners.set(key(c),(owners.get(key(c))||0)+1)
+      const unique=candidates.filter(c=>owners.get(key(c))===1)
+        .sort((a,b)=>a.block-b.block||a.hash.localeCompare(b.hash))
+      const selected=unique.slice(0,3)
+      if(!selected.length)return reply({ok:true,mode,day:dayCH(),candidatesFound:candidates.length,
+        uniqueEligible:0,inspected:0,results:[],persisted:false,
+        notice:'No unambiguous cache-derived top-up mint with usable block and amount. No RPC or writes.'})
+      const results=[]
+      for(let i=0;i<selected.length;i++){
+        const c=selected[i]
+        try {
+          const evidence=await inspectHistoricalTopUpProof(c.wallet,c.amount,c.hash,c.token,c.block)
+          results.push({ordinal:i+1,block:c.block,expectedAmount:c.amount,
+            txHashMatches:evidence.txHashMatches,blockMatches:evidence.blockMatches,
+            senderMatches:evidence.senderMatches,selector:evidence.selector,
+            receiptMatches:evidence.receiptMatches,receiptSuccessful:evidence.receiptSuccessful,
+            mintCount:evidence.matchingZeroMintsToWallet,decimalsVerified:evidence.decimalsVerified,
+            mintAmountMatches:evidence.mintAmountMatches,verifiedAgreement:evidence.independentlyConfirmed})
+        }catch(e){const diagnostic=safeRpcDiagnostic(e)
+          console.error('TLN cache-derived mint RPC preview failed',diagnostic)
+          return reply({ok:false,mode,error:'A cache-derived RPC verification failed; no progress saved',
+            rpcDiagnostic:diagnostic,inspected:i,persisted:false},503)
+        }
+      }
+      return reply({ok:true,mode,day:dayCH(),candidatesFound:candidates.length,
+        ambiguousExcluded:candidates.length-unique.length,uniqueEligible:unique.length,
+        inspected:selected.length,truncated:unique.length>selected.length,results,
+        verifiedAgreementCount:results.filter(x=>x.verifiedAgreement).length,
+        rewardCoverageVerified:false,referralCoverageVerified:false,claimsCreated:0,persisted:false,
+        notice:'Read-only shared cached top-up proof rule plus bounded generic Tx/receipt/token-decimals verification. No new candidate discovery, storage reproof, reward or referral completeness, cache/cursor/claim writes or cron.'})
     }
     if(mode==='verified-topup-mint-preview'){
       let candidateCount=0
