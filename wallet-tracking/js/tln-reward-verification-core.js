@@ -374,5 +374,36 @@
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots});
+  // Strict direct CLAIM receipt: a single payout token emitted by the called
+  // staking contract, a single unambiguous lot, no principal or exchange leg.
+  // It intentionally does NOT finalize mint, referral, bonus, state-only or
+  // indirect contract/aggregator evidence.
+  function verifiedDirectStakingClaim(input){
+    const norm=v=>String(v||'').toLowerCase(),wallet=norm(input?.wallet),hash=norm(input?.hash);
+    const receipt=input?.receipt||{},callTo=norm(receipt.calledContract);
+    const lots=Array.isArray(input?.lots)?input.lots:[];
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true||
+      receipt.lifecycleLotMatches!==0||norm(receipt.transactionSender)!==wallet||
+      knownClaimMethodIntent(receipt.selector)!=='staking_reward')return null;
+    const transfers=Array.isArray(receipt.transfers)?receipt.transfers:[];
+    if(transfers.some(t=>norm(t?.from)===wallet&&norm(t?.to)!==wallet))return null;
+    const incoming=transfers.filter(t=>norm(t?.to)===wallet&&norm(t?.from)!==wallet);
+    if(incoming.length!==1||norm(incoming[0].from)!==callTo)return null;
+    const transfer=incoming[0],token=norm(transfer.token),raw=String(transfer.amountRaw||'');
+    if(!/^0x[0-9a-f]{40}$/.test(token)||!/^0x[0-9a-f]+$/i.test(raw)||
+      BigInt(raw)<=0n||!Number.isSafeInteger(transfer.logIndex)||transfer.logIndex<0)return null;
+    const candidates=classifyExplicitClaimReceipt({wallet,hash,receipt,stakingContracts:input?.stakingContracts||[]});
+    if(candidates.length!==1||norm(candidates[0].token)!==token||BigInt(candidates[0].amountRaw)!==BigInt(raw))return null;
+    const assignments=assignReceiptCandidatesToUniqueLots({wallet,hash,receipt,lots,candidates});
+    if(assignments.length!==1)return null;
+    const lot=lots[assignments[0].lotIndex];
+    if(!lot||!/^(?:0x[0-9a-f]{64})$/.test(norm(lot.stakeTx)))return null;
+    if(lots.some(l=>(Array.isArray(l?.rewardClaims)?l.rewardClaims:[]).some(c=>
+      norm(c?.hash)===hash&&norm(c?.token)===token)))return null;
+    return {hash,token,amountRaw:BigInt(raw).toString(),logIndex:transfer.logIndex,
+      lotStakeTx:norm(lot.stakeTx),calledContract:callTo,kind:'staking_reward',
+      proof:'direct_explicit_staking_claim_with_unique_lot_and_verified_receipt'};
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim});
 })(globalThis);

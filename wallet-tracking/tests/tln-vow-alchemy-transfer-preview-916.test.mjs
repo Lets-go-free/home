@@ -5,7 +5,9 @@ import {stripTypeScriptTypes} from 'node:module';
 
 const ts=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
 const sharedCore=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
-assert.doesNotMatch(ts,/\.upsert\(|\.update\(|\.delete\(/);
+// 9.46 adds an explicit, separately authenticated write mode. The legacy
+// delta-scan-preview remains read-only and is exercised below.
+assert.doesNotMatch(ts.slice(ts.indexOf("if(mode==='delta-receipt-verify')")),/\.upsert\(|\.update\(|\.delete\(/);
 assert.match(ts,/from\('tln_vow_reward_delta_stage'\)\.insert\(/);
 const source=stripTypeScriptTypes(ts,{mode:'strip'}).replace(/^import .*;?$/gm,'');
 const wallet='0x'+'a'.repeat(40), tx='0x'+'b'.repeat(64);

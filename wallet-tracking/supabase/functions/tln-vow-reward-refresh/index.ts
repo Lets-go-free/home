@@ -1,4 +1,4 @@
-// WalletTracking 9.45 – unique-lot assignment candidates from verified receipts.
+// WalletTracking 9.46 – opt-in strict direct staking claim finalizer.
 // Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -378,7 +378,38 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots});
+  // Strict direct CLAIM receipt: a single payout token emitted by the called
+  // staking contract, a single unambiguous lot, no principal or exchange leg.
+  // It intentionally does NOT finalize mint, referral, bonus, state-only or
+  // indirect contract/aggregator evidence.
+  function verifiedDirectStakingClaim(input){
+    const norm=v=>String(v||'').toLowerCase(),wallet=norm(input?.wallet),hash=norm(input?.hash);
+    const receipt=input?.receipt||{},callTo=norm(receipt.calledContract);
+    const lots=Array.isArray(input?.lots)?input.lots:[];
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true||
+      receipt.lifecycleLotMatches!==0||norm(receipt.transactionSender)!==wallet||
+      knownClaimMethodIntent(receipt.selector)!=='staking_reward')return null;
+    const transfers=Array.isArray(receipt.transfers)?receipt.transfers:[];
+    if(transfers.some(t=>norm(t?.from)===wallet&&norm(t?.to)!==wallet))return null;
+    const incoming=transfers.filter(t=>norm(t?.to)===wallet&&norm(t?.from)!==wallet);
+    if(incoming.length!==1||norm(incoming[0].from)!==callTo)return null;
+    const transfer=incoming[0],token=norm(transfer.token),raw=String(transfer.amountRaw||'');
+    if(!/^0x[0-9a-f]{40}$/.test(token)||!/^0x[0-9a-f]+$/i.test(raw)||
+      BigInt(raw)<=0n||!Number.isSafeInteger(transfer.logIndex)||transfer.logIndex<0)return null;
+    const candidates=classifyExplicitClaimReceipt({wallet,hash,receipt,stakingContracts:input?.stakingContracts||[]});
+    if(candidates.length!==1||norm(candidates[0].token)!==token||BigInt(candidates[0].amountRaw)!==BigInt(raw))return null;
+    const assignments=assignReceiptCandidatesToUniqueLots({wallet,hash,receipt,lots,candidates});
+    if(assignments.length!==1)return null;
+    const lot=lots[assignments[0].lotIndex];
+    if(!lot||!/^(?:0x[0-9a-f]{64})$/.test(norm(lot.stakeTx)))return null;
+    if(lots.some(l=>(Array.isArray(l?.rewardClaims)?l.rewardClaims:[]).some(c=>
+      norm(c?.hash)===hash&&norm(c?.token)===token)))return null;
+    return {hash,token,amountRaw:BigInt(raw).toString(),logIndex:transfer.logIndex,
+      lotStakeTx:norm(lot.stakeTx),calledContract:callTo,kind:'staking_reward',
+      proof:'direct_explicit_staking_claim_with_unique_lot_and_verified_receipt'};
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -1018,8 +1049,8 @@ Deno.serve(async (req) => {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    const mode=supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
-    if(body?.mode && !supportedModes.includes(body.mode)) return reply({ok:false,error:'Unsupported mode'},400)
+    const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
+    if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
     const maxBlocks=workCycle?(body?.maxBlocks??50000):previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null||!Number.isSafeInteger(maxBlocks)||maxBlocks<1||maxBlocks>(workCycle?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS))
@@ -1043,6 +1074,55 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='direct-claim-finalize'){
+      // Explicit opt-in only: no cron invokes this mode. Separate canonical
+      // table preserves every manually verified discovery snapshot unchanged.
+      const offset=body?.offset??0
+      if(!Number.isSafeInteger(offset)||offset<0||offset>1000000)
+        return reply({ok:false,mode,error:'offset must be an integer from 0 to 1000000'},400)
+      const receiptRows=await sb.from('tln_vow_reward_receipt_stage')
+        .select('user_id,wallet_id,chain_key,tx_hash,block_number,evidence')
+        .eq('chain_key','bsc').order('created_at',{ascending:true}).order('tx_hash',{ascending:true})
+        .range(offset,offset+199)
+      if(receiptRows.error)return reply({ok:false,mode,error:'Receipt staging unavailable'},503)
+      const contracts=await sb.from('defi_staking_contracts').select('contract_address')
+        .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+      if(contracts.error||(contracts.data||[]).some((r:any)=>!evmAddress(r.contract_address)))
+        return reply({ok:false,mode,error:'Configured staking contracts invalid'},503)
+      const registry=(contracts.data||[]).map((r:any)=>evmAddress(r.contract_address)!)
+      const eligible:any[]=[]
+      for(const row of (receiptRows.data||[])){
+        const owner=String(row.user_id)+'|'+String(row.wallet_id)
+        const snapshot=byWallet.get(owner)?.payload
+        const wallet=evmAddress(snapshot?.wallet),receipt=row.evidence
+        const block=num(row.block_number),hash=String(row.tx_hash||'').toLowerCase()
+        if(snapshot?.kind!=='verified_discovery_results'||!wallet||block===null||block<1||
+          !/^0x[0-9a-f]{64}$/.test(hash)||!receipt||receipt.receiptVerified!==true)continue
+        const candidate=verificationCore.verifiedDirectStakingClaim({wallet,hash,receipt,
+          lots:snapshot?.process?.lots||[],stakingContracts:registry})
+        if(!candidate)continue
+        if((Array.isArray(snapshot?.globals?.provenRewardRows)?snapshot.globals.provenRewardRows:[])
+          .some((r:any)=>String(r?.hash||'').toLowerCase()===hash&&
+            String(r?.token||'').toLowerCase()===candidate.token))continue
+        eligible.push({user_id:row.user_id,wallet_id:row.wallet_id,chain_key:'bsc',
+          tx_hash:hash,block_number:block,token_address:candidate.token,
+          log_index:candidate.logIndex,amount_raw:candidate.amountRaw,
+          lot_stake_tx:candidate.lotStakeTx,called_contract:candidate.calledContract,
+          proof_kind:candidate.proof})
+      }
+      // At most 200 independent candidate rows, duplicate commits ignored by
+      // the stable (wallet, tx, token, receipt-log) primary key.
+      if(eligible.length){
+        const {error}=await sb.from('tln_vow_reward_direct_claims').upsert(eligible,{
+          onConflict:'user_id,wallet_id,chain_key,tx_hash,token_address,log_index',ignoreDuplicates:true})
+        if(error)return reply({ok:false,mode,error:'Direct claim save failed; no discovery snapshot modified'},503)
+      }
+      return reply({ok:true,mode,day:dayCH(),offset,nextOffset:(receiptRows.data||[]).length===200?offset+200:null,
+        inspectedReceipts:(receiptRows.data||[]).length,eligibleDirectClaims:eligible.length,
+        canonicalDirectClaimsCommitted:eligible.length>0,
+        referralClassificationCompleted:false,fullRewardCoverageVerified:false,
+        notice:'Strict direct staking claims only; no indirect, bonus or referral claims and no legacy completeness certification.'})
     }
     if(mode==='delta-receipt-verify'){
       const staged:any[]=[],verified:any[]=[]

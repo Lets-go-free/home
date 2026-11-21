@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const source=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
+const ctx={};vm.runInNewContext(source,ctx);
+const core=ctx.WT_TLN_REWARD_VERIFICATION_CORE;
+const wallet='0x'+'a'.repeat(40),contract='0x'+'b'.repeat(40),token='0x'+'c'.repeat(40),hash='0x'+'d'.repeat(64);
+const lot={stakeTx:'0x'+'e'.repeat(64),staking:{contract_address:contract},rewardClaims:[]};
+const transfer={token,from:contract,to:wallet,amountRaw:'0xff',logIndex:7};
+const receipt={receiptVerified:true,knownBridge:false,lifecycleLotMatches:0,transactionSender:wallet,
+  calledContract:contract,selector:core.keccakSelector('claim()'),transfers:[transfer]};
+const base={wallet,hash,receipt,lots:[lot],stakingContracts:[contract]};
+const run=change=>core.verifiedDirectStakingClaim({...base,...change});
+assert.equal(run({})?.amountRaw,'255');
+assert.equal(run({})?.lotStakeTx,lot.stakeTx);
+assert.equal(run({lots:[lot,lot]}),null);
+assert.equal(run({receipt:{...receipt,knownBridge:true}}),null);
+assert.equal(run({receipt:{...receipt,lifecycleLotMatches:1}}),null);
+assert.equal(run({receipt:{...receipt,selector:core.keccakSelector('claimReferralRewards()')}}),null);
+assert.equal(run({receipt:{...receipt,selector:'0xa9059cbb'}}),null);
+assert.equal(run({receipt:{...receipt,transfers:[transfer,{...transfer,from:wallet,to:contract}]}}),null);
+assert.equal(run({receipt:{...receipt,transfers:[transfer,{...transfer,token:'0x'+'f'.repeat(40)}]}}),null);
+assert.equal(run({receipt:{...receipt,transfers:[{...transfer,from:wallet}]}}),null);
+assert.equal(run({receipt:{...receipt,transfers:[{...transfer,logIndex:null}]}}),null);
+assert.equal(run({lots:[{...lot,rewardClaims:[{hash,token}]}]}),null);
+assert.equal(run({stakingContracts:[]}),null);
+assert.equal(run({lots:[{...lot,pair:{token0:{address:token}}}]}),null);
+console.log('9.46 strict direct claim: exact receipt, single lot, no principal, referral, exchange or duplicate');

@@ -258,3 +258,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.45 · 21.11.2026 16:16:22 CET · Build 20261121-161622
 - Gemeinsame reine Browser-/Edge-Regel für eine eindeutige Zuordnung vorhandener Receipt-Reward-Kandidaten zu genau einer Staking-Position. Contract-Bezug, Wallet-Absender, Lifecycle-Ausschluss und Kapital-/Underlying-Token-Ausschluss erforderlich; doppelte und mehrdeutige Kandidaten verworfen. Die Zuordnung wird als technische Evidence gespeichert und im Work-Cycle gezählt, noch nicht als kanonischer Reward verbucht. `9.45-tln-vow-unique-lot-reward-assignment.md`.
 
+## 9.46 · 21.11.2026 16:45:44 CET · Build 20261121-164544
+- Neue streng begrenzte, ausdrücklich aufzurufende kanonische Ledger-Verarbeitung `direct-claim-finalize` für direkte Staking-Claim-Transaktionen mit expliziter Methodensignatur, verifiziertem Receipt, genau einem positionsbezogenen Reward-Transfer ohne Kapital- oder Swap-Fluss und eindeutigem Staking-Lot. Idempotente Speicherung in neuer Service-Role-Tabelle `tln_vow_reward_direct_claims`, ohne vorhandene manuelle Ergebnisse umzuschreiben. SQL-Migration erforderlich. Cron bleibt bewusst unverändert (nur technische Evidence). `9.46-tln-vow-direct-claim-finalizer.md`.
+

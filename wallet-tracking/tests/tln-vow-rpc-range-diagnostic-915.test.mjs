@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 const source=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
 const sharedCore=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
-assert.doesNotMatch(source,/\.upsert\(|\.update\(|\.delete\(/);
+assert.doesNotMatch(source.slice(source.indexOf("if(mode==='delta-receipt-verify')")),/\.upsert\(|\.update\(|\.delete\(/);
 assert.match(source,/from\('tln_vow_reward_delta_stage'\)\.insert\(/);
 const script=stripTypeScriptTypes(source,{mode:'strip'}).replace(/^import .*;?$/gm,'');
 const wallet='0x'+'a'.repeat(40);
