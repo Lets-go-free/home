@@ -337,5 +337,42 @@
         stateDeltas:deltas,causalPath:t.rewardFlowEvidence,rewardVerified:false,
         reason:'contract state changed across containing block; transaction-specific attribution still unverified'}));
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt});
+  // Match independent receipt-backed reward candidates to exactly ONE known
+  // staking lot. This is shared selection logic, not a canonical claim:
+  // position identifiers and historical referral attribution may still matter.
+  function assignReceiptCandidatesToUniqueLots(input){
+    const addr=v=>String(v||'').toLowerCase();
+    const wallet=addr(input?.wallet),hash=addr(input?.hash),receipt=input?.receipt||{};
+    const callTo=addr(receipt.calledContract),lots=Array.isArray(input?.lots)?input.lots:[];
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      !/^0x[0-9a-f]{40}$/.test(callTo)||receipt.receiptVerified!==true||receipt.knownBridge===true||
+      addr(receipt.transactionSender)!==wallet)return [];
+    const candidates=Array.isArray(input?.candidates)?input.candidates:[];
+    const eligible=lots.map((lot,index)=>{
+      const contracts=[lot?.staking?.contract_address,lot?.counterparty,lot?.entry_contract,
+        lot?.stake_event_contract].map(addr).filter(x=>/^0x[0-9a-f]{40}$/.test(x));
+      const lifecycle=[lot?.stakeTx,lot?.unstakeTx,...(Array.isArray(lot?.topUps)?lot.topUps.map(x=>x?.tx):[])].map(addr);
+      const principal=[lot?.pair?.address,lot?.pair?.pairAddress,lot?.pair?.pair,
+        lot?.pair_address,lot?.pairAddress,lot?.asset,lot?.pair?.token0?.address,
+        lot?.pair?.token1?.address].map(addr);
+      return {index,contracts:new Set(contracts),lifecycle:new Set(lifecycle),principal:new Set(principal)};
+    });
+    const seen=new Set(),out=[];
+    for(const candidate of candidates){
+      const token=addr(candidate?.token),raw=String(candidate?.amountRaw||'');
+      if(addr(candidate?.hash)!==hash||!/^0x[0-9a-f]{40}$/.test(token)||
+        !/^0x[0-9a-f]+$/i.test(raw)||BigInt(raw)<=0n||candidate.rewardVerified===true)continue;
+      const matches=eligible.filter(x=>x.contracts.has(callTo)&&
+        !x.lifecycle.has(hash)&&!x.principal.has(token));
+      if(matches.length!==1)continue;
+      const key=hash+'|'+token+'|'+BigInt(raw).toString()+'|'+String(candidate.kind||'');
+      if(seen.has(key))continue;
+      seen.add(key);
+      out.push({hash,token,amountRaw:raw,lotIndex:matches[0].index,
+        candidateKind:String(candidate.kind||'unknown'),contract:callTo,
+        assignmentVerified:false,reason:'unique direct staking-contract lot relation; position proof and final classification pending'});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots});
 })(globalThis);

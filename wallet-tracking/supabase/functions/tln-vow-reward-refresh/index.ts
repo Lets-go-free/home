@@ -1,4 +1,4 @@
-// WalletTracking 9.44 – wallet staking-contract calls without ERC20 transfers.
+// WalletTracking 9.45 – unique-lot assignment candidates from verified receipts.
 // Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -341,7 +341,44 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
         stateDeltas:deltas,causalPath:t.rewardFlowEvidence,rewardVerified:false,
         reason:'contract state changed across containing block; transaction-specific attribution still unverified'}));
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt});
+  // Match independent receipt-backed reward candidates to exactly ONE known
+  // staking lot. This is shared selection logic, not a canonical claim:
+  // position identifiers and historical referral attribution may still matter.
+  function assignReceiptCandidatesToUniqueLots(input){
+    const addr=v=>String(v||'').toLowerCase();
+    const wallet=addr(input?.wallet),hash=addr(input?.hash),receipt=input?.receipt||{};
+    const callTo=addr(receipt.calledContract),lots=Array.isArray(input?.lots)?input.lots:[];
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      !/^0x[0-9a-f]{40}$/.test(callTo)||receipt.receiptVerified!==true||receipt.knownBridge===true||
+      addr(receipt.transactionSender)!==wallet)return [];
+    const candidates=Array.isArray(input?.candidates)?input.candidates:[];
+    const eligible=lots.map((lot,index)=>{
+      const contracts=[lot?.staking?.contract_address,lot?.counterparty,lot?.entry_contract,
+        lot?.stake_event_contract].map(addr).filter(x=>/^0x[0-9a-f]{40}$/.test(x));
+      const lifecycle=[lot?.stakeTx,lot?.unstakeTx,...(Array.isArray(lot?.topUps)?lot.topUps.map(x=>x?.tx):[])].map(addr);
+      const principal=[lot?.pair?.address,lot?.pair?.pairAddress,lot?.pair?.pair,
+        lot?.pair_address,lot?.pairAddress,lot?.asset,lot?.pair?.token0?.address,
+        lot?.pair?.token1?.address].map(addr);
+      return {index,contracts:new Set(contracts),lifecycle:new Set(lifecycle),principal:new Set(principal)};
+    });
+    const seen=new Set(),out=[];
+    for(const candidate of candidates){
+      const token=addr(candidate?.token),raw=String(candidate?.amountRaw||'');
+      if(addr(candidate?.hash)!==hash||!/^0x[0-9a-f]{40}$/.test(token)||
+        !/^0x[0-9a-f]+$/i.test(raw)||BigInt(raw)<=0n||candidate.rewardVerified===true)continue;
+      const matches=eligible.filter(x=>x.contracts.has(callTo)&&
+        !x.lifecycle.has(hash)&&!x.principal.has(token));
+      if(matches.length!==1)continue;
+      const key=hash+'|'+token+'|'+BigInt(raw).toString()+'|'+String(candidate.kind||'');
+      if(seen.has(key))continue;
+      seen.add(key);
+      out.push({hash,token,amountRaw:raw,lotIndex:matches[0].index,
+        candidateKind:String(candidate.kind||'unknown'),contract:callTo,
+        assignmentVerified:false,reason:'unique direct staking-contract lot relation; position proof and final classification pending'});
+    }
+    return out;
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -934,12 +971,15 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
   const stateProbe=await probeHistoricalRewardState(wallet,receipt,block,stakingContracts)
   const stateCandidates=verificationCore.classifyStateDeltaReceipt({wallet,hash,receipt,
     stakingContracts,stateDeltas:stateProbe.deltas})
+  const lotAssignments=verificationCore.assignReceiptCandidatesToUniqueLots({wallet,hash,receipt,
+    lots:snapshot?.process?.lots||[],candidates:[...newCandidates,...claimCandidates,...stateCandidates]})
   // A matched historical proof is only a reconciliation hint: this does not
   // establish complete reward or referral coverage or create a claim.
   return {...receipt,manualRewardProofMatches:matches,newRewardMintCandidates:newCandidates,
     explicitClaimCandidates:claimCandidates,explicitClaimCandidateCount:claimCandidates.length,
     stateProbeAttempted:stateProbe.attempted,stateProbePaired:stateProbe.paired,
     stateChangeCandidates:stateCandidates,stateChangeCandidateCount:stateCandidates.length,
+    uniqueLotAssignmentCandidates:lotAssignments,uniqueLotAssignmentCandidateCount:lotAssignments.length,
     newRewardMintCandidateCount:newCandidates.length,
     manualRewardProofMatchCount:matches.length,classificationVerified:false}
 }
@@ -1078,6 +1118,7 @@ Deno.serve(async (req) => {
         newUnverifiedMintCandidates:evidence.reduce((n,e)=>n+e.newRewardMintCandidateCount,0),
         explicitClaimCandidates:evidence.reduce((n,e)=>n+e.explicitClaimCandidateCount,0),
         stateChangeCandidates:evidence.reduce((n,e)=>n+e.stateChangeCandidateCount,0),
+        uniqueLotAssignmentCandidates:evidence.reduce((n,e)=>n+e.uniqueLotAssignmentCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
         knownBridges:evidence.filter(e=>e.knownBridge).length,
         persisted:true,rewardClassificationCompleted:false,referralClassificationCompleted:false,
@@ -1159,7 +1200,7 @@ Deno.serve(async (req) => {
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,stateChangeCandidates=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -1240,11 +1281,12 @@ Deno.serve(async (req) => {
           newUnverifiedMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.newRewardMintCandidateCount,0)
           explicitClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.explicitClaimCandidateCount,0)
           stateChangeCandidates+=receipts.reduce((n,r)=>n+r.evidence.stateChangeCandidateCount,0)
+          uniqueLotAssignmentCandidates+=receipts.reduce((n,r)=>n+r.evidence.uniqueLotAssignmentCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,stateChangeCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,

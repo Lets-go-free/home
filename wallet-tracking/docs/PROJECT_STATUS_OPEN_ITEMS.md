@@ -919,3 +919,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - **Prüfen nach Deployment:** Im nächsten `delta-work-cycle`-HTTP-Body `chunks[*].directContractCalls` und `chunks[*].callOnlyTransactions` vorhanden. `0` ist bei fehlender Aktivität erwartbar.
 - **Weiter offen:** Vollständige Erkennung von indirekten Aggregator-Aufrufen, inhaltliche Lifecycle-/Reward-/Referral-Klassifizierung, historische Vollständigkeit, alle verschlüsselten Wallets, kanonische Übernahme. Keine kanonischen Rewards/Claims durch Cron; täglicher Reward-Job noch nicht fertig. Details `docs/releases/9.44-tln-vow-staking-call-capture.md`.
 
+### Phase 9.45 – Eindeutige Reward-Kandidaten-Zuordnung zu Lots (20261121-161622)
+- **Erledigt:** Die bestehende gemeinsame Verifikations-Core-Regel verknüpft on-chain bestätigte, aber noch nicht finale Reward-/Mint-/State-Kandidaten mit einer einzigen passenden Staking-Position anhand des direkten registrierten Contract-Bezugs. Mehrdeutige Lots, Lifecycle-Transaktionen, Principal-/Underlying-Tokens, Bridges und unbestätigte Receipts werden ausgeschlossen. Das Ergebnis wird im bestehenden Receipt-Evidence-JSON gespeichert. Kein SQL-/Schemawechsel.
+- **Test:** `uniqueLotAssignmentCandidates` im Cron-HTTP-Result (numerischer Zähler, bei keiner Aktivität `0`) und `uniqueLotAssignmentCandidateCount` im gespeicherten Receipt. **Keine** automatische kanonische Übernahme.
+- **Offen:** Position-ID-/historische Referral-Belege, indirekte Claim-Contracts, echte kanonische Reward-/Referral-Finalisierung, vollständige Wallet-Abdeckung und historische Coverage. Der tägliche Reward-Job bleibt noch deaktiviert. `docs/releases/9.45-tln-vow-unique-lot-reward-assignment.md`.
+

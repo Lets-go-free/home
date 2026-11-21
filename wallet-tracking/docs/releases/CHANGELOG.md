@@ -255,3 +255,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.44 · 21.11.2026 15:59:17 CET · Build 20261121-155917
 - Server-Cron erfasst neu auch externe Wallet-Aufrufe an die 14 konfigurierten Staking-/Entry-Contracts, selbst wenn keine der erfassten ERC20-Transfers vorliegt. Alchemy-Pagination wird vollständig geprüft; bei Fehlern wird kein Abschnitt fortgeschrieben. Der Receipt-Worker verifiziert Transaktionssender, Ziel, Hash und Block. Keine SQL-Migration und keine kanonischen Claim-Schreibvorgänge. `9.44-tln-vow-staking-call-capture.md`.
 
+## 9.45 · 21.11.2026 16:16:22 CET · Build 20261121-161622
+- Gemeinsame reine Browser-/Edge-Regel für eine eindeutige Zuordnung vorhandener Receipt-Reward-Kandidaten zu genau einer Staking-Position. Contract-Bezug, Wallet-Absender, Lifecycle-Ausschluss und Kapital-/Underlying-Token-Ausschluss erforderlich; doppelte und mehrdeutige Kandidaten verworfen. Die Zuordnung wird als technische Evidence gespeichert und im Work-Cycle gezählt, noch nicht als kanonischer Reward verbucht. `9.45-tln-vow-unique-lot-reward-assignment.md`.
+
