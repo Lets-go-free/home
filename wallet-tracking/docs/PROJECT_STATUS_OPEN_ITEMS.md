@@ -904,3 +904,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Server-Receipt-Worker erkennt nun auch ohne vorherige Browser-Discovery potentielle Mint-Rewards aus bestätigten On-chain-Logs mit registriertem Staking-/Lifecycle-Kontext und persistiert sie ausschliesslich im Evidence-Staging.
 - **Offen:** Tatsächliche Staking-/Bonus-/Referral-Beweise und vollständige automatische Reward-Zuordnung fehlen weiterhin; weder 9.40 noch 9.41 darf kanonische Claims erzeugen. Details `docs/releases/9.41-tln-vow-new-mint-candidates.md`.
 
+### Phase 9.42 – Explizite Claim-/Reward-/Referral-/Bonus-Methoden serverseitig (20261121-120308)
+
+- Automatische neue Kandidaten auch aus **kausalen direkten Claim-Payouts** (ohne frühere Browser-Discovery) mit exakt denselben Methodensignaturen wie in der manuellen Step-4-Logik. Methode/Wallet-Absender/aktiver Staking-Vertrag/Receipt werden gemeinsam geprüft; Ergebnisse nur im Receipt-Staging.
+- **Offen:** vollständige autonome State-Delta-/Trace-/Lifecycle-Erkennung, Referral-Referenz-Engine, Token-Mengenpräzision, vollständige Wallet-Erfassung und idempotenter kanonischer Reward-Finalizer. Die aktive Evidence-Cron-Phase ist kein vollständiger täglicher Rewards-Job. Details `docs/releases/9.42-tln-vow-explicit-claim-methods.md`.
+

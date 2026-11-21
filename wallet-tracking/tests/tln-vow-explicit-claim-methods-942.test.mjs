@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const source=fs.readFileSync(new URL('../js/tln-reward-verification-core.js',import.meta.url),'utf8');
+const edge=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const context={};vm.runInNewContext(source,context);
+const core=context.WT_TLN_REWARD_VERIFICATION_CORE;
+assert.equal(core.keccakSelector('transfer(address,uint256)'),'0xa9059cbb');
+assert.equal(core.keccakSelector('claim()'),'0x4e71d92d');
+assert.equal(core.knownClaimMethodIntent('0x4e71d92d'),'staking_reward');
+assert.equal(core.knownClaimMethodIntent(core.keccakSelector('claimReferralRewards()')),'referral');
+assert.equal(core.knownClaimMethodIntent(core.keccakSelector('claimBonus()')),'bonus');
+assert.equal(core.knownClaimMethodIntent('0xa9059cbb'),null);
+const wallet='0x'+'a'.repeat(40),staking='0x'+'b'.repeat(40),token='0x'+'c'.repeat(40),hash='0x'+'d'.repeat(64);
+const receipt={receiptVerified:true,knownBridge:false,transactionSender:wallet,calledContract:staking,
+  selector:'0x4e71d92d',transfers:[{token,from:staking,to:wallet,amountRaw:'0xff'}]};
+const input={wallet,hash,receipt,stakingContracts:[staking]};
+const candidates=core.classifyExplicitClaimReceipt(input);
+assert.equal(candidates.length,1);
+assert.equal(candidates[0].kind,'staking_reward');
+assert.equal(candidates[0].rewardVerified,false);
+assert.equal(core.classifyExplicitClaimReceipt({...input,stakingContracts:[]}).length,0);
+assert.equal(core.classifyExplicitClaimReceipt({...input,receipt:{...receipt,transactionSender:staking}}).length,0);
+assert.equal(core.classifyExplicitClaimReceipt({...input,receipt:{...receipt,knownBridge:true}}).length,0);
+assert.equal(core.classifyExplicitClaimReceipt({...input,receipt:{...receipt,selector:'0xa9059cbb'}}).length,0);
+assert.equal(core.classifyExplicitClaimReceipt({...input,receipt:{...receipt,transfers:[{...receipt.transfers[0],from:token}]}}).length,0);
+assert.ok(edge.includes('function classifyExplicitClaimReceipt(input)'));
+assert.ok(edge.includes('explicitClaimCandidates:claimCandidates'));
+assert.ok(edge.includes('reward_classification_verified:false'));
+console.log('9.42: same Ethereum claim signatures + strict receipt/staking causal-flow guards OK');

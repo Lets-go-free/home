@@ -256,5 +256,62 @@
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates});
+  // Explicit method signatures are the same fixed set used by manual Step 4.
+  // The precomputed 4-byte selectors are generated once by Ethereum Keccak-256.
+  // A method name is only intent; payout proof still requires a receipt-backed
+  // causal token transfer and a registered called staking contract.
+  function keccakSelector(signature){
+    const mask=(1n<<64n)-1n;
+    const rc=[1n,0x8082n,0x800000000000808an,0x8000000080008000n,0x808bn,
+      0x80000001n,0x8000000080008081n,0x8000000000008009n,0x8an,0x88n,
+      0x80008009n,0x8000000an,0x8000808bn,0x800000000000008bn,
+      0x8000000000008089n,0x8000000000008003n,0x8000000000008002n,
+      0x8000000000000080n,0x800an,0x800000008000000an,
+      0x8000000080008081n,0x8000000000008080n,0x80000001n,0x8000000080008008n];
+    const rot=[0,1,62,28,27,36,44,6,55,20,3,10,43,25,39,41,45,15,21,8,18,2,61,56,14];
+    const bytes=Array.from(signature,c=>c.charCodeAt(0)),padded=new Uint8Array(Math.ceil((bytes.length+1)/136)*136);
+    padded.set(bytes);padded[bytes.length]^=1;padded[padded.length-1]^=128;
+    const a=Array(25).fill(0n),rol=(x,n)=>n?((x<<BigInt(n))|(x>>BigInt(64-n)))&mask:x;
+    for(let off=0;off<padded.length;off+=136){
+      for(let i=0;i<136;i++)a[Math.floor(i/8)]^=BigInt(padded[off+i])<<BigInt((i%8)*8);
+      for(const round of rc){
+        const c=Array.from({length:5},(_,x)=>a[x]^a[x+5]^a[x+10]^a[x+15]^a[x+20]);
+        for(let x=0;x<5;x++)for(let y=0;y<5;y++)a[x+5*y]^=c[(x+4)%5]^rol(c[(x+1)%5],1);
+        const b=Array(25).fill(0n);
+        for(let x=0;x<5;x++)for(let y=0;y<5;y++)b[y+5*((2*x+3*y)%5)]=rol(a[x+5*y],rot[x+5*y]);
+        for(let x=0;x<5;x++)for(let y=0;y<5;y++)a[x+5*y]=b[x+5*y]^((~b[(x+1)%5+5*y])&b[(x+2)%5+5*y]);
+        a[0]^=round;
+      }
+    }
+    const hex=Array.from({length:4},(_,i)=>Number((a[0]>>BigInt(8*i))&255n).toString(16).padStart(2,'0')).join('');
+    return '0x'+hex;
+  }
+  const rewardMethodSignatures=['claim()','claim(uint256)','claimRewards()','claimReward()',
+    'getReward()','harvest()','withdrawReward()','withdrawYield()','withdrawYield(uint256)'];
+  const referralMethodSignatures=['claimReferralReward()','claimReferralRewards()',
+    'withdrawReferralReward()','withdrawReferralRewards()','claimAffiliateReward()',
+    'claimPartnerReward()'];
+  const bonusMethodSignatures=['claimBonus(address)','claimBonus()'];
+  const methodIntents=new Map();
+  for(const [intent,signatures] of [['staking_reward',rewardMethodSignatures],
+    ['referral',referralMethodSignatures],['bonus',bonusMethodSignatures]])
+    for(const sig of signatures)methodIntents.set(keccakSelector(sig),intent);
+  function knownClaimMethodIntent(selector){return methodIntents.get(String(selector||'').toLowerCase())||null}
+  function classifyExplicitClaimReceipt(input){
+    const wallet=String(input?.wallet||'').toLowerCase(),hash=String(input?.hash||'').toLowerCase();
+    const receipt=input?.receipt||{},callTo=String(receipt.calledContract||'').toLowerCase();
+    const known=new Set((input?.stakingContracts||[]).map(x=>String(x||'').toLowerCase()));
+    const intent=knownClaimMethodIntent(receipt.selector);
+    if(!intent||!known.has(callTo)||String(receipt.transactionSender||'').toLowerCase()!==wallet||
+      !/^0x[0-9a-f]{40}$/.test(wallet)||
+      !/^0x[0-9a-f]{64}$/.test(hash)||receipt.receiptVerified!==true||receipt.knownBridge===true)return [];
+    const flow=classifyRewardTransferFlow({wallet,callTo,transfers:receipt.transfers,
+      lifecycle:false,explicitRewardIntent:true,stateDeltaEvidence:[],traceSources:[]});
+    return flow.payoutTransfers.filter(t=>/^(?:0x[0-9a-f]{40})$/i.test(String(t.token||''))&&
+      /^0x[0-9a-f]+$/i.test(String(t.amountRaw||''))&&BigInt(t.amountRaw)>0n)
+      .map(t=>({hash,token:String(t.token).toLowerCase(),amountRaw:String(t.amountRaw),
+        kind:intent,proof:t.rewardProof,causalPath:t.rewardFlowEvidence,
+        rewardVerified:false,reason:'explicit known method and receipt-backed payout; lifecycle and amount verification pending'}));
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt});
 })(globalThis);

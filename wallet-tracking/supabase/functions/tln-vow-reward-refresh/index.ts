@@ -1,4 +1,4 @@
-// WalletTracking 9.41 – independently discover new unverified mint candidates; canonical rewards untouched.
+// WalletTracking 9.42 – known explicit reward/bonus/referral claim methods in receipt pipeline.
 // Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -260,7 +260,64 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
     }
     return out;
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates});
+  // Explicit method signatures are the same fixed set used by manual Step 4.
+  // The precomputed 4-byte selectors are generated once by Ethereum Keccak-256.
+  // A method name is only intent; payout proof still requires a receipt-backed
+  // causal token transfer and a registered called staking contract.
+  function keccakSelector(signature){
+    const mask=(1n<<64n)-1n;
+    const rc=[1n,0x8082n,0x800000000000808an,0x8000000080008000n,0x808bn,
+      0x80000001n,0x8000000080008081n,0x8000000000008009n,0x8an,0x88n,
+      0x80008009n,0x8000000an,0x8000808bn,0x800000000000008bn,
+      0x8000000000008089n,0x8000000000008003n,0x8000000000008002n,
+      0x8000000000000080n,0x800an,0x800000008000000an,
+      0x8000000080008081n,0x8000000000008080n,0x80000001n,0x8000000080008008n];
+    const rot=[0,1,62,28,27,36,44,6,55,20,3,10,43,25,39,41,45,15,21,8,18,2,61,56,14];
+    const bytes=Array.from(signature,c=>c.charCodeAt(0)),padded=new Uint8Array(Math.ceil((bytes.length+1)/136)*136);
+    padded.set(bytes);padded[bytes.length]^=1;padded[padded.length-1]^=128;
+    const a=Array(25).fill(0n),rol=(x,n)=>n?((x<<BigInt(n))|(x>>BigInt(64-n)))&mask:x;
+    for(let off=0;off<padded.length;off+=136){
+      for(let i=0;i<136;i++)a[Math.floor(i/8)]^=BigInt(padded[off+i])<<BigInt((i%8)*8);
+      for(const round of rc){
+        const c=Array.from({length:5},(_,x)=>a[x]^a[x+5]^a[x+10]^a[x+15]^a[x+20]);
+        for(let x=0;x<5;x++)for(let y=0;y<5;y++)a[x+5*y]^=c[(x+4)%5]^rol(c[(x+1)%5],1);
+        const b=Array(25).fill(0n);
+        for(let x=0;x<5;x++)for(let y=0;y<5;y++)b[y+5*((2*x+3*y)%5)]=rol(a[x+5*y],rot[x+5*y]);
+        for(let x=0;x<5;x++)for(let y=0;y<5;y++)a[x+5*y]=b[x+5*y]^((~b[(x+1)%5+5*y])&b[(x+2)%5+5*y]);
+        a[0]^=round;
+      }
+    }
+    const hex=Array.from({length:4},(_,i)=>Number((a[0]>>BigInt(8*i))&255n).toString(16).padStart(2,'0')).join('');
+    return '0x'+hex;
+  }
+  const rewardMethodSignatures=['claim()','claim(uint256)','claimRewards()','claimReward()',
+    'getReward()','harvest()','withdrawReward()','withdrawYield()','withdrawYield(uint256)'];
+  const referralMethodSignatures=['claimReferralReward()','claimReferralRewards()',
+    'withdrawReferralReward()','withdrawReferralRewards()','claimAffiliateReward()',
+    'claimPartnerReward()'];
+  const bonusMethodSignatures=['claimBonus(address)','claimBonus()'];
+  const methodIntents=new Map();
+  for(const [intent,signatures] of [['staking_reward',rewardMethodSignatures],
+    ['referral',referralMethodSignatures],['bonus',bonusMethodSignatures]])
+    for(const sig of signatures)methodIntents.set(keccakSelector(sig),intent);
+  function knownClaimMethodIntent(selector){return methodIntents.get(String(selector||'').toLowerCase())||null}
+  function classifyExplicitClaimReceipt(input){
+    const wallet=String(input?.wallet||'').toLowerCase(),hash=String(input?.hash||'').toLowerCase();
+    const receipt=input?.receipt||{},callTo=String(receipt.calledContract||'').toLowerCase();
+    const known=new Set((input?.stakingContracts||[]).map(x=>String(x||'').toLowerCase()));
+    const intent=knownClaimMethodIntent(receipt.selector);
+    if(!intent||!known.has(callTo)||String(receipt.transactionSender||'').toLowerCase()!==wallet||
+      !/^0x[0-9a-f]{40}$/.test(wallet)||
+      !/^0x[0-9a-f]{64}$/.test(hash)||receipt.receiptVerified!==true||receipt.knownBridge===true)return [];
+    const flow=classifyRewardTransferFlow({wallet,callTo,transfers:receipt.transfers,
+      lifecycle:false,explicitRewardIntent:true,stateDeltaEvidence:[],traceSources:[]});
+    return flow.payoutTransfers.filter(t=>/^(?:0x[0-9a-f]{40})$/i.test(String(t.token||''))&&
+      /^0x[0-9a-f]+$/i.test(String(t.amountRaw||''))&&BigInt(t.amountRaw)>0n)
+      .map(t=>({hash,token:String(t.token).toLowerCase(),amountRaw:String(t.amountRaw),
+        kind:intent,proof:t.rewardProof,causalPath:t.rewardFlowEvidence,
+        rewardVerified:false,reason:'explicit known method and receipt-backed payout; lifecycle and amount verification pending'}));
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -749,6 +806,7 @@ async function verifyStagedReceipt(wallet:string,hash:string,block:number,events
     x?.storageProof?.proven===true)).length
   return {receiptVerified:true,transferLogsMatched:events.length,receiptTransfers:transferLogs.length,
     transfers:transferLogs,
+    transactionSender:evmAddress(tx?.from)||null,
     calledContract:evmAddress(tx?.to)||null,
     selector:typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null,
     flowKind:flow.kind,flowPayoutCandidates:flow.payoutTransfers.length,
@@ -761,9 +819,11 @@ function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,sn
   const newCandidates=verificationCore.discoverNewMintRewardCandidates({wallet,hash,receipt,
     calledContract:receipt.calledContract,stakingContracts,
     knownLifecycle:receipt.lifecycleLotMatches>0})
+  const claimCandidates=verificationCore.classifyExplicitClaimReceipt({wallet,hash,receipt,stakingContracts})
   // A matched historical proof is only a reconciliation hint: this does not
   // establish complete reward or referral coverage or create a claim.
   return {...receipt,manualRewardProofMatches:matches,newRewardMintCandidates:newCandidates,
+    explicitClaimCandidates:claimCandidates,explicitClaimCandidateCount:claimCandidates.length,
     newRewardMintCandidateCount:newCandidates.length,
     manualRewardProofMatchCount:matches.length,classificationVerified:false}
 }
@@ -900,6 +960,7 @@ Deno.serve(async (req) => {
         verifiedTransferLogs:evidence.reduce((n,e)=>n+e.transferLogsMatched,0),
         matchingManualRewardProofs:evidence.reduce((n,e)=>n+e.manualRewardProofMatchCount,0),
         newUnverifiedMintCandidates:evidence.reduce((n,e)=>n+e.newRewardMintCandidateCount,0),
+        explicitClaimCandidates:evidence.reduce((n,e)=>n+e.explicitClaimCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
         knownBridges:evidence.filter(e=>e.knownBridge).length,
         persisted:true,rewardClassificationCompleted:false,referralClassificationCompleted:false,
@@ -981,7 +1042,7 @@ Deno.serve(async (req) => {
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -1048,11 +1109,12 @@ Deno.serve(async (req) => {
           receiptVerified+=receipts.length
           manualProofMatches+=receipts.reduce((n,r)=>n+r.evidence.manualRewardProofMatchCount,0)
           newUnverifiedMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.newRewardMintCandidateCount,0)
+          explicitClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.explicitClaimCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,

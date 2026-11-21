@@ -246,3 +246,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.41 · 20.11.2026 14:44:22 CET · Build 20261120-144422
 - Server erkennt in echten verifizierten Receipts selbständig neue, noch nicht bewertete Zero-Mint-Kandidaten mit Staking-/Lifecycle-Bezug, ohne vorheriges Browser-Discovery-Proof. Separate technische Evidence-Persistenz; keine Reward-/Referral-/Claim-Klassifizierung, kein Cron-Wechsel, keine SQL-Migration. `9.41-tln-vow-new-mint-candidates.md`.
 
+## 9.42 · 21.11.2026 12:03:08 CET · Build 20261121-120308
+- Gemeinsame Browser-/Edge-Methodenliste für Claim-, Reward-, Harvest-, Yield-, Referral- und Bonus-Intents im automatischen Receipt-Worker. Nur bei registriertem Staking-Contract, Wallet-Absender und kausalem On-chain-Payout werden differenzierte, weiterhin unbestätigte Kandidaten im Evidence-Staging gespeichert. Keine kanonischen Claims oder SQL-Migration. `9.42-tln-vow-explicit-claim-methods.md`.
+
