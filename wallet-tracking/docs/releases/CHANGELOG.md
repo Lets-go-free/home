@@ -252,3 +252,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.43 · 21.11.2026 12:11:14 CET · Build 20261121-121114
 - Begrenzte autonome historische State-Delta-Probes für geeignete direkte Staking-Contract-Payouts im Receipt-Worker. Nutzt gemeinsame Reward-Flow-Logik; nur unbestätigte Evidence-Kandidaten, keine Reward-/Claim-Schreibvorgänge. `9.43-tln-vow-historical-reward-state.md`.
 
+## 9.44 · 21.11.2026 15:59:17 CET · Build 20261121-155917
+- Server-Cron erfasst neu auch externe Wallet-Aufrufe an die 14 konfigurierten Staking-/Entry-Contracts, selbst wenn keine der erfassten ERC20-Transfers vorliegt. Alchemy-Pagination wird vollständig geprüft; bei Fehlern wird kein Abschnitt fortgeschrieben. Der Receipt-Worker verifiziert Transaktionssender, Ziel, Hash und Block. Keine SQL-Migration und keine kanonischen Claim-Schreibvorgänge. `9.44-tln-vow-staking-call-capture.md`.
+

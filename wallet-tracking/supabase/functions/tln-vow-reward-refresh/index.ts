@@ -1,4 +1,4 @@
-// WalletTracking 9.43 – bounded historical state-delta receipt evidence.
+// WalletTracking 9.44 – wallet staking-contract calls without ERC20 transfers.
 // Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -640,6 +640,52 @@ async function inspectStakingContractCalls(wallet:string,fromBlock:number,toBloc
     successfulReceipts,failedReceipts,receiptLogs,erc20TransferLogs,
     evidenceComplete:complete&&!truncated,classificationPerformed:false}
 }
+// The manual staking discovery also looks at direct wallet contract calls.
+// Capture their identities even when no ERC20 transfer is emitted. Calls are
+// verified against the on-chain transaction and receipt before use.
+async function captureStakingCallIdentities(wallet:string,fromBlock:number,toBlock:number,targets:string[]){
+  const address=evmAddress(wallet),allowed=new Set(targets)
+  if(!ALCHEMY_API_KEY||!address||targets.length>100||
+    targets.some(t=>evmAddress(t)!==t)||allowed.size!==targets.length)
+    throw new RpcDiagnosticError('staking_calls','unsafe_scope')
+  if(!targets.length)return []
+  const url=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const seenPages=new Set<string>(),events:any[]=[],seenHashes=new Set<string>()
+  let pageKey:string|null=null,complete=false
+  for(let p=0;p<MAX_TRANSFER_PAGES_PER_DIRECTION;p++){
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000)
+    try{
+      const query:Record<string,unknown>={fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock),
+        fromAddress:address,category:['external'],excludeZeroValue:false,maxCount:'0x3e8'}
+      if(pageKey)query.pageKey=pageKey
+      const response=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+        body:JSON.stringify({jsonrpc:'2.0',id:51,method:'alchemy_getAssetTransfers',params:[query]})})
+      if(!response.ok)throw new RpcDiagnosticError('staking_calls','http_error',response.status)
+      const body=await response.json()
+      if(body?.error)throw new RpcDiagnosticError('staking_calls','rpc_error',null,rpcCodeOf(body.error))
+      if(!Array.isArray(body?.result?.transfers))throw new RpcDiagnosticError('staking_calls','invalid_response')
+      for(const item of body.result.transfers){
+        const from=evmAddress(item?.from),to=evmAddress(item?.to),hash=String(item?.hash||'').toLowerCase()
+        const block=typeof item?.blockNum==='string'&&/^0x[0-9a-f]+$/i.test(item.blockNum)?Number(BigInt(item.blockNum)):-1
+        if(from!==address||!/^0x[0-9a-f]{64}$/.test(hash)||!Number.isSafeInteger(block)||block<fromBlock||block>toBlock)
+          throw new RpcDiagnosticError('staking_calls','invalid_transfer')
+        if(!to||!allowed.has(to)||seenHashes.has(hash))continue
+        seenHashes.add(hash)
+        if(events.length>=250)throw new RpcDiagnosticError('staking_calls','stage_event_budget_exceeded')
+        events.push({kind:'staking_contract_call',hash,block,from,to})
+      }
+      const next=body.result.pageKey
+      if(!next){complete=true;break}
+      if(typeof next!=='string'||next.length>2000||seenPages.has(next))
+        throw new RpcDiagnosticError('staking_calls','invalid_pagination')
+      seenPages.add(next);pageKey=next
+    }catch(e){if(e instanceof RpcDiagnosticError)throw e
+      throw new RpcDiagnosticError('staking_calls',e instanceof Error&&e.name==='AbortError'?'timeout':'network_error')
+    }finally{clearTimeout(timer)}
+  }
+  if(!complete)throw new RpcDiagnosticError('staking_calls','pagination_incomplete')
+  return events
+}
 function amountInBaseUnits(amount:unknown,decimals:number):bigint|null {
   const s=String(amount)
   if(!/^\d+(?:\.\d+)?$/.test(s)||!Number.isSafeInteger(decimals)||decimals<0||decimals>36)return null
@@ -807,6 +853,12 @@ async function verifyStagedReceipt(wallet:string,hash:string,block:number,events
   if(transferLogs.length>400)throw new RpcDiagnosticError('staged_receipt','receipt_log_budget_exceeded')
   const matchedIndexes=new Set<number>()
   for(const event of events){
+    if(event?.kind==='staking_contract_call'){
+      if(evmAddress(event.from)!==address||evmAddress(event.to)!==evmAddress(tx.to)||
+        evmAddress(tx.from)!==address||String(event.hash).toLowerCase()!==hash)
+        throw new RpcDiagnosticError('staged_receipt','contract_call_mismatch')
+      continue
+    }
     const token=evmAddress(event?.token),from=evmAddress(event?.from),to=evmAddress(event?.to)
     const raw=String(event?.rawValue||'')
     if(!token||!from||!to||!/^0x[0-9a-f]+$/i.test(raw))
@@ -828,7 +880,7 @@ async function verifyStagedReceipt(wallet:string,hash:string,block:number,events
   const verifiedTopup=relatedLots.filter((lot:any)=>(lot?.topUps||[]).some((x:any)=>
     String(x?.tx||'').toLowerCase()===hash&&x?.evidence==='onchain_same_wallet_position_state'&&
     x?.storageProof?.proven===true)).length
-  return {receiptVerified:true,transferLogsMatched:events.length,receiptTransfers:transferLogs.length,
+  return {receiptVerified:true,transferLogsMatched:matchedIndexes.size,receiptTransfers:transferLogs.length,
     transfers:transferLogs,
     transactionSender:evmAddress(tx?.from)||null,
     calledContract:evmAddress(tx?.to)||null,
@@ -1115,9 +1167,20 @@ Deno.serve(async (req) => {
         // Network and pagination failures stop immediately without advancing.
         while(true){
           toBlock=Math.min(head,cursor+chunkSize-1)
-          try{inspection=await inspectWalletTransfers(target.wallet,cursor,toBlock,chunkSize,contracts,true);break}
+          try{
+            inspection=await inspectWalletTransfers(target.wallet,cursor,toBlock,chunkSize,contracts,true)
+            const calls=await captureStakingCallIdentities(target.wallet,cursor,toBlock,stakingContracts)
+            const existing=new Set(inspection.capturedEvents.map((e:any)=>e.hash))
+            const newCalls=calls.filter((e:any)=>!existing.has(e.hash))
+            if(inspection.capturedEvents.length+newCalls.length>250)
+              throw new RpcDiagnosticError('staking_calls','stage_event_budget_exceeded')
+            inspection.capturedEvents.push(...newCalls)
+            inspection.directContractCalls=calls.length
+            inspection.callOnlyTransactions=newCalls.length
+            break
+          }
           catch(e){
-            if(workCycle&&e instanceof RpcDiagnosticError&&
+            if(e instanceof RpcDiagnosticError&&
               (e.category==='stage_event_budget_exceeded'||e.category==='too_many_transfers')&&chunkSize>1){
               chunkSize=Math.max(1,Math.floor(chunkSize/2));continue
             }
@@ -1139,6 +1202,7 @@ Deno.serve(async (req) => {
           return reply({ok:false,mode,error:'Evidence staging failed; no canonical rewards changed',chunks},503)
         }
         chunks.push({fromBlock:cursor,toBlock,events:inspection.capturedEvents.length,
+          directContractCalls:inspection.directContractCalls,callOnlyTransactions:inspection.callOnlyTransactions,
           nextFromBlock:toBlock+1,persisted:true})
         cursor=toBlock+1
         if(!workCycle)break
