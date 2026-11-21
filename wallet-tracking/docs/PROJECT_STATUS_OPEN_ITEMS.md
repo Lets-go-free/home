@@ -909,3 +909,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Automatische neue Kandidaten auch aus **kausalen direkten Claim-Payouts** (ohne frühere Browser-Discovery) mit exakt denselben Methodensignaturen wie in der manuellen Step-4-Logik. Methode/Wallet-Absender/aktiver Staking-Vertrag/Receipt werden gemeinsam geprüft; Ergebnisse nur im Receipt-Staging.
 - **Offen:** vollständige autonome State-Delta-/Trace-/Lifecycle-Erkennung, Referral-Referenz-Engine, Token-Mengenpräzision, vollständige Wallet-Erfassung und idempotenter kanonischer Reward-Finalizer. Die aktive Evidence-Cron-Phase ist kein vollständiger täglicher Rewards-Job. Details `docs/releases/9.42-tln-vow-explicit-claim-methods.md`.
 
+### Phase 9.43 – Bounded Reward-/Referral-State-Probes im Evidence-Worker (20261121-121114)
+
+- Für geeignete direkte Payouts werden nun drei historische Wallet-Reward-Getter vor/nach dem jeweiligen Block vom automatischen Edge-Worker geprüft und positive Änderungen lediglich als unbestätigte `stateChangeCandidates` in das Receipt-Staging übernommen. Fehlerhafte/unsupported Aufrufe liefern keine fingierten Null-/Proof-Werte.
+- **Offen:** Transaktionsgenaue Attribution, weitere manuelle Getter, Trace-/Lifecycle-Nachweise, Referral-Referenz-Engine, vollständige Wallet-Coverage und kanonischer Finalizer. Reward-Cron weiterhin AUS. Details `docs/releases/9.43-tln-vow-historical-reward-state.md`.
+

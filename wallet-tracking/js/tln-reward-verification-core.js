@@ -313,5 +313,29 @@
         kind:intent,proof:t.rewardProof,causalPath:t.rewardFlowEvidence,
         rewardVerified:false,reason:'explicit known method and receipt-backed payout; lifecycle and amount verification pending'}));
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt});
+  // Bounded subset of the manual Step-4 historical reward state probes.
+  // Unsupported or failed contract getters never imply a zero reward.
+  const rewardStateProbeSignatures=Object.freeze([
+    'earned(address)','pendingReward(address)','pendingRewards(address)',
+    'withdrawableYield(address)','claimable(address)','referralRewards(address)']);
+  function classifyStateDeltaReceipt(input){
+    const wallet=String(input?.wallet||'').toLowerCase(),hash=String(input?.hash||'').toLowerCase();
+    const receipt=input?.receipt||{},callTo=String(receipt.calledContract||'').toLowerCase();
+    const allowed=new Set((input?.stakingContracts||[]).map(x=>String(x||'').toLowerCase()));
+    const deltas=Array.isArray(input?.stateDeltas)?input.stateDeltas:[];
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true||
+      String(receipt.transactionSender||'').toLowerCase()!==wallet||!allowed.has(callTo)||
+      knownClaimMethodIntent(receipt.selector)||deltas.length===0)return [];
+    const flow=classifyRewardTransferFlow({wallet,callTo,transfers:receipt.transfers,
+      lifecycle:false,explicitRewardIntent:false,stateDeltaEvidence:deltas,traceSources:[]});
+    return flow.payoutTransfers.filter(t=>String(t.from||'').toLowerCase()===callTo&&
+      /^0x[0-9a-f]{40}$/i.test(String(t.token||''))&&
+      /^0x[0-9a-f]+$/i.test(String(t.amountRaw||''))&&BigInt(t.amountRaw)>0n)
+      .map(t=>({hash,token:String(t.token).toLowerCase(),amountRaw:String(t.amountRaw),
+        kind:deltas.some(d=>String(d.sig||'').toLowerCase().includes('referral'))?'referral_state_change':'reward_state_change',
+        stateDeltas:deltas,causalPath:t.rewardFlowEvidence,rewardVerified:false,
+        reason:'contract state changed across containing block; transaction-specific attribution still unverified'}));
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt});
 })(globalThis);

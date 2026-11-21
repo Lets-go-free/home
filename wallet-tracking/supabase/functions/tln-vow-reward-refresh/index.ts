@@ -1,4 +1,4 @@
-// WalletTracking 9.42 – known explicit reward/bonus/referral claim methods in receipt pipeline.
+// WalletTracking 9.43 – bounded historical state-delta receipt evidence.
 // Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -317,7 +317,31 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
         kind:intent,proof:t.rewardProof,causalPath:t.rewardFlowEvidence,
         rewardVerified:false,reason:'explicit known method and receipt-backed payout; lifecycle and amount verification pending'}));
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt});
+  // Bounded subset of the manual Step-4 historical reward state probes.
+  // Unsupported or failed contract getters never imply a zero reward.
+  const rewardStateProbeSignatures=Object.freeze([
+    'earned(address)','pendingReward(address)','pendingRewards(address)',
+    'withdrawableYield(address)','claimable(address)','referralRewards(address)']);
+  function classifyStateDeltaReceipt(input){
+    const wallet=String(input?.wallet||'').toLowerCase(),hash=String(input?.hash||'').toLowerCase();
+    const receipt=input?.receipt||{},callTo=String(receipt.calledContract||'').toLowerCase();
+    const allowed=new Set((input?.stakingContracts||[]).map(x=>String(x||'').toLowerCase()));
+    const deltas=Array.isArray(input?.stateDeltas)?input.stateDeltas:[];
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true||
+      String(receipt.transactionSender||'').toLowerCase()!==wallet||!allowed.has(callTo)||
+      knownClaimMethodIntent(receipt.selector)||deltas.length===0)return [];
+    const flow=classifyRewardTransferFlow({wallet,callTo,transfers:receipt.transfers,
+      lifecycle:false,explicitRewardIntent:false,stateDeltaEvidence:deltas,traceSources:[]});
+    return flow.payoutTransfers.filter(t=>String(t.from||'').toLowerCase()===callTo&&
+      /^0x[0-9a-f]{40}$/i.test(String(t.token||''))&&
+      /^0x[0-9a-f]+$/i.test(String(t.amountRaw||''))&&BigInt(t.amountRaw)>0n)
+      .map(t=>({hash,token:String(t.token).toLowerCase(),amountRaw:String(t.amountRaw),
+        kind:deltas.some(d=>String(d.sig||'').toLowerCase().includes('referral'))?'referral_state_change':'reward_state_change',
+        stateDeltas:deltas,causalPath:t.rewardFlowEvidence,rewardVerified:false,
+        reason:'contract state changed across containing block; transaction-specific attribution still unverified'}));
+  }
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,verifiedTopUpMintCandidates,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -813,17 +837,57 @@ async function verifyStagedReceipt(wallet:string,hash:string,block:number,events
     lifecycleLotMatches:relatedLots.length,verifiedTopupLotMatches:verifiedTopup,
     knownBridge:bridge,classificationVerified:false}
 }
-function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any,stakingContracts:string[]){
+async function probeHistoricalRewardState(wallet:string,receipt:any,block:number,stakingContracts:string[]){
+  const callTo=evmAddress(receipt?.calledContract),sender=evmAddress(receipt?.transactionSender)
+  const safeContracts=new Set(stakingContracts)
+  const incoming=(receipt?.transfers||[]).filter((t:any)=>
+    evmAddress(t?.from)===callTo&&evmAddress(t?.to)===wallet)
+  const hasOutgoing=(receipt?.transfers||[]).some((t:any)=>evmAddress(t?.from)===wallet&&evmAddress(t?.to)!==wallet)
+  if(!callTo||sender!==wallet||!safeContracts.has(callTo)||receipt?.knownBridge||
+    receipt?.lifecycleLotMatches>0||verificationCore.knownClaimMethodIntent(receipt?.selector)||
+    incoming.length===0||hasOutgoing||!Number.isSafeInteger(block)||block<1)
+    return {attempted:false,paired:0,deltas:[]}
+  const signatures=(verificationCore.rewardStateProbeSignatures as string[]).filter((s:string)=>
+    ['earned(address)','pendingRewards(address)','referralRewards(address)'].includes(s))
+  const url=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const calls=signatures.flatMap(sig=>[block-1,block].map(height=>({sig,height,
+    data:verificationCore.keccakSelector(sig)+wallet.slice(2).padStart(64,'0')})))
+  const results=await Promise.all(calls.map(async c=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3500)
+    try{
+      const response=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:41,method:'eth_call',
+          params:[{to:callTo,data:c.data},'0x'+c.height.toString(16)]}),signal:controller.signal})
+      if(!response.ok)return null
+      const data=await response.json()
+      return typeof data?.result==='string'&&/^0x[0-9a-f]{64}$/i.test(data.result)?data.result.toLowerCase():null
+    }catch{return null}finally{clearTimeout(timer)}
+  }))
+  const deltas:any[]=[];let paired=0
+  for(let i=0;i<signatures.length;i++){
+    const before=results[i*2],after=results[i*2+1]
+    if(before===null||after===null)continue
+    paired++
+    if(before!==after)deltas.push({contract:callTo,sig:signatures[i],before,after})
+  }
+  return {attempted:true,paired,deltas}
+}
+async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any,stakingContracts:string[],block:number){
   const matches=verificationCore.reconcileVerifiedTopUpReceipt({wallet,hash,receipt,
     lots:snapshot?.process?.lots||[],provenRows:snapshot?.globals?.provenRewardRows||[]})
   const newCandidates=verificationCore.discoverNewMintRewardCandidates({wallet,hash,receipt,
     calledContract:receipt.calledContract,stakingContracts,
     knownLifecycle:receipt.lifecycleLotMatches>0})
   const claimCandidates=verificationCore.classifyExplicitClaimReceipt({wallet,hash,receipt,stakingContracts})
+  const stateProbe=await probeHistoricalRewardState(wallet,receipt,block,stakingContracts)
+  const stateCandidates=verificationCore.classifyStateDeltaReceipt({wallet,hash,receipt,
+    stakingContracts,stateDeltas:stateProbe.deltas})
   // A matched historical proof is only a reconciliation hint: this does not
   // establish complete reward or referral coverage or create a claim.
   return {...receipt,manualRewardProofMatches:matches,newRewardMintCandidates:newCandidates,
     explicitClaimCandidates:claimCandidates,explicitClaimCandidateCount:claimCandidates.length,
+    stateProbeAttempted:stateProbe.attempted,stateProbePaired:stateProbe.paired,
+    stateChangeCandidates:stateCandidates,stateChangeCandidateCount:stateCandidates.length,
     newRewardMintCandidateCount:newCandidates.length,
     manualRewardProofMatchCount:matches.length,classificationVerified:false}
 }
@@ -941,8 +1005,8 @@ Deno.serve(async (req) => {
       const stakingContracts=(registry.data||[]).map((r:any)=>evmAddress(r.contract_address)!)
       const evidence:any[]=[]
       try{
-        for(const item of batch)evidence.push(attachManualRewardProofMatches(item.wallet,item.hash,
-          await verifyStagedReceipt(item.wallet,item.hash,item.block,item.events,item.lots),item.snapshot,stakingContracts))
+        for(const item of batch)evidence.push(await attachManualRewardProofMatches(item.wallet,item.hash,
+          await verifyStagedReceipt(item.wallet,item.hash,item.block,item.events,item.lots),item.snapshot,stakingContracts,item.block))
       }catch(e){console.error('TLN receipt evidence failed',safeRpcDiagnostic(e))
         return reply({ok:false,mode,error:'Receipt or staged transfer mismatch; no receipt evidence saved',
           rpcDiagnostic:safeRpcDiagnostic(e),persisted:false},503)}
@@ -961,6 +1025,7 @@ Deno.serve(async (req) => {
         matchingManualRewardProofs:evidence.reduce((n,e)=>n+e.manualRewardProofMatchCount,0),
         newUnverifiedMintCandidates:evidence.reduce((n,e)=>n+e.newRewardMintCandidateCount,0),
         explicitClaimCandidates:evidence.reduce((n,e)=>n+e.explicitClaimCandidateCount,0),
+        stateChangeCandidates:evidence.reduce((n,e)=>n+e.stateChangeCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
         knownBridges:evidence.filter(e=>e.knownBridge).length,
         persisted:true,rewardClassificationCompleted:false,referralClassificationCompleted:false,
@@ -1042,7 +1107,7 @@ Deno.serve(async (req) => {
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,stateChangeCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -1090,8 +1155,8 @@ Deno.serve(async (req) => {
           const receipts:any[]=[]
           try{
             for(const [hash,events] of txs)receipts.push({hash,block:events[0].block,
-              evidence:attachManualRewardProofMatches(target.wallet,hash,
-                await verifyStagedReceipt(target.wallet,hash,events[0].block,events,matchingLots),targetSnapshot,stakingContracts)})
+              evidence:await attachManualRewardProofMatches(target.wallet,hash,
+                await verifyStagedReceipt(target.wallet,hash,events[0].block,events,matchingLots),targetSnapshot,stakingContracts,events[0].block)})
           }catch(e){
             console.error('TLN immediate receipt verification failed',safeRpcDiagnostic(e))
             return reply({ok:false,mode,error:'Transfer chunk staged; receipt proof failed and is retryable',
@@ -1110,11 +1175,12 @@ Deno.serve(async (req) => {
           manualProofMatches+=receipts.reduce((n,r)=>n+r.evidence.manualRewardProofMatchCount,0)
           newUnverifiedMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.newRewardMintCandidateCount,0)
           explicitClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.explicitClaimCandidateCount,0)
+          stateChangeCandidates+=receipts.reduce((n,r)=>n+r.evidence.stateChangeCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,stateChangeCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,

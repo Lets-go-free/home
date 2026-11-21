@@ -249,3 +249,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.42 · 21.11.2026 12:03:08 CET · Build 20261121-120308
 - Gemeinsame Browser-/Edge-Methodenliste für Claim-, Reward-, Harvest-, Yield-, Referral- und Bonus-Intents im automatischen Receipt-Worker. Nur bei registriertem Staking-Contract, Wallet-Absender und kausalem On-chain-Payout werden differenzierte, weiterhin unbestätigte Kandidaten im Evidence-Staging gespeichert. Keine kanonischen Claims oder SQL-Migration. `9.42-tln-vow-explicit-claim-methods.md`.
 
+## 9.43 · 21.11.2026 12:11:14 CET · Build 20261121-121114
+- Begrenzte autonome historische State-Delta-Probes für geeignete direkte Staking-Contract-Payouts im Receipt-Worker. Nutzt gemeinsame Reward-Flow-Logik; nur unbestätigte Evidence-Kandidaten, keine Reward-/Claim-Schreibvorgänge. `9.43-tln-vow-historical-reward-state.md`.
+
