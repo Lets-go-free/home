@@ -1081,3 +1081,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live 22.11.: HTTP 409 `Noncontiguous staged range`, weil für eine Wallet der ursprüngliche Stage-Start Block `134734624` war, aber der inzwischen aktualisierte ERC20-Cache `135147078` als aktuellen Overlap-Start lieferte (Differenz −412454). Es gab laut SQL-Audit **keine gemeldeten inneren Lücken**.
 - Korrigiert: Für bereits gespeicherte Abschnitte bleibt deren erster Block als historischer Stage-Anker erhalten, solange er nicht nach dem aktuellen Cache-Anker liegt; Folgeintervalle müssen weiterhin exakt aufeinanderfolgen. Keine SQL-Migration, keine Löschung, Edge-Deployment erforderlich. Live-Test nach Deployment ausstehend. Tages-Reward-Cron inaktiv. `docs/releases/9.74-tln-vow-immutable-stage-anchor.md`.
 
+### Phase 9.75 – Inaktive tägliche TLN/VOW-Reward-Finalizer (22.11.2026)
+
+- Vorhandene produktionsnahe Claim-Finalizer zeitlich verkettet: Direct (03:10 UTC, aus 9.57), Bonus (03:15 UTC, neu), Referral (03:20 UTC, neu). **Alle inaktiv**; Migration verweigert die Installation, wenn bereits ein entsprechender Job aktiv ist. Die bestehenden 5-Minuten-Evidence-Jobs laufen davon unabhängig weiter.
+- Noch nicht freigabefähig als vollständige Automatik: direkte/Bonus-/Referral-Ledger separat idempotent, nicht als Transaktion atomar; indirekte Claims noch nicht finalisiert, Wallet-/Historienvollständigkeit unbewiesen. Vor Aktivierung echte positive Fälle, Fehler- und Wiederholungsverhalten prüfen. `docs/releases/9.75-tln-vow-daily-jobs-disabled.md`.
+

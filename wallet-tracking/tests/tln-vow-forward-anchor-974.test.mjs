@@ -26,5 +26,5 @@ assert.equal(check([{from_block:currentAnchor,to_block:head+1}],currentAnchor,he
 assert.equal(check([{from_block:-1,to_block:3}],currentAnchor,head).valid,false,'invalid range rejected');
 assert.match(edge,/contiguousStagedForwardRange\(chunksByWallet\.get\(key\)\|\|\[\],currentAnchor,head\)/);
 assert.match(edge,/Noncontiguous staged range; refusing to advance/);
-assert.match(html,/window\.APP_VERSION="9\.74"/);
+assert.ok(Number(html.match(/window\.APP_VERSION="([0-9.]+)"/)?.[1])>=9.74);
 console.log('9.74 persistent anchor and strict continuity guards OK');
