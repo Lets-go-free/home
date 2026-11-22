@@ -1,3 +1,6 @@
+## 9.62 · 22.11.2026 15:11:58 CET · Build 20261122-151158
+- Bestehender 5-Minuten-Scanner erfasst die drei manuell festgelegten Referral-Mint-Contracts und verwendet Receipt-/Stake-Belege mit dem gemeinsamen Step-5-Strong-Entscheid. Neue starke Kandidaten werden nur in bestehendem Receipt-Evidence-Staging gespeichert; Zähler `referralMintCandidates` in Jobantworten. Kein neues Cron, kein Claim-/Reward-Commit. `9.62-tln-vow-automatic-referral-mint-evidence.md`.
+
 ## 9.61 · 22.11.2026 15:02:50 CET · Build 20261122-150250
 - Exakte manuelle Step-5-Strong-/Candidate-Entscheidung aus dem Browser in den gemeinsamen Browser-/Edge-Kern übernommen. Neuer rein lesender historischer Vergleich gegen gespeicherte Step-5-Referenzzeilen, ohne neue Reward-Zuordnung, Blockchain-Scan oder Cron. `9.61-tln-vow-shared-step5-referral-parity.md`.
 

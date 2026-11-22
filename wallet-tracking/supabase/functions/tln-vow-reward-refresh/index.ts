@@ -881,6 +881,13 @@ function safeRpcDiagnostic(error:unknown) {
   return {phase:'alchemy_getAssetTransfers',category:error instanceof Error && error.name==='AbortError'?'timeout':'unexpected',httpStatus:null,rpcCode:null}
 }
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+// Exact manually configured Step-5 referral mint-token scope.
+const REFERRAL_MINT_CONTRACTS=Object.freeze([
+  '0xf7d142a354322c7560250caa0e2a06c89649e4c2', // TLN
+  '0x29280091fa7f3abe4739ad5f1f7c5287feaf7736', // TLN+
+  '0x3dda9ea88136ecede768cd374a2af37219da55e7'  // TLNX
+])
+const STAKE_EVENT_TOPIC=verificationCore.keccak256Hex(Array.from('Stake(address,uint256,uint256)',c=>c.charCodeAt(0)))
 // BSC contracts already identified in the TLN/VOW application (vow trading, TLN+ and TLN GOLD).
 // NOT a complete or authoritative registry of all TLN/VOW staking or reward contracts.
 const SCAN_CONTRACTS = Object.freeze({
@@ -1377,8 +1384,22 @@ async function verifyStagedReceipt(wallet:string,hash:string,block:number,events
   const verifiedTopup=relatedLots.filter((lot:any)=>(lot?.topUps||[]).some((x:any)=>
     String(x?.tx||'').toLowerCase()===hash&&x?.evidence==='onchain_same_wallet_position_state'&&
     x?.storageProof?.proven===true)).length
+  const zero='0x'+'0'.repeat(40)
+  const referralMints=transferLogs.filter((l:any)=>l.from===zero&&l.to===address&&
+    REFERRAL_MINT_CONTRACTS.includes(l.token)&&BigInt(l.amountRaw)>0n&&
+    transferLogs.filter((x:any)=>x.token===l.token).reduce((sum:bigint,x:any)=>
+      sum+(x.to===address?BigInt(x.amountRaw):0n)-(x.from===address?BigInt(x.amountRaw):0n),0n)>0n)
+  const stakeEvents=receipt.logs.filter((l:any)=>evmAddress(l?.address)===evmAddress(tx?.to)&&
+    String(l?.topics?.[0]||'').toLowerCase()===STAKE_EVENT_TOPIC&&
+    Array.isArray(l.topics)&&l.topics.length>=2&&
+    '0x'+String(l.topics[1]).slice(-40).toLowerCase()===evmAddress(tx?.from))
+  const principalTransfers=transferLogs.filter((l:any)=>l.from===evmAddress(tx?.from)&&
+    l.to===evmAddress(tx?.to)&&BigInt(l.amountRaw)>0n)
   return {receiptVerified:true,transferLogsMatched:matchedIndexes.size,receiptTransfers:transferLogs.length,
     transfers:transferLogs,
+    referralMintTokens:[...new Set(referralMints.map((l:any)=>l.token))],
+    referralPrincipalTransfers:principalTransfers.length,
+    referralStakeEvents:stakeEvents.length,
     transactionSender:evmAddress(tx?.from)||null,
     calledContract:evmAddress(tx?.to)||null,
     selector:typeof tx?.input==='string'&&/^0x[0-9a-f]{8}/i.test(tx.input)?tx.input.slice(0,10).toLowerCase():null,
@@ -1422,6 +1443,16 @@ async function probeHistoricalRewardState(wallet:string,receipt:any,block:number
   return {attempted:true,paired,deltas}
 }
 async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any,stakingContracts:string[],block:number){
+  const referralFinal=verificationCore.manualReferralMintVerdict({
+    sender:receipt?.transactionSender,
+    staking:stakingContracts.includes(receipt?.calledContract)?{address:receipt.calledContract}:null,
+    principalTransfers:Array.from({length:Math.min(1,receipt?.referralPrincipalTransfers||0)},()=>({})),
+    stakeEvents:Array.from({length:Math.min(1,receipt?.referralStakeEvents||0)},()=>({}))
+  },wallet)
+  const referralMintCandidates=Array.isArray(receipt?.referralMintTokens)&&
+    receipt.referralMintTokens.length>0&&referralFinal.strong?
+    receipt.referralMintTokens.map((token:string)=>({token,kind:'referral_mint_strong',
+      storedEvidenceOnly:true})):[]
   const positionEvidence=verificationCore.manualPositionReceiptEvidence({wallet,receipt,stakingContracts,
     lots:snapshot?.process?.lots||[],block})
   // A historical snapshot may still contain two independent lots with full
@@ -1469,6 +1500,7 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     explicitClaimCandidates:claimCandidates,explicitClaimCandidateCount:claimCandidates.length,
     bonusClaimCandidates,bonusClaimCandidateCount:bonusClaimCandidates.length,
     referralClaimCandidates,referralClaimCandidateCount:referralClaimCandidates.length,
+    referralMintCandidates,referralMintCandidateCount:referralMintCandidates.length,
     stateProbeAttempted:stateProbe.attempted,stateProbePaired:stateProbe.paired,
     stateChangeCandidates:stateCandidates,stateChangeCandidateCount:stateCandidates.length,
     uniqueLotAssignmentCandidates:lotAssignments,uniqueLotAssignmentCandidateCount:lotAssignments.length,
@@ -2072,6 +2104,7 @@ Deno.serve(async (req) => {
         explicitClaimCandidates:evidence.reduce((n,e)=>n+e.explicitClaimCandidateCount,0),
         bonusClaimCandidates:evidence.reduce((n,e)=>n+e.bonusClaimCandidateCount,0),
         referralClaimCandidates:evidence.reduce((n,e)=>n+e.referralClaimCandidateCount,0),
+        referralMintCandidates:evidence.reduce((n,e)=>n+e.referralMintCandidateCount,0),
         stateChangeCandidates:evidence.reduce((n,e)=>n+e.stateChangeCandidateCount,0),
         uniqueLotAssignmentCandidates:evidence.reduce((n,e)=>n+e.uniqueLotAssignmentCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
@@ -2148,14 +2181,15 @@ Deno.serve(async (req) => {
       if(stakingResult.error||tokenResult.error)return reply({ok:false,mode,error:'Registry unavailable; no staging'},503)
       const configured=[...(stakingResult.data||[]),...(tokenResult.data||[])]
       if(configured.some((r:any)=>!evmAddress(r.contract_address)))return reply({ok:false,mode,error:'Invalid registry; no staging'},409)
-      const contracts=[...new Set([...Object.keys(SCAN_CONTRACTS),...configured.map((r:any)=>evmAddress(r.contract_address)!)])]
+      const contracts=[...new Set([...Object.keys(SCAN_CONTRACTS),...REFERRAL_MINT_CONTRACTS,
+        ...configured.map((r:any)=>evmAddress(r.contract_address)!)])]
       const stakingContracts=(stakingResult.data||[]).map((r:any)=>evmAddress(r.contract_address)!)
       if(contracts.length>100)return reply({ok:false,mode,error:'Registry scope too broad'},409)
       // A work cycle advances one selected wallet through a bounded number of
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,bonusClaimCandidates=0,referralClaimCandidates=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,bonusClaimCandidates=0,referralClaimCandidates=0,referralMintCandidates=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -2237,13 +2271,14 @@ Deno.serve(async (req) => {
           explicitClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.explicitClaimCandidateCount,0)
           bonusClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.bonusClaimCandidateCount,0)
           referralClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.referralClaimCandidateCount,0)
+          referralMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.referralMintCandidateCount,0)
           stateChangeCandidates+=receipts.reduce((n,r)=>n+r.evidence.stateChangeCandidateCount,0)
           uniqueLotAssignmentCandidates+=receipts.reduce((n,r)=>n+r.evidence.uniqueLotAssignmentCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,referralMintCandidates,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,
