@@ -1071,3 +1071,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Der 9.71-Bonus-Ledger wird owner-only aus Supabase geladen und in Bonus-Tab, Summen und Dashboard-Zeiträumen ohne doppelte Tx/Token-Zählung ergänzt. Kein positiver Auto-Bonus-Claim bisher live nachgewiesen (`inspectedReceipts:0` in 9.71-Dry-Run).
 - Indirekte Staking-Rewards: Browser nutzt auch interne Contract-Call-Verknüpfungen. Diese sind im 5-Minuten-Receipt-Staging noch nicht gleichwertig erfasst; bis zur identischen Beweiskette **keine** automatische Klassifikation/Buchung. Tages-Cron inaktiv. `docs/releases/9.72-tln-vow-bonus-ledger-ui.md`.
 
+### Phase 9.73 – Interne Contract-Traces für indirekte Rewards (22.11.2026)
+
+- Für verifizierte Claim-Receipts gegen bekannte Staking-Contracts ruft Edge bei indirekten Eingängen dieselben `debug_traceTransaction` / `trace_transaction`-Quellen wie der Browser ab. Nur verifizierte interne Quellen gehen in die gemeinsame Step-4-`classifyRewardTransferFlow`-Regel. `indirectRewardCandidateCount`, `indirectTraceVerified` werden im bestehenden Receipt-Staging/Job-Ergebnis erfasst. Keine Mutation der kanonischen Reward-Tabellen.
+- Weiter offen: positives Live-Beispiel und unabhängige Belegprüfung, indirekte Reward-Zuordnung/Commit und historische Completeness, anschliessend täglicher Reward-Job. Cron bleibt aus. `docs/releases/9.73-tln-vow-indirect-call-traces.md`.
+

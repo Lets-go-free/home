@@ -20,6 +20,7 @@ const context={
   evmAddress:s=>typeof s==='string'&&/^0x[0-9a-f]{40}$/i.test(s)?s.toLowerCase():null,
   cachedReferralPathEvidence:async()=>({verified:true,level:2}),
   probeHistoricalRewardState:async()=>({attempted:false,paired:0,deltas:[]}),
+  receiptInternalCallSources:async()=>({attempted:false,verified:false,sources:[],candidates:[]}),
   Set,BigInt,Number,Array,String,Date,Math
 };
 vm.runInNewContext(functionCode+'\nthis.attach=attachManualRewardProofMatches;',context);

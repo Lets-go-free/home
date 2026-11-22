@@ -1442,6 +1442,67 @@ async function probeHistoricalRewardState(wallet:string,receipt:any,block:number
   }
   return {attempted:true,paired,deltas}
 }
+// Mirrors the manual Step-4 traceCalledAddresses source: a positive internal
+// callTracer/trace_transaction path is evidence; provider failures are not.
+// Restrict to known wallet-initiated staking claim calls and bounded receipts.
+async function receiptInternalCallSources(hash:string,receipt:any,wallet:string,stakingContracts:string[]){
+  const callTo=evmAddress(receipt?.calledContract),sender=evmAddress(receipt?.transactionSender)
+  const knownIntent=verificationCore.knownClaimMethodIntent(receipt?.selector)
+  const transfers=Array.isArray(receipt?.transfers)?receipt.transfers:[]
+  const incoming=transfers.filter((t:any)=>t.to===wallet&&t.from!==wallet)
+  const indirect=incoming.filter((t:any)=>t.from!==callTo&&t.from!=='0x'+'0'.repeat(40))
+  if(!ALCHEMY_API_KEY||!callTo||sender!==wallet||!stakingContracts.includes(callTo)||
+    !knownIntent||!/^0x[0-9a-f]{64}$/.test(hash)||receipt?.receiptVerified!==true||
+    receipt?.knownBridge===true||receipt?.lifecycleLotMatches>0||
+    !indirect.length||transfers.length>400)return {attempted:false,verified:false,sources:[],reason:'no_scoped_indirect_claim'}
+  const url=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  const call=async(method:string,params:any[])=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000)
+    try{
+      const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},
+        signal:controller.signal,body:JSON.stringify({jsonrpc:'2.0',id:73,method,params})})
+      if(!res.ok)return null
+      const data=await res.json();return data?.error||data?.result==null?null:data.result
+    }catch{return null}finally{clearTimeout(timer)}
+  }
+  const sources=new Set<string>(),limit=128
+  const add=(value:any)=>{const address=evmAddress(value);if(address)sources.add(address)}
+  let sourceMethod:string|null=null,invalid=false
+  const trace=await call('debug_traceTransaction',[hash,{tracer:'callTracer',timeout:'8s'}])
+  if(trace&&typeof trace==='object'&&evmAddress(trace.from)===wallet&&evmAddress(trace.to)===callTo){
+    const visit=(node:any,depth:number)=>{
+      if(depth>16||sources.size>limit){invalid=true;return}
+      add(node?.to)
+      if(Array.isArray(node?.calls))for(const child of node.calls)visit(child,depth+1)
+    }
+    visit(trace,0)
+    if(!invalid&&sources.has(callTo))sourceMethod='debug_traceTransaction'
+  }
+  if(!sourceMethod){
+    sources.clear();invalid=false
+    const rows=await call('trace_transaction',[hash])
+    if(Array.isArray(rows)&&rows.length<=limit){
+      for(const item of rows){
+        if(String(item?.transactionHash||'').toLowerCase()!==hash){invalid=true;break}
+        add(item?.action?.to)
+      }
+      if(!invalid&&sources.has(callTo))sourceMethod='trace_transaction'
+    }
+  }
+  if(!sourceMethod||sources.size>limit)
+    return {attempted:true,verified:false,sources:[],reason:'trace_unavailable_or_invalid'}
+  const flow=verificationCore.classifyRewardTransferFlow({wallet,callTo,transfers,
+    lifecycle:false,bridge:receipt.knownBridge,explicitRewardIntent:true,
+    stateDeltaEvidence:[],traceSources:[...sources]})
+  const candidates=flow.payoutTransfers.filter((t:any)=>t.rewardFlowEvidence==='from_internal_call_chain'&&
+    /^0x[0-9a-f]{40}$/i.test(String(t.token||''))&&
+    /^0x[0-9a-f]+$/i.test(String(t.amountRaw||''))&&BigInt(t.amountRaw)>0n)
+    .map((t:any)=>({token:t.token,amountRaw:BigInt(t.amountRaw).toString(),
+      logIndex:t.logIndex,from:t.from,proof:t.rewardProof,causalPath:t.rewardFlowEvidence,
+      rewardVerified:false}))
+  return {attempted:true,verified:true,method:sourceMethod,
+    sources:[...sources],candidates,reason:null}
+}
 const SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b'
 const SMARTNODE_PARENT_GETTERS=[
   'referrerOf(address)','getReferrer(address)','referrer(address)','referrers(address)',
@@ -1656,6 +1717,8 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
   const stateProbe=await probeHistoricalRewardState(wallet,receipt,block,stakingContracts)
   const stateCandidates=verificationCore.classifyStateDeltaReceipt({wallet,hash,receipt,
     stakingContracts,stateDeltas:stateProbe.deltas})
+  const indirectTrace=await receiptInternalCallSources(hash,receipt,wallet,stakingContracts)
+  const indirectRewardCandidates=indirectTrace.candidates||[]
   const referralClaimCandidates=[...claimCandidates.filter((c:any)=>c.kind==='referral'),
     ...stateCandidates.filter((c:any)=>c.kind==='referral_state_change')]
   const lotAssignments=verificationCore.assignReceiptCandidatesToUniqueLots({wallet,hash,receipt,
@@ -1673,6 +1736,10 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     referralMintPathVerifiedCount:referralMintCandidates.filter((c:any)=>c.referralPathVerified).length,
     stateProbeAttempted:stateProbe.attempted,stateProbePaired:stateProbe.paired,
     stateChangeCandidates:stateCandidates,stateChangeCandidateCount:stateCandidates.length,
+    indirectTraceAttempted:indirectTrace.attempted,indirectTraceVerified:indirectTrace.verified,
+    indirectTraceMethod:indirectTrace.method||null,
+    indirectTraceSources:indirectTrace.sources,
+    indirectRewardCandidates,indirectRewardCandidateCount:indirectRewardCandidates.length,
     uniqueLotAssignmentCandidates:lotAssignments,uniqueLotAssignmentCandidateCount:lotAssignments.length,
     newRewardMintCandidateCount:newCandidates.length,
     manualRewardProofMatchCount:matches.length,classificationVerified:false}
@@ -2527,6 +2594,8 @@ Deno.serve(async (req) => {
         referralMintCandidates:evidence.reduce((n,e)=>n+e.referralMintCandidateCount,0),
         referralMintPathVerified:evidence.reduce((n,e)=>n+e.referralMintPathVerifiedCount,0),
         stateChangeCandidates:evidence.reduce((n,e)=>n+e.stateChangeCandidateCount,0),
+        indirectTraceVerified:evidence.filter(e=>e.indirectTraceVerified===true).length,
+        indirectRewardCandidates:evidence.reduce((n,e)=>n+(e.indirectRewardCandidateCount||0),0),
         uniqueLotAssignmentCandidates:evidence.reduce((n,e)=>n+e.uniqueLotAssignmentCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
         knownBridges:evidence.filter(e=>e.knownBridge).length,
@@ -2610,7 +2679,7 @@ Deno.serve(async (req) => {
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,bonusClaimCandidates=0,referralClaimCandidates=0,referralMintCandidates=0,referralMintPathVerified=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,bonusClaimCandidates=0,referralClaimCandidates=0,referralMintCandidates=0,referralMintPathVerified=0,stateChangeCandidates=0,indirectTraceVerified=0,indirectRewardCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -2695,12 +2764,14 @@ Deno.serve(async (req) => {
           referralMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.referralMintCandidateCount,0)
           referralMintPathVerified+=receipts.reduce((n,r)=>n+r.evidence.referralMintPathVerifiedCount,0)
           stateChangeCandidates+=receipts.reduce((n,r)=>n+r.evidence.stateChangeCandidateCount,0)
+          indirectTraceVerified+=receipts.filter(r=>r.evidence.indirectTraceVerified===true).length
+          indirectRewardCandidates+=receipts.reduce((n,r)=>n+(r.evidence.indirectRewardCandidateCount||0),0)
           uniqueLotAssignmentCandidates+=receipts.reduce((n,r)=>n+r.evidence.uniqueLotAssignmentCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,referralMintCandidates,referralMintPathVerified,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,referralMintCandidates,referralMintPathVerified,stateChangeCandidates,indirectTraceVerified,indirectRewardCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,

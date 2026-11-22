@@ -366,3 +366,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.72 · 22.11.2026 22:27:20 CET · Build 20261122-222720
 - Automatisch verifizierte Bonus-Claims aus dem owner-isolierten 9.71-Ledger werden jetzt im TLN/VOW-Projekt unter Bonus-Rewards sowie in den Dashboard-Bonuszeiträumen angezeigt. Gleiche Tx/Token-Paare aus manuellen Discovery-Snapshots werden nur einmal gezählt; unbekannte Token-Dezimalstellen werden nicht geraten, die Anzeige wartet auf verifizierte Metadaten. Fehlerhafte/unvollständige Ledger-Ladevorgänge werden nicht als vollständig dargestellt. UI-only, kein SQL-/Edge-/Cron-Update. `9.72-tln-vow-bonus-ledger-ui.md`.
 
+## 9.73 · 22.11.2026 22:33:39 CET · Build 20261122-223339
+- Die 5-Minuten-Receipt-Prüfung zieht für verifizierte Wallet→Staking-Contract-Claims mit indirekten Token-Eingängen die tatsächlichen internen Aufrufadressen über `debug_traceTransaction` (Fallback `trace_transaction`) nach, exakt wie Browser-Step-4. Nur mit positivem Trace wird die **bereits gemeinsam genutzte** `classifyRewardTransferFlow`-Regel auf die vollständigen Receipt-Transfers angewendet; bestätigt indirekte Kandidaten als Belege, noch nicht als kanonische Rewards. Trace-/Providerfehler bleiben neutral. Keine SQL-, UI- oder Cron-Änderung. `9.73-tln-vow-indirect-call-traces.md`.
+
