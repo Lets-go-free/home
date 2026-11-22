@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const root=new URL('../',import.meta.url);
+const coreSource=fs.readFileSync(new URL('js/tln-reward-verification-core.js',root),'utf8');
+const edge=fs.readFileSync(new URL('supabase/functions/tln-vow-reward-refresh/index.ts',root),'utf8');
+const ctx={};vm.runInNewContext(coreSource,ctx);
+const c=ctx.WT_TLN_REWARD_VERIFICATION_CORE;
+assert.equal(c.keccak256Hex([]),'0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470');
+assert.equal(c.keccakSelector('stake()'),'0x3a4b66f1');
+const slot=c.manualWalletMappingSlot('0x'+'a'.repeat(40),3,2);
+assert.equal(slot,'0xca0453669a7127ce38f304ce121e552d78c30286022ebefeef6884684816084f');
+assert.equal(c.manualWalletMappingSlot('not-wallet',3,2),null);
+assert.equal(c.manualWalletMappingSlot('0x'+'a'.repeat(40),-1,2),null);
+assert.equal(c.manualWalletMappingSlot('0x'+'a'.repeat(40),3,33),null);
+assert.ok(edge.includes("const NODEREAL_BSC_RPC_URL = Deno.env.get('NODEREAL_BSC_RPC_URL')"));
+assert.ok(edge.includes("mode==='known-topup-storage-replay'"));
+assert.ok(edge.includes("method:'eth_getStorageAt'"));
+assert.ok(edge.includes('verificationCore.manualWalletMappingSlot(wallet,root,offset)'));
+assert.ok(edge.includes('verificationCore.manualTopUpStorageContinuity(first,second)'));
+assert.ok(edge.includes('persisted:false'));
+assert.ok(!edge.includes('https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b'),
+  'Do not replicate the browser-embedded legacy provider credential');
+console.log('9.51 mapping keccak, exact slot, archive-only bounded replay and no embedded provider credential');

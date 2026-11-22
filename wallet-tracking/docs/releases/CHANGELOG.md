@@ -273,3 +273,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.50 · 22.11.2026 10:41:59 CET · Build 20261122-104159
 - TLN/VOW: Exakte Browser-Storage-Kontinuitätsprüfung für On-chain-bestätigte Staking-Aufstockungen in den gemeinsamen Core extrahiert (`manualTopUpStorageContinuity`). Browser und Edge verwenden dieselbe Root-/Offset-/Timestamp-/State-Mutations-Regel. Edge kann bei bereits gespeicherten getrennten Lots mit vollständigen Storage-Belegen technische Kandidaten prüfen, schreibt jedoch keine kanonischen Positionen/Claims. Keine Migration, keine Cron-Änderung, keine automatische Vollständigkeitsbehauptung.
 
+## 9.51 · 22.11.2026 10:56:02 CET · Build 20261122-105602
+- TLN/VOW: Neue read-only Edge-Mode `known-topup-storage-replay` liest die tatsächlichen historischen Storage-Slots eines bereits im manuellen Browser verifizierten Top-ups über gesonderten `NODEREAL_BSC_RPC_URL`-Secret. Die Slot-Berechnung ist EVM-Keccak/ABI-kompatibel und der Verdict nutzt die identische geteilte Browser-Regel. Maximal 8 Offsets und 32 Archive-Reads, kein unbekannter Root-Scan, keine Position-/Claim-/Cursor-/Cron-Schreibvorgänge. Optionaler Secret erforderlich, sonst 503 statt falschem Proof.
+

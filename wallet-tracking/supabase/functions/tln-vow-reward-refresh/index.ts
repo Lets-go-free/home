@@ -1,5 +1,5 @@
-// WalletTracking 9.47 – unchanged manual Step-4 stake rule shared with Edge.
-// Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
+// WalletTracking 9.51 – bounded independent replay of known historical staking storage.
+// Uses configured archive-state RPC for storage, Alchemy for transfers. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
 // WalletTracking 9.17 – pure shared TLN/VOW verification rules.
@@ -346,7 +346,7 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
   // The precomputed 4-byte selectors are generated once by Ethereum Keccak-256.
   // A method name is only intent; payout proof still requires a receipt-backed
   // causal token transfer and a registered called staking contract.
-  function keccakSelector(signature){
+  function keccak256Hex(bytes){
     const mask=(1n<<64n)-1n;
     const rc=[1n,0x8082n,0x800000000000808an,0x8000000080008000n,0x808bn,
       0x80000001n,0x8000000080008081n,0x8000000000008009n,0x8an,0x88n,
@@ -355,7 +355,7 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       0x8000000000000080n,0x800an,0x800000008000000an,
       0x8000000080008081n,0x8000000000008080n,0x80000001n,0x8000000080008008n];
     const rot=[0,1,62,28,27,36,44,6,55,20,3,10,43,25,39,41,45,15,21,8,18,2,61,56,14];
-    const bytes=Array.from(signature,c=>c.charCodeAt(0)),padded=new Uint8Array(Math.ceil((bytes.length+1)/136)*136);
+    const padded=new Uint8Array(Math.ceil((bytes.length+1)/136)*136);
     padded.set(bytes);padded[bytes.length]^=1;padded[padded.length-1]^=128;
     const a=Array(25).fill(0n),rol=(x,n)=>n?((x<<BigInt(n))|(x>>BigInt(64-n)))&mask:x;
     for(let off=0;off<padded.length;off+=136){
@@ -369,8 +369,20 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
         a[0]^=round;
       }
     }
-    const hex=Array.from({length:4},(_,i)=>Number((a[0]>>BigInt(8*i))&255n).toString(16).padStart(2,'0')).join('');
+    const hex=Array.from({length:32},(_,i)=>Number((a[Math.floor(i/8)]>>BigInt(8*(i%8)))&255n).toString(16).padStart(2,'0')).join('');
     return '0x'+hex;
+  }
+  function keccakSelector(signature){return keccak256Hex(Array.from(signature,c=>c.charCodeAt(0))).slice(0,10)}
+  // Same slot as manual ethers.AbiCoder(address,uint256) + ethers.keccak256.
+  function manualWalletMappingSlot(wallet,root,offset=0){
+    const w=String(wallet||'').toLowerCase();
+    if(!/^0x[0-9a-f]{40}$/.test(w)||!Number.isInteger(root)||root<0||root>65535||
+      !Number.isInteger(offset)||offset<0||offset>32)return null;
+    const hex=w.slice(2).padStart(64,'0')+BigInt(root).toString(16).padStart(64,'0');
+    const bytes=Array.from({length:64},(_,i)=>parseInt(hex.slice(i*2,i*2+2),16));
+    const key=BigInt(keccak256Hex(bytes))+BigInt(offset);
+    if(key>=(1n<<256n))return null;
+    return '0x'+key.toString(16).padStart(64,'0');
   }
   const rewardMethodSignatures=['claim()','claim(uint256)','claimRewards()','claimReward()',
     'getReward()','harvest()','withdrawReward()','withdrawYield()','withdrawYield(uint256)'];
@@ -591,7 +603,7 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -599,6 +611,8 @@ const URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const SECRET = Deno.env.get('TLN_REWARD_CRON_SECRET') || ''
 const ALCHEMY_API_KEY = Deno.env.get('ALCHEMY_API_KEY') || ''
+// Separate archive-state RPC. Never embed the Browser's historical public URL/key.
+const NODEREAL_BSC_RPC_URL = Deno.env.get('NODEREAL_BSC_RPC_URL') || ''
 const DELTA_OVERLAP_BLOCKS = 128
 // Fixed historical verification target from the independently inspected BscScan transaction.
 const LEGACY_STAKE_AUDIT_HASH='0xacf7cfc506809bdb57435995267e1592cd7ce537296581a55be60e6668509131'
@@ -1239,6 +1253,48 @@ async function bscHead(): Promise<number> {
     return head
   } finally {clearTimeout(timer)}
 }
+// Bounded replay of the browser's inspectKnownStakeStructHeadless reads for one
+// already known historical top-up. No root guessing, pagination or state writes.
+async function replayKnownTopupStorage(wallet:string,contract:string,firstBlock:number,secondBlock:number,
+  root:number,startOffset:number,offsets:number[],firstTime:string,secondTime:string){
+  if(!NODEREAL_BSC_RPC_URL||!/^https:\/\//.test(NODEREAL_BSC_RPC_URL))
+    throw new Error('archive_rpc_not_configured')
+  if(!evmAddress(wallet)||!evmAddress(contract)||firstBlock<1||secondBlock<=firstBlock||
+    offsets.length<2||offsets.length>8||!offsets.includes(startOffset))throw new Error('invalid_known_struct')
+  const reads=offsets.flatMap(offset=>[firstBlock,secondBlock].flatMap(block=>[block-1,block]
+    .map(height=>({offset,block,height,slot:verificationCore.manualWalletMappingSlot(wallet,root,offset)}))))
+  if(reads.some(x=>!x.slot)||reads.length>32)throw new Error('invalid_known_struct')
+  const requests=reads.map((r,i)=>({jsonrpc:'2.0',id:i+1,method:'eth_getStorageAt',
+    params:[contract,r.slot,'0x'+r.height.toString(16)]}))
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),20000)
+  let responses:any
+  try{
+    const response=await fetch(NODEREAL_BSC_RPC_URL,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify(requests),signal:ctl.signal})
+    if(!response.ok)throw new Error('archive_rpc_http_error')
+    responses=await response.json()
+  }catch{throw new Error('archive_rpc_unavailable')}
+  finally{clearTimeout(timer)}
+  if(!Array.isArray(responses)||responses.length!==reads.length)throw new Error('archive_rpc_incomplete')
+  const byId=new Map(responses.map((r:any)=>[r?.id,r]))
+  const value=(id:number)=>{
+    const result=byId.get(id)?.result
+    if(!/^0x[0-9a-f]{1,64}$/i.test(String(result||'')))throw new Error('archive_storage_invalid')
+    return '0x'+BigInt(result).toString(16)
+  }
+  const timestamps=[firstTime,secondTime].map(t=>Math.floor(Date.parse(t)/1000))
+  if(timestamps.some(t=>!Number.isSafeInteger(t)||t<=0))throw new Error('invalid_known_struct')
+  const targets=[firstBlock,secondBlock].map((block,bi)=>({available:true,root,startRow:{offset:startOffset},
+    coreOffsets:offsets,byOffset:offsets.map((offset,oi)=>{
+      const index=oi*4+bi*2,prev=value(index+1),at=value(index+2)
+      const classify=(raw:string)=>({value:BigInt(raw).toString(),
+        timestamp:offset===startOffset&&BigInt(raw)<=BigInt(Number.MAX_SAFE_INTEGER)?Number(BigInt(raw)):null})
+      return {offset,before:classify(prev),stake:classify(at)}
+    })}))
+  const first={stakeTime:firstTime,durationReference:{targeted:targets[0]}}
+  const second={stakeTime:secondTime,durationReference:{targeted:targets[1]}}
+  return verificationCore.manualTopUpStorageContinuity(first,second)
+}
 function reply(body: unknown, code = 200) {
   return new Response(JSON.stringify(body), {status:code,headers:{'content-type':'application/json','cache-control':'no-store'}})
 }
@@ -1255,7 +1311,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1281,6 +1337,49 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='known-topup-storage-replay'){
+      const candidates:any[]=[]
+      const cachedBlock=(v:any)=>{try{
+        if(v===null||v===undefined||v==='')return null
+        const n=Number(BigInt(v));return Number.isSafeInteger(n)&&n>0?n:null
+      }catch{return null}}
+      for(const row of byWallet.values()){
+        const payload=row.payload,wallet=evmAddress(payload?.wallet)
+        if(!wallet||payload?.kind!=='verified_discovery_results')continue
+        for(const lot of (Array.isArray(payload?.process?.lots)?payload.process.lots:[])){
+          const contract=evmAddress(lot?.staking?.contract_address||lot?.counterparty)
+          const firstBlock=cachedBlock(lot?.stakeBlockHex)
+          for(const top of (Array.isArray(lot?.topUps)?lot.topUps:[])){
+            const proof=top?.storageProof
+            if(top?.evidence!=='onchain_same_wallet_position_state'||proof?.proven!==true||
+              !contract||!Number.isSafeInteger(firstBlock)||firstBlock<1)continue
+            const secondBlock=cachedBlock(top?.blockHex??top?.block)
+            const root=Number(proof.root),offset=Number(proof.startOffset)
+            const offs=[...new Set([offset,...(Array.isArray(proof.changedAtSecond)?proof.changedAtSecond:[])].map(Number))]
+            if(!Number.isInteger(root)||root<0||root>65535||!Number.isInteger(offset)||offset<0||offset>32||
+              offs.some(x=>!Number.isInteger(x)||x<0||x>32)||offs.length<2||offs.length>8||
+              !Number.isSafeInteger(secondBlock)||secondBlock<=firstBlock)continue
+            candidates.push({wallet,contract,firstBlock,secondBlock,root,offset,offs,
+              firstTime:lot.stakeTime,secondTime:top.time})
+          }
+        }
+      }
+      const ordinal=body?.ordinal??1
+      if(!Number.isInteger(ordinal)||ordinal<1||ordinal>candidates.length)
+        return reply({ok:true,mode,availableCandidates:candidates.length,status:'no_matching_cached_proof',persisted:false})
+      const c=candidates[ordinal-1]
+      try{
+        const result=await replayKnownTopupStorage(c.wallet,c.contract,c.firstBlock,c.secondBlock,
+          c.root,c.offset,c.offs,c.firstTime,c.secondTime)
+        return reply({ok:true,mode,ordinal,availableCandidates:candidates.length,
+          independentlyReplayed:true,storageContinuityVerified:result.proven,
+          rootMatches:result.root===c.root,firstWritten:result.firstWritten===true,
+          timestampContinuity:result.timestampContinuity===true,secondReset:result.secondReset===true,
+          occupiedBefore:result.occupiedBefore===true,sameFirstStateSurvives:result.sameFirstStateSurvives===true,
+          changedCoreOffsets:result.changedAtSecond?.length||0,persisted:false,
+          notice:'One cached historical top-up independently replayed using bounded archive storage reads and the exact manual verdict. No lot/claim/cursor writes or cron.'})
+      }catch(e){return reply({ok:false,mode,error:e instanceof Error?e.message:'archive_rpc_unavailable',persisted:false},503)}
     }
     if(mode==='direct-claim-finalize'){
       // Explicit opt-in only: no cron invokes this mode. Separate canonical

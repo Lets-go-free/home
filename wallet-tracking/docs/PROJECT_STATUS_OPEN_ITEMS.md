@@ -946,3 +946,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Die bestehende Browser-Regel `compareSameWalletPositionState` nutzt jetzt den gemeinsamen `manualTopUpStorageContinuity`-Kern. Der Edge-Receipt-Pfad vergleicht nur bereits vorhandene Snapshot-Lots mit dazu gespeicherten Storage-Belegen. Keine Neuschätzung aus Tokenbewegungen und kein blindes Merging paralleler Stakes.
 - **Weiter offen:** Der serverseitige Headless-Storage-RPC-Leser und die gesamte autonome Step-2-/3-Pipeline zur Neuentdeckung fehlen; ebenso Referral-Komplettprüfung und kanonische tägliche Reward-Finalisierung. Der technische 5-Minuten-Cron bedeutet nicht vollständige tägliche Reward-Updates.
 
+### Phase 9.51 – Historischen Top-up-Storage serverseitig neu lesen (20261122-105602)
+- Read-only Replay für **einen** bereits per Browser belegten historischen Top-up mit Root/Offsets aus bestehendem Snapshot; Wallet-Mapping-Storage-Slots und vier Blockzustände je Offset werden on-chain über separat konfigurierbaren Archive-RPC gelesen und vom gemeinsamen Strict-Verdict geprüft.
+- **Produktivtest offen:** Archive-RPC-URL als Supabase Edge Secret `NODEREAL_BSC_RPC_URL` bereitstellen; dann `known-topup-storage-replay` explizit testen. Kein automatischer Aufruf durch die beiden bestehenden Jobs.
+- **Weiter offen:** Unbekannte Mapping-Roots und neue Lots autonom erkennen (Browser `discoverStakeStructHeadless`), vollständige Step 3 Lockdauer und Referral-Referenzengine. Noch kein vollständig automatisierter täglicher Rewards-Job.
+

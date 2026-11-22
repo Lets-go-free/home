@@ -342,7 +342,7 @@
   // The precomputed 4-byte selectors are generated once by Ethereum Keccak-256.
   // A method name is only intent; payout proof still requires a receipt-backed
   // causal token transfer and a registered called staking contract.
-  function keccakSelector(signature){
+  function keccak256Hex(bytes){
     const mask=(1n<<64n)-1n;
     const rc=[1n,0x8082n,0x800000000000808an,0x8000000080008000n,0x808bn,
       0x80000001n,0x8000000080008081n,0x8000000000008009n,0x8an,0x88n,
@@ -351,7 +351,7 @@
       0x8000000000000080n,0x800an,0x800000008000000an,
       0x8000000080008081n,0x8000000000008080n,0x80000001n,0x8000000080008008n];
     const rot=[0,1,62,28,27,36,44,6,55,20,3,10,43,25,39,41,45,15,21,8,18,2,61,56,14];
-    const bytes=Array.from(signature,c=>c.charCodeAt(0)),padded=new Uint8Array(Math.ceil((bytes.length+1)/136)*136);
+    const padded=new Uint8Array(Math.ceil((bytes.length+1)/136)*136);
     padded.set(bytes);padded[bytes.length]^=1;padded[padded.length-1]^=128;
     const a=Array(25).fill(0n),rol=(x,n)=>n?((x<<BigInt(n))|(x>>BigInt(64-n)))&mask:x;
     for(let off=0;off<padded.length;off+=136){
@@ -365,8 +365,20 @@
         a[0]^=round;
       }
     }
-    const hex=Array.from({length:4},(_,i)=>Number((a[0]>>BigInt(8*i))&255n).toString(16).padStart(2,'0')).join('');
+    const hex=Array.from({length:32},(_,i)=>Number((a[Math.floor(i/8)]>>BigInt(8*(i%8)))&255n).toString(16).padStart(2,'0')).join('');
     return '0x'+hex;
+  }
+  function keccakSelector(signature){return keccak256Hex(Array.from(signature,c=>c.charCodeAt(0))).slice(0,10)}
+  // Same slot as manual ethers.AbiCoder(address,uint256) + ethers.keccak256.
+  function manualWalletMappingSlot(wallet,root,offset=0){
+    const w=String(wallet||'').toLowerCase();
+    if(!/^0x[0-9a-f]{40}$/.test(w)||!Number.isInteger(root)||root<0||root>65535||
+      !Number.isInteger(offset)||offset<0||offset>32)return null;
+    const hex=w.slice(2).padStart(64,'0')+BigInt(root).toString(16).padStart(64,'0');
+    const bytes=Array.from({length:64},(_,i)=>parseInt(hex.slice(i*2,i*2+2),16));
+    const key=BigInt(keccak256Hex(bytes))+BigInt(offset);
+    if(key>=(1n<<256n))return null;
+    return '0x'+key.toString(16).padStart(64,'0');
   }
   const rewardMethodSignatures=['claim()','claim(uint256)','claimRewards()','claimReward()',
     'getReward()','harvest()','withdrawReward()','withdrawYield()','withdrawYield(uint256)'];
@@ -587,5 +599,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
