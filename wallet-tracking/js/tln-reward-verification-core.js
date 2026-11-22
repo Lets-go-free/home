@@ -528,6 +528,42 @@
     }
     return eligible.length===1?eligible[0]:null;
   }
+  // Exact Step-2/3 on-chain storage-continuity verdict for two stake records.
+  // Inputs must already carry independently fetched pre/stake storage states;
+  // this function does NO RPC and never treats same contract/time as proof.
+  function manualTopUpStorageContinuity(previous,next){
+    const targeted=l=>l?.durationReference?.targeted||l?.lockEvidence?.reference?.targeted||null;
+    const a=targeted(previous),b=targeted(next);
+    if(!a?.available||!b?.available)return {proven:false,reason:'Staking-Struct für mindestens einen Stake nicht erkannt.'};
+    const rootA=Number(a.root),rootB=Number(b.root);
+    const startA=Number(a.startRow?.offset),startB=Number(b.startRow?.offset);
+    if(!Number.isInteger(rootA)||rootA!==rootB)return {proven:false,reason:`unterschiedlicher Mapping-Root (${a.root??'–'} / ${b.root??'–'})`};
+    if(!Number.isInteger(startA)||startA!==startB)return {proven:false,reason:`unterschiedlicher Stake-Timestamp-Offset (${a.startRow?.offset??'–'} / ${b.startRow?.offset??'–'})`};
+    const sec=l=>{const v=l?.positionNormalizedTopUp?(l?.lockBaseTime||l?.stakeTime):l?.stakeTime;
+      const ms=Date.parse(String(v||''));return Number.isFinite(ms)?Math.floor(ms/1000):null};
+    const ts=(t,part,off)=>Number((t?.byOffset||[]).find(x=>Number(x?.offset)===Number(off))?.[part]?.timestamp||0)||null;
+    const value=(t,part,off)=>{const v=(t?.byOffset||[]).find(x=>Number(x?.offset)===Number(off))?.[part]?.value;
+      return v==null?null:String(v).toLowerCase()};
+    const firstTs=sec(previous),secondTs=sec(next);
+    const beforeSecondTs=ts(b,'before',startB),atSecondTs=ts(b,'stake',startB);
+    const firstAtStakeTs=ts(a,'stake',startA);
+    const timestampContinuity=firstTs!=null&&beforeSecondTs!=null&&Math.abs(beforeSecondTs-firstTs)<=10;
+    const secondReset=secondTs!=null&&atSecondTs!=null&&Math.abs(atSecondTs-secondTs)<=10;
+    const firstWritten=firstTs!=null&&firstAtStakeTs!=null&&Math.abs(firstAtStakeTs-firstTs)<=10;
+    const offsets=[...new Set([...(a.coreOffsets||[]),...(b.coreOffsets||[])].map(Number).filter(Number.isInteger))];
+    const nonStart=offsets.filter(x=>x!==startB);
+    const changedAtSecond=nonStart.filter(off=>value(b,'before',off)!==value(b,'stake',off));
+    const occupiedBefore=nonStart.some(off=>{const v=value(b,'before',off);
+      try{return v!=null&&BigInt(v)!==0n}catch{return !!v&&v!=='0x0'}});
+    const sameFirstStateSurvives=nonStart.some(off=>{const first=value(a,'stake',off),before=value(b,'before',off);
+      return first!=null&&before!=null&&first===before});
+    const proven=firstWritten&&timestampContinuity&&secondReset&&occupiedBefore&&changedAtSecond.length>0&&sameFirstStateSurvives;
+    return {proven,root:rootA,startOffset:startA,firstWritten,timestampContinuity,secondReset,occupiedBefore,
+      sameFirstStateSurvives,changedAtSecond,firstTs,beforeSecondTs,secondTs,atSecondTs,
+      reason:proven
+        ?`derselbe Wallet-Mapping-State (Root ${rootA}, Timestamp-Offset ${startA}) bestand vor dem zweiten Stake fort und wurde beim zweiten Stake inklusive Start-Timestamp erneut beschrieben`
+        :'Storage-Kontinuität reicht für einen belastbaren Top-up-Nachweis nicht aus.'};
+  }
   // Step-2 receipt evidence projection. Incoming mints, swaps and calls alone
   // never authorize a new staking lot or a verified reward.
   function manualPositionReceiptEvidence(input){
@@ -551,5 +587,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);

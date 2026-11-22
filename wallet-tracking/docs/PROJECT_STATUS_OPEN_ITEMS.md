@@ -942,3 +942,7 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Die manuelle sekundäre Regel für Unstake zu genau einer offenen Lot-Position auf demselben Staking-/Entry-Contract ist als geteilter Core extrahiert. Der Server speichert den Kandidatenindex ausschliesslich nach erfolgreicher Receipt-Prüfung im technischen Evidence-Stage. Mehrdeutige parallele Positionen bleiben bewusst ohne Zuordnung.
 - **Offen:** Vollständige autonome Erstellung neuer Staking-Lots, ihre Asset-/LP-Beweise, Storage-Top-up-Kontinuität, Step-3-Lockduration und die Referral-Engine. Kein automatischer kanonischer Reward-Commit.
 
+### Phase 9.50 – Geteilte strenge Top-up-Storage-Kontinuität (20261122-104159)
+- Die bestehende Browser-Regel `compareSameWalletPositionState` nutzt jetzt den gemeinsamen `manualTopUpStorageContinuity`-Kern. Der Edge-Receipt-Pfad vergleicht nur bereits vorhandene Snapshot-Lots mit dazu gespeicherten Storage-Belegen. Keine Neuschätzung aus Tokenbewegungen und kein blindes Merging paralleler Stakes.
+- **Weiter offen:** Der serverseitige Headless-Storage-RPC-Leser und die gesamte autonome Step-2-/3-Pipeline zur Neuentdeckung fehlen; ebenso Referral-Komplettprüfung und kanonische tägliche Reward-Finalisierung. Der technische 5-Minuten-Cron bedeutet nicht vollständige tägliche Reward-Updates.
+

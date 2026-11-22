@@ -12454,6 +12454,8 @@ async function ensureDurationReferenceForTopUp(lot){
   }
 }
 function compareSameWalletPositionState(previous,next){
+  const shared=window.WT_TLN_REWARD_VERIFICATION_CORE?.manualTopUpStorageContinuity;
+  if(shared)return shared(previous,next);
   const a=durationRefTargeted(previous),b=durationRefTargeted(next);
   if(!a?.available||!b?.available)return {proven:false,reason:'Staking-Struct für mindestens einen Stake nicht erkannt.'};
   const rootA=Number(a.root),rootB=Number(b.root);

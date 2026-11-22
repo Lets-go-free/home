@@ -270,3 +270,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.49 · 22.11.2026 10:31:26 CET · Build 20261122-103126
 - TLN/VOW: Browser-Step-2-Fallback zur Unstake-/Lot-Zuordnung als gemeinsame `manualUniqueUnstakeLotIndex`-Regel ausgelagert und im Edge-Receipt-Stage für bestehende Positionen aktiviert. Exakter Contract-/Zeit-/Block-/Eindeutigkeitsnachweis; parallele Positionen bleiben unzugeordnet. Keine neuen Lots oder Canonical Claims, keine Änderung an Cron oder Migration. Test `tln-vow-shared-unstake-lifecycle-949.test.mjs`, gesamte TLN-Suite.
 
+## 9.50 · 22.11.2026 10:41:59 CET · Build 20261122-104159
+- TLN/VOW: Exakte Browser-Storage-Kontinuitätsprüfung für On-chain-bestätigte Staking-Aufstockungen in den gemeinsamen Core extrahiert (`manualTopUpStorageContinuity`). Browser und Edge verwenden dieselbe Root-/Offset-/Timestamp-/State-Mutations-Regel. Edge kann bei bereits gespeicherten getrennten Lots mit vollständigen Storage-Belegen technische Kandidaten prüfen, schreibt jedoch keine kanonischen Positionen/Claims. Keine Migration, keine Cron-Änderung, keine automatische Vollständigkeitsbehauptung.
+
