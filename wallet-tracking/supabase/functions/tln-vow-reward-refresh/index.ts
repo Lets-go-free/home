@@ -1745,6 +1745,27 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     manualRewardProofMatchCount:matches.length,classificationVerified:false}
 }
 const num = (v: unknown) => { const n=Number(v); return Number.isSafeInteger(n) && n>=0 ? n : null }
+// The manual ERC20 raw cache is refreshed independently of this immutable
+// staging ledger. Its newest overlap anchor may MOVE FORWARD after staging
+// began. Preserve the oldest stored anchor, but never accept a gap, overlap,
+// future block or an initial stage that skips the current cache anchor.
+function contiguousStagedForwardRange(rows:any[],currentAnchor:number,head:number){
+  if(!Number.isSafeInteger(currentAnchor)||currentAnchor<0||
+    !Number.isSafeInteger(head)||head<currentAnchor)
+    return {valid:false,next:null,anchor:null}
+  if(!Array.isArray(rows)||!rows.length)
+    return {valid:true,next:currentAnchor,anchor:currentAnchor}
+  const first=num(rows[0]?.from_block)
+  if(first===null||first>currentAnchor)return {valid:false,next:null,anchor:null}
+  let next=first
+  for(const row of rows){
+    const from=num(row?.from_block),to=num(row?.to_block)
+    if(from===null||to===null||to<from||to>head||from!==next)
+      return {valid:false,next:null,anchor:first}
+    next=to+1
+  }
+  return {valid:true,next,anchor:first}
+}
 async function bscHead(): Promise<number> {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
   const controller=new AbortController()
@@ -2650,15 +2671,11 @@ Deno.serve(async (req) => {
         const wallet=evmAddress(payload?.wallet),from=num(raw?.complete_from_block),to=num(raw?.last_scanned_block)
         if(payload?.kind!=='verified_discovery_results'||!wallet||raw?.scanner_version!=='erc20-raw-v1'||
           !Array.isArray(raw?.payload)||from===null||to===null||to<from||to===0||to>head)continue
-        const first=Math.max(0,to-DELTA_OVERLAP_BLOCKS)
-        let next=first,valid=true
-        for(const row of (chunksByWallet.get(key)||[])){
-          const a=num(row.from_block),b=num(row.to_block)
-          if(a===null||b===null||b<a||a!==next){valid=false;break}
-          next=b+1
-        }
-        if(!valid)return reply({ok:false,mode,error:'Noncontiguous staged range; refusing to advance'},409)
-        if(next<=head)candidates.push({userId:snapshot.user_id,walletId:snapshot.wallet_id,wallet,next,anchor:first})
+        const currentAnchor=Math.max(0,to-DELTA_OVERLAP_BLOCKS)
+        const continuity=contiguousStagedForwardRange(chunksByWallet.get(key)||[],currentAnchor,head)
+        if(!continuity.valid)return reply({ok:false,mode,error:'Noncontiguous staged range; refusing to advance'},409)
+        if(continuity.next!==null&&continuity.next<=head)candidates.push({userId:snapshot.user_id,walletId:snapshot.wallet_id,
+          wallet,next:continuity.next,anchor:continuity.anchor})
       }
       candidates.sort((a,b)=>a.next-b.next)
       if(!candidates.length)return reply({ok:true,mode,day:dayCH(),status:'nothing_to_stage',persisted:false,

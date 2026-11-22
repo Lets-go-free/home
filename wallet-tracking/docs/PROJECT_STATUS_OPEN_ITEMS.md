@@ -1076,3 +1076,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Für verifizierte Claim-Receipts gegen bekannte Staking-Contracts ruft Edge bei indirekten Eingängen dieselben `debug_traceTransaction` / `trace_transaction`-Quellen wie der Browser ab. Nur verifizierte interne Quellen gehen in die gemeinsame Step-4-`classifyRewardTransferFlow`-Regel. `indirectRewardCandidateCount`, `indirectTraceVerified` werden im bestehenden Receipt-Staging/Job-Ergebnis erfasst. Keine Mutation der kanonischen Reward-Tabellen.
 - Weiter offen: positives Live-Beispiel und unabhängige Belegprüfung, indirekte Reward-Zuordnung/Commit und historische Completeness, anschliessend täglicher Reward-Job. Cron bleibt aus. `docs/releases/9.73-tln-vow-indirect-call-traces.md`.
 
+### Phase 9.74 – Startanker des 5-Minuten-Evidence-Jobs nach Cache-Refresh (22.11.2026)
+
+- Live 22.11.: HTTP 409 `Noncontiguous staged range`, weil für eine Wallet der ursprüngliche Stage-Start Block `134734624` war, aber der inzwischen aktualisierte ERC20-Cache `135147078` als aktuellen Overlap-Start lieferte (Differenz −412454). Es gab laut SQL-Audit **keine gemeldeten inneren Lücken**.
+- Korrigiert: Für bereits gespeicherte Abschnitte bleibt deren erster Block als historischer Stage-Anker erhalten, solange er nicht nach dem aktuellen Cache-Anker liegt; Folgeintervalle müssen weiterhin exakt aufeinanderfolgen. Keine SQL-Migration, keine Löschung, Edge-Deployment erforderlich. Live-Test nach Deployment ausstehend. Tages-Reward-Cron inaktiv. `docs/releases/9.74-tln-vow-immutable-stage-anchor.md`.
+

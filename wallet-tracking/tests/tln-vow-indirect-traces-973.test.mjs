@@ -18,7 +18,7 @@ assert.match(code,/verificationCore\.classifyRewardTransferFlow/);
 assert.match(code,/rewardFlowEvidence==='from_internal_call_chain'/);
 assert.match(edge,/indirectTraceVerified:indirectTrace\.verified/);
 assert.match(edge,/indirectRewardCandidates,indirectRewardCandidateCount/);
-assert.match(html,/window\.APP_VERSION="9\.73"/);
+assert.ok(Number(html.match(/window\.APP_VERSION="([0-9.]+)"/)?.[1])>=9.73);
 const wallet='0x'+'a'.repeat(40),contract='0x'+'b'.repeat(40),payout='0x'+'c'.repeat(40);
 const token='0x'+'d'.repeat(40),hash='0x'+'e'.repeat(64);
 const receipt={calledContract:contract,transactionSender:wallet,selector:'0x12345678',

@@ -369,3 +369,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.73 · 22.11.2026 22:33:39 CET · Build 20261122-223339
 - Die 5-Minuten-Receipt-Prüfung zieht für verifizierte Wallet→Staking-Contract-Claims mit indirekten Token-Eingängen die tatsächlichen internen Aufrufadressen über `debug_traceTransaction` (Fallback `trace_transaction`) nach, exakt wie Browser-Step-4. Nur mit positivem Trace wird die **bereits gemeinsam genutzte** `classifyRewardTransferFlow`-Regel auf die vollständigen Receipt-Transfers angewendet; bestätigt indirekte Kandidaten als Belege, noch nicht als kanonische Rewards. Trace-/Providerfehler bleiben neutral. Keine SQL-, UI- oder Cron-Änderung. `9.73-tln-vow-indirect-call-traces.md`.
 
+## 9.74 · 22.11.2026 22:41:01 CET · Build 20261122-224101
+- Fehlerbehebung für wiederholtes HTTP 409 `Noncontiguous staged range`: Der vor dem ERC20-Cache-Refresh ursprünglich persistierte Startblock bleibt als Anker gültig, auch wenn der rohe ERC20-Cache inzwischen einen neueren Overlap-Start errechnet. **Alle** gespeicherten Intervalle müssen weiterhin ohne Lücke/Überlappung und innerhalb des Chain-Heads aufeinander folgen; ein neuer Scan ohne vorhandene Abschnitte beginnt weiterhin exakt am aktuellen Cache-Anker. Keine Stage-/Cache-Bereinigung, keine SQL-/Cron-Änderung. `9.74-tln-vow-immutable-stage-anchor.md`.
+

@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
+
+const edge=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const start=edge.indexOf('const num = '),end=edge.indexOf('async function bscHead()',start);
+assert.ok(start>0&&end>start);
+const context={Number,Array};
+vm.runInNewContext(stripTypeScriptTypes(edge.slice(start,end),{mode:'strip'})+
+  '\nthis.check=contiguousStagedForwardRange;',context);
+const check=context.check;
+const currentAnchor=135147078,head=135160000;
+const old=[{from_block:134734624,to_block:134754501}];
+const result=check(old,currentAnchor,head);
+assert.equal(result.valid,true,'an older valid persisted anchor must survive a later ERC20 refresh');
+assert.equal(result.next,134754502,'continue exactly after the last persisted block');
+assert.equal(result.anchor,134734624);
+assert.equal(check([],currentAnchor,head).next,currentAnchor,'a new wallet starts at current anchor');
+assert.equal(check([...old,{from_block:134754502,to_block:134800000}],currentAnchor,head).valid,true);
+assert.equal(check([...old,{from_block:134754503,to_block:134800000}],currentAnchor,head).valid,false,'gap rejected');
+assert.equal(check([...old,{from_block:134754501,to_block:134800000}],currentAnchor,head).valid,false,'overlap rejected');
+assert.equal(check([{from_block:currentAnchor+1,to_block:currentAnchor+100}],currentAnchor,head).valid,false,'new stage cannot skip current anchor');
+assert.equal(check([{from_block:currentAnchor,to_block:head+1}],currentAnchor,head).valid,false,'future block rejected');
+assert.equal(check([{from_block:-1,to_block:3}],currentAnchor,head).valid,false,'invalid range rejected');
+assert.match(edge,/contiguousStagedForwardRange\(chunksByWallet\.get\(key\)\|\|\[\],currentAnchor,head\)/);
+assert.match(edge,/Noncontiguous staged range; refusing to advance/);
+assert.match(html,/window\.APP_VERSION="9\.74"/);
+console.log('9.74 persistent anchor and strict continuity guards OK');
