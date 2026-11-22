@@ -13072,6 +13072,11 @@ async function preflightTopUpGroup(group){
 }
 
 function mergeProvenTopUpPosition(previous,next,proof){
+  const shared=window.WT_TLN_REWARD_VERIFICATION_CORE?.manualMergeProvenTopUpPosition;
+  if(typeof shared==='function'&&proof?.proven===true){
+    const result=shared(previous,next,proof);
+    if(result)return result;
+  }
   previous.topUps=previous.topUps||[];
   const added=Number(next.original||0);
   previous.topUps.push({

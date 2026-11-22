@@ -968,3 +968,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Offen: echte automatische Beschaffung/Klassifikation neuer Positionsevidenz mit identischer Browser-Regellogik, Storage-Top-up-Reconciliation und vollständige Reward-/Referral-Abdeckung vor jeder kanonischen Buchung. Der bestehende Evidence-Cron läuft, **kein Reward-Commit-Cron**.
 - Test nach Edge-Deployment: POST `{"mode":"cached-lot-reconstruction-preview","ordinal":1}` mit bestehender Cron-Secret-Authentifizierung; `stakeHashSetMatches` und Abweichungen prüfen. Bei älteren Snapshots ist Abweichung möglich, weil die finale manuelle Contract-/Storage-Reconciliation später erfolgt.
 
+### Phase 9.55 – Verifizierte Top-up-Normalisierung gemeinsam (22.11.2026)
+
+- Ergebnis von 9.54 live (`ordinal=2`): 4 Staking-Rohereignisse, 2 rekonstruierte Roh-Lots vs. 1 gespeichertes Discovery-Lot, 1 fehlender Stake-Hash in gespeicherten Ausgangslots sowie 2 rohe Unstake-Routing-Ereignisse. Diese Differenz ist nicht automatisch ein Fehler der manuellen Discovery: spätere Storage-Top-up- und Contract-Receipt-Reconciliation fehlen im Roh-FIFO.
+- `manualMergeProvenTopUpPosition` ist nun eine gemeinsame reine Browser-/Edge-Funktion; Browser führt sie nur nach seinem bestehenden On-chain-Preflight aus. Der Edge-Vergleich normalisiert Raw-Lots mit den im Snapshot bereits gespeicherten **belegten** Top-up-Tx und stellt `recordedProofTopupsMerged` und `stakeHashSetMatches` dar.
+- Live-Abnahme nach Deployment: SQL-gestützter autorisierter Aufruf `{"mode":"cached-lot-reconstruction-preview","ordinal":2}`. Erwartete Wirkung: nur zuvor gespeicherte eindeutige Proof-Top-ups zusammenführen. Ergebnis offen.
+- Weiter offen: automatischer Import/Reklassifikation von **neuen** Staking-Ereignissen, volle Contract-/Receipt-Zuordnung von Unstakes, unabhängige historische und Referral-Coverage. Kein kanonischer Reward-Cron; vorhandene Evidence-Crons unverändert.
+

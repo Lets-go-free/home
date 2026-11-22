@@ -31,4 +31,17 @@ const dedup=build(mirror);
 assert.equal(dedup.routedDuplicateUnstakes,1);
 assert.equal(dedup.lots[0].status,'closed');
 assert.equal(dedup.unmatched.length,0);
+const manualCore=sandbox.WT_TLN_REWARD_VERIFICATION_CORE;
+const original=build([row('Stake','first',11,100),row('Stake','second',12,50)]);
+const proof={proven:true,root:3,startOffset:2,timestampContinuity:true};
+const saved=[{stakeTx:'first',topUps:[{tx:'second',evidence:'onchain_same_wallet_position_state',storageProof:proof}]}];
+const replay=manualCore.manualReplayRecordedTopUps(original.lots,saved);
+assert.equal(replay.merged,1);
+assert.equal(replay.lots.length,1);
+assert.equal(replay.lots[0].original,150);
+assert.equal(replay.historicalProofIndependentlyReplayed,false);
+const unproven=manualCore.manualReplayRecordedTopUps(build([row('Stake','f',15,20),row('Stake','g',16,10)]).lots,
+  [{stakeTx:'f',topUps:[{tx:'g',evidence:'onchain_same_wallet_position_state',storageProof:{proven:false}}]}]);
+assert.equal(unproven.merged,0);
+assert.equal(unproven.lots.length,2);
 console.log('9.54 shared browser/Edge FIFO lots, parallel stakes, explicit-ID top-ups, mirrored exits');

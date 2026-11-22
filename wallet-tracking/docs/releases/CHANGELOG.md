@@ -289,3 +289,10 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Edge `cached-lot-reconstruction-preview` vergleicht die rekonstruierten initialen Stake-Tx-Identitäten anonymisiert mit gespeicherten Discovery-Lots (Ordinal je Wallet). Kein separater erfundener Reward-Algorithmus.
 - Rein lesend: keine neuen Lots, keine verifizierten Reward-/Referral-Claims, keine Cursor-/Cache-Schreibzugriffe, kein zusätzlicher Cron. Nachträglich bewiesene Storage-Top-ups und Contract-Reconciliations sind **nicht** Teil dieses initialen Replays.
 
+## 9.55 · 22.11.2026 11:41:04 CET · Build 20261122-114104
+
+- Manuelle Browser-Step-2-Funktion `mergeProvenTopUpPosition` in den gemeinsamen Browser-/Edge-Core extrahiert (`manualMergeProvenTopUpPosition`). Der Browser verwendet sie nur nach dem bisherigen unabhängigen On-chain-Preflight; kein neuer Top-up-Erkennungsweg.
+- Edge `cached-lot-reconstruction-preview` spielt nun bereits **im manuellen Discovery-Snapshot gespeicherte** nachgewiesene Storage-Top-ups zur Positionsnormalisierung nach (`manualReplayRecordedTopUps`). Vorher/nachher Positionenzahl, Merge-/Proof-Lücken und Stake-Tx-Abgleich separat ausgewiesen.
+- Keine neue Verifikation der gespeicherten Storage-Nachweise; der historische `known-topup-storage-replay` bleibt der unabhängige Archiv-RPC-Test. Nicht zugeordnete Roh-Unstakes sind ohne finale Contract-Receipt-Zuordnung keine sichere Fehlermeldung.
+- Nur read-only Edge-Preview, keine automatischen kanonischen Reward-/Referral-Buchungen und kein Reward-Commit-Cron. Browser-Regressions- und TLN/VOW-Tests bestanden.
+

@@ -625,6 +625,67 @@
     }
     return {lots,unmatched,routedDuplicateUnstakes:duplicates.size};
   }
+  // Manual Step-2's proven top-up merge, extracted without any new inference.
+  // Caller MUST supply a proof independently validated on chain; the function
+  // itself only applies the already accepted position-state continuity verdict.
+  function manualMergeProvenTopUpPosition(previous,next,proof){
+    if(!previous||!next||proof?.proven!==true)return null;
+    const addTx=(lot,t)=>{if(t?.hash&&!lot.transactions.some(x=>x.hash===t.hash&&x.kind===t.kind))lot.transactions.push(t)};
+    const block=next.stakeBlockHex?Number(BigInt(next.stakeBlockHex)):null;
+    const added=Number(next.original||0);
+    previous.topUps=previous.topUps||[];
+    previous.topUps.push({time:next.stakeTime,block,blockHex:next.stakeBlockHex||null,tx:next.stakeTx||null,
+      amount:added,resultingPrincipal:Number(previous.original||0)+added,evidence:'onchain_same_wallet_position_state',storageProof:proof});
+    previous.original=Number(previous.original||0)+added;
+    previous.remaining=Number(previous.remaining||0)+Number(next.remaining||0);
+    previous.lastTopUpTime=next.stakeTime;previous.lastTopUpBlockHex=next.stakeBlockHex||null;
+    previous.durationAnchorTx=next.stakeTx||previous.durationAnchorTx||previous.stakeTx;
+    previous.lockBaseTime=next.stakeTime||previous.lockBaseTime||previous.stakeTime;
+    previous.positionNormalizedTopUp=true;
+    previous.lockBaseReason='On-chain bestätigte Aufstockung derselben Position; Lockdauer wird in Schritt 3 am letzten Top-up geprüft';
+    previous.topUpEvidence={type:'onchain_same_wallet_position_state',...proof,normalizedInStep2:true};
+    const ms=t=>Date.parse(String(t||''))||0;
+    if(next.unstakeTime&&(!previous.unstakeTime||ms(next.unstakeTime)>=ms(previous.unstakeTime))){
+      previous.unstakeTime=next.unstakeTime;previous.unstakeTx=next.unstakeTx;
+      previous.unstakeBlockHex=next.unstakeBlockHex;previous.unstakeEvidence=next.unstakeEvidence;
+    }
+    previous.status=(Number(previous.remaining||0)<=1e-12&&Number(next.remaining||0)<=1e-12)?'closed':
+      (Number(previous.remaining||0)<Number(previous.original||0)?'partial':'open');
+    addTx(previous,{kind:'Aufstockung',hash:next.stakeTx,time:next.stakeTime,block,amount:added,
+      source:'On-chain Storage-Kontinuität',assignmentReason:'gleicher Wallet-Positions-State'});
+    for(const t of next.transactions||[]){
+      if(String(t?.hash||'').toLowerCase()===String(next.stakeTx||'').toLowerCase()&&/stake/i.test(String(t?.kind||'')))continue;
+      addTx(previous,t);
+    }
+    for(const k of ['durationDays','lockDurationSeconds','expiryTime','lastLockedBlock','firstUnlockedBlock',
+      'implementationStable','durationEvidence','durationConfidence','durationSource','durationStrictVerdict','lockEvidence'])delete previous[k];
+    return previous;
+  }
+  // Replays *recorded* manual proof evidence solely to compare historic lots.
+  // Never promotes recorded proof to independently checked coverage.
+  function manualReplayRecordedTopUps(reconstructed,cached){
+    const lots=Array.isArray(reconstructed)?reconstructed:[],saved=Array.isArray(cached)?cached:[];
+    const byHash=new Map(lots.map(l=>[String(l?.stakeTx||'').toLowerCase(),l]));
+    let merged=0,missingProof=0,ambiguous=0;
+    for(const s of saved){
+      const first=byHash.get(String(s?.stakeTx||'').toLowerCase());if(!first)continue;
+      for(const top of s?.topUps||[]){
+        if(top?.evidence!=='onchain_same_wallet_position_state')continue;
+        const proof=top.storageProof;
+        if(proof?.proven!==true){missingProof++;continue}
+        const hash=String(top?.tx||'').toLowerCase(),next=byHash.get(hash);
+        if(!next||next===first){ambiguous++;continue}
+        if(String(next?.staking?.contract_address||next?.counterparty||'').toLowerCase()!==
+          String(first?.staking?.contract_address||first?.counterparty||'').toLowerCase()){
+          ambiguous++;continue;
+        }
+        if(!manualMergeProvenTopUpPosition(first,next,proof)){ambiguous++;continue}
+        byHash.delete(hash);merged++;
+      }
+    }
+    return {lots:lots.filter(l=>byHash.has(String(l?.stakeTx||'').toLowerCase())),merged,missingProof,ambiguous,
+      historicalProofIndependentlyReplayed:false};
+  }
   // Exact Step-2/3 on-chain storage-continuity verdict for two stake records.
   // Inputs must already carry independently fetched pre/stake storage states;
   // this function does NO RPC and never treats same contract/time as proof.
@@ -684,5 +745,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
