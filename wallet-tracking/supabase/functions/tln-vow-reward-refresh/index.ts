@@ -1868,7 +1868,7 @@ Deno.serve(async (req) => {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check')
+    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2168,6 +2168,95 @@ Deno.serve(async (req) => {
           changedCoreOffsets:result.changedAtSecond?.length||0,persisted:false,
           notice:'One cached historical top-up independently replayed using bounded archive storage reads and the exact manual verdict. No lot/claim/cursor writes or cron.'})
       }catch(e){return reply({ok:false,mode,error:e instanceof Error?e.message:'archive_rpc_unavailable',persisted:false},503)}
+    }
+    if(mode==='referral-claim-finalize'){
+      // Explicit opt-in only. Existing Step-5 results remain the primary UI
+      // source; this ledger adds only receipts not already present there.
+      const commit=body?.commit===true,limit=200,maxPages=20
+      const staging:any[]=[];let complete=false
+      for(let page=0;page<=maxPages;page++){
+        const {data,error}=await sb.from('tln_vow_reward_receipt_stage')
+          .select('user_id,wallet_id,chain_key,tx_hash,block_number,evidence')
+          .eq('chain_key','bsc').order('created_at',{ascending:true})
+          .order('user_id',{ascending:true}).order('wallet_id',{ascending:true})
+          .order('tx_hash',{ascending:true}).range(page*limit,(page+1)*limit-1)
+        if(error)return reply({ok:false,mode,error:'Receipt stage unavailable; nothing saved',persisted:false},503)
+        if(page===maxPages&&(data||[]).length)
+          return reply({ok:false,mode,error:'More than 4000 receipts; nothing saved',persisted:false},409)
+        staging.push(...(data||[]))
+        if((data||[]).length<limit){complete=true;break}
+      }
+      if(!complete)return reply({ok:false,mode,error:'Incomplete receipt pagination; nothing saved',persisted:false},409)
+      const contracts=await sb.from('defi_staking_contracts').select('contract_address')
+        .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+      if(contracts.error)return reply({ok:false,mode,error:'Staking registry unavailable; nothing saved',persisted:false},503)
+      const registry=new Set((contracts.data||[]).map((x:any)=>evmAddress(x.contract_address)).filter(Boolean))
+      const eligible:any[]=[];let skippedExisting=0,skippedIncomplete=0
+      const zero='0x'+'0'.repeat(40)
+      for(const row of staging){
+        const owner=String(row.user_id)+'|'+String(row.wallet_id)
+        const snapshot=byWallet.get(owner)?.payload,receipt=row.evidence
+        const wallet=evmAddress(snapshot?.wallet),sender=evmAddress(receipt?.transactionSender)
+        const hash=String(row.tx_hash||'').toLowerCase(),block=num(row.block_number)
+        if(snapshot?.kind!=='verified_discovery_results'||!wallet||!sender||
+          !/^0x[0-9a-f]{64}$/.test(hash)||block===null||block<1||
+          receipt?.receiptVerified!==true||!Array.isArray(receipt?.transfers)){
+          skippedIncomplete++;continue
+        }
+        const verdict=verificationCore.manualReferralMintVerdict({sender,
+          staking:registry.has(evmAddress(receipt.calledContract))?{address:receipt.calledContract}:null,
+          principalTransfers:Array.from({length:Math.min(1,receipt.referralPrincipalTransfers||0)},()=>({})),
+          stakeEvents:Array.from({length:Math.min(1,receipt.referralStakeEvents||0)},()=>({}))},wallet)
+        if(!verdict.strong)continue
+        for(const candidate of Array.isArray(receipt.referralMintCandidates)?receipt.referralMintCandidates:[]){
+          const token=evmAddress(candidate?.token),path=candidate?.referralPathEvidence
+          if(candidate?.kind!=='referral_mint_strong'||!token||
+            !REFERRAL_MINT_CONTRACTS.includes(token)||candidate?.receiptVerified!==true||
+            candidate?.referralPathVerified!==true||path?.verified!==true||
+            !Number.isInteger(candidate?.referralLevel)||candidate.referralLevel<1||candidate.referralLevel>20||
+            candidate.referralLevel!==path.level||!Array.isArray(path.path)||
+            path.path[0]!==sender||path.path[path.path.length-1]!==wallet||
+            !Array.isArray(candidate.mintLogIndexes)||!candidate.mintLogIndexes.length){
+            skippedIncomplete++;continue
+          }
+          const mints=receipt.transfers.filter((t:any)=>t.token===token&&t.from===zero&&t.to===wallet)
+          const indices=mints.map((t:any)=>t.logIndex)
+          if(!mints.length||indices.length!==new Set(indices).size||
+            indices.length!==candidate.mintLogIndexes.length||
+            !indices.every((n:number)=>candidate.mintLogIndexes.includes(n))){
+            skippedIncomplete++;continue
+          }
+          const minted=mints.reduce((n:bigint,t:any)=>n+BigInt(t.amountRaw),0n)
+          const net=receipt.transfers.filter((t:any)=>t.token===token)
+            .reduce((n:bigint,t:any)=>n+(t.to===wallet?BigInt(t.amountRaw):0n)-
+              (t.from===wallet?BigInt(t.amountRaw):0n),0n)
+          if(minted<=0n||net<=0n||candidate.mintAmountRaw!==minted.toString()||
+            candidate.walletNetRaw!==net.toString()){
+            skippedIncomplete++;continue
+          }
+          const existing=(Array.isArray(snapshot?.globals?.claimReferenceResult?.strong)?
+            snapshot.globals.claimReferenceResult.strong:[])
+            .some((r:any)=>String(r?.hash||'').toLowerCase()===hash&&
+              (r?.mints||[]).some((m:any)=>evmAddress(m?.token)===token))
+          if(existing){skippedExisting++;continue}
+          eligible.push({user_id:row.user_id,wallet_id:row.wallet_id,chain_key:'bsc',
+            tx_hash:hash,token_address:token,block_number:block,amount_raw:minted.toString(),
+            mint_log_indexes:[...indices].sort((a:number,b:number)=>a-b),partner_wallet:sender,
+            referral_level:candidate.referralLevel,
+            proof_kind:'manual_step5_strong_verified_receipt_and_parent_path'})
+        }
+      }
+      if(commit&&eligible.length){
+        const {error}=await sb.from('tln_vow_reward_referral_claims').upsert(eligible,{
+          onConflict:'user_id,wallet_id,chain_key,tx_hash,token_address',ignoreDuplicates:true})
+        if(error)return reply({ok:false,mode,error:'Referral ledger unavailable; no discovery snapshots modified',persisted:false},503)
+      }
+      return reply({ok:true,mode,day:dayCH(),dryRun:!commit,receiptInventoryComplete:complete,
+        inspectedReceipts:staging.length,eligibleReferralClaims:eligible.length,
+        skippedExistingSnapshotClaims:skippedExisting,skippedIncomplete,
+        canonicalReferralClaimsCommitted:commit&&eligible.length>0,
+        referralHistoricalCoverageVerified:false,
+        notice:'Existing shared manual Step-5 strong verdict plus receipt mint amount and verified SmartNode path. Opt-in idempotent referral ledger only; snapshots and dashboard untouched. No cron.'})
     }
     if(mode==='direct-claim-finalize'||mode==='daily-direct-claim-cycle'){
       // Explicit opt-in only: no cron invokes this mode. Separate canonical

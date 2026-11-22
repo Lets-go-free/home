@@ -1,3 +1,6 @@
+## 9.68 · 22.11.2026 21:46:44 CET · Build 20261122-214644
+- Separater kanonischer, per Wallet/Tx/Token deduplizierter Ledger `tln_vow_reward_referral_claims` mit owner-only RLS; opt-in Edge-Finalizer `referral-claim-finalize` (standardmässig read-only) verarbeitet bestehende 9.67-Receipt-Belege. Erneute Prüfung des **gleichen** manuellen starken Step-5-Entscheids, SmartNode-Pfades und der exakten Mint-/Netto-/Log-Identität; schon im Discovery-Snapshot gespeicherte Claims werden ausgeschlossen. Keine Snapshot- oder Dashboard-Änderung, kein Cron. `9.68-tln-vow-referral-ledger-finalizer.md`.
+
 ## 9.67 · 22.11.2026 21:39:15 CET · Build 20261122-213915
 - Die laufende 5-Minuten-Receipt-Verarbeitung speichert für bereits nach **identischer manueller Step-5-Regel** als stark erkannte Referral-Mints nun die exakten, receipt-verifizierten Rohbeträge, zugehörigen eindeutigen Log-Indizes und den positiven Wallet-Nettozufluss je Token. Mehrere Mint-Logs einer Transaktion werden zusammengeführt; Duplikate, Zero-/Netto-Null und nicht verifizierte Receipts werden ausgeschlossen. Noch keine Claim-Buchung, täglicher Reward-Cron bleibt inaktiv. `9.67-tln-vow-referral-mint-exact-amounts.md`.
 
