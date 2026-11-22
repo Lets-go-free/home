@@ -1844,7 +1844,7 @@ Deno.serve(async (req) => {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity')
+    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1870,6 +1870,30 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='historical-smartnode-parent-rpc-check'){
+      // One existing verified graph edge, independently checked against the
+      // manual SmartNode getter/join fallback. Never expose wallet identities.
+      const {data,error}=await sb.from('tln_vow_smartnode_graph_cache')
+        .select('child_wallet,parent_wallet,verified_at')
+        .eq('chain_key','bsc').not('verified_at','is',null)
+        .order('verified_at',{ascending:false}).limit(100)
+      if(error)return reply({ok:false,mode,error:'Verified SmartNode graph unavailable'},503)
+      const knownWallets=new Set([...byWallet.values()].map(x=>evmAddress(x?.payload?.wallet)).filter(Boolean))
+      const valid=(data||[]).filter((e:any)=>evmAddress(e?.child_wallet)&&evmAddress(e?.parent_wallet)&&
+        evmAddress(e.child_wallet)!==evmAddress(e.parent_wallet))
+      const selected=valid.find((e:any)=>knownWallets.has(evmAddress(e.parent_wallet)))||valid[0]
+      if(!selected)return reply({ok:true,mode,day:dayCH(),status:'no_verified_graph_edge',
+        inspected:0,persisted:false,notice:'No suitable cached verified graph edge to compare. No RPC or writes.'})
+      const checked=await onchainSmartNodeParent(evmAddress(selected.child_wallet)!,Date.now()+16000)
+      const onchainAvailable=!!evmAddress(checked.parent)
+      const sameParent=onchainAvailable&&evmAddress(checked.parent)===evmAddress(selected.parent_wallet)
+      return reply({ok:true,mode,day:dayCH(),status:onchainAvailable?
+        (sameParent?'parent_agreement':'parent_disagreement'):'onchain_unresolved',
+        inspected:1,selectedFromKnownSnapshot:knownWallets.has(evmAddress(selected.parent_wallet)),
+        manualMethod:checked.source||null,diagnosticReason:checked.reason||null,
+        onchainAvailable,sameParent,persisted:false,
+        notice:'Read-only single cached verified SmartNode parent vs current manual getter/join RPC. An unresolved or changed parent is NOT a reward verdict. No wallet identities, claims, cache/cursor writes or cron.'})
     }
     if(mode==='historical-referral-step5-parity'){
       // Replay the exact manual final strong/candidate decision, using ONLY

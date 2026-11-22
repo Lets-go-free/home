@@ -1,3 +1,6 @@
+## 9.65 · 22.11.2026 21:24:18 CET · Build 20261122-212418
+- Einmaliger anonymer read-only historischer Parent-RPC-Regressionstest: eine verifizierte gespeicherte SmartNode-Kante wird über denselben Getter-/Join-Fallback live verglichen. Keine Reward- oder Cache-Schreibzugriffe, kein Cron. `9.65-tln-vow-smartnode-parent-rpc-check.md`.
+
 ## 9.64 · 22.11.2026 21:17:47 CET · Build 20261122-211747
 - Fehlende SmartNode-Parent-Beziehungen bei belegten Referral-Mints können jetzt serverseitig mit denselben neun manuellen Parent-Gettern, begrenztem Alchemy-Join-Transaktionsfallback und `nodeIdOf(address)` geprüft werden. Fehlende/unvollständige Nachweise bleiben ungeklärt, keinerlei neue Claim-/Cron-/SQL-Schreiboperation. `9.64-tln-vow-onchain-referral-fallback.md`.
 

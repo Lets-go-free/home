@@ -996,6 +996,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live-Test nach Edge-Deployment: autorisierter Aufruf `{"mode":"historical-manual-reward-parity"}`. Kein Commitment, keine neuen Claims, kein RPC. Abweichungen zuerst am bestehenden manuellen Snapshot auflösen.
 - Weiter offen: vollständige automatisierte Step-4-Flow-/Receipt-/Bonus-Rewards und Step-5-Referral-Klassifikation, historischer unabhängiger Vollständigkeitsbeleg sowie alle verschlüsselten Wallets. Tages-Direct-Claim-Cron 9.57 bleibt INAKTIV.
 
+### Phase 9.65 – Historischer SmartNode-Parent-RPC-Vergleich (22.11.2026)
+
+- Einmaliger read-only Edge-Modus `historical-smartnode-parent-rpc-check`: Wählt aus dem bereits verifizierten globalen SmartNode-Graph eine eindeutige Kante (wenn möglich mit Parent-Wallet aus gespeichertem TLN/VOW-Discovery-Snapshot) und vergleicht deren Parent-Adresse **live** mit derselben Getter-/`join(address)`-Fallback-Funktion aus 9.64. Antwort nur `parent_agreement`, `parent_disagreement`, `onchain_unresolved` oder `no_verified_graph_edge`, ohne Wallet-Adressen.
+- Ein positiver Vergleich bestätigt genau **eine** Parent-Beziehung, nicht alle Level/Referral-Rewards oder historische Vollständigkeit. Keine RPC-/Graph-/Claim-Writes, kein Cron. Nach Deploy mit authentifiziertem `{"mode":"historical-smartnode-parent-rpc-check"}` prüfen. `docs/releases/9.65-tln-vow-smartnode-parent-rpc-check.md`.
+
 ### Phase 9.64 – SmartNode-Getter-/Join-Fallback für Referral-Kandidaten (22.11.2026)
 
 - Der bestehende 5-Minuten-Receipt-Evidence-Pfad verwendet bei einem bereits belegten Referral-Mint und fehlendem Parent im globalen Graph jetzt die neun **identischen manuellen** `referrer/sponsor/upline/parent/inviter`-Getter, anschliessend den begrenzten historischen Alchemy-Index für `SmartNode.join(address)`. Fehlende TLN-IDs werden via `nodeIdOf(address)` gegen denselben verifizierten SmartNode-Contract gelesen. Kein neuer Klassifizierungsalgorithmus.
