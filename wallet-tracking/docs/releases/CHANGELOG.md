@@ -282,3 +282,10 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.53 · 22.11.2026 11:23:31 CET · Build 20261122-112331
 - TLN/VOW: Neuer strikt read-only Modus `staged-new-stake-root-preview` verbindet neue, unabhängig verifizierte ERC20-Stake-Receipts aus dem bestehenden Stage mit der manuellen A1/A2/B/C-Archive-Root-Erkennung. Die Transaktion darf nicht bereits als Stake/Top-up/Unstake in den Discovery-Lots enthalten sein; sie muss einen erfolgreichen Receipt, registrierten Stake-Intent, Wallet-Sender und positiven Principal-Abfluss zum Staking-Contract haben. Blockzeit wird separat vom Archive-RPC gelesen. Kein neuer Lot/Reward/Claim, keine Canonical-/Cron-Änderung. Neue Regressionstests.
 
+## 9.54 · 22.11.2026 11:30:21 CET · Build 20261122-113021
+
+- Die bestehende Browser-Step-2-Rekonstruktion der Staking-Lots als reine gemeinsame Funktion `manualBuildDiagnosticLots` für Browser und Edge verfügbar gemacht: chronologische FIFO-Unstakes, parallele unabhängige Stakes, explizit positionsidentifizierte Aufstockungen und deduplizierte gespiegelte Unstake-Transfers.
+- Browser verwendet die gemeinsame Funktion für die initialen Lots; bestehender Fallback bleibt vorhanden.
+- Edge `cached-lot-reconstruction-preview` vergleicht die rekonstruierten initialen Stake-Tx-Identitäten anonymisiert mit gespeicherten Discovery-Lots (Ordinal je Wallet). Kein separater erfundener Reward-Algorithmus.
+- Rein lesend: keine neuen Lots, keine verifizierten Reward-/Referral-Claims, keine Cursor-/Cache-Schreibzugriffe, kein zusätzlicher Cron. Nachträglich bewiesene Storage-Top-ups und Contract-Reconciliations sind **nicht** Teil dieses initialen Replays.
+

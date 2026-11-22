@@ -961,3 +961,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - **Live-Test offen:** Aktuell wurden bisher 0 Receipts im Stage gemeldet; falls weiter keine neuen Stakings existieren, ist `no_new_verified_stake_receipts` korrekt und kein Fehler. Ein vollständiger neuer Stake kann erst bei entsprechender realer Transaktion durchgängig geprüft werden.
 - **Offen:** Position/LP-Lot-Rekonstruktion nach dem Root-Proof, Top-up- und Unstake-Lifecycle, Duration-Strict-Proof, Referral-Engine, kanonischer Reward-Commit und vollständige verschlüsselte Wallet-Abdeckung.
 
+### Phase 9.54 – Gemeinsame Step-2-Lot-Rekonstruktion (22.11.2026)
+
+- Browser- und Edge-Code verwenden dieselbe reine `manualBuildDiagnosticLots`-Regel für bereits **klassifizierte** Staking-Ereignisse. Parallel-Stakes bleiben getrennt; ein Top-up benötigt eine identische Positions-ID; Unstake-Routing-Duplikate werden einmal gezählt.
+- `cached-lot-reconstruction-preview` rekonstruiert gespeicherte Discovery-Rohereignisse anonym und vergleicht die initialen Stake-Transaktions-IDs mit den gespeicherten Lots. Nicht gleichzusetzen mit vollständiger, automatisch durchgeführter Discovery.
+- Offen: echte automatische Beschaffung/Klassifikation neuer Positionsevidenz mit identischer Browser-Regellogik, Storage-Top-up-Reconciliation und vollständige Reward-/Referral-Abdeckung vor jeder kanonischen Buchung. Der bestehende Evidence-Cron läuft, **kein Reward-Commit-Cron**.
+- Test nach Edge-Deployment: POST `{"mode":"cached-lot-reconstruction-preview","ordinal":1}` mit bestehender Cron-Secret-Authentifizierung; `stakeHashSetMatches` und Abweichungen prüfen. Bei älteren Snapshots ist Abweichung möglich, weil die finale manuelle Contract-/Storage-Reconciliation später erfolgt.
+

@@ -540,6 +540,91 @@
     }
     return eligible.length===1?eligible[0]:null;
   }
+  // Exact deterministic Step-2 lot construction, shared with the browser.
+  // Rows must ALREADY be classified as genuine Stake/Unstake LP events by the
+  // manual discovery pipeline. This function never classifies raw transfers.
+  function manualBuildDiagnosticLots(stakingRows){
+    const norm=v=>String(v||'').toLowerCase();
+    const pair=r=>norm(r?.p?.address||r?.pair?.address||r?.pair_address||r?.address);
+    const key=r=>`${pair(r)}|${norm(r?.staking?.contract_address||r?.counterparty)}`;
+    const positionId=v=>{try{return BigInt(v).toString()}catch{return null}};
+    const lotIds=lot=>{
+      const ids=new Set(),add=v=>{const id=positionId(v);if(id!==null&&id!=='0')ids.add(id)};
+      add(lot?.stake_token_id);
+      for(const x of lot?.position_identifiers||[])add(x?.value??x);
+      return ids;
+    };
+    const tx=(r,kind)=>({kind,hash:r?.t?.hash||null,time:r?.t?.metadata?.blockTimestamp||null,
+      block:r?.t?.blockNum?parseInt(r.t.blockNum,16):null,amount:Number(r?.amount||0),source:'LP-Transfer'});
+    const addTx=(lot,item)=>{if(!item.hash)return;if(!lot.transactions.some(x=>x.hash===item.hash&&x.kind===item.kind))lot.transactions.push(item)};
+    const ordered=[...(Array.isArray(stakingRows)?stakingRows:[])].sort((a,b)=>{
+      const ta=String(a?.t?.metadata?.blockTimestamp||''),tb=String(b?.t?.metadata?.blockTimestamp||'');
+      return ta!==tb?ta.localeCompare(tb):parseInt(a?.t?.blockNum||'0x0',16)-parseInt(b?.t?.blockNum||'0x0',16);
+    });
+    const prior=[],seen=new Set();
+    for(let i=0;i<ordered.length;i++){
+      prior[i]=new Set(seen);
+      if(String(ordered[i]?.action||'').toUpperCase()==='STAKE')seen.add(key(ordered[i]));
+    }
+    const duplicates=new Set();
+    for(let i=0;i<ordered.length;i++){
+      const r=ordered[i];if(String(r?.action||'').toUpperCase()!=='UNSTAKE')continue;
+      const hash=norm(r?.t?.hash),asset=pair(r),amount=Number(r?.amount||0);
+      if(!hash||!asset||!(amount>0))continue;
+      const same=[];
+      for(let j=0;j<ordered.length;j++){
+        const x=ordered[j];
+        if(String(x?.action||'').toUpperCase()==='UNSTAKE'&&norm(x?.t?.hash)===hash&&pair(x)===asset&&
+          Math.abs(Number(x?.amount||0)-amount)<=1e-9)same.push(j);
+      }
+      if(same.length<2)continue;
+      const canonical=same.filter(j=>prior[j]?.has(key(ordered[j])));
+      if(canonical.length===1)for(const j of same)if(j!==canonical[0])duplicates.add(j);
+    }
+    const groups=new Map(),lots=[],unmatched=[];
+    for(let i=0;i<ordered.length;i++){
+      if(duplicates.has(i))continue;
+      const r=ordered[i],k=key(r);if(!groups.has(k))groups.set(k,[]);
+      const q=groups.get(k);
+      if(r.action==='Stake'){
+        const stakeTime=r.t.metadata?.blockTimestamp||null,amount=Number(r.amount||0);
+        const id=positionId(r.stake_token_id);
+        const existing=id?q.find(x=>x?.remaining>1e-12&&lotIds(x).has(id))||null:null;
+        if(existing){
+          existing.topUps.push({time:stakeTime,block:r?.t?.blockNum?parseInt(r.t.blockNum,16):null,
+            blockHex:r?.t?.blockNum||null,tx:r?.t?.hash||null,amount,resultingPrincipal:Number(existing.remaining||0)+amount});
+          existing.original+=amount;existing.remaining+=amount;existing.lastTopUpTime=stakeTime;
+          existing.lastTopUpBlockHex=r?.t?.blockNum||null;existing.lockBaseTime=stakeTime;
+          existing.lockBaseReason='Aufstockung des bestehenden Stakings';
+          existing.expiryTime=null;existing.durationDays=null;existing.durationSource=null;
+          addTx(existing,{...tx(r,'Aufstockung'),amount,source:'Wiederholter Stake bei bereits offener Position'});
+        }else{
+          const lot={key:k,pair:r.p||null,pair_address:pair(r),token0_symbol:r?.p?.token0?.symbol||'Token0',
+            token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,
+            entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,
+            staking_asset_recipient:r.staking_asset_recipient||null,duration_contract:r.duration_contract||null,
+            stake_token_id:r.stake_token_id||null,stake_cave_id:r.stake_cave_id||null,
+            position_identifiers:r.stake_token_id?[{kind:'stake_event_token_id',value:String(r.stake_token_id),sourceTx:r?.t?.hash||null}]:[],
+            stakeTime,stakeBlockHex:r?.t?.blockNum||null,lockBaseTime:stakeTime,lockBaseReason:'Erst-Stake',
+            expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:amount,remaining:amount,
+            status:'open',transactions:[],topUps:[]};
+          addTx(lot,tx(r,'Stake'));lots.push(lot);q.push(lot);
+        }
+      }else{
+        let left=Number(r.amount||0);
+        while(left>1e-12&&q.length){
+          const lot=q[0],used=Math.min(left,lot.remaining);
+          addTx(lot,{...tx(r,'Unstake'),amount:used});lot.remaining-=used;left-=used;
+          if(lot.remaining<=1e-12){lot.remaining=0;lot.status='closed';lot.unstakeTime=r?.t?.metadata?.blockTimestamp||null;
+            lot.unstakeTx=r?.t?.hash||null;lot.unstakeBlockHex=r?.t?.blockNum||null;
+            lot.unstakeEvidence='lp_transfer_event';q.shift()}
+          else lot.status='partial';
+        }
+        if(left>1e-9)unmatched.push({row:r,unmatched:left,key:k});
+      }
+    }
+    return {lots,unmatched,routedDuplicateUnstakes:duplicates.size};
+  }
   // Exact Step-2/3 on-chain storage-continuity verdict for two stake records.
   // Inputs must already carry independently fetched pre/stake storage states;
   // this function does NO RPC and never treats same contract/time as proof.
@@ -599,5 +684,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);

@@ -10092,6 +10092,12 @@ function eventTx(r,kind){
   return {kind,hash:r?.t?.hash||null,time:r?.t?.metadata?.blockTimestamp||null,block:r?.t?.blockNum?parseInt(r.t.blockNum,16):null,amount:Number(r?.amount||0),source:'LP-Transfer'};
 }
 function buildDiagnosticLots(stakingRows){
+  const shared=window.WT_TLN_REWARD_VERIFICATION_CORE?.manualBuildDiagnosticLots;
+  if(typeof shared==='function'){
+    const result=shared(stakingRows);
+    if(result.routedDuplicateUnstakes)log(`Lot-Rekonstruktion: ${result.routedDuplicateUnstakes} gespiegelt(e) Unstake-Routing-Transfer(s) dedupliziert; Rohereignisse bleiben sichtbar.`,'info');
+    return {lots:result.lots,unmatched:result.unmatched};
+  }
   const groups=new Map(),lots=[],unmatched=[];
   const ordered=[...stakingRows].sort((a,b)=>{
     const ta=String(a.t.metadata?.blockTimestamp||''),tb=String(b.t.metadata?.blockTimestamp||'');
