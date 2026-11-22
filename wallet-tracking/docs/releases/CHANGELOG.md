@@ -375,3 +375,9 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.75 · 22.11.2026 22:53:49 CET · Build 20261122-225349
 - Bereitet die tägliche TLN/VOW-Claim-Abfolge aus den **bestehenden Finalizern** vor: direkte Staking-Claims (bereits 9.57 um 03:10 UTC), Bonus-Claims (03:15 UTC) und Referral-Claims (03:20 UTC). Neue Cron-Einträge sind explizit `active=false`, alle Secrets werden erst zur Ausführung aus Vault geladen. Bestehende verifizierte, idempotente Ledger-Routinen werden nicht ersetzt. Das ist noch **kein** vollständiger oder atomarer End-to-End-Rewardjob: indirekte Claims, verschlüsselte Wallet-Abdeckung und unabhängige Historienvollständigkeit sind weiterhin offen. Kein Worker wird durch die Migration aktiviert. `9.75-tln-vow-daily-jobs-disabled.md`.
 
+## 9.76 · 22.11.2026 23:03 CET
+
+- TLN/VOW: `indirect-claim-finalize` für einen eindeutig zugeordneten, trace-gestützten indirekten Staking-Claim. Gemeinsame manuelle Step-4-Prüfung, vollständige Receipt-Pagination, erneute Trace-Prüfung vor optionaler Buchung; `commit` standardmässig `false`.
+- Neues isoliertes Ledger `tln_vow_reward_indirect_claims` mit nutzergebundener Leseberechtigung, idempotenten Claims. TLN/VOW-Reward-Summary lädt die Einträge nur lesend und vermeidet Doppelzählung mit Snapshot-Claims.
+- Kein automatischer Commit, keine Snapshot-/Cursor-Änderung, kein Cron aktiviert. Kein Beleg für vollständige historische Reward-/Referral-Abdeckung.
+

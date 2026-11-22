@@ -12,6 +12,6 @@ assert.match(js,/const decimals=projectKnownTokenDecimals\(token\)/);
 assert.match(js,/if\(decimals==null\)continue/);
 assert.match(js,/projectBonusRowsForPayload\(payload,wallet\)/);
 assert.match(js,/loadProjectBonusLedgerCacheOnly\(wanted\)/);
-assert.match(html,/window\.APP_VERSION="9\.72"/);
-assert.match(html,/tln-vow-discovery\.js\?v=20261122-222720/);
+assert.ok(Number(html.match(/window\.APP_VERSION="([0-9.]+)"/)?.[1])>=9.72);
+assert.match(html,/tln-vow-discovery\.js\?v=20261122-230343/);
 console.log('9.72 owner-scoped bonus ledger UI and dedup guards OK');

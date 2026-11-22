@@ -526,6 +526,45 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       lotStakeTx:norm(lot.stakeTx),calledContract:callTo,kind:'staking_reward',
       proof:'direct_explicit_staking_claim_with_unique_lot_and_verified_receipt'};
   }
+  // Exact shared manual Step-4 trace-source + single receipt payout decision.
+  // A trace is mandatory for a payout emitted by a contract other than the
+  // wallet-called staking contract. Only a single known staking-reward intent,
+  // one non-principal payout and one unique lot can become a canonical claim.
+  function verifiedIndirectStakingClaim(input){
+    const norm=v=>String(v||'').toLowerCase(),wallet=norm(input?.wallet),hash=norm(input?.hash);
+    const receipt=input?.receipt||{},callTo=norm(receipt.calledContract);
+    const lots=Array.isArray(input?.lots)?input.lots:[];
+    const registry=new Set((input?.stakingContracts||[]).map(norm));
+    const traceSources=(Array.isArray(input?.traceSources)?input.traceSources:[]).map(norm);
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true||receipt.lifecycleLotMatches!==0||
+      norm(receipt.transactionSender)!==wallet||!registry.has(callTo)||
+      knownClaimMethodIntent(receipt.selector)!=='staking_reward'||
+      input?.traceVerified!==true||!['debug_traceTransaction','trace_transaction'].includes(input?.traceMethod)||
+      !traceSources.includes(callTo)||new Set(traceSources).size!==traceSources.length)return null;
+    const transfers=Array.isArray(receipt.transfers)?receipt.transfers:[];
+    if(transfers.some(t=>norm(t?.from)===wallet&&norm(t?.to)!==wallet))return null;
+    const incoming=transfers.filter(t=>norm(t?.to)===wallet&&norm(t?.from)!==wallet);
+    if(incoming.length!==1)return null;
+    const tr=incoming[0],source=norm(tr.from),token=norm(tr.token),raw=String(tr.amountRaw||'');
+    if(source===callTo||source==='0x'+'0'.repeat(40)||!traceSources.includes(source)||
+      !/^0x[0-9a-f]{40}$/.test(token)||!/^0x[0-9a-f]+$/i.test(raw)||BigInt(raw)<=0n||
+      !Number.isSafeInteger(tr.logIndex)||tr.logIndex<0)return null;
+    const flow=classifyRewardTransferFlow({wallet,callTo,transfers,lifecycle:false,
+      explicitRewardIntent:true,stateDeltaEvidence:[],traceSources});
+    if(flow.payoutTransfers.length!==1||flow.payoutTransfers[0].rewardFlowEvidence!=='from_internal_call_chain'||
+      norm(flow.payoutTransfers[0].from)!==source)return null;
+    const assignments=assignReceiptCandidatesToUniqueLots({wallet,hash,receipt,lots,
+      candidates:[{hash,token,amountRaw:raw,kind:'staking_reward',rewardVerified:false}]});
+    if(assignments.length!==1)return null;
+    const lot=lots[assignments[0].lotIndex];
+    if(!lot||!/^0x[0-9a-f]{64}$/.test(norm(lot.stakeTx))||
+      lots.some(l=>(Array.isArray(l?.rewardClaims)?l.rewardClaims:[]).some(c=>
+        norm(c?.hash)===hash&&norm(c?.token)===token)))return null;
+    return {hash,token,amountRaw:BigInt(raw).toString(),logIndex:tr.logIndex,
+      fromContract:source,calledContract:callTo,lotStakeTx:norm(lot.stakeTx),
+      kind:'staking_reward',proof:'manual_step4_trace_backed_indirect_unique_lot'};
+  }
   // Exact manual Step-2 selector gate. This is an intent classification, NOT
   // enough to create a position without asset and on-chain position evidence.
   function manualPositionCallIntent(input){
@@ -836,7 +875,7 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,manualReferralMintVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,manualReferralMintVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,verifiedIndirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -1956,7 +1995,7 @@ Deno.serve(async (req) => {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle')
+    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2256,6 +2295,90 @@ Deno.serve(async (req) => {
           changedCoreOffsets:result.changedAtSecond?.length||0,persisted:false,
           notice:'One cached historical top-up independently replayed using bounded archive storage reads and the exact manual verdict. No lot/claim/cursor writes or cron.'})
       }catch(e){return reply({ok:false,mode,error:e instanceof Error?e.message:'archive_rpc_unavailable',persisted:false},503)}
+    }
+    if(mode==='indirect-claim-finalize'){
+      // Opt-in only: reuse the identical shared manual Step-4 flow and unique
+      // position rule. An observed transfer or cached trace alone cannot write.
+      const commit=body?.commit===true,limit=200,maxPages=20
+      const staged:any[]=[];let complete=false
+      for(let page=0;page<=maxPages;page++){
+        const {data,error}=await sb.from('tln_vow_reward_receipt_stage')
+          .select('user_id,wallet_id,chain_key,tx_hash,block_number,evidence')
+          .eq('chain_key','bsc').order('created_at',{ascending:true})
+          .order('user_id',{ascending:true}).order('wallet_id',{ascending:true})
+          .order('tx_hash',{ascending:true}).range(page*limit,(page+1)*limit-1)
+        if(error)return reply({ok:false,mode,error:'Receipt inventory unavailable; nothing written'},503)
+        if(page===maxPages&&(data||[]).length)
+          return reply({ok:false,mode,error:'More than 4000 receipts; nothing written'},409)
+        staged.push(...(data||[]))
+        if((data||[]).length<limit){complete=true;break}
+      }
+      if(!complete)return reply({ok:false,mode,error:'Incomplete receipt inventory; nothing written'},409)
+      const contracts=await sb.from('defi_staking_contracts').select('contract_address')
+        .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
+      if(contracts.error||(contracts.data||[]).some((x:any)=>!evmAddress(x.contract_address)))
+        return reply({ok:false,mode,error:'Staking registry unavailable or invalid'},503)
+      const registry=(contracts.data||[]).map((x:any)=>evmAddress(x.contract_address)!)
+      const eligible:any[]=[];let skippedIncomplete=0,skippedExisting=0
+      for(const row of staged){
+        const snapshot=byWallet.get(String(row.user_id)+'|'+String(row.wallet_id))?.payload
+        const wallet=evmAddress(snapshot?.wallet),receipt=row.evidence
+        const hash=String(row.tx_hash||'').toLowerCase(),block=num(row.block_number)
+        if(snapshot?.kind!=='verified_discovery_results'||!wallet||block===null||block<1||
+          !/^0x[0-9a-f]{64}$/.test(hash)||receipt?.indirectTraceVerified!==true||
+          !Array.isArray(receipt?.indirectTraceSources)||!Array.isArray(receipt?.transfers)){
+          skippedIncomplete++;continue
+        }
+        const claim=verificationCore.verifiedIndirectStakingClaim({wallet,hash,receipt,
+          lots:snapshot?.process?.lots||[],stakingContracts:registry,
+          traceVerified:receipt.indirectTraceVerified,
+          traceMethod:receipt.indirectTraceMethod,traceSources:receipt.indirectTraceSources})
+        if(!claim)continue
+        const sameProof=(Array.isArray(receipt.indirectRewardCandidates)?receipt.indirectRewardCandidates:[])
+          .some((x:any)=>x.token===claim.token&&x.from===claim.fromContract&&
+            x.logIndex===claim.logIndex&&/^[0-9]+$/.test(String(x.amountRaw||''))&&
+            BigInt(x.amountRaw)===BigInt(claim.amountRaw))
+        if(!sameProof){skippedIncomplete++;continue}
+        const already=(Array.isArray(snapshot?.globals?.provenRewardRows)?
+          snapshot.globals.provenRewardRows:[]).some((x:any)=>
+          String(x?.hash||'').toLowerCase()===hash&&evmAddress(x.token)===claim.token)
+        if(already){skippedExisting++;continue}
+        eligible.push({user_id:row.user_id,wallet_id:row.wallet_id,chain_key:'bsc',
+          tx_hash:hash,token_address:claim.token,log_index:claim.logIndex,
+          amount_raw:claim.amountRaw,block_number:block,lot_stake_tx:claim.lotStakeTx,
+          called_contract:claim.calledContract,paying_contract:claim.fromContract,
+          trace_method:receipt.indirectTraceMethod,proof_kind:claim.proof,
+          wallet,receipt,stakingContracts:registry})
+      }
+      if(commit&&eligible.length){
+        if(eligible.length>20||!ALCHEMY_API_KEY)
+          return reply({ok:false,mode,error:'Bounded independent trace budget exceeded; nothing written'},409)
+        const times=new Map<number,string>()
+        try{
+          // Independently replay EVERY trace before any ledger write.
+          for(const row of eligible){
+            const fresh=await receiptInternalCallSources(row.tx_hash,row.receipt,row.wallet,row.stakingContracts)
+            if(fresh.verified!==true||!fresh.sources.includes(row.paying_contract)||
+              !fresh.candidates?.some((x:any)=>x.token===row.token_address&&
+                x.logIndex===row.log_index&&x.from===row.paying_contract&&
+                x.amountRaw===row.amount_raw))throw new Error('trace_mismatch')
+          }
+          for(const height of new Set(eligible.map(x=>x.block_number)))
+            times.set(height,new Date((await archiveBlockTimestamp(height))*1000).toISOString())
+        }catch{return reply({ok:false,mode,error:'Independent trace or block timestamp proof unavailable; nothing written'},503)}
+        const records=eligible.map(({wallet,receipt,stakingContracts,...row})=>({
+          ...row,block_timestamp:times.get(row.block_number)}))
+        const {error}=await sb.from('tln_vow_reward_indirect_claims').upsert(records,{
+          onConflict:'user_id,wallet_id,chain_key,tx_hash,token_address,log_index',ignoreDuplicates:true})
+        if(error)return reply({ok:false,mode,error:'Indirect claim ledger unavailable; snapshots unchanged'},503)
+      }
+      return reply({ok:true,mode,day:dayCH(),dryRun:!commit,
+        inspectedReceipts:staged.length,receiptInventoryComplete:true,
+        eligibleIndirectClaims:eligible.length,skippedIncomplete,
+        skippedExistingSnapshotClaims:skippedExisting,
+        canonicalIndirectClaimsCommitted:commit&&eligible.length>0,
+        historicalCoverageVerified:false,allEncryptedWalletsCovered:false,
+        notice:'Strict shared manual Step-4 trace/receipt/unique-lot rule. Commit opt-in with fresh trace and block replay. No other reward types, no snapshot edits, no cron.'})
     }
     if(mode==='daily-bonus-claim-cycle'){
       // Reuse the browser's exact shared Step-4 claimBonus selector and

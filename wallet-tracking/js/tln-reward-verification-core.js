@@ -522,6 +522,45 @@
       lotStakeTx:norm(lot.stakeTx),calledContract:callTo,kind:'staking_reward',
       proof:'direct_explicit_staking_claim_with_unique_lot_and_verified_receipt'};
   }
+  // Exact shared manual Step-4 trace-source + single receipt payout decision.
+  // A trace is mandatory for a payout emitted by a contract other than the
+  // wallet-called staking contract. Only a single known staking-reward intent,
+  // one non-principal payout and one unique lot can become a canonical claim.
+  function verifiedIndirectStakingClaim(input){
+    const norm=v=>String(v||'').toLowerCase(),wallet=norm(input?.wallet),hash=norm(input?.hash);
+    const receipt=input?.receipt||{},callTo=norm(receipt.calledContract);
+    const lots=Array.isArray(input?.lots)?input.lots:[];
+    const registry=new Set((input?.stakingContracts||[]).map(norm));
+    const traceSources=(Array.isArray(input?.traceSources)?input.traceSources:[]).map(norm);
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true||receipt.lifecycleLotMatches!==0||
+      norm(receipt.transactionSender)!==wallet||!registry.has(callTo)||
+      knownClaimMethodIntent(receipt.selector)!=='staking_reward'||
+      input?.traceVerified!==true||!['debug_traceTransaction','trace_transaction'].includes(input?.traceMethod)||
+      !traceSources.includes(callTo)||new Set(traceSources).size!==traceSources.length)return null;
+    const transfers=Array.isArray(receipt.transfers)?receipt.transfers:[];
+    if(transfers.some(t=>norm(t?.from)===wallet&&norm(t?.to)!==wallet))return null;
+    const incoming=transfers.filter(t=>norm(t?.to)===wallet&&norm(t?.from)!==wallet);
+    if(incoming.length!==1)return null;
+    const tr=incoming[0],source=norm(tr.from),token=norm(tr.token),raw=String(tr.amountRaw||'');
+    if(source===callTo||source==='0x'+'0'.repeat(40)||!traceSources.includes(source)||
+      !/^0x[0-9a-f]{40}$/.test(token)||!/^0x[0-9a-f]+$/i.test(raw)||BigInt(raw)<=0n||
+      !Number.isSafeInteger(tr.logIndex)||tr.logIndex<0)return null;
+    const flow=classifyRewardTransferFlow({wallet,callTo,transfers,lifecycle:false,
+      explicitRewardIntent:true,stateDeltaEvidence:[],traceSources});
+    if(flow.payoutTransfers.length!==1||flow.payoutTransfers[0].rewardFlowEvidence!=='from_internal_call_chain'||
+      norm(flow.payoutTransfers[0].from)!==source)return null;
+    const assignments=assignReceiptCandidatesToUniqueLots({wallet,hash,receipt,lots,
+      candidates:[{hash,token,amountRaw:raw,kind:'staking_reward',rewardVerified:false}]});
+    if(assignments.length!==1)return null;
+    const lot=lots[assignments[0].lotIndex];
+    if(!lot||!/^0x[0-9a-f]{64}$/.test(norm(lot.stakeTx))||
+      lots.some(l=>(Array.isArray(l?.rewardClaims)?l.rewardClaims:[]).some(c=>
+        norm(c?.hash)===hash&&norm(c?.token)===token)))return null;
+    return {hash,token,amountRaw:BigInt(raw).toString(),logIndex:tr.logIndex,
+      fromContract:source,calledContract:callTo,lotStakeTx:norm(lot.stakeTx),
+      kind:'staking_reward',proof:'manual_step4_trace_backed_indirect_unique_lot'};
+  }
   // Exact manual Step-2 selector gate. This is an intent classification, NOT
   // enough to create a position without asset and on-chain position evidence.
   function manualPositionCallIntent(input){
@@ -832,5 +871,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,manualReferralMintVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,manualReferralMintVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,verifiedIndirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
