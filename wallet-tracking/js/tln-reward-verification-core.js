@@ -391,6 +391,15 @@
     ['referral',referralMethodSignatures],['bonus',bonusMethodSignatures]])
     for(const sig of signatures)methodIntents.set(keccakSelector(sig),intent);
   function knownClaimMethodIntent(selector){return methodIntents.get(String(selector||'').toLowerCase())||null}
+  // Exact manual Step-4 bonus evidence: ONLY the two explicit claimBonus
+  // selectors. The caller must separately establish a proven token payout.
+  function manualBonusEvidenceForClaim(claim){
+    const selector=String(claim?.selector||'').toLowerCase();
+    const method=bonusMethodSignatures.find(sig=>keccakSelector(sig)===selector)||null;
+    if(!method)return null;
+    return {kind:'bonus',confidence:'hoch',method,
+      reason:`Explizite Bonus-Claim-Methode ${method} (${selector})`};
+  }
   function classifyExplicitClaimReceipt(input){
     const wallet=String(input?.wallet||'').toLowerCase(),hash=String(input?.hash||'').toLowerCase();
     const receipt=input?.receipt||{},callTo=String(receipt.calledContract||'').toLowerCase();
@@ -809,5 +818,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);

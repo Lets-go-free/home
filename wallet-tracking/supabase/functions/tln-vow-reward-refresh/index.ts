@@ -395,6 +395,15 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
     ['referral',referralMethodSignatures],['bonus',bonusMethodSignatures]])
     for(const sig of signatures)methodIntents.set(keccakSelector(sig),intent);
   function knownClaimMethodIntent(selector){return methodIntents.get(String(selector||'').toLowerCase())||null}
+  // Exact manual Step-4 bonus evidence: ONLY the two explicit claimBonus
+  // selectors. The caller must separately establish a proven token payout.
+  function manualBonusEvidenceForClaim(claim){
+    const selector=String(claim?.selector||'').toLowerCase();
+    const method=bonusMethodSignatures.find(sig=>keccakSelector(sig)===selector)||null;
+    if(!method)return null;
+    return {kind:'bonus',confidence:'hoch',method,
+      reason:`Explizite Bonus-Claim-Methode ${method} (${selector})`};
+  }
   function classifyExplicitClaimReceipt(input){
     const wallet=String(input?.wallet||'').toLowerCase(),hash=String(input?.hash||'').toLowerCase();
     const receipt=input?.receipt||{},callTo=String(receipt.calledContract||'').toLowerCase();
@@ -813,7 +822,7 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -1427,9 +1436,14 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     calledContract:receipt.calledContract,stakingContracts,
     knownLifecycle:receipt.lifecycleLotMatches>0})
   const claimCandidates=verificationCore.classifyExplicitClaimReceipt({wallet,hash,receipt,stakingContracts})
+  const bonusEvidence=verificationCore.manualBonusEvidenceForClaim({selector:receipt.selector})
+  const bonusClaimCandidates=bonusEvidence
+    ?claimCandidates.filter((c:any)=>c.kind==='bonus') : []
   const stateProbe=await probeHistoricalRewardState(wallet,receipt,block,stakingContracts)
   const stateCandidates=verificationCore.classifyStateDeltaReceipt({wallet,hash,receipt,
     stakingContracts,stateDeltas:stateProbe.deltas})
+  const referralClaimCandidates=[...claimCandidates.filter((c:any)=>c.kind==='referral'),
+    ...stateCandidates.filter((c:any)=>c.kind==='referral_state_change')]
   const lotAssignments=verificationCore.assignReceiptCandidatesToUniqueLots({wallet,hash,receipt,
     lots:snapshot?.process?.lots||[],candidates:[...newCandidates,...claimCandidates,...stateCandidates]})
   // A matched historical proof is only a reconciliation hint: this does not
@@ -1439,6 +1453,8 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     manualRewardProofMatches:matches,manualStakeClaimMatches:stakeMatches,
     manualStakeClaimMatchCount:stakeMatches.length,newRewardMintCandidates:newCandidates,
     explicitClaimCandidates:claimCandidates,explicitClaimCandidateCount:claimCandidates.length,
+    bonusClaimCandidates,bonusClaimCandidateCount:bonusClaimCandidates.length,
+    referralClaimCandidates,referralClaimCandidateCount:referralClaimCandidates.length,
     stateProbeAttempted:stateProbe.attempted,stateProbePaired:stateProbe.paired,
     stateChangeCandidates:stateCandidates,stateChangeCandidateCount:stateCandidates.length,
     uniqueLotAssignmentCandidates:lotAssignments,uniqueLotAssignmentCandidateCount:lotAssignments.length,
@@ -1972,6 +1988,8 @@ Deno.serve(async (req) => {
         matchingManualRewardProofs:evidence.reduce((n,e)=>n+e.manualRewardProofMatchCount,0),
         newUnverifiedMintCandidates:evidence.reduce((n,e)=>n+e.newRewardMintCandidateCount,0),
         explicitClaimCandidates:evidence.reduce((n,e)=>n+e.explicitClaimCandidateCount,0),
+        bonusClaimCandidates:evidence.reduce((n,e)=>n+e.bonusClaimCandidateCount,0),
+        referralClaimCandidates:evidence.reduce((n,e)=>n+e.referralClaimCandidateCount,0),
         stateChangeCandidates:evidence.reduce((n,e)=>n+e.stateChangeCandidateCount,0),
         uniqueLotAssignmentCandidates:evidence.reduce((n,e)=>n+e.uniqueLotAssignmentCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
@@ -2055,7 +2073,7 @@ Deno.serve(async (req) => {
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,bonusClaimCandidates=0,referralClaimCandidates=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -2135,13 +2153,15 @@ Deno.serve(async (req) => {
           manualProofMatches+=receipts.reduce((n,r)=>n+r.evidence.manualRewardProofMatchCount,0)
           newUnverifiedMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.newRewardMintCandidateCount,0)
           explicitClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.explicitClaimCandidateCount,0)
+          bonusClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.bonusClaimCandidateCount,0)
+          referralClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.referralClaimCandidateCount,0)
           stateChangeCandidates+=receipts.reduce((n,r)=>n+r.evidence.stateChangeCandidateCount,0)
           uniqueLotAssignmentCandidates+=receipts.reduce((n,r)=>n+r.evidence.uniqueLotAssignmentCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,

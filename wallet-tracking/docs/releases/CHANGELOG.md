@@ -318,3 +318,10 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Kein RPC, keine neue Claim-Klassifikation, keine Cache-, Cursor- oder Claim-Writes. Die gespeicherten Blockchain-Proofs werden nicht unabhängig neu verifiziert. Kein Vollständigkeitsbeweis für indirekte/Bonus-/Referral-Rewards oder andere verschlüsselte Wallets.
 - Keine Cron-Änderung; `tln-vow-direct-claims-daily` bleibt inaktiv. Alle TLN/VOW-Tests einschliesslich neuer historischer Proof-/Ambiguitäts-Fälle bestanden.
 
+## 9.59 · 22.11.2026 13:00:16 CET · Build 20261122-130016
+
+- Die vorhandene Browser-Step-4-Klassifikation der expliziten `claimBonus()`-/`claimBonus(address)`-Methoden ist als identische reine Funktion `manualBonusEvidenceForClaim` im gemeinsamen Browser-/Edge-Core verfügbar. Der Browser nutzt diese Funktion für bestehende Bonus-Reward-Ansichten.
+- Der aktive Edge-Receipt-Evidence-Pfad trennt bereits anderweitig receipt-geprüfte explizite `bonus`-Claims und `referral`-Claims/Referral-State-Änderungen in eigene **Kandidatenfelder**, inklusive Zähler `bonusClaimCandidates` und `referralClaimCandidates` in den 5-Minuten-Jobantworten.
+- Die Klassifikation basiert weiterhin auf der bekannten gemeinsamen `classifyExplicitClaimReceipt`-/`classifyStateDeltaReceipt`-Prüfung. Keine Auszahlung und keine finale Bonus-/Referral-Claim-Buchung; Kandidaten sind ohne weitere vollständige Positions-/Referenzprüfung nicht kanonisch.
+- Keine SQL-/Cron-Änderung, kein neuer Scanner, keine historischen Daten neu bewertet. Direct-Claim-Tagescron bleibt inaktiv. Alle TLN/VOW-Regressionstests bestanden.
+

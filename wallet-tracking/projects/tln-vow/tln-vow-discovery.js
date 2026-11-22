@@ -10871,6 +10871,8 @@ function selectorBonusIntent(selector){
   return BONUS_CLAIM_SELECTORS.has(String(selector||'').toLowerCase());
 }
 function bonusEvidenceForClaim(claim){
+  const shared=globalThis.WT_TLN_REWARD_VERIFICATION_CORE?.manualBonusEvidenceForClaim;
+  if(typeof shared==='function')return shared(claim);
   const selector=String(claim?.selector||'').toLowerCase();
   const method=BONUS_CLAIM_SELECTORS.get(selector)||null;
   if(!method)return null;

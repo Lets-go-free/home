@@ -996,3 +996,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live-Test nach Edge-Deployment: autorisierter Aufruf `{"mode":"historical-manual-reward-parity"}`. Kein Commitment, keine neuen Claims, kein RPC. Abweichungen zuerst am bestehenden manuellen Snapshot auflösen.
 - Weiter offen: vollständige automatisierte Step-4-Flow-/Receipt-/Bonus-Rewards und Step-5-Referral-Klassifikation, historischer unabhängiger Vollständigkeitsbeleg sowie alle verschlüsselten Wallets. Tages-Direct-Claim-Cron 9.57 bleibt INAKTIV.
 
+### Phase 9.59 – Bonus-/Referral-Evidence getrennt im automatischen Receipt-Pfad (22.11.2026)
+
+- Browser und Server verwenden dieselbe explizite Bonus-Selector-Regel; keine neue Heuristik. Die im Edge bereits vorhandenen strengen Receipt-Prüfungen unterscheiden und persistieren nun separate `bonusClaimCandidates` und `referralClaimCandidates` mit Counts auch für `delta-work-cycle` und `delta-receipt-verify`.
+- Ab 9.59 sind entsprechende Kandidaten bei zukünftigen Blockchain-Ereignissen sichtbar. Das ist **noch keine** vollständige Bonus-/Referral-Zuordnung und keine kanonische Buchung. Die manuelle Step-5-Referral-Referenzengine (Identität, Referral-Pfade, Referenzbeweise) ist serverseitig noch nicht vollständig automatisiert.
+- Nach Installation nur Edge `tln-vow-reward-refresh` deployen; bestehende 5-Minuten-Jobs rufen die aktualisierte Funktion automatisch auf. Bei derzeit fehlenden neuen Events dürfen Counts weiterhin 0 sein. Kein neuer Cron und keine SQL-Migration nötig.
+- Weiter offen: indirekte Rewards/Bonus-/Referral-Candidate-Finalisierung nach manuellen Nachweisregeln, historischer Vollständigkeitsnachweis, alle verschlüsselten Wallets. `tln-vow-direct-claims-daily` unverändert INAKTIV.
+
