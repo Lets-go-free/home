@@ -311,3 +311,10 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Erfasst nur direkte, belegte Staking-Claims mit eindeutigem Positionsbezug; **keine** indirekten Staking-Rewards, Mints, Bonus- oder Referral-Rewards, kein belegter historischer Vollständigkeits-Scan. Keine Änderung bestehender Evidence-Crons.
 - Alle TLN/VOW-Tests bestanden.
 
+## 9.58 · 22.11.2026 12:05:29 CET · Build 20261122-120529
+
+- Edge read-only `historical-manual-reward-parity` führt für alle vorhandenen TLN/VOW-Discovery-Snapshots die **bestehenden** gemeinsamen manuellen Step-4-Prüfregeln `verifiedStakeTxRewardClaims` und `verifiedTopUpMintCandidates` auf historisch bereits belegten Reward-Zeilen aus.
+- Prüft die neu berechneten eindeutigen Kandidaten gegen im selben Snapshot manuell gespeicherte Lot-Reward-Claims; gibt anonyme Summen und pro Snapshot nur Ordnungsnummer/Zählwerte zurück. Erkennt damit Abweichungen ohne neue Transaktionen abzuwarten.
+- Kein RPC, keine neue Claim-Klassifikation, keine Cache-, Cursor- oder Claim-Writes. Die gespeicherten Blockchain-Proofs werden nicht unabhängig neu verifiziert. Kein Vollständigkeitsbeweis für indirekte/Bonus-/Referral-Rewards oder andere verschlüsselte Wallets.
+- Keine Cron-Änderung; `tln-vow-direct-claims-daily` bleibt inaktiv. Alle TLN/VOW-Tests einschliesslich neuer historischer Proof-/Ambiguitäts-Fälle bestanden.
+

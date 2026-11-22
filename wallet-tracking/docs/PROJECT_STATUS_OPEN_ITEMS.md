@@ -989,3 +989,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Nächster Test nach Installation/Migration/Edge-Deploy: autorisiert `{"mode":"daily-direct-claim-cycle"}` ohne Commit aufrufen. `inspectedReceipts`, `eligibleDirectClaims` und `completeReceiptBatch` auswerten. Auf keinen Fall `commit:true` zum Test setzen.
 - Offene Kernaufgabe: vollständige automatische Browser-Step-4-Rewards inklusive indirekten/mint-/top-up-/bonus- und Step-5-Referral-Nachweisen sowie Abdeckung aller verschlüsselten Wallets. Ein Direct-Claim-Cron ist **kein** vollständiger täglicher TLN/VOW-Rewards-Job. Kein Reward-Cron aktiv, keine automatische Buchung aktiviert.
 
+### Phase 9.58 – Historischer Step-4-Regelabgleich (22.11.2026)
+
+- Nach 9.57-Live-Abnahme Request 8675: Edge `daily-direct-claim-cycle` 200/dryRun, aber 0 gespeicherte Receipt-Transaktionen, daher kein Positivtest. Bei aktuell ausbleibender Wallet-Aktivität ist das noch kein Scanner-Fehler.
+- Read-only-Modus `historical-manual-reward-parity` spielt die bestehende Browser-/Server-Prüflogik für **historisch vorhandene, belegte Stake- und Storage-Top-up-Rewards** direkt gegen gespeicherte Discovery-Lot-Claims ab. Liefert `summary` (inkl. `stakeCandidates`, `topUpCandidates`, `matchingSavedClaims`, `missingSavedClaims`) und anonymisierte Detailzahlen. Bei diesen bereits gespeicherten Belegen kann ein Vergleich auch ohne neue Transfers stattfinden.
+- Live-Test nach Edge-Deployment: autorisierter Aufruf `{"mode":"historical-manual-reward-parity"}`. Kein Commitment, keine neuen Claims, kein RPC. Abweichungen zuerst am bestehenden manuellen Snapshot auflösen.
+- Weiter offen: vollständige automatisierte Step-4-Flow-/Receipt-/Bonus-Rewards und Step-5-Referral-Klassifikation, historischer unabhängiger Vollständigkeitsbeleg sowie alle verschlüsselten Wallets. Tages-Direct-Claim-Cron 9.57 bleibt INAKTIV.
+

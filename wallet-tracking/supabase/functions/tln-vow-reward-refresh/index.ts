@@ -1635,7 +1635,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1661,6 +1661,50 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='historical-manual-reward-parity'){
+      // Run existing manual Step-4 stake/top-up proof selectors against the
+      // SAME persisted discovery snapshots, without new reward heuristics.
+      const details:any[]=[],totals={wallets:0,lots:0,provenRows:0,
+        stakeCandidates:0,topUpCandidates:0,matchingSavedClaims:0,
+        missingSavedClaims:0,invalidSnapshots:0}
+      const claimKey=(hash:unknown,token:unknown,amount:unknown)=>{
+        const h=String(hash||'').toLowerCase(),t=String(token||'').toLowerCase(),n=Number(amount)
+        return /^0x[0-9a-f]{64}$/.test(h)&&/^0x[0-9a-f]{40}$/.test(t)&&Number.isFinite(n)&&n>0
+          ?`${h}|${t}|${n.toPrecision(15)}`:null
+      }
+      for(const r of byWallet.values()){
+        const snapshot=r.payload,wallet=evmAddress(snapshot?.wallet)
+        const lots=snapshot?.process?.lots,proven=snapshot?.globals?.provenRewardRows
+        if(snapshot?.kind!=='verified_discovery_results'||!wallet||!Array.isArray(lots)||
+          !Array.isArray(proven)||lots.length>500||proven.length>2000){totals.invalidSnapshots++;continue}
+        const saved=new Set<string>()
+        for(const l of lots)for(const c of (Array.isArray(l?.rewardClaims)?l.rewardClaims:[])){
+          const key=claimKey(c?.hash,c?.token,c?.amount)
+          if(key)saved.add(key)
+        }
+        let stakes:any[],topups:any[]
+        try{
+          stakes=verificationCore.verifiedStakeTxRewardClaims(lots,proven,wallet)
+          topups=verificationCore.verifiedTopUpMintCandidates(lots,proven,wallet)
+        }catch{totals.invalidSnapshots++;continue}
+        const candidates=new Set<string>()
+        for(const c of stakes){const key=claimKey(c?.claim?.hash,c?.claim?.token,c?.claim?.amount);if(key)candidates.add(key)}
+        for(const c of topups){const key=claimKey(c?.row?.hash,c?.row?.token,c?.row?.amount);if(key)candidates.add(key)}
+        const matched=[...candidates].filter(k=>saved.has(k)).length
+        const missing=candidates.size-matched
+        totals.wallets++;totals.lots+=lots.length;totals.provenRows+=proven.length
+        totals.stakeCandidates+=stakes.length;totals.topUpCandidates+=topups.length
+        totals.matchingSavedClaims+=matched;totals.missingSavedClaims+=missing
+        details.push({ordinal:details.length+1,sourceLots:lots.length,sourceProvenRows:proven.length,
+          stakeCandidates:stakes.length,topUpCandidates:topups.length,
+          uniqueCandidates:candidates.size,matchingSavedClaims:matched,missingSavedClaims:missing})
+      }
+      return reply({ok:true,mode,day:dayCH(),summary:totals,details,
+        allReplayCandidatesPresent:totals.invalidSnapshots===0&&totals.missingSavedClaims===0,
+        independentReceiptVerificationPerformed:false,rewardCoverageVerified:false,
+        referralCoverageVerified:false,claimsCreated:0,persisted:false,
+        notice:'Read-only historical replay of the exact existing manual stake-tx/top-up Step-4 reward selectors against saved manual rewardClaims. This does not independently reverify receipts, scan unindexed history, classify indirect/bonus/referral payouts or create claims. No RPC or writes.'})
     }
     if(mode==='cached-lot-reconstruction-preview'){
       const core=verificationCore.manualBuildDiagnosticLots
