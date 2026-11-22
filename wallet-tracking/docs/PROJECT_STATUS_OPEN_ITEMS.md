@@ -996,6 +996,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live-Test nach Edge-Deployment: autorisierter Aufruf `{"mode":"historical-manual-reward-parity"}`. Kein Commitment, keine neuen Claims, kein RPC. Abweichungen zuerst am bestehenden manuellen Snapshot auflösen.
 - Weiter offen: vollständige automatisierte Step-4-Flow-/Receipt-/Bonus-Rewards und Step-5-Referral-Klassifikation, historischer unabhängiger Vollständigkeitsbeleg sowie alle verschlüsselten Wallets. Tages-Direct-Claim-Cron 9.57 bleibt INAKTIV.
 
+### Phase 9.60 – Historischer Bonus-/Referral-Selector-Bestandsabgleich (22.11.2026)
+
+- Neuer rein lesender Edge-Modus `historical-bonus-referral-evidence` prüft die bereits im Browser nachgewiesenen `provenRewardRows` der TLN/VOW-Snapshots mit denselben gemeinsamen expliziten Bonus-/Referral-Selector-Regeln wie der automatische Receipt-Pfad. Nur anonyme Zähler pro Wallet; sonstige Fälle bleiben **ungeklärt**, keine neue Reward-Heuristik.
+- 9.58 bestätigte bereits 3/3 historische Stake-/Top-up-Claims. Die neue Prüfung ersetzt **nicht** die manuelle Step-5-Referenz-/Pfadzuordnung, keine neuen Claims, kein RPC und kein Cron. Tages-Direct-Claim-Cron bleibt **inaktiv**. Live-Test noch ausstehend. Details `docs/releases/9.60-tln-vow-historical-bonus-referral-evidence.md`.
+
 ### Phase 9.59 – Bonus-/Referral-Evidence getrennt im automatischen Receipt-Pfad (22.11.2026)
 
 - Browser und Server verwenden dieselbe explizite Bonus-Selector-Regel; keine neue Heuristik. Die im Edge bereits vorhandenen strengen Receipt-Prüfungen unterscheiden und persistieren nun separate `bonusClaimCandidates` und `referralClaimCandidates` mit Counts auch für `delta-work-cycle` und `delta-receipt-verify`.

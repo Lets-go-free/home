@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const root=new URL('../',import.meta.url);
+const source=fs.readFileSync(new URL('js/tln-reward-verification-core.js',root),'utf8');
+const edge=fs.readFileSync(new URL('supabase/functions/tln-vow-reward-refresh/index.ts',root),'utf8');
+const sandbox={};vm.runInNewContext(source,sandbox);
+const core=sandbox.WT_TLN_REWARD_VERIFICATION_CORE;
+assert.equal(core.manualBonusEvidenceForClaim({selector:core.keccakSelector('claimBonus()')})?.kind,'bonus');
+assert.equal(core.knownClaimMethodIntent(core.keccakSelector('claimReferralReward()')),'referral');
+assert.equal(core.manualBonusEvidenceForClaim({selector:core.keccakSelector('claimReferralReward()')}),null);
+assert.equal(core.manualBonusEvidenceForClaim({selector:'0x12345678'}),null);
+assert.ok(edge.includes("supportedModes.push('historical-bonus-referral-evidence')"));
+assert.ok(edge.includes("if(mode==='historical-bonus-referral-evidence')"));
+assert.ok(edge.includes('verificationCore.manualBonusEvidenceForClaim(row)'));
+assert.ok(edge.includes("verificationCore.knownClaimMethodIntent(row?.selector)==='referral'"));
+assert.ok(edge.includes('bonusCoverageVerified:false,referralCoverageVerified:false'));
+console.log('9.60 historical selector inventory reuses shared browser rules, remains read-only');

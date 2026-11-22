@@ -1,3 +1,6 @@
+## 9.60 · 22.11.2026 14:56:25 CET · Build 20261122-145625
+- Rein lesender historischer Bestandstest der gemeinsamen expliziten Bonus- und Referral-Selectoren auf bereits belegten TLN/VOW-Reward-Zeilen (`historical-bonus-referral-evidence`). Anonyme Summen statt neuer Klassifikationen. Keine kanonischen Claims, kein RPC, keine Writes und keine Cron-Änderung. `9.60-tln-vow-historical-bonus-referral-evidence.md`.
+
 ## 8.99 · 18.11.2026 16:06:16 CET · Build 20261118-160616
 - Neuer strikt manueller `cron-daily-step-899` verbindet die bewährte v2-Rohdaten-Queue und die v3-Reward-Phase, jeweils höchstens ein geleaster Schritt pro Request. Neue Tageswallets werden durch v2 initialisiert; Reward erst wenn kein auswählbarer Raw-Schritt verbleibt. Keine SQL-Migration, kein Cron, kein Live-Worker oder unabhängiges Referral-Posting. 15/15 der Testwallets am 18.11. bereits abgeschlossen. `8.99-dao-manual-daily-orchestration.md`.
 
@@ -324,4 +327,5 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Der aktive Edge-Receipt-Evidence-Pfad trennt bereits anderweitig receipt-geprüfte explizite `bonus`-Claims und `referral`-Claims/Referral-State-Änderungen in eigene **Kandidatenfelder**, inklusive Zähler `bonusClaimCandidates` und `referralClaimCandidates` in den 5-Minuten-Jobantworten.
 - Die Klassifikation basiert weiterhin auf der bekannten gemeinsamen `classifyExplicitClaimReceipt`-/`classifyStateDeltaReceipt`-Prüfung. Keine Auszahlung und keine finale Bonus-/Referral-Claim-Buchung; Kandidaten sind ohne weitere vollständige Positions-/Referenzprüfung nicht kanonisch.
 - Keine SQL-/Cron-Änderung, kein neuer Scanner, keine historischen Daten neu bewertet. Direct-Claim-Tagescron bleibt inaktiv. Alle TLN/VOW-Regressionstests bestanden.
+
 

@@ -1652,6 +1652,7 @@ Deno.serve(async (req) => {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    supportedModes.push('historical-bonus-referral-evidence')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1677,6 +1678,36 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='historical-bonus-referral-evidence'){
+      // Reuse manual selector rules only on previously proven payout rows.
+      // Broader browser referral inference requires independently proven paths.
+      const summary={wallets:0,invalidSnapshots:0,provenRows:0,
+        bonusSelectorRows:0,explicitReferralSelectorRows:0,otherProvenRows:0}
+      const details:any[]=[]
+      for(const r of byWallet.values()){
+        const p=r.payload,proven=p?.globals?.provenRewardRows
+        if(p?.kind!=='verified_discovery_results'||!evmAddress(p?.wallet)||
+          !Array.isArray(proven)||proven.length>2000){summary.invalidSnapshots++;continue}
+        const item={ordinal:details.length+1,provenRows:0,bonusSelectorRows:0,
+          explicitReferralSelectorRows:0,otherProvenRows:0}
+        for(const row of proven){
+          item.provenRows++
+          if(verificationCore.manualBonusEvidenceForClaim(row))item.bonusSelectorRows++
+          else if(verificationCore.knownClaimMethodIntent(row?.selector)==='referral')
+            item.explicitReferralSelectorRows++
+          else item.otherProvenRows++
+        }
+        summary.wallets++;summary.provenRows+=item.provenRows
+        summary.bonusSelectorRows+=item.bonusSelectorRows
+        summary.explicitReferralSelectorRows+=item.explicitReferralSelectorRows
+        summary.otherProvenRows+=item.otherProvenRows
+        details.push(item)
+      }
+      return reply({ok:true,mode,day:dayCH(),summary,details,
+        bonusCoverageVerified:false,referralCoverageVerified:false,
+        classificationCommitted:false,persisted:false,
+        notice:'Read-only manual bonus and explicit referral selectors against cached proven payout rows. Other rows remain unresolved. No Step-5 reference/path verification, independent payout proof, scan completeness, RPC, writes or cron.'})
     }
     if(mode==='historical-manual-reward-parity'){
       // Run existing manual Step-4 stake/top-up proof selectors against the
