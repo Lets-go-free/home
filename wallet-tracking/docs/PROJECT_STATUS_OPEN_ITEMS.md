@@ -938,3 +938,7 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Stake/Unstake-Intent und der verifizierte TLN-Rebound-Ausschluss werden im Browser und Edge über dieselbe pure Funktion geprüft. Technische Receipt-Evidenz hält gegebenenfalls die Anzahl tatsächlicher Principal-Bewegungen zum registrierten Staking-Contract fest.
 - **Nicht erledigt:** Neues Lot und exakte Lockdauer werden weiterhin nur durch die vorhandene manuelle Discovery samt Token/LP-Verifikation und On-chain-Lifecycle-/Storage-Proof ermittelt; Browser-Step-3 und Referral-Engine sind noch nicht autonom portiert. Keine automatische Reward-Commit-Freigabe.
 
+### Phase 9.49 – Browser-Step-2-Unstake-Lot-Zuordnung gemeinsam mit Server (20261122-103126)
+- Die manuelle sekundäre Regel für Unstake zu genau einer offenen Lot-Position auf demselben Staking-/Entry-Contract ist als geteilter Core extrahiert. Der Server speichert den Kandidatenindex ausschliesslich nach erfolgreicher Receipt-Prüfung im technischen Evidence-Stage. Mehrdeutige parallele Positionen bleiben bewusst ohne Zuordnung.
+- **Offen:** Vollständige autonome Erstellung neuer Staking-Lots, ihre Asset-/LP-Beweise, Storage-Top-up-Kontinuität, Step-3-Lockduration und die Referral-Engine. Kein automatischer kanonischer Reward-Commit.
+

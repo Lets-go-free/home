@@ -501,6 +501,33 @@
     if(typeof input==='object'&&String(input?._method||'').toLowerCase()==='unstake')return 'unstake';
     return 'unknown';
   }
+  // Manual Step-2's secondary Unstake association: only one OPEN position on
+  // the exact staking/entry contract can be selected. Multiple parallel lots
+  // stay ambiguous. The caller must separately verify successful tx/receipt.
+  function manualUniqueUnstakeLotIndex(input){
+    const target=String(input?.calledContract||'').toLowerCase();
+    if(!/^0x[0-9a-f]{40}$/.test(target)||input?.intent!=='unstake')return null;
+    const atTime=Number.isFinite(input?.atTime)?input.atTime:null;
+    const atBlock=Number.isSafeInteger(input?.atBlock)?input.atBlock:null;
+    const lots=Array.isArray(input?.lots)?input.lots:[];
+    const eligible=[];
+    for(let i=0;i<lots.length;i++){
+      const lot=lots[i];if(!lot||lot.status==='closed'||Number(lot.remaining)===0)continue;
+      const staking=String(lot?.staking?.contract_address||lot?.counterparty||'').toLowerCase();
+      const entry=String(lot?.entry_contract||'').toLowerCase();
+      if(staking!==target&&entry!==target)continue;
+      const stakeTime=lot.stakeTime?Date.parse(lot.stakeTime):NaN;
+      if(atTime!==null&&Number.isFinite(stakeTime)&&atTime<stakeTime)continue;
+      const rawBlock=lot.stakeBlockHex;
+      if(atBlock!==null&&rawBlock!=null){
+        let stakeBlock;try{stakeBlock=Number(BigInt(rawBlock))}catch{return null}
+        if(!Number.isSafeInteger(stakeBlock)||atBlock<stakeBlock)continue;
+      }
+      eligible.push(i);
+      if(eligible.length>1)return null;
+    }
+    return eligible.length===1?eligible[0]:null;
+  }
   // Step-2 receipt evidence projection. Incoming mints, swaps and calls alone
   // never authorize a new staking lot or a verified reward.
   function manualPositionReceiptEvidence(input){
@@ -517,10 +544,12 @@
       /^0x[0-9a-f]+$/i.test(String(t?.amountRaw||''))&&BigInt(t.amountRaw)>0n);
     const trusted=receipt.receiptVerified===true&&receipt.knownBridge!==true&&
       String(receipt.transactionSender||'').toLowerCase()===wallet&&registry.has(called);
+    const uniqueUnstakeLotIndex=trusted?manualUniqueUnstakeLotIndex({
+      lots:input?.lots,intent,calledContract:called,atBlock:input?.block}):null;
     return {intent,knownStakingContract:registry.has(called),receiptVerified:trusted,
       principalSentToContract:trusted&&intent==='stake'?outgoing.length:0,
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
-      candidateOnly:true,positionCreated:false,durationVerified:false};
+      uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualUniqueUnstakeLotIndex});
 })(globalThis);

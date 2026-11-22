@@ -267,3 +267,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.48 · 22.11.2026 10:26:15 CET · Build 20261122-102615
 - TLN/VOW: Die exakte Browser-Step-2-Intent-Regel (`stake()`, `stake(uint256)`, `unstake()`, `unstake(uint256)`, expliziter Rebound-Ausschluss) wird über den gemeinsamen Core auch im Edge-Receipt-Stage verwendet. Empfangene Belege enthalten neu `manualPositionEvidence`; kein blindes neues Lot, keine Dauerbehauptung, keine Canonical-/Cron-Änderung. Tests: `tln-vow-manual-position-intent-948.test.mjs` und gesamte TLN-Suite. Details: `9.48-tln-vow-position-intent-parity.md`.
 
+## 9.49 · 22.11.2026 10:31:26 CET · Build 20261122-103126
+- TLN/VOW: Browser-Step-2-Fallback zur Unstake-/Lot-Zuordnung als gemeinsame `manualUniqueUnstakeLotIndex`-Regel ausgelagert und im Edge-Receipt-Stage für bestehende Positionen aktiviert. Exakter Contract-/Zeit-/Block-/Eindeutigkeitsnachweis; parallele Positionen bleiben unzugeordnet. Keine neuen Lots oder Canonical Claims, keine Änderung an Cron oder Migration. Test `tln-vow-shared-unstake-lifecycle-949.test.mjs`, gesamte TLN-Suite.
+

@@ -10554,14 +10554,17 @@ function reconcileLotsWithContractCalls(lots,calls){
   for(const call of relevant){
     const caddr=norm(call?._staking?.contract_address||call?.to||'');
     const ct=callTs(call);
-    const candidates=(lots||[]).filter(l=>{
+    const sharedIndex=window.WT_TLN_REWARD_VERIFICATION_CORE?.manualUniqueUnstakeLotIndex({
+      lots,intent:'unstake',calledContract:caddr,atTime:ct||null});
+    const fallbackCandidates=(lots||[]).filter(l=>{
       const laddr=norm(l?.staking?.contract_address||l?.counterparty||'');
       const entry=norm(l?.entry_contract||'');
       const st=l?.stakeTime?new Date(l.stakeTime).getTime():null;
       return l.status!=='closed' && (laddr===caddr||entry===caddr) && (!ct||!st||ct>=st);
     });
-    if(candidates.length===1){
-      const lot=candidates[0];
+    const lot=sharedIndex===undefined?(fallbackCandidates.length===1?fallbackCandidates[0]:null):
+      (sharedIndex===null?null:lots[sharedIndex]);
+    if(lot){
       lot.status='closed';lot.remaining=0;
       lot.unstakeTime=call.metadata?.blockTimestamp||null;
       lot.unstakeTx=call.hash||null;
