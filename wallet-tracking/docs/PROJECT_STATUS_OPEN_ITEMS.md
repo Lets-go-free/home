@@ -1056,3 +1056,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - `referral-claim-finalize` schreibt nur bei ausdrücklichem `commit:true` künftig zusätzlich den **historischen On-Chain-Blockzeitpunkt** via begrenztem Alchemy-Block-RPC, den **Nettozufluss** in Raw-Einheiten und den belegten Staking-Contract. Kein Commit bei fehlendem Zeitnachweis. Migrationsdatei `20261122215505_tln_vow_referral_block_timestamp_969.sql` erforderlich. Vorhandene 9.68-Ledger-Zeilen ohne Zeitstempel werden nicht mit heutigen Zeitpunkten gefüllt oder angezeigt.
 - Der automatische 5-Minuten-Scanner schreibt weiterhin nur Belege; Tages-Reward-Cron **inaktiv**. Vollständige automatische Bonus-/indirekte Claims und historische/walletweite Abdeckung offen. `docs/releases/9.69-tln-vow-referral-ledger-overview.md`.
 
+### Phase 9.70 – Staking-Zähler im Hellmodus lesbar (22.11.2026)
+
+- Die Staking-Übersicht verwendet für «x Position(en) gefunden» die aktuelle Theme-Textfarbe statt hart codiertem hellen Blau; CSS-URL im `index.html` für eine sichere Cache-Aktualisierung geändert. Hell-/Dunkelmodus ohne Änderung der Staking-Daten. Nur Frontend-Update, kein SQL, kein Edge-Deployment. `docs/releases/9.70-tln-vow-staking-count-contrast.md`.
+- Die TLN/VOW-Rewards-Automatik bleibt unabhängig davon offen; der tägliche Job ist weiterhin inaktiv.
+

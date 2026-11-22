@@ -1,3 +1,6 @@
+## 9.70 · 22.11.2026 22:05:23 CET · Build 20261122-220523
+- Staking-Zähler «x Position(en) gefunden» verwendet neu die Theme-Schriftfarbe `var(--text)` statt des fest verdrahteten sehr hellen `#d8e9ff`. Dadurch kontrastreich im Hellmodus und weiterhin hell im Dunkelmodus. CSS-Cache-Busting aktualisiert. Nur UI, kein SQL/Edge/Cron. `9.70-tln-vow-staking-count-contrast.md`.
+
 ## 9.69 · 22.11.2026 21:58:14 CET · Build 20261122-215814
 - Die TLN/VOW-Referral-Übersicht lädt neue, owner-isolierte und zeitlich belegte Ledger-Claims DB-only zu den bisherigen manuellen Discovery-Snapshots und entfernt Duplikate pro Tx/Token/Wallet. Netto-Mengen und echte historische Block-Zeitstempel werden verwendet. 9.68-Finalizer schreibt bei explizitem Commit künftig `wallet_net_raw` sowie nach begrenztem Alchemy-Block-RPC den echten `block_timestamp`; ohne Zeitnachweis kein Commit. Alte Aggregate ohne Einzeltransaktionen werden nicht vermischt. Kein Cron oder automatischer Claim-Commit. `9.69-tln-vow-referral-ledger-overview.md`.
 
