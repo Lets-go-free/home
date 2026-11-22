@@ -1061,3 +1061,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Die Staking-Übersicht verwendet für «x Position(en) gefunden» die aktuelle Theme-Textfarbe statt hart codiertem hellen Blau; CSS-URL im `index.html` für eine sichere Cache-Aktualisierung geändert. Hell-/Dunkelmodus ohne Änderung der Staking-Daten. Nur Frontend-Update, kein SQL, kein Edge-Deployment. `docs/releases/9.70-tln-vow-staking-count-contrast.md`.
 - Die TLN/VOW-Rewards-Automatik bleibt unabhängig davon offen; der tägliche Job ist weiterhin inaktiv.
 
+### Phase 9.71 – Geschützter Bonus-Claim-Finalizer (22.11.2026)
+
+- Neuer `daily-bonus-claim-cycle` nutzt den bestehenden gemeinsamen Browser-/Edge-Selektor für `claimBonus(address)` und `claimBonus()` plus receipt-verifizierte Auszahlung; isolierter Ledger mit Besitzer-RLS, historischer Zeit und Idempotenz. Default `commit:false` (read-only). Ohne SQL-Migration keine Commit-Nutzung.
+- Weiter offen: positives Live-Beispiel, Bonus-Ledger in der UI anzeigen, übrige indirekte Bonus-/Reward-Pfade und nachgewiesene historische Vollständigkeit. **Täglicher Reward-Cron bleibt inaktiv.** Siehe `docs/releases/9.71-tln-vow-bonus-claim-finalizer.md`.
+

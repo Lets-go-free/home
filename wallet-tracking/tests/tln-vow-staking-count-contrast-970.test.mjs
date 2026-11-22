@@ -10,5 +10,5 @@ assert.match(rule,/background:var\(--accent-soft\)/);
 assert.match(rule,/border:1px solid/);
 assert.ok(html.includes('tln-vow-discovery.css?v=20261122-220523'),
   'refresh the stylesheet URL to bypass cached light-mode rule');
-assert.ok(html.includes('window.APP_VERSION="9.70"'));
+assert.ok(Number(html.match(/window\.APP_VERSION="([0-9.]+)"/)?.[1])>=9.70);
 console.log('9.70: staking badge uses theme text color, old light-on-light removed, cache busted');
