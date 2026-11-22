@@ -975,3 +975,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live-Abnahme nach Deployment: SQL-gestützter autorisierter Aufruf `{"mode":"cached-lot-reconstruction-preview","ordinal":2}`. Erwartete Wirkung: nur zuvor gespeicherte eindeutige Proof-Top-ups zusammenführen. Ergebnis offen.
 - Weiter offen: automatischer Import/Reklassifikation von **neuen** Staking-Ereignissen, volle Contract-/Receipt-Zuordnung von Unstakes, unabhängige historische und Referral-Coverage. Kein kanonischer Reward-Cron; vorhandene Evidence-Crons unverändert.
 
+### Phase 9.56 – Gemeinsame manuelle Unstake-Zuordnung (22.11.2026)
+
+- Live 9.55, Request 8665, `ordinal=2`: 4 Rohereignisse, 2 Raw-Lots, 1 gespeicherter verifizierter Top-up zur 1 finalen Position normalisiert, `stakeHashSetMatches=true`, keine Stake-Hash-Abweichungen; 2 rohe Unstake-Routing-Ereignisse noch diagnostisch. Die bestehende gespeicherte Proof-Evidenz wurde dabei **nicht** unabhängig erneut verifiziert.
+- `manualReconcileUnstakeContractCalls` überträgt die vorhandenen manuellen Regeln zur LP-Rückgabe im Receipt und eindeutigen Unstake-Call-Zuordnung in den gemeinsamen Browser-/Edge-Core. Bei parallelen/mehrdeutigen Positionen kein erzwungener Abschluss.
+- Edge `cached-lot-reconstruction-preview` zeigt dafür `recordedContractCalls`, `receiptBasedUnstakeClosures`, `uniqueCallUnstakeClosures`, `ambiguousUnstakeCalls`. Live-Test nach Deploy für `ordinal=2` mit bewährtem Vault-authentifiziertem SQL-Aufruf aus 9.55.
+- Weiter offen: serverseitige **neue** unabhängige Positionsevidenz inklusive Contract-Aufruf/Receipt-Discovery, automatische verifizierte Claim-/Referral-Ermittlung und Vollständigkeitsnachweis. Der Evidence-Cron läuft; Reward-Commit-Cron bleibt gesperrt.
+

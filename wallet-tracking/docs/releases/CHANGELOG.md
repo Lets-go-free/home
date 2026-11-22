@@ -296,3 +296,10 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Keine neue Verifikation der gespeicherten Storage-Nachweise; der historische `known-topup-storage-replay` bleibt der unabhängige Archiv-RPC-Test. Nicht zugeordnete Roh-Unstakes sind ohne finale Contract-Receipt-Zuordnung keine sichere Fehlermeldung.
 - Nur read-only Edge-Preview, keine automatischen kanonischen Reward-/Referral-Buchungen und kein Reward-Commit-Cron. Browser-Regressions- und TLN/VOW-Tests bestanden.
 
+## 9.56 · 22.11.2026 11:48:40 CET · Build 20261122-114840
+
+- Die bestehende Browser-Step-2-Unstake-Zuordnung (`reconcileLotsWithContractCalls`) als reine gemeinsame Funktion `manualReconcileUnstakeContractCalls` in Browser und Edge zusammengeführt. Priorität wie bisher: erfolgreiche Contract-Tx mit echtem LP-Return in Receipt und passender Contract-/Zeit-/Principal-Beziehung; danach eindeutiger erfolgreicher Unstake-Selector auf dem exakt passenden Contract-Pfad. Parallele ununterscheidbare Lots werden nicht geschlossen.
+- Edge-Modus `cached-lot-reconstruction-preview` führt die gemeinsame Zuordnung auf gespeicherten Discovery-ContractCalls nach bereits nachgewiesener Top-up-Normalisierung aus. Ausgewiesen werden Anzahl gespeicherter ContractCalls, LP-Receipt-Closures, eindeutiger Unstake-Call-Closures und nicht eindeutige Unstake-Calls.
+- Die diagnostischen ursprünglichen LP-Unstake-Rohereignisse bleiben separat sichtbar. Vorhandene On-chain-Evidenz wird im Cache-Replay nicht neu unabhängig geprüft; keine eigenständige neue Discovery, neue Lots, Reward-/Referral-Claims, Cursor- oder Cache-Schreibzugriffe, kein Reward-Commit-Cron.
+- Tests: neuer Mehrfachpositionen-/LP-Return-/Pfad-Regressionstest und komplette TLN/VOW-Testserie bestanden.
+

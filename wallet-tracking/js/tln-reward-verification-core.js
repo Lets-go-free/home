@@ -686,6 +686,70 @@
     return {lots:lots.filter(l=>byHash.has(String(l?.stakeTx||'').toLowerCase())),merged,missingProof,ambiguous,
       historicalProofIndependentlyReplayed:false};
   }
+  // Existing manual Step-2 contract/receipt unstake reconciliation. Only
+  // successful calls and real LP returns on the exact contract path may close
+  // a position; fallback selector path requires exactly one open matching lot.
+  function manualReconcileUnstakeContractCalls(lots,calls,wallet){
+    const norm=v=>String(v||'').toLowerCase();
+    const address=norm(wallet),usedCalls=Array.isArray(calls)?calls:[];
+    const time=c=>{const v=c?.metadata?.blockTimestamp,n=v?Date.parse(v):NaN;return Number.isFinite(n)?n:null};
+    const target=c=>norm(c?._staking?.contract_address||c?.to);
+    const paths=l=>new Set([norm(l?.staking?.contract_address||l?.counterparty),norm(l?.entry_contract)].filter(Boolean));
+    const amount=(raw,dec)=>{
+      try{
+        const n=BigInt(raw),d=Number(dec);
+        if(!Number.isSafeInteger(d)||d<0||d>80)return null;
+        const base=10n**BigInt(d),whole=n/base,frac=n%base;
+        return Number(whole)+Number(frac)/Number(base);
+      }catch{return null}
+    };
+    const add=(l,item)=>{
+      l.transactions=l.transactions||[];
+      if(item?.hash&&!l.transactions.some(x=>x.hash===item.hash&&x.kind===item.kind))l.transactions.push(item);
+    };
+    const close=(l,c,reason,ret=null)=>{
+      l.status='closed';l.remaining=0;l.unstakeTime=c.metadata?.blockTimestamp||null;
+      l.unstakeTx=c.hash||null;l.unstakeBlockHex=c._blockNumber!=null?'0x'+Number(c._blockNumber).toString(16):null;
+      l.unstakeEvidence=reason;l.unstakeSelector=c._selector||null;
+      l.unstakeArg=c._uintArg==null?null:String(c._uintArg);
+      l.unstakeEntryContract=norm(c.to||c?._staking?.contract_address);
+      if(ret)l.unstakeAmountRaw=String(ret.amountRaw);
+      add(l,{kind:'Unstake',hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
+        selector:c._selector||null,method:c._method||'Unstake',source:ret?'Contract-Receipt':'Contract-Call'});
+    };
+    const sorted=usedCalls.filter(c=>c?._success!==false).sort((a,b)=>(time(a)||0)-(time(b)||0));
+    let receiptClosures=0,uniqueCallClosures=0,ambiguousCalls=0;
+    for(const c of sorted){
+      const matches=[],at=time(c),called=target(c);
+      for(const l of lots||[]){
+        if(l.status==='closed')continue;
+        const st=l.stakeTime?Date.parse(l.stakeTime):null;
+        if(at&&st&&at<st)continue;
+        if(norm(c?.hash)&&norm(c.hash)===norm(l.stakeTx))continue;
+        if(called&&paths(l).size&&!paths(l).has(called))continue;
+        const asset=norm(l?.pair_address||l?.pair?.address);
+        const ret=(c?._erc20Transfers||[]).find(x=>norm(x?.token)===asset&&norm(x?.to)===address);
+        if(!ret||ret.amountRaw==null)continue;
+        const returned=amount(ret.amountRaw,l?.pair?.decimals??18),principal=Number(l?.original||l?.remaining||0);
+        if(!Number.isFinite(returned)||returned<=0||!Number.isFinite(principal)||principal<=0)continue;
+        const diff=Math.abs(returned-principal),tol=Math.max(1e-9,Math.abs(principal)*1e-8);
+        matches.push({l,ret,returned,principal,diff,exact:diff<=tol});
+      }
+      if(!matches.length)continue;
+      matches.sort((a,b)=>Number(b.exact)-Number(a.exact)||a.diff-b.diff);
+      const best=matches[0];
+      if(!best.exact){const ratio=best.returned/best.principal;if(ratio<0.99999999||ratio>1.00000001)continue}
+      close(best.l,c,'lp_return_in_receipt',best.ret);
+      c._method='Unstake (LP-Rückgabe erkannt)';receiptClosures++;
+    }
+    for(const c of sorted){
+      if(String(c?._method||'').toLowerCase()!=='unstake')continue;
+      const index=manualUniqueUnstakeLotIndex({lots,intent:'unstake',calledContract:target(c),atTime:time(c)});
+      if(index===null){ambiguousCalls++;continue}
+      close(lots[index],c,'successful_contract_call');uniqueCallClosures++;
+    }
+    return {lots,receiptClosures,uniqueCallClosures,ambiguousCalls};
+  }
   // Exact Step-2/3 on-chain storage-continuity verdict for two stake records.
   // Inputs must already carry independently fetched pre/stake storage states;
   // this function does NO RPC and never treats same contract/time as proof.
@@ -745,5 +809,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);

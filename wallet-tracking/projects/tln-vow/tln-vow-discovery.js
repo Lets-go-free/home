@@ -10501,6 +10501,11 @@ function callTs(call){
   return Number.isFinite(n)?n:null;
 }
 function reconcileLotsWithContractCalls(lots,calls){
+  const shared=window.WT_TLN_REWARD_VERIFICATION_CORE?.manualReconcileUnstakeContractCalls;
+  if(typeof shared==='function'){
+    shared(lots,calls,CURRENT_WALLET);
+    return lots;
+  }
   const sorted=[...(calls||[])].filter(c=>c._success!==false).sort((a,b)=>(callTs(a)||0)-(callTs(b)||0));
   const amountForReturn=(ret,lot)=>{
     if(ret?.amountRaw==null)return null;
