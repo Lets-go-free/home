@@ -5,7 +5,9 @@ const edge=fs.readFileSync(new URL('supabase/functions/tln-vow-reward-refresh/in
 const cron=fs.readFileSync(new URL('supabase/migrations/20261122115628_tln_vow_direct_claim_daily_disabled_957.sql',base),'utf8');
 assert.ok(edge.includes("mode==='direct-claim-finalize'||mode==='daily-direct-claim-cycle'"));
 assert.ok(edge.includes("verificationCore.verifiedDirectStakingClaim({wallet,hash,receipt,"));
-assert.ok(edge.includes('if(daily&&(receiptRows.data||[]).length>200)'));
+assert.ok(edge.includes('const batchSize=200,maxDailyPages=20'));
+assert.ok(edge.includes('if(daily&&!allPagesComplete)'));
+assert.ok(edge.includes('receiptInventoryComplete:daily?allPagesComplete'));
 assert.ok(edge.includes('if(commit&&eligible.length)'));
 assert.ok(edge.includes('dryRun:!commit'));
 assert.ok(cron.includes('perform cron.alter_job(v_jobid, active := false)'));

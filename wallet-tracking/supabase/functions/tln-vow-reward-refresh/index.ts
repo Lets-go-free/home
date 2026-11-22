@@ -2153,20 +2153,36 @@ Deno.serve(async (req) => {
       const offset=body?.offset??0
       if(!Number.isSafeInteger(offset)||offset<0||offset>1000000||(daily&&offset!==0))
         return reply({ok:false,mode,error:'offset must be an integer from 0 to 1000000'},400)
-      const receiptRows=await sb.from('tln_vow_reward_receipt_stage')
-        .select('user_id,wallet_id,chain_key,tx_hash,block_number,evidence')
-        .eq('chain_key','bsc').order('created_at',{ascending:true}).order('tx_hash',{ascending:true})
-        .range(offset,offset+(daily?200:199))
-      if(receiptRows.error)return reply({ok:false,mode,error:'Receipt staging unavailable'},503)
-      if(daily&&(receiptRows.data||[]).length>200)
-        return reply({ok:false,mode,error:'More than 200 receipts: daily batch requires paginated worker before activation; no claims saved',persisted:false},409)
+      // Daily runs must inspect EVERY staged page before any canonical write.
+      // Offset-based manual finalization retains its existing 200-row behavior.
+      // Stable ordering makes pagination deterministic even for equal timestamps.
+      const stagedReceipts:any[]=[]
+      const batchSize=200,maxDailyPages=20
+      let allPagesComplete=false
+      for(let page=0;page<(daily?maxDailyPages+1:1);page++){
+        const start=daily?page*batchSize:offset
+        const receiptRows=await sb.from('tln_vow_reward_receipt_stage')
+          .select('user_id,wallet_id,chain_key,tx_hash,block_number,evidence')
+          .eq('chain_key','bsc').order('created_at',{ascending:true})
+          .order('user_id',{ascending:true}).order('wallet_id',{ascending:true})
+          .order('tx_hash',{ascending:true}).range(start,start+batchSize-1)
+        if(receiptRows.error)return reply({ok:false,mode,error:'Receipt staging unavailable; no claims saved',persisted:false},503)
+        if(daily&&page===maxDailyPages&&(receiptRows.data||[]).length>0)
+          return reply({ok:false,mode,error:'Daily receipt inventory exceeds 4000 rows; no claims saved',
+            inspectedReceipts:stagedReceipts.length,persisted:false},409)
+        stagedReceipts.push(...(receiptRows.data||[]))
+        if((receiptRows.data||[]).length<batchSize){allPagesComplete=true;break}
+      }
+      if(daily&&!allPagesComplete)
+        return reply({ok:false,mode,error:'Daily receipt inventory exceeds 4000 rows; no claims saved',
+          inspectedReceipts:stagedReceipts.length,persisted:false},409)
       const contracts=await sb.from('defi_staking_contracts').select('contract_address')
         .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
       if(contracts.error||(contracts.data||[]).some((r:any)=>!evmAddress(r.contract_address)))
         return reply({ok:false,mode,error:'Configured staking contracts invalid'},503)
       const registry=(contracts.data||[]).map((r:any)=>evmAddress(r.contract_address)!)
       const eligible:any[]=[]
-      for(const row of (receiptRows.data||[])){
+      for(const row of stagedReceipts){
         const owner=String(row.user_id)+'|'+String(row.wallet_id)
         const snapshot=byWallet.get(owner)?.payload
         const wallet=evmAddress(snapshot?.wallet),receipt=row.evidence
@@ -2192,12 +2208,13 @@ Deno.serve(async (req) => {
           onConflict:'user_id,wallet_id,chain_key,tx_hash,token_address,log_index',ignoreDuplicates:true})
         if(error)return reply({ok:false,mode,error:'Direct claim save failed; no discovery snapshot modified'},503)
       }
-      return reply({ok:true,mode,day:dayCH(),offset,nextOffset:daily?null:(receiptRows.data||[]).length===200?offset+200:null,
-        inspectedReceipts:(receiptRows.data||[]).length,eligibleDirectClaims:eligible.length,
+      return reply({ok:true,mode,day:dayCH(),offset,nextOffset:daily?null:stagedReceipts.length===200?offset+200:null,
+        inspectedReceipts:stagedReceipts.length,receiptInventoryComplete:daily?allPagesComplete:stagedReceipts.length<200,
+        eligibleDirectClaims:eligible.length,
         canonicalDirectClaimsCommitted:commit&&eligible.length>0,
-        dryRun:!commit,completeReceiptBatch:daily?true:(receiptRows.data||[]).length<200,
+        dryRun:!commit,completeReceiptBatch:daily?allPagesComplete:stagedReceipts.length<200,
         referralClassificationCompleted:false,fullRewardCoverageVerified:false,
-        notice:'Existing strict shared direct staking-claim rule only. Daily mode is read-only unless explicitly commit=true; fails closed above 200 staged receipts. No indirect, bonus or referral claims and no historical completeness certification.'})
+        notice:'Existing strict shared direct staking-claim rule only. Daily mode scans up to 4000 staged receipts, fails closed on incomplete inventory and is read-only unless commit=true. No indirect, bonus or referral claims and no historical completeness certification.'})
     }
     if(mode==='delta-receipt-verify'){
       const staged:any[]=[],verified:any[]=[]

@@ -1,3 +1,6 @@
+## 9.66 · 22.11.2026 21:31:16 CET · Build 20261122-213116
+- Der bestehende direkte Claim-Finalizer lädt beim Tageslauf die gesamte Receipt-Evidence in stabil sortierten Seiten à 200 bis zu 4'000 Einträgen; bei Überschreitung oder Ladefehler erfolgt **kein** Claim-Commit. Die gemeinsame manuelle strikte Direct-Staking-Claim-Regel und der idempotente Ledger bleiben unverändert. Bonus/Referral bleiben separat; Tages-Cron weiter inaktiv. `9.66-tln-vow-daily-claim-pagination.md`.
+
 ## 9.65 · 22.11.2026 21:24:18 CET · Build 20261122-212418
 - Einmaliger anonymer read-only historischer Parent-RPC-Regressionstest: eine verifizierte gespeicherte SmartNode-Kante wird über denselben Getter-/Join-Fallback live verglichen. Keine Reward- oder Cache-Schreibzugriffe, kein Cron. `9.65-tln-vow-smartnode-parent-rpc-check.md`.
 
@@ -342,5 +345,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Der aktive Edge-Receipt-Evidence-Pfad trennt bereits anderweitig receipt-geprüfte explizite `bonus`-Claims und `referral`-Claims/Referral-State-Änderungen in eigene **Kandidatenfelder**, inklusive Zähler `bonusClaimCandidates` und `referralClaimCandidates` in den 5-Minuten-Jobantworten.
 - Die Klassifikation basiert weiterhin auf der bekannten gemeinsamen `classifyExplicitClaimReceipt`-/`classifyStateDeltaReceipt`-Prüfung. Keine Auszahlung und keine finale Bonus-/Referral-Claim-Buchung; Kandidaten sind ohne weitere vollständige Positions-/Referenzprüfung nicht kanonisch.
 - Keine SQL-/Cron-Änderung, kein neuer Scanner, keine historischen Daten neu bewertet. Direct-Claim-Tagescron bleibt inaktiv. Alle TLN/VOW-Regressionstests bestanden.
+
 
 

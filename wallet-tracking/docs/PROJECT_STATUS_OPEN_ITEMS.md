@@ -1033,3 +1033,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Nach Installation nur Edge `tln-vow-reward-refresh` deployen; bestehende 5-Minuten-Jobs rufen die aktualisierte Funktion automatisch auf. Bei derzeit fehlenden neuen Events dürfen Counts weiterhin 0 sein. Kein neuer Cron und keine SQL-Migration nötig.
 - Weiter offen: indirekte Rewards/Bonus-/Referral-Candidate-Finalisierung nach manuellen Nachweisregeln, historischer Vollständigkeitsnachweis, alle verschlüsselten Wallets. `tln-vow-direct-claims-daily` unverändert INAKTIV.
 
+### Phase 9.66 – Vollständige Pagination für täglichen Direct-Claim-Finalizer (22.11.2026)
+
+- `daily-direct-claim-cycle` liest nun alle bestehenden `tln_vow_reward_receipt_stage`-Einträge in stabil sortierten 200er-Seiten, derzeit bis zu 4'000 pro Tagesaufruf. Überlauf oder Datenbankfehler beendet **vor** einem Ledger-Write mit Fehler. Die identische, im Browser geteilte `verifiedDirectStakingClaim`-Regel bleibt unverändert.
+- `{"mode":"daily-direct-claim-cycle"}` ist weiterhin rein lesend. Der bereits installierte Cron bleibt **inaktiv**; keine Aktivierung durch dieses Release. Explizites `commit:true` würde ausschliesslich separat belegte direkte Staking-Claims idempotent speichern, keine Browser-Discovery-Ergebnisse verändern.
+- Offen: indirekte, Bonus-, Mint- und Referral-Rewards vollständig kanonisch zuordnen sowie lückenlose historische Blockchain- und Wallet-Abdeckung beweisen. Diese Änderung allein vervollständigt den täglichen TLN/VOW-Reward-Job nicht. `docs/releases/9.66-tln-vow-daily-claim-pagination.md`.
+
