@@ -5,8 +5,8 @@ assert.ok(source.includes('async function cachedReferralPathEvidence(sb:any,send
 assert.ok(source.includes('for(let depth=1;depth<=20;depth++)'));
 assert.ok(source.includes(".from('tln_vow_smartnode_graph_cache')"));
 assert.ok(source.includes(".from('tln_vow_identity_global_cache')"));
-assert.ok(source.includes("reason:'missing_or_ambiguous_parent'"));
-assert.ok(source.includes("reason:'identity_missing_or_ambiguous'"));
+assert.ok(source.includes("reason:'ambiguous_parent'"));
+assert.ok(source.includes("reason:'identity_ambiguous'"));
 assert.ok(source.includes("reason:'cycle'"));
 assert.ok(source.includes('referralMintPathVerifiedCount:'));
 assert.ok(source.includes('referralMintPathVerified+=receipts.reduce('));

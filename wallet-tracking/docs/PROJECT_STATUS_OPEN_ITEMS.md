@@ -996,6 +996,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live-Test nach Edge-Deployment: autorisierter Aufruf `{"mode":"historical-manual-reward-parity"}`. Kein Commitment, keine neuen Claims, kein RPC. Abweichungen zuerst am bestehenden manuellen Snapshot auflösen.
 - Weiter offen: vollständige automatisierte Step-4-Flow-/Receipt-/Bonus-Rewards und Step-5-Referral-Klassifikation, historischer unabhängiger Vollständigkeitsbeleg sowie alle verschlüsselten Wallets. Tages-Direct-Claim-Cron 9.57 bleibt INAKTIV.
 
+### Phase 9.64 – SmartNode-Getter-/Join-Fallback für Referral-Kandidaten (22.11.2026)
+
+- Der bestehende 5-Minuten-Receipt-Evidence-Pfad verwendet bei einem bereits belegten Referral-Mint und fehlendem Parent im globalen Graph jetzt die neun **identischen manuellen** `referrer/sponsor/upline/parent/inviter`-Getter, anschliessend den begrenzten historischen Alchemy-Index für `SmartNode.join(address)`. Fehlende TLN-IDs werden via `nodeIdOf(address)` gegen denselben verifizierten SmartNode-Contract gelesen. Kein neuer Klassifizierungsalgorithmus.
+- Nur vollständig belegte, zyklenfreie Pfade innerhalb maximal 20 Levels werden als `referralMintPathVerified` ins vorhandene Receipt-Evidence-Staging übernommen. Fallback maximal 10 Join-Seiten, begrenztes RPC-/Zeitbudget; bei unvollständigem/fehlerhaftem Pfad kein Nachweis und kein Claim. On-chain-Fallback schreibt keine globalen Caches. Keine Cron-/SQL-Änderung, täglicher Reward-Cron inaktiv. Live-Tests bei künftigen tatsächlichen Referral-Mints ausstehend. `docs/releases/9.64-tln-vow-onchain-referral-fallback.md`.
+
 ### Phase 9.63 – SmartNode-Upline und Identitäten für Referral-Kandidaten (22.11.2026)
 
 - Bereits starke Referral-Mint-Kandidaten aus dem bestehenden Receipt-Evidence-Staging erhalten jetzt automatisch eine **maximal 20-stufige**, gegen den verifizierten globalen SmartNode-Graph und den globalen TLN-Identity-Cache geprüfte Pfadzuordnung. Nur bei eindeutiger Parent-Kette zum untersuchten Wallet, verifiziertem Cache-Stand und eindeutig verifizierten TLN-IDs für sämtliche Pfad-Wallets wird `referralPathVerified=true` samt Level gespeichert. Fehlende/mehrdeutige/Cycle/Cachefehler bleiben `false`; keine Vermutung und keine Claim-Buchung.

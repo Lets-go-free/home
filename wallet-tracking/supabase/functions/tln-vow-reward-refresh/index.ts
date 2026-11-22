@@ -1442,12 +1442,87 @@ async function probeHistoricalRewardState(wallet:string,receipt:any,block:number
   }
   return {attempted:true,paired,deltas}
 }
+const SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b'
+const SMARTNODE_PARENT_GETTERS=[
+  'referrerOf(address)','getReferrer(address)','referrer(address)','referrers(address)',
+  'sponsorOf(address)','sponsor(address)','upline(address)','parent(address)','inviter(address)'
+]
+const SMARTNODE_JOIN_SELECTOR=verificationCore.keccakSelector('join(address)')
+async function smartNodeRpc(method:string,params:any[]){
+  if(!ALCHEMY_API_KEY)throw new Error('SmartNode RPC unavailable')
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3500)
+  try{
+    const response=await fetch(`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`,
+      {method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+        body:JSON.stringify({jsonrpc:'2.0',id:74,method,params})})
+    if(!response.ok)throw new Error('SmartNode RPC HTTP failure')
+    const body=await response.json()
+    if(body?.error||body?.result===undefined)throw new Error('SmartNode RPC invalid response')
+    return body.result
+  }finally{clearTimeout(timer)}
+}
+async function onchainSmartNodeParent(wallet:string,deadline:number):Promise<{
+  parent:string|null;source?:string;hash?:string|null;reason?:string
+}>{
+  // Same ordered nine direct parent getters and historical join fallback as
+  // manual Step-5; never accept an empty/failed response as a zero parent.
+  for(const signature of SMARTNODE_PARENT_GETTERS){
+    if(Date.now()>deadline)return {parent:null,reason:'time_budget'}
+    try{
+      const result=await smartNodeRpc('eth_call',[{to:SMARTNODE_CONTRACT,
+        data:verificationCore.keccakSelector(signature)+wallet.slice(2).padStart(64,'0')},'latest'])
+      const parent=typeof result==='string'&&/^0x[0-9a-f]{64}$/i.test(result)
+        ?evmAddress('0x'+result.slice(-40)):null
+      if(parent&&parent!==wallet&&parent!=='0x'+'0'.repeat(40))
+        return {parent,source:`SmartNode.${signature}`,hash:null}
+    }catch{}
+  }
+  let pageKey:string|null=null
+  const seenKeys=new Set<string>()
+  for(let page=0;page<10;page++){
+    if(Date.now()>deadline)return {parent:null,reason:'time_budget'}
+    const query:any={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,
+      toAddress:SMARTNODE_CONTRACT,category:['external'],excludeZeroValue:false,
+      withMetadata:false,maxCount:'0x3e8',order:'asc'}
+    if(pageKey)query.pageKey=pageKey
+    let result:any
+    try{result=await smartNodeRpc('alchemy_getAssetTransfers',[query])}
+    catch{return {parent:null,reason:'join_rpc_unavailable'}}
+    if(!Array.isArray(result?.transfers))return {parent:null,reason:'invalid_join_page'}
+    for(const transfer of result.transfers){
+      if(Date.now()>deadline)return {parent:null,reason:'time_budget'}
+      const hash=typeof transfer?.hash==='string'&&/^0x[0-9a-f]{64}$/i.test(transfer.hash)
+        ?transfer.hash.toLowerCase():null
+      if(!hash||evmAddress(transfer?.from)!==wallet||evmAddress(transfer?.to)!==SMARTNODE_CONTRACT)
+        return {parent:null,reason:'invalid_join_transfer'}
+      let tx:any
+      try{tx=await smartNodeRpc('eth_getTransactionByHash',[hash])}
+      catch{return {parent:null,reason:'join_tx_unavailable'}}
+      if(String(tx?.hash||'').toLowerCase()!==hash||evmAddress(tx?.from)!==wallet||
+        evmAddress(tx?.to)!==SMARTNODE_CONTRACT)return {parent:null,reason:'join_tx_mismatch'}
+      const input=String(tx?.input||'').toLowerCase()
+      if(input.slice(0,10)!==SMARTNODE_JOIN_SELECTOR)continue
+      const word=input.slice(10,74)
+      if(!/^[0-9a-f]{64}$/.test(word))continue
+      const parent=evmAddress('0x'+word.slice(-40))
+      if(parent&&parent!==wallet&&parent!=='0x'+'0'.repeat(40))
+        return {parent,source:'SmartNode.join(address)',hash}
+    }
+    const next=result.pageKey
+    if(!next)return {parent:null,reason:'no_onchain_parent'}
+    if(typeof next!=='string'||next.length>2000||seenKeys.has(next))
+      return {parent:null,reason:'incomplete_join_pagination'}
+    seenKeys.add(next);pageKey=next
+  }
+  return {parent:null,reason:'join_page_budget'}
+}
 // Cache-first part of the manual SmartNode Upline traversal (max 20 levels).
 // Missing global edges/identities do not establish a negative or positive level.
 async function cachedReferralPathEvidence(sb:any,sender:string,owner:string){
   const child=evmAddress(sender),target=evmAddress(owner),path:string[]=[]
   if(!child||!target||child===target)return {verified:false,level:null,reason:'invalid_or_self'}
   const seen=new Set<string>(),proofs:any[]=[]
+  const deadline=Date.now()+16000
   let cursor=child
   for(let depth=1;depth<=20;depth++){
     if(seen.has(cursor))return {verified:false,level:null,reason:'cycle'}
@@ -1456,10 +1531,17 @@ async function cachedReferralPathEvidence(sb:any,sender:string,owner:string){
       .select('parent_wallet,join_tx_hash,verified_at')
       .eq('chain_key','bsc').eq('child_wallet',cursor).limit(2)
     if(error)return {verified:false,level:null,reason:'graph_unavailable'}
-    if(!Array.isArray(data)||data.length!==1)return {verified:false,level:null,reason:'missing_or_ambiguous_parent'}
-    const edge=data[0],parent=evmAddress(edge?.parent_wallet)
-    if(!parent||parent===cursor||!edge?.verified_at)return {verified:false,level:null,reason:'unverified_parent'}
-    proofs.push({child:cursor,parent,source:'verified_global_graph',hash:edge.join_tx_hash||null})
+    if(!Array.isArray(data)||data.length>1)return {verified:false,level:null,reason:'ambiguous_parent'}
+    const edge=data[0]||null
+    let parent=evmAddress(edge?.parent_wallet),source='verified_global_graph',hash=edge?.join_tx_hash||null
+    if(edge&&(!parent||parent===cursor||!edge.verified_at))
+      return {verified:false,level:null,reason:'unverified_parent'}
+    if(!edge){
+      const onchain=await onchainSmartNodeParent(cursor,deadline)
+      parent=onchain.parent||null;source=onchain.source||'onchain_unavailable';hash=onchain.hash||null
+      if(!parent)return {verified:false,level:null,reason:onchain.reason||'parent_unresolved'}
+    }
+    proofs.push({child:cursor,parent,source,hash})
     if(parent===target){
       path.push(parent)
       const {data:identities,error:identityError}=await sb.from('tln_vow_identity_global_cache')
@@ -1473,10 +1555,24 @@ async function cachedReferralPathEvidence(sb:any,sender:string,owner:string){
         if(!byWallet.has(address))byWallet.set(address,new Set())
         byWallet.get(address)!.add(node)
       }
-      if(path.some(w=>byWallet.get(w)?.size!==1))
-        return {verified:false,level:null,reason:'identity_missing_or_ambiguous'}
-      return {verified:true,level:depth,source:'verified_global_graph',path,proofs,
-        identityProof:'verified_global_identity_cache'}
+      if(path.some(w=>(byWallet.get(w)?.size||0)>1))
+        return {verified:false,level:null,reason:'identity_ambiguous'}
+      let onchainIdentities=0
+      for(const address of path){
+        if(byWallet.get(address)?.size===1)continue
+        if(Date.now()>deadline)return {verified:false,level:null,reason:'identity_time_budget'}
+        let raw:any
+        try{raw=await smartNodeRpc('eth_call',[{to:SMARTNODE_CONTRACT,
+          data:verificationCore.keccakSelector('nodeIdOf(address)')+address.slice(2).padStart(64,'0')},'latest'])}
+        catch{return {verified:false,level:null,reason:'identity_getter_unavailable'}}
+        if(typeof raw!=='string'||!/^0x[0-9a-f]{64}$/i.test(raw)||BigInt(raw)===0n)
+          return {verified:false,level:null,reason:'identity_unresolved'}
+        byWallet.set(address,new Set([BigInt(raw).toString()]));onchainIdentities++
+      }
+      return {verified:true,level:depth,source:proofs.some(p=>p.source!=='verified_global_graph')
+        ?'cache_plus_onchain':'verified_global_graph',path,proofs,
+        identityProof:onchainIdentities?'global_cache_plus_onchain_getter':'verified_global_identity_cache',
+        onchainIdentities}
     }
     if(seen.has(parent))return {verified:false,level:null,reason:'cycle'}
     cursor=parent
