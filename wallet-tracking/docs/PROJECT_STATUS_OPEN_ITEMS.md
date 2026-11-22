@@ -956,3 +956,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - **Live-Abnahme offen:** Den neuen Modus gegen den bekannten historischen Stake testen und Root/Offset mit dem Browser-Nachweis vergleichen.
 - **Weiter offen:** Neue Stake-Transaktionen autonom zu neuen geprüften Lots verbinden, aus unbekanntem Root den gesamten Struct-/Duration-Strict-Proof ausführen, volle Referral-Zuordnung und kanonische tägliche Reward-Automatik. Bestehende 5-Minuten-Cronjobs bleiben technische Evidence-Jobs.
 
+### Phase 9.53 – Neue verifizierte Stake-Receipts zur Root-Suche verbinden (20261122-112331)
+- Der Server kann jetzt technisch neue Stake-Kandidaten aus `tln_vow_reward_receipt_stage` auswählen, die noch keiner manuellen Position zugeordnet sind. Nur erfolgreiche eigenständige Stake-Receipts mit tatsächlichem Principal-Abfluss zum registrierten Contract qualifizieren; die Archive-Blockzeit und die A1/A2/B/C-Root-Erkennung werden für einen Kandidaten in einer lesenden Vorschau zusammengeführt.
+- **Live-Test offen:** Aktuell wurden bisher 0 Receipts im Stage gemeldet; falls weiter keine neuen Stakings existieren, ist `no_new_verified_stake_receipts` korrekt und kein Fehler. Ein vollständiger neuer Stake kann erst bei entsprechender realer Transaktion durchgängig geprüft werden.
+- **Offen:** Position/LP-Lot-Rekonstruktion nach dem Root-Proof, Top-up- und Unstake-Lifecycle, Duration-Strict-Proof, Referral-Engine, kanonischer Reward-Commit und vollständige verschlüsselte Wallet-Abdeckung.
+

@@ -279,3 +279,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.52 · 22.11.2026 11:14:48 CET · Build 20261122-111448
 - TLN/VOW: Browser-`archiveStorageScan`-Reihenfolge A1 (Roots 0–16), bei Bedarf A2 (17–64), B (Offsets 0–8), C (Offsets 9–16) als begrenzte serverseitige Archiv-RPC-Vorschau `known-stake-root-discovery` übernommen. Bekannter historischer Stake aus Snapshot; Mapping-Root/Timestamp-Offset werden aus echten Before-/After-Werten bestimmt. Maximal 512 Reads, keine Speicherung oder automatische Freigabe. Neues Mock-RPC-Testmuster findet Root 3/Offset 2 mit 52 historischen Reads. Keine SQL-/Cron-/Reward-Änderung.
 
+## 9.53 · 22.11.2026 11:23:31 CET · Build 20261122-112331
+- TLN/VOW: Neuer strikt read-only Modus `staged-new-stake-root-preview` verbindet neue, unabhängig verifizierte ERC20-Stake-Receipts aus dem bestehenden Stage mit der manuellen A1/A2/B/C-Archive-Root-Erkennung. Die Transaktion darf nicht bereits als Stake/Top-up/Unstake in den Discovery-Lots enthalten sein; sie muss einen erfolgreichen Receipt, registrierten Stake-Intent, Wallet-Sender und positiven Principal-Abfluss zum Staking-Contract haben. Blockzeit wird separat vom Archive-RPC gelesen. Kein neuer Lot/Reward/Claim, keine Canonical-/Cron-Änderung. Neue Regressionstests.
+

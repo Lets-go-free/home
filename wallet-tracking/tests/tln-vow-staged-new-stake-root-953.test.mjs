@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
+const root=new URL('../',import.meta.url);
+const edge=fs.readFileSync(new URL('supabase/functions/tln-vow-reward-refresh/index.ts',root),'utf8');
+const start=edge.indexOf('function stagedNewStakeCandidates('),end=edge.indexOf('\nfunction reply(',start);
+assert.ok(start>0&&end>start);
+assert.ok(edge.includes("mode==='staged-new-stake-root-preview'"));
+assert.ok(edge.includes('await archiveBlockTimestamp(c.block)'));
+assert.ok(edge.includes('await discoverKnownStakeRoot(c.wallet,c.contract,c.block,ts)'));
+const wallet='0x'+'a'.repeat(40),contract='0x'+'b'.repeat(40);
+const hash='0x'+'1'.repeat(64),known='0x'+'2'.repeat(64);
+const payload={kind:'verified_discovery_results',wallet,process:{lots:[{stakeTx:known}]}};
+const byWallet=new Map([['user|wallet',{payload}]]);
+const evidence={receiptVerified:true,knownBridge:false,calledContract:contract,
+  transactionSender:wallet,manualPositionEvidence:{intent:'stake',receiptVerified:true,principalSentToContract:1}};
+const row={user_id:'user',wallet_id:'wallet',tx_hash:hash,block_number:44871018,evidence};
+const sandbox={evmAddress:s=>/^0x[0-9a-f]{40}$/.test(String(s||''))?s:null,
+  num:n=>Number.isSafeInteger(n)&&n>=0?n:null};
+vm.runInNewContext(stripTypeScriptTypes(edge.slice(start,end)),sandbox);
+const candidates=sandbox.stagedNewStakeCandidates([row],byWallet);
+assert.equal(candidates.length,1);
+assert.equal(candidates[0].block,44871018);
+assert.equal(sandbox.stagedNewStakeCandidates([row,row],byWallet).length,1);
+assert.equal(sandbox.stagedNewStakeCandidates([{...row,tx_hash:known}],byWallet).length,0);
+assert.equal(sandbox.stagedNewStakeCandidates([{...row,evidence:{...evidence,receiptVerified:false}}],byWallet).length,0);
+assert.equal(sandbox.stagedNewStakeCandidates([{...row,evidence:{...evidence,manualPositionEvidence:{...evidence.manualPositionEvidence,intent:'unknown'}}}],byWallet).length,0);
+assert.equal(sandbox.stagedNewStakeCandidates([{...row,evidence:{...evidence,manualPositionEvidence:{...evidence.manualPositionEvidence,principalSentToContract:0}}}],byWallet).length,0);
+assert.equal(sandbox.stagedNewStakeCandidates([{...row,evidence:{...evidence,knownBridge:true}}],byWallet).length,0);
+assert.equal(sandbox.stagedNewStakeCandidates([{...row,evidence:{...evidence,transactionSender:contract}}],byWallet).length,0);
+console.log('9.53 receipt-backed new-stake root bridge: unknown tx, principal and receipt guards; no blind lots');

@@ -1,4 +1,4 @@
-// WalletTracking 9.52 – browser A1/A2/B/C archive storage-root discovery for one known stake.
+// WalletTracking 9.53 – verified new stake receipt -> archive block -> A1/A2/B/C root discovery.
 // Uses configured archive-state RPC for storage, Alchemy for transfers. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -1364,6 +1364,51 @@ async function discoverKnownStakeRoot(wallet:string,contract:string,block:number
     exactStakeTimestampVerified:detectedRoot!==null&&detectedTimestampOffset!==null,
     rootAmbiguous:roots.length!==1||timestampOffsets.length!==1}
 }
+async function archiveBlockTimestamp(block:number){
+  if(!NODEREAL_BSC_RPC_URL||!/^https:\/\//.test(NODEREAL_BSC_RPC_URL))
+    throw new Error('archive_rpc_not_configured')
+  if(!Number.isSafeInteger(block)||block<1)throw new Error('invalid_block')
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000)
+  try{
+    const response=await fetch(NODEREAL_BSC_RPC_URL,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getBlockByNumber',
+        params:['0x'+block.toString(16),false]}),signal:ctrl.signal})
+    if(!response.ok)throw new Error('archive_block_unavailable')
+    const payload=await response.json()
+    const result=payload?.result
+    if(!result||Number(BigInt(result.number||0))!==block||
+      !/^0x[0-9a-f]+$/i.test(String(result.timestamp||'')))throw new Error('archive_block_mismatch')
+    const ts=Number(BigInt(result.timestamp))
+    if(!Number.isSafeInteger(ts)||ts<1000000000)throw new Error('archive_block_timestamp_invalid')
+    return ts
+  }catch(e){if(e instanceof Error&&e.message.startsWith('archive_'))throw e
+    throw new Error('archive_block_unavailable')}
+  finally{clearTimeout(timer)}
+}
+function stagedNewStakeCandidates(rows:any[],byWallet:Map<string,any>){
+  const out:any[]=[],seen=new Set<string>()
+  for(const row of rows){
+    const owner=String(row.user_id)+'|'+String(row.wallet_id)
+    const snapshot=byWallet.get(owner)?.payload,wallet=evmAddress(snapshot?.wallet)
+    const receipt=row.evidence,hash=String(row.tx_hash||'').toLowerCase()
+    const block=num(row.block_number),contract=evmAddress(receipt?.calledContract)
+    if(snapshot?.kind!=='verified_discovery_results'||!wallet||!contract||
+      !/^0x[0-9a-f]{64}$/.test(hash)||block===null||block<1||
+      receipt?.receiptVerified!==true||receipt?.knownBridge===true||
+      receipt?.manualPositionEvidence?.intent!=='stake'||
+      receipt?.manualPositionEvidence?.receiptVerified!==true||
+      !(receipt?.manualPositionEvidence?.principalSentToContract>0)||
+      evmAddress(receipt?.transactionSender)!==wallet||seen.has(owner+'|'+hash))continue
+    const lots=Array.isArray(snapshot?.process?.lots)?snapshot.process.lots:[]
+    const alreadyKnown=lots.some((lot:any)=>[lot?.stakeTx,lot?.unstakeTx,
+      ...(Array.isArray(lot?.topUps)?lot.topUps.map((t:any)=>t?.tx):[])]
+      .some(h=>String(h||'').toLowerCase()===hash))
+    if(alreadyKnown)continue
+    seen.add(owner+'|'+hash)
+    out.push({wallet,contract,block,hash})
+  }
+  return out.sort((a,b)=>a.block-b.block||a.hash.localeCompare(b.hash))
+}
 function reply(body: unknown, code = 200) {
   return new Response(JSON.stringify(body), {status:code,headers:{'content-type':'application/json','cache-control':'no-store'}})
 }
@@ -1380,7 +1425,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1406,6 +1451,35 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='staged-new-stake-root-preview'){
+      const staged:any[]=[]
+      for(let p=0;p<20;p++){
+        const {data,error}=await sb.from('tln_vow_reward_receipt_stage')
+          .select('user_id,wallet_id,tx_hash,block_number,evidence').eq('chain_key','bsc')
+          .order('block_number',{ascending:true}).range(p*200,(p+1)*200-1)
+        if(error)return reply({ok:false,mode,error:'Verified receipt cache unavailable'},503)
+        staged.push(...(data||[]))
+        if((data||[]).length<200)break
+        if(p===19)return reply({ok:false,mode,error:'Receipt pagination incomplete'},409)
+      }
+      const eligible=stagedNewStakeCandidates(staged,byWallet)
+      if(!eligible.length)return reply({ok:true,mode,stagedReceipts:staged.length,
+        newStakeCandidates:0,status:'no_new_verified_stake_receipts',persisted:false,
+        notice:'No qualifying new stake in independently verified receipts; no speculative archive scan.'})
+      const ordinal=body?.ordinal??1
+      if(!Number.isInteger(ordinal)||ordinal<1||ordinal>eligible.length)
+        return reply({ok:false,mode,error:'ordinal_out_of_range'},400)
+      const c=eligible[ordinal-1]
+      try{
+        const ts=await archiveBlockTimestamp(c.block)
+        const result=await discoverKnownStakeRoot(c.wallet,c.contract,c.block,ts)
+        return reply({ok:true,mode,stagedReceipts:staged.length,newStakeCandidates:eligible.length,
+          ordinal,...result,transactionAndReceiptVerified:true,stakeIntentVerified:true,
+          principalTransferVerified:true,blockTimestampReadFromArchive:true,
+          newPositionCreated:false,lockDurationVerified:false,persisted:false,
+          notice:'Read-only bridge from an independently verified NEW stake receipt to manual A1/A2/B/C root discovery. Position/LP, lock, top-up and reward proof still pending.'})
+      }catch(e){return reply({ok:false,mode,error:e instanceof Error?e.message:'archive_rpc_unavailable',persisted:false},503)}
     }
     if(mode==='known-stake-root-discovery'){
       const candidates:any[]=[]
