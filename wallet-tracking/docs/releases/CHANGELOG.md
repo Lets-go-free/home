@@ -261,3 +261,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.46 · 21.11.2026 16:45:44 CET · Build 20261121-164544
 - Neue streng begrenzte, ausdrücklich aufzurufende kanonische Ledger-Verarbeitung `direct-claim-finalize` für direkte Staking-Claim-Transaktionen mit expliziter Methodensignatur, verifiziertem Receipt, genau einem positionsbezogenen Reward-Transfer ohne Kapital- oder Swap-Fluss und eindeutigem Staking-Lot. Idempotente Speicherung in neuer Service-Role-Tabelle `tln_vow_reward_direct_claims`, ohne vorhandene manuelle Ergebnisse umzuschreiben. SQL-Migration erforderlich. Cron bleibt bewusst unverändert (nur technische Evidence). `9.46-tln-vow-direct-claim-finalizer.md`.
 
+## 9.47 · 21.11.2026 22:19:14 CET · Build 20261121-221914
+- Die vorhandene, bereits manuell verifizierte Schritt-4-Regel für Rewards innerhalb derselben Stake-Transaktion wurde ohne neue Heuristik nach `js/tln-reward-verification-core.js` extrahiert. Browser und Edge greifen nun auf denselben Selector zu. Der Edge-Worker kann die vorhandene Stake-Mint-Zuordnung mit einem vollständig bestätigten Receipt und exakter Rohmenge abgleichen; nur technische Evidence, bereits im Browser verbuchte Rewards werden nicht nochmals kanonisch geschrieben. `9.47-tln-vow-manual-stake-reward-parity.md`.
+

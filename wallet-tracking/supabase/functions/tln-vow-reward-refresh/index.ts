@@ -1,4 +1,4 @@
-// WalletTracking 9.46 – opt-in strict direct staking claim finalizer.
+// WalletTracking 9.47 – unchanged manual Step-4 stake rule shared with Edge.
 // Uses the same wallet-scoped Alchemy API as manual discovery. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -156,6 +156,88 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       if(!key||seen.has(key))continue;
       seen.add(key);
       out.push({lotIndex:matches[0].lotIndex,topUp:matches[0].topUp,row});
+    }
+    return out;
+  }
+  // Exact browser Step-4 stake-transaction reward assignment, extracted from
+  // attachRewardClaimsToLots without changing its evidence or deduplication.
+  function verifiedStakeTxRewardClaims(lots,provenRows,wallet){
+    const norm=v=>String(v||'').toLowerCase(),address=norm(wallet);
+    const zero='0x'+'0'.repeat(40),out=[];
+    for(let i=0;i<(lots||[]).length;i++){
+      const lot=lots[i],stakeHash=norm(lot?.stakeTx);
+      if(!stakeHash)continue;
+      const stakeRewardRows=[];
+      for(const ev of (lot?.stakeRewardEvidence||[])){
+        stakeRewardRows.push({
+          hash:stakeHash,time:lot?.stakeTime||null,
+          block:lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,
+          token:norm(ev?.token),symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,
+          amount:Number(ev?.amount||0),from:norm(ev?.from),to:norm(ev?.to),selector:null,
+          calledContract:lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty)||null,
+          rewardProof:'verifizierte Stake-Tx + kausaler Reward-Transfer/Mint an das Wallet',
+          rewardFlowEvidence:norm(ev?.from)===zero?'Zero-Address-Mint direkt an das Wallet':'direkter Payout aus dem Staking-/Entry-System',
+          source:ev?.source||'Stake-Transaktion'
+        });
+      }
+      for(const row of (provenRows||[])){
+        if(norm(row?.hash)!==stakeHash||norm(row?.to)!==address||
+          !(Number(row?.amount||0)>0)||!norm(row?.token))continue;
+        stakeRewardRows.push(row);
+      }
+      const seen=new Set();
+      for(const ev of stakeRewardRows){
+        const amount=Number(ev?.amount||0),token=norm(ev?.token),from=norm(ev?.from),to=norm(ev?.to);
+        if(!(amount>0)||!token||to!==address)continue;
+        const key=`${stakeHash}|${token}|${from}|${to}|${amount}`;
+        if(seen.has(key))continue;
+        seen.add(key);
+        out.push({lotIndex:i,claim:{
+          hash:stakeHash,time:ev?.time||lot?.stakeTime||null,
+          block:ev?.block??(lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null),
+          token,symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,amount,from,to,
+          assignmentScope:'position',assignmentReasonCode:'verified_stake_tx_reward',positionAmbiguous:false,
+          method:from===zero?'Mint beim Stake':'Reward-Transfer beim Stake',
+          selector:ev?.selector||null,calledContract:ev?.calledContract||lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty)||null,
+          assignmentReason:'verifizierte Stake-Tx derselben Position + belegter Reward-Transfer/Mint im selben Receipt',
+          source:ev?.source||'Wallet-weiter Reward-Beweis aus vollständigem Transaction Receipt',assignmentScore:1000,
+          rewardProof:ev?.rewardProof||'verifizierte Stake-Tx + kausaler Reward-Transfer/Mint an das Wallet',
+          rewardFlowEvidence:ev?.rewardFlowEvidence||(from===zero?'Zero-Address-Mint direkt an das Wallet':'direkter Payout aus dem Staking-/Entry-System'),
+          eventType:'stake_reward',finalUnstakeReward:false,finalUnstakeRewardEvidence:null
+        }});
+      }
+    }
+    return out;
+  }
+  // Compare the existing manual Step-4 stake claims with independently
+  // verified ERC20 receipt logs. These are existing claims, not new rows.
+  function reconcileVerifiedStakeReceipt(input){
+    const norm=v=>String(v||'').toLowerCase(),wallet=norm(input?.wallet),hash=norm(input?.hash);
+    const receipt=input?.receipt||{},zero='0x'+'0'.repeat(40);
+    if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{64}$/.test(hash)||
+      receipt.receiptVerified!==true||receipt.knownBridge===true)return [];
+    const candidates=verifiedStakeTxRewardClaims(input?.lots||[],input?.provenRows||[],wallet)
+      .filter(x=>norm(x.claim.hash)===hash&&norm(x.claim.from)===zero&&norm(x.claim.to)===wallet);
+    const logs=Array.isArray(receipt.transfers)?receipt.transfers:[],out=[],seen=new Set();
+    for(const {lotIndex,claim} of candidates){
+      if(candidates.filter(x=>norm(x.claim.token)===norm(claim.token)&&
+        Number(x.claim.amount)===Number(claim.amount)).length!==1)continue;
+      const decimals=claim.decimals,amount=String(claim.amount||'');
+      if(!Number.isSafeInteger(decimals)||decimals<0||decimals>36||
+        !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount))continue;
+      const [whole,frac='']=amount.split('.');
+      if(frac.length>decimals)continue;
+      const expected=BigInt(whole)*10n**BigInt(decimals)+BigInt((frac.padEnd(decimals,'0'))||'0');
+      if(expected<=0n)continue;
+      const matches=logs.filter(l=>norm(l.token)===norm(claim.token)&&norm(l.from)===zero&&
+        norm(l.to)===wallet&&/^0x[0-9a-f]+$/i.test(String(l.amountRaw||''))&&
+        BigInt(l.amountRaw)===expected&&Number.isSafeInteger(l.logIndex));
+      if(matches.length!==1)continue;
+      const key=hash+'|'+norm(claim.token)+'|'+matches[0].logIndex;
+      if(seen.has(key))continue;
+      seen.add(key);
+      out.push({hash,token:norm(claim.token),amountRaw:expected.toString(),logIndex:matches[0].logIndex,
+        lotIndex,claimSource:'manual_verified_stake_tx_reward',alreadyInManualDiscovery:true});
     }
     return out;
   }
@@ -409,7 +491,7 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       lotStakeTx:norm(lot.stakeTx),calledContract:callTo,kind:'staking_reward',
       proof:'direct_explicit_staking_claim_with_unique_lot_and_verified_receipt'};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,knownClaimMethodIntent,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -995,6 +1077,8 @@ async function probeHistoricalRewardState(wallet:string,receipt:any,block:number
 async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any,stakingContracts:string[],block:number){
   const matches=verificationCore.reconcileVerifiedTopUpReceipt({wallet,hash,receipt,
     lots:snapshot?.process?.lots||[],provenRows:snapshot?.globals?.provenRewardRows||[]})
+  const stakeMatches=verificationCore.reconcileVerifiedStakeReceipt({wallet,hash,receipt,
+    lots:snapshot?.process?.lots||[],provenRows:snapshot?.globals?.provenRewardRows||[]})
   const newCandidates=verificationCore.discoverNewMintRewardCandidates({wallet,hash,receipt,
     calledContract:receipt.calledContract,stakingContracts,
     knownLifecycle:receipt.lifecycleLotMatches>0})
@@ -1006,7 +1090,8 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     lots:snapshot?.process?.lots||[],candidates:[...newCandidates,...claimCandidates,...stateCandidates]})
   // A matched historical proof is only a reconciliation hint: this does not
   // establish complete reward or referral coverage or create a claim.
-  return {...receipt,manualRewardProofMatches:matches,newRewardMintCandidates:newCandidates,
+  return {...receipt,manualRewardProofMatches:matches,manualStakeClaimMatches:stakeMatches,
+    manualStakeClaimMatchCount:stakeMatches.length,newRewardMintCandidates:newCandidates,
     explicitClaimCandidates:claimCandidates,explicitClaimCandidateCount:claimCandidates.length,
     stateProbeAttempted:stateProbe.attempted,stateProbePaired:stateProbe.paired,
     stateChangeCandidates:stateCandidates,stateChangeCandidateCount:stateCandidates.length,

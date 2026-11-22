@@ -9248,52 +9248,15 @@ async function attachRewardClaimsToLots(lots,calls){
   // wallet-weit in CURRENT_PROVEN_REWARD_ROWS. Deshalb werden beide Quellen vereinigt.
   // Es werden ausschließlich bereits BELEGTE Reward-Transfers mit exakt lot.stakeTx genutzt;
   // normale Lifecycle-/Underlying-Flows werden dadurch nicht geöffnet.
-  for(const lot of (lots||[])){
-    const stakeHash=String(lot?.stakeTx||'').toLowerCase();
-    if(!stakeHash)continue;
-    const stakeRewardRows=[];
-    for(const ev of (lot?.stakeRewardEvidence||[])){
-      stakeRewardRows.push({
-        hash:stakeHash,time:lot?.stakeTime||null,
-        block:lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,
-        token:norm(ev?.token||''),symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,amount:Number(ev?.amount||0),
-        from:norm(ev?.from||''),to:norm(ev?.to||''),selector:null,
-        calledContract:lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty||'')||null,
-        rewardProof:'verifizierte Stake-Tx + kausaler Reward-Transfer/Mint an das Wallet',
-        rewardFlowEvidence:norm(ev?.from||'')===ZERO_ADDRESS?'Zero-Address-Mint direkt an das Wallet':'direkter Payout aus dem Staking-/Entry-System',
-        source:ev?.source||'Stake-Transaktion'
-      });
-    }
-    for(const row of (CURRENT_PROVEN_REWARD_ROWS||[])){
-      if(String(row?.hash||'').toLowerCase()!==stakeHash)continue;
-      if(norm(row?.to||'')!==wallet)continue;
-      if(!(Number(row?.amount||0)>0)||!norm(row?.token||''))continue;
-      stakeRewardRows.push(row);
-    }
-    const seenStakeRewards=new Set();
-    for(const ev of stakeRewardRows){
-      const amount=Number(ev?.amount||0),token=norm(ev?.token||''),from=norm(ev?.from||''),to=norm(ev?.to||'');
-      if(!(amount>0)||!token||to!==wallet)continue;
-      const evKey=`${stakeHash}|${token}|${from}|${to}|${amount}`;
-      if(seenStakeRewards.has(evKey))continue;
-      seenStakeRewards.add(evKey);
-      const claim={
-        hash:stakeHash,time:ev?.time||lot?.stakeTime||null,
-        block:ev?.block??(lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null),
-        token,symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,amount,
-        from,to,
-        assignmentScope:'position',assignmentReasonCode:'verified_stake_tx_reward',positionAmbiguous:false,
-        method:from===ZERO_ADDRESS?'Mint beim Stake':'Reward-Transfer beim Stake',
-        selector:ev?.selector||null,calledContract:ev?.calledContract||lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty||'')||null,
-        assignmentReason:'verifizierte Stake-Tx derselben Position + belegter Reward-Transfer/Mint im selben Receipt',
-        source:ev?.source||'Wallet-weiter Reward-Beweis aus vollständigem Transaction Receipt',assignmentScore:1000,
-        rewardProof:ev?.rewardProof||'verifizierte Stake-Tx + kausaler Reward-Transfer/Mint an das Wallet',
-        rewardFlowEvidence:ev?.rewardFlowEvidence||(from===ZERO_ADDRESS?'Zero-Address-Mint direkt an das Wallet':'direkter Payout aus dem Staking-/Entry-System'),
-        eventType:'stake_reward',finalUnstakeReward:false,finalUnstakeRewardEvidence:null
-      };
-      const key=`${claim.hash}|${claim.token}|${claim.amount}`;
-      if(!lot.rewardClaims.some(x=>`${String(x?.hash||'').toLowerCase()}|${norm(x?.token)}|${Number(x?.amount||0)}`===key))lot.rewardClaims.push(claim);
-    }
+  // Exact same Step-4 rule, now maintained in the common browser/Edge core.
+  // No new reward heuristic is introduced by the scheduled worker.
+  const verifiedStakeClaims=globalThis.WT_TLN_REWARD_VERIFICATION_CORE.verifiedStakeTxRewardClaims(
+    lots,CURRENT_PROVEN_REWARD_ROWS,wallet);
+  for(const {lotIndex,claim} of verifiedStakeClaims){
+    const lot=lots[lotIndex];if(!lot)continue;
+    const key=`${claim.hash}|${claim.token}|${claim.amount}`;
+    if(!lot.rewardClaims.some(x=>`${String(x?.hash||'').toLowerCase()}|${norm(x?.token)}|${Number(x?.amount||0)}`===key))
+      lot.rewardClaims.push(claim);
   }
 
   // Top-ups may mint rewards during the *same* transaction without opening a
