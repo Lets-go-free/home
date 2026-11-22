@@ -105,6 +105,9 @@ let CURRENT_CLAIM_REFERENCE_RESULT=null;
 const CLAIM_REFERENCE_RUN_CACHE=new Map();
 let PROJECT_WALLET_FILTER='all';
 const PROJECT_WALLET_SNAPSHOTS=new Map();
+// Current user's independently verified, owner-only automatic referral payouts.
+// Never store them inside the manual Discovery snapshot.
+const PROJECT_REFERRAL_LEDGER=new Map();
 let PROJECT_WALLET_SNAPSHOTS_LOADING=false;
 let PROJECT_REWARD_SUMMARY_FALLBACK=null;
 let PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE='';
@@ -11649,8 +11652,7 @@ function projectReferralDataForPayload(payload){
 function projectReferralTotalsForPayload(payload){return projectReferralDataForPayload(payload).totals}
 function projectReferralRowsForPayload(payload,wallet){
   const ref=payload?.globals?.claimReferenceResult;
-  if(!ref||ref.error)return [];
-  const strong=Array.isArray(ref.strong)?ref.strong:[];
+  const strong=ref&&!ref.error&&Array.isArray(ref.strong)?ref.strong:[];
   const out=[];
   for(const r of strong){
     for(const m of (r?.mints||[])){
@@ -11670,6 +11672,30 @@ function projectReferralRowsForPayload(payload,wallet){
         mint:{...m,amountHuman:projectReferralMintHumanAmount(m)}
       });
     }
+  }
+  // Old aggregate-only references lack transaction identities. There is no
+  // safe dedupe against their totals, so never mix ledger amounts into them.
+  if(ref&&!Array.isArray(ref.strong)&&Object.keys(ref.tokenTotals||{}).length>0)return out;
+  // Add only ledger payouts absent from this wallet's verified manual Step-5
+  // strong rows. A token/transaction pair is one payout even with many logs.
+  const seen=new Set(out.map(r=>`${String(r.hash||'').toLowerCase()}|${norm(r?.mint?.token||'')}`));
+  for(const row of PROJECT_REFERRAL_LEDGER.get(norm(wallet))||[]){
+    const token=norm(row.token_address||''),hash=String(row.tx_hash||'').toLowerCase();
+    const key=`${hash}|${token}`;
+    if(seen.has(key)||!/^0x[0-9a-f]{64}$/.test(hash)||!PROJECT_REFERRAL_DECIMALS.has(token))continue;
+    const timestamp=Date.parse(row.block_timestamp||'');
+    if(!Number.isFinite(timestamp)||timestamp<=0)continue;
+    seen.add(key);
+    out.push({ownerWallet:norm(wallet),hash,timestamp:Math.floor(timestamp/1000),
+      partnerWallet:norm(row.partner_wallet||''),
+      staking:row.staking_contract?{label:'Verifizierter Staking-Contract'}:null,
+      stakingContract:norm(row.staking_contract||''),
+      lpPair:null,tlnIdentity:null,referralLevel:Number(row.referral_level)||null,
+      stakeAmountEvidence:null,stakeEvents:[],principalTransfers:[],
+      mint:{token,symbol:projectTokenSymbol(token),netRaw:String(row.wallet_net_raw||''),
+        decimals:PROJECT_REFERRAL_DECIMALS.get(token),
+        amountHuman:projectReferralMintHumanAmount({token,netRaw:row.wallet_net_raw})},
+      automaticVerified:true});
   }
   return out;
 }
@@ -11701,7 +11727,13 @@ function projectAggregateData(){
     const referralData=projectReferralDataForPayload(payload);
     for(const x of referralData.totals)projectAddTokenTotal(referralByToken,x.address,x.symbol,x.amount,x.count);
     referralClaims+=referralData.txCount;
-    referralRows.push(...projectReferralRowsForPayload(payload,wallet));
+    const mergedReferralRows=projectReferralRowsForPayload(payload,wallet);
+    const automatic=mergedReferralRows.filter(r=>r.automaticVerified===true);
+    referralClaims+=new Set(automatic.map(r=>r.hash)).size;
+    for(const row of automatic){const m=row.mint||{};
+      projectAddTokenTotal(referralByToken,m.token,m.symbol,m.amountHuman,1);
+    }
+    referralRows.push(...mergedReferralRows);
     for(const row of projectBonusRowsForPayload(payload)){
       const c=row.claim||{};projectAddTokenTotal(bonusByToken,c.token,c.symbol||c.tokenSymbol,c.amount,1);bonusClaims++;
       bonusRows.push({...row,wallet});
@@ -12175,6 +12207,42 @@ function populateProjectWalletFilter(){
   sel.innerHTML=`<option value="all">Alle meine TLN/VOW-Wallets · aggregiert</option>${tlnWallets.map(w=>`<option value="${esc(norm(w.evm_address))}">${esc(w.label)} · ${esc(short(w.evm_address))}</option>`).join('')}`;
   sel.value=[...sel.options].some(o=>o.value===current)?current:'all';PROJECT_WALLET_FILTER=sel.value;
 }
+async function loadProjectReferralLedgerCacheOnly(ownWallets=null){
+  PROJECT_REFERRAL_LEDGER.clear();
+  const own=ownWallets||tlnWallets.map(w=>({wallet:norm(w.evm_address),walletId:String(w?.id||w?.dbId||PRIVATE_WALLET_ID_BY_EVM.get(norm(w.evm_address))||'')}));
+  const byId=new Map(own.filter(x=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(x.walletId))&&
+    /^0x[0-9a-f]{40}$/.test(norm(x.wallet))).map(x=>[String(x.walletId),norm(x.wallet)]));
+  if(!currentUserId||!byId.size)return 0;
+  const rows=[],pageSize=200,maxPages=25;
+  try{
+    let complete=false;
+    for(let page=0;page<maxPages;page++){
+      const {data,error}=await sb.from('tln_vow_reward_referral_claims')
+        .select('wallet_id,tx_hash,token_address,amount_raw,wallet_net_raw,block_timestamp,partner_wallet,referral_level,staking_contract')
+        .eq('user_id',currentUserId).eq('chain_key','bsc').in('wallet_id',[...byId.keys()])
+        .order('block_number',{ascending:true}).order('tx_hash',{ascending:true})
+        .range(page*pageSize,(page+1)*pageSize-1);
+      if(error)throw error;
+      rows.push(...(data||[]));
+      if((data||[]).length<pageSize){complete=true;break;}
+    }
+    if(!complete)throw new Error('Referral-Ledger-Pagination unvollständig');
+    for(const row of rows){
+      const wallet=byId.get(String(row.wallet_id||''));
+      if(!wallet||!/^0x[0-9a-f]{64}$/i.test(String(row.tx_hash||''))||
+        !PROJECT_REFERRAL_DECIMALS.has(norm(row.token_address||''))||
+        !/^[1-9][0-9]*$/.test(String(row.wallet_net_raw||''))||
+        !Number.isFinite(Date.parse(row.block_timestamp||'')))continue;
+      if(!PROJECT_REFERRAL_LEDGER.has(wallet))PROJECT_REFERRAL_LEDGER.set(wallet,[]);
+      PROJECT_REFERRAL_LEDGER.get(wallet).push(row);
+    }
+    return [...PROJECT_REFERRAL_LEDGER.values()].reduce((n,items)=>n+items.length,0);
+  }catch(e){
+    PROJECT_REFERRAL_LEDGER.clear();
+    console.warn('TLN Referral-Ledger cache-only nicht verfügbar',e);
+    return 0;
+  }
+}
 async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
   if(PROJECT_WALLET_SNAPSHOTS_LOADING||!currentUserId)return;
   PROJECT_WALLET_SNAPSHOTS_LOADING=true;
@@ -12236,6 +12304,7 @@ async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
     if(withHistoricalValuation){
       await Promise.all([...PROJECT_WALLET_SNAPSHOTS.entries()].map(([wallet,payload])=>hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi())));
     }
+    await loadProjectReferralLedgerCacheOnly(wanted);
     log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) geladen${batched?' · private Batch-Read':''}${globalDetailHits?` · ${globalDetailHits} globaler Detailcache`:''}${edgeDetailBackfills?` · ${edgeDetailBackfills} serverseitiger Detail-Backfill`:''}.`,'ok');
   }finally{PROJECT_WALLET_SNAPSHOTS_LOADING=false;renderProjectUserView();void refreshProjectRewardSummaryFallback({force:true});}
 }
@@ -18873,6 +18942,8 @@ async function loadDashboardRewardPeriodsCacheOnly(walletAddresses=null){
   if(!uid||!own.length)return null;
   const byId=new Map(own.filter(w=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(w?.dbId||''))).map(w=>[String(w.dbId),norm(w?.evm||w?.evm_address||'')]));
   const byWallet=new Map(own.map(w=>[norm(w?.evm||w?.evm_address||''),w]));
+  if(currentUserId===uid)await loadProjectReferralLedgerCacheOnly(own.map(w=>({
+    wallet:norm(w?.evm||w?.evm_address||''),walletId:String(w?.dbId||'')})));
   const directEntries=[],lifecycleEntries=[],summaryParts=[],covered=new Set();
 
   // 1) Privater verified-discovery Snapshot des aktuellen Users bleibt die Primärquelle.

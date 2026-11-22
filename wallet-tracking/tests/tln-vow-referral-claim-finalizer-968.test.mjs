@@ -31,7 +31,11 @@ async function run({commit=false,verified=true,previous=false,alterAmount=false}
   const ctx={Deno:{env:{get:k=>({SUPABASE_URL:'https://mock.test',SUPABASE_SERVICE_ROLE_KEY:'service',
     TLN_REWARD_CRON_SECRET:'secret',ALCHEMY_API_KEY:'provider'})[k]},serve:f=>handler=f},
     createClient:()=>sb,Response,Request,TextEncoder,Date,Intl,Number,BigInt,AbortController,
-    setTimeout,clearTimeout,JSON,Map,Set,Object,console,fetch:async()=>{throw Error('No RPC expected')}};
+    setTimeout,clearTimeout,JSON,Map,Set,Object,console,fetch:async(_url,opts)=>{
+      const req=JSON.parse(opts.body);
+      assert.equal(req.method,'eth_getBlockByNumber');
+      return {ok:true,json:async()=>({result:{number:'0x7b',timestamp:'0x65800000'}})};
+    }};
   vm.runInNewContext(source,ctx);
   const response=await handler(new Request('https://mock.test',{method:'POST',
     headers:{'x-tln-reward-secret':'secret'},body:JSON.stringify({mode:'referral-claim-finalize',commit})}));
@@ -47,6 +51,9 @@ assert.equal(r.result.eligibleReferralClaims,1);
 assert.equal(r.writes.length,1);
 assert.equal(r.writes[0].name,'tln_vow_reward_referral_claims');
 assert.equal(r.writes[0].rows[0].amount_raw,'100');
+assert.equal(r.writes[0].rows[0].wallet_net_raw,'100');
+assert.equal(r.writes[0].rows[0].staking_contract,staking);
+assert.ok(/^20\d\d-/.test(r.writes[0].rows[0].block_timestamp));
 assert.equal(r.writes[0].rows[0].referral_level,2);
 assert.equal(r.writes[0].args.ignoreDuplicates,true);
 for(const opts of [{commit:true,verified:false},{commit:true,previous:true},

@@ -2210,7 +2210,7 @@ Deno.serve(async (req) => {
         if(!verdict.strong)continue
         for(const candidate of Array.isArray(receipt.referralMintCandidates)?receipt.referralMintCandidates:[]){
           const token=evmAddress(candidate?.token),path=candidate?.referralPathEvidence
-          if(candidate?.kind!=='referral_mint_strong'||!token||
+          if(candidate?.kind!=='referral_mint_strong'||!token||!evmAddress(receipt.calledContract)||
             !REFERRAL_MINT_CONTRACTS.includes(token)||candidate?.receiptVerified!==true||
             candidate?.referralPathVerified!==true||path?.verified!==true||
             !Number.isInteger(candidate?.referralLevel)||candidate.referralLevel<1||candidate.referralLevel>20||
@@ -2241,12 +2241,39 @@ Deno.serve(async (req) => {
           if(existing){skippedExisting++;continue}
           eligible.push({user_id:row.user_id,wallet_id:row.wallet_id,chain_key:'bsc',
             tx_hash:hash,token_address:token,block_number:block,amount_raw:minted.toString(),
+            wallet_net_raw:net.toString(),staking_contract:evmAddress(receipt.calledContract),
             mint_log_indexes:[...indices].sort((a:number,b:number)=>a-b),partner_wallet:sender,
             referral_level:candidate.referralLevel,
             proof_kind:'manual_step5_strong_verified_receipt_and_parent_path'})
         }
       }
       if(commit&&eligible.length){
+        // A claim without its real chain timestamp cannot safely enter
+        // month/year overview buckets. Read exact blocks only for explicitly
+        // approved candidate commits; never substitute created_at or today.
+        const blocks=[...new Set(eligible.map(r=>r.block_number))]
+        if(blocks.length>20||!ALCHEMY_API_KEY)
+          return reply({ok:false,mode,error:'On-chain timestamp proof budget unavailable; no claims saved',persisted:false},409)
+        const times=new Map<number,string>()
+        for(const height of blocks){
+          const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000)
+          try{
+            const res=await fetch(`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`,
+              {method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
+                body:JSON.stringify({jsonrpc:'2.0',id:69,method:'eth_getBlockByNumber',
+                  params:['0x'+height.toString(16),false]})})
+            if(!res.ok)throw new Error('block_rpc_unavailable')
+            const data=await res.json(),b=data?.result
+            if(!b||Number(BigInt(b.number||0))!==height)throw new Error('block_mismatch')
+            const seconds=Number(BigInt(b.timestamp||0))
+            if(!Number.isSafeInteger(seconds)||seconds<1500000000||seconds>Date.now()/1000+300)
+              throw new Error('block_timestamp_invalid')
+            times.set(height,new Date(seconds*1000).toISOString())
+          }catch{
+            return reply({ok:false,mode,error:'Verified on-chain block timestamp unavailable; no claims saved',persisted:false},503)
+          }finally{clearTimeout(timer)}
+        }
+        for(const row of eligible)row.block_timestamp=times.get(row.block_number)
         const {error}=await sb.from('tln_vow_reward_referral_claims').upsert(eligible,{
           onConflict:'user_id,wallet_id,chain_key,tx_hash,token_address',ignoreDuplicates:true})
         if(error)return reply({ok:false,mode,error:'Referral ledger unavailable; no discovery snapshots modified',persisted:false},503)

@@ -1050,3 +1050,9 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Nur explizites `commit:true` schreibt belegte Zeilen, ansonsten read-only. Weiterhin **keine automatische Aktivierung**, keine Änderung der manuellen Snapshots, keine doppelte Aggregation: der neue Ledger wird noch **nicht** in der Projekt-Reward-Übersicht angezeigt. Diese Anzeigeanbindung mit Deduplikation ist offen, ebenso historische Vollständigkeit und Bonus/indirekte Claims.
 - Installation: 9.68-SQL ausführen und Edge neu deployen. Danach `{"mode":"referral-claim-finalize"}` per bekanntem Vault-authentifiziertem SQL aufrufen; Ergebnisse prüfen. `docs/releases/9.68-tln-vow-referral-ledger-finalizer.md`.
 
+### Phase 9.69 – Referral-Ledger ohne Doppelzählung in Projektübersicht (22.11.2026)
+
+- `projects/tln-vow/tln-vow-discovery.js` lädt nun per angemeldetem User/Wallet den owner-RLS-geschützten `tln_vow_reward_referral_claims`-Ledger. Pro Wallet/Tx/Token wird ein identischer manueller `claimReferenceResult.strong`-Claim bevorzugt; nur bislang fehlende Ledger-Claims kommen in die Referrals-Detail- und Periodenübersicht. Alter Aggregat-only-Cache ohne einzelne Tx-Identitäten wird bewusst nicht mit Ledger-Daten vermischt.
+- `referral-claim-finalize` schreibt nur bei ausdrücklichem `commit:true` künftig zusätzlich den **historischen On-Chain-Blockzeitpunkt** via begrenztem Alchemy-Block-RPC, den **Nettozufluss** in Raw-Einheiten und den belegten Staking-Contract. Kein Commit bei fehlendem Zeitnachweis. Migrationsdatei `20261122215505_tln_vow_referral_block_timestamp_969.sql` erforderlich. Vorhandene 9.68-Ledger-Zeilen ohne Zeitstempel werden nicht mit heutigen Zeitpunkten gefüllt oder angezeigt.
+- Der automatische 5-Minuten-Scanner schreibt weiterhin nur Belege; Tages-Reward-Cron **inaktiv**. Vollständige automatische Bonus-/indirekte Claims und historische/walletweite Abdeckung offen. `docs/releases/9.69-tln-vow-referral-ledger-overview.md`.
+

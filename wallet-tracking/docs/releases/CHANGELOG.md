@@ -1,3 +1,6 @@
+## 9.69 · 22.11.2026 21:58:14 CET · Build 20261122-215814
+- Die TLN/VOW-Referral-Übersicht lädt neue, owner-isolierte und zeitlich belegte Ledger-Claims DB-only zu den bisherigen manuellen Discovery-Snapshots und entfernt Duplikate pro Tx/Token/Wallet. Netto-Mengen und echte historische Block-Zeitstempel werden verwendet. 9.68-Finalizer schreibt bei explizitem Commit künftig `wallet_net_raw` sowie nach begrenztem Alchemy-Block-RPC den echten `block_timestamp`; ohne Zeitnachweis kein Commit. Alte Aggregate ohne Einzeltransaktionen werden nicht vermischt. Kein Cron oder automatischer Claim-Commit. `9.69-tln-vow-referral-ledger-overview.md`.
+
 ## 9.68 · 22.11.2026 21:46:44 CET · Build 20261122-214644
 - Separater kanonischer, per Wallet/Tx/Token deduplizierter Ledger `tln_vow_reward_referral_claims` mit owner-only RLS; opt-in Edge-Finalizer `referral-claim-finalize` (standardmässig read-only) verarbeitet bestehende 9.67-Receipt-Belege. Erneute Prüfung des **gleichen** manuellen starken Step-5-Entscheids, SmartNode-Pfades und der exakten Mint-/Netto-/Log-Identität; schon im Discovery-Snapshot gespeicherte Claims werden ausgeschlossen. Keine Snapshot- oder Dashboard-Änderung, kein Cron. `9.68-tln-vow-referral-ledger-finalizer.md`.
 
