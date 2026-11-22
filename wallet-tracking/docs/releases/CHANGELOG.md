@@ -1,3 +1,6 @@
+## 9.67 · 22.11.2026 21:39:15 CET · Build 20261122-213915
+- Die laufende 5-Minuten-Receipt-Verarbeitung speichert für bereits nach **identischer manueller Step-5-Regel** als stark erkannte Referral-Mints nun die exakten, receipt-verifizierten Rohbeträge, zugehörigen eindeutigen Log-Indizes und den positiven Wallet-Nettozufluss je Token. Mehrere Mint-Logs einer Transaktion werden zusammengeführt; Duplikate, Zero-/Netto-Null und nicht verifizierte Receipts werden ausgeschlossen. Noch keine Claim-Buchung, täglicher Reward-Cron bleibt inaktiv. `9.67-tln-vow-referral-mint-exact-amounts.md`.
+
 ## 9.66 · 22.11.2026 21:31:16 CET · Build 20261122-213116
 - Der bestehende direkte Claim-Finalizer lädt beim Tageslauf die gesamte Receipt-Evidence in stabil sortierten Seiten à 200 bis zu 4'000 Einträgen; bei Überschreitung oder Ladefehler erfolgt **kein** Claim-Commit. Die gemeinsame manuelle strikte Direct-Staking-Claim-Regel und der idempotente Ledger bleiben unverändert. Bonus/Referral bleiben separat; Tages-Cron weiter inaktiv. `9.66-tln-vow-daily-claim-pagination.md`.
 

@@ -1586,10 +1586,34 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     principalTransfers:Array.from({length:Math.min(1,receipt?.referralPrincipalTransfers||0)},()=>({})),
     stakeEvents:Array.from({length:Math.min(1,receipt?.referralStakeEvents||0)},()=>({}))
   },wallet)
-  const referralMintCandidates=Array.isArray(receipt?.referralMintTokens)&&
-    receipt.referralMintTokens.length>0&&referralFinal.strong?
-    receipt.referralMintTokens.map((token:string)=>({token,kind:'referral_mint_strong',
-      storedEvidenceOnly:true})):[]
+  // The receipt verifier already established every transfer log against the
+  // chain. Preserve the exact raw payout per contract, including multi-mint
+  // receipts, before the manual Step-5 strong/path decision. This is proof
+  // metadata, NOT an additional reward classification or canonical claim.
+  const referralMintCandidates:any[]=[]
+  const zero='0x'+'0'.repeat(40)
+  if(referralFinal.strong&&Array.isArray(receipt?.referralMintTokens)&&
+      Array.isArray(receipt?.transfers)&&receipt.receiptVerified===true){
+    for(const token of receipt.referralMintTokens){
+      const mintLogs=receipt.transfers.filter((t:any)=>t?.token===token&&
+        t?.from===zero&&t?.to===wallet&&/^0x[0-9a-f]+$/i.test(String(t?.amountRaw||''))&&
+        Number.isSafeInteger(t?.logIndex)&&t.logIndex>=0)
+      if(!mintLogs.length||mintLogs.length>400)continue
+      const logIndexes=mintLogs.map((t:any)=>t.logIndex)
+      if(new Set(logIndexes).size!==logIndexes.length)continue
+      const mintAmountRaw=mintLogs.reduce((n:bigint,t:any)=>n+BigInt(t.amountRaw),0n)
+      if(mintAmountRaw<=0n)continue
+      const allTokenLogs=receipt.transfers.filter((t:any)=>t?.token===token)
+      const walletNetRaw=allTokenLogs.reduce((n:bigint,t:any)=>n+
+        (t.to===wallet?BigInt(t.amountRaw):0n)-
+        (t.from===wallet?BigInt(t.amountRaw):0n),0n)
+      if(walletNetRaw<=0n)continue
+      referralMintCandidates.push({token,kind:'referral_mint_strong',
+        mintAmountRaw:mintAmountRaw.toString(),mintLogIndexes:logIndexes,
+        walletNetRaw:walletNetRaw.toString(),receiptVerified:true,
+        storedEvidenceOnly:true})
+    }
+  }
   const referralPath=referralMintCandidates.length&&sb
     ?await cachedReferralPathEvidence(sb,receipt.transactionSender,wallet)
     :{verified:false,level:null,reason:'no_candidate_or_cache'}

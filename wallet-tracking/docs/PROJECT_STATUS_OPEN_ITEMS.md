@@ -1039,3 +1039,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - `{"mode":"daily-direct-claim-cycle"}` ist weiterhin rein lesend. Der bereits installierte Cron bleibt **inaktiv**; keine Aktivierung durch dieses Release. Explizites `commit:true` würde ausschliesslich separat belegte direkte Staking-Claims idempotent speichern, keine Browser-Discovery-Ergebnisse verändern.
 - Offen: indirekte, Bonus-, Mint- und Referral-Rewards vollständig kanonisch zuordnen sowie lückenlose historische Blockchain- und Wallet-Abdeckung beweisen. Diese Änderung allein vervollständigt den täglichen TLN/VOW-Reward-Job nicht. `docs/releases/9.66-tln-vow-daily-claim-pagination.md`.
 
+### Phase 9.67 – Exakte Referral-Mint-Zahlungsbelege im aktiven Receipt-Staging (22.11.2026)
+
+- Die schon aktive 5-Minuten-Receipt-Verarbeitung (`delta-work-cycle`/`delta-receipt-verify`) ergänzt bei **bereits stark belegten** Referral-Mints nach dem bestehenden geteilten manuellen Step-5-Entscheid `mintAmountRaw`, `mintLogIndexes`, `walletNetRaw` und `receiptVerified`. Mehrere Mints desselben Tokens werden aggregiert, doppelte Log-Indizes und unvollständige/negative Nettozuflüsse blockiert. Der zuvor eingebaute SmartNode-Referenzpfad wird unverändert verwendet.
+- Noch keine kanonische Referral-Reward-Buchung oder unabhängiger historischer Vollständigkeitsnachweis. Bei momentan 0 echten neuen Referral-Mints kann der Live-Job die positive Zuweisung noch nicht demonstrieren. Kein SQL, keine neuen Jobs, täglicher Rewards-Cron bleibt inaktiv. `docs/releases/9.67-tln-vow-referral-mint-exact-amounts.md`.
+
