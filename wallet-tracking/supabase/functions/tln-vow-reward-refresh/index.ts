@@ -1,4 +1,4 @@
-// WalletTracking 9.51 – bounded independent replay of known historical staking storage.
+// WalletTracking 9.52 – browser A1/A2/B/C archive storage-root discovery for one known stake.
 // Uses configured archive-state RPC for storage, Alchemy for transfers. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -1295,6 +1295,75 @@ async function replayKnownTopupStorage(wallet:string,contract:string,firstBlock:
   const second={stakeTime:secondTime,durationReference:{targeted:targets[1]}}
   return verificationCore.manualTopUpStorageContinuity(first,second)
 }
+// Browser archiveStorageScan A1/A2/B/C selection order, limited to ONE
+// already-known successful historical stake. No guessed reward or lot writes.
+async function discoverKnownStakeRoot(wallet:string,contract:string,block:number,stakeTs:number){
+  if(!NODEREAL_BSC_RPC_URL||!/^https:\/\//.test(NODEREAL_BSC_RPC_URL))
+    throw new Error('archive_rpc_not_configured')
+  if(!evmAddress(wallet)||!evmAddress(contract)||!Number.isSafeInteger(block)||block<1||
+    !Number.isSafeInteger(stakeTs)||stakeTs<1000000000)throw new Error('invalid_stake_context')
+  let reads=0
+  const readChanges=async (candidates:{root:number,offset:number}[])=>{
+    if(candidates.length>81||reads+candidates.length*2>512)throw new Error('archive_root_scan_budget')
+    const out:any[]=[]
+    // NodeReal's working browser RPC supports bounded JSON-RPC batches.
+    for(let start=0;start<candidates.length;start+=20){
+      const part=candidates.slice(start,start+20),jobs=part.flatMap((c,i)=>[block-1,block]
+        .map((height,side)=>({jsonrpc:'2.0',id:1+i*2+side,method:'eth_getStorageAt',
+          params:[contract,verificationCore.manualWalletMappingSlot(wallet,c.root,c.offset),'0x'+height.toString(16)]})))
+      const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000)
+      let raw:any
+      try{
+        const response=await fetch(NODEREAL_BSC_RPC_URL,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify(jobs),signal:ctrl.signal})
+        if(!response.ok)throw new Error('archive_rpc_http_error')
+        raw=await response.json()
+      }catch{throw new Error('archive_rpc_unavailable')}
+      finally{clearTimeout(timer)}
+      if(!Array.isArray(raw)||raw.length!==jobs.length)throw new Error('archive_rpc_incomplete')
+      const byId=new Map(raw.map((r:any)=>[r?.id,r]))
+      const val=(id:number)=>{
+        const value=byId.get(id)?.result
+        if(!/^0x[0-9a-f]{1,64}$/i.test(String(value||'')))throw new Error('archive_storage_invalid')
+        return BigInt(value)
+      }
+      for(let i=0;i<part.length;i++){
+        const before=val(i*2+1),after=val(i*2+2)
+        if(before===after)continue
+        const asTs=(v:bigint)=>v<=BigInt(Number.MAX_SAFE_INTEGER)&&
+          Math.abs(Number(v)-stakeTs)<=10?Number(v):null
+        out.push({...part[i],before:before.toString(),after:after.toString(),
+          beforeTimestamp:asTs(before),afterTimestamp:asTs(after)})
+      }
+      reads+=jobs.length
+    }
+    return out
+  }
+  const range=(roots:number[],start:number,end:number)=>roots.flatMap(root=>
+    Array.from({length:end-start+1},(_,i)=>({root,offset:start+i})))
+  const a1=await readChanges(range(Array.from({length:17},(_,i)=>i),0,0))
+  let hitRoots=[...new Set(a1.map(x=>x.root))],a2:any[]=[]
+  if(!hitRoots.length){a2=await readChanges(range(Array.from({length:48},(_,i)=>i+17),0,0));
+    hitRoots=[...new Set(a2.map(x=>x.root))]}
+  const rootsToExpand=hitRoots.length?hitRoots:[0,1,2,3,4,5,6,7,8]
+  if(rootsToExpand.length>8)throw new Error('ambiguous_archive_roots')
+  const b=await readChanges(range(rootsToExpand,0,8))
+  const all=[...a1,...a2,...b]
+  if(!all.some(x=>x.afterTimestamp!==null||x.beforeTimestamp!==null)){
+    const c=await readChanges(range(rootsToExpand,9,16));all.push(...c)
+  }
+  const exact=[...new Map(all.filter(x=>x.afterTimestamp!==null||x.beforeTimestamp!==null)
+    .map(x=>[x.root+'|'+x.offset,x])).values()]
+  const roots=[...new Set(exact.map(x=>x.root))]
+  const detectedRoot=roots.length===1?roots[0]:null
+  const timestampOffsets=exact.filter(x=>x.root===detectedRoot&&x.afterTimestamp!==null)
+  const detectedTimestampOffset=timestampOffsets.length===1?timestampOffsets[0].offset:null
+  return {reads,stageAChanges:a1.length+a2.length,stageBChanges:all.length-a1.length-a2.length,
+    matchingTimestampSlots:exact.length,matchingRoots:roots.length,
+    detectedRoot,detectedTimestampOffset,
+    exactStakeTimestampVerified:detectedRoot!==null&&detectedTimestampOffset!==null,
+    rootAmbiguous:roots.length!==1||timestampOffsets.length!==1}
+}
 function reply(body: unknown, code = 200) {
   return new Response(JSON.stringify(body), {status:code,headers:{'content-type':'application/json','cache-control':'no-store'}})
 }
@@ -1311,7 +1380,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1337,6 +1406,32 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='known-stake-root-discovery'){
+      const candidates:any[]=[]
+      for(const row of byWallet.values()){
+        const payload=row.payload,wallet=evmAddress(payload?.wallet)
+        if(!wallet||payload?.kind!=='verified_discovery_results')continue
+        for(const lot of (Array.isArray(payload?.process?.lots)?payload.process.lots:[])){
+          const contract=evmAddress(lot?.staking?.contract_address||lot?.counterparty)
+          let block:number|null=null
+          try{block=lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null}catch{}
+          const stakeTs=Math.floor(Date.parse(String(lot?.stakeTime||''))/1000)
+          if(!contract||!Number.isSafeInteger(block)||block<1||!Number.isSafeInteger(stakeTs)||stakeTs<1000000000)continue
+          candidates.push({wallet,contract,block,stakeTs,
+            expectedRoot:lot?.durationReference?.targeted?.root??lot?.topUps?.[0]?.storageProof?.root??null})
+        }
+      }
+      const ordinal=body?.ordinal??1
+      if(!Number.isInteger(ordinal)||ordinal<1||ordinal>candidates.length)
+        return reply({ok:true,mode,availableCandidates:candidates.length,status:'no_matching_cached_stake',persisted:false})
+      const c=candidates[ordinal-1]
+      try{
+        const result=await discoverKnownStakeRoot(c.wallet,c.contract,c.block,c.stakeTs)
+        return reply({ok:true,mode,ordinal,availableCandidates:candidates.length,...result,
+          matchesCachedRoot:c.expectedRoot===null?null:Number(c.expectedRoot)===result.detectedRoot,
+          persisted:false,notice:'Read-only manual A1/A2/B/C storage-root discovery for one cached stake. No new lots, durations, claims or cron.'})
+      }catch(e){return reply({ok:false,mode,error:e instanceof Error?e.message:'archive_rpc_unavailable',persisted:false},503)}
     }
     if(mode==='known-topup-storage-replay'){
       const candidates:any[]=[]

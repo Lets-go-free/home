@@ -951,3 +951,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - **Produktivtest offen:** Archive-RPC-URL als Supabase Edge Secret `NODEREAL_BSC_RPC_URL` bereitstellen; dann `known-topup-storage-replay` explizit testen. Kein automatischer Aufruf durch die beiden bestehenden Jobs.
 - **Weiter offen:** Unbekannte Mapping-Roots und neue Lots autonom erkennen (Browser `discoverStakeStructHeadless`), vollständige Step 3 Lockdauer und Referral-Referenzengine. Noch kein vollständig automatisierter täglicher Rewards-Job.
 
+### Phase 9.52 – Gestufte Archive-Root-Suche im Server (20261122-111448)
+- Im expliziten read-only Modus `known-stake-root-discovery` wird ein bereits im manuellen Discovery-Snapshot vorhandener Stake gewählt und der Wallet-Mapping-Root aus historischen Contract-Storage-Änderungen ermittelt. Vorgehen entspricht den Browser-Stufen A1/A2/B/C, mit konservativem Budget und ohne Schreiben.
+- **Live-Abnahme offen:** Den neuen Modus gegen den bekannten historischen Stake testen und Root/Offset mit dem Browser-Nachweis vergleichen.
+- **Weiter offen:** Neue Stake-Transaktionen autonom zu neuen geprüften Lots verbinden, aus unbekanntem Root den gesamten Struct-/Duration-Strict-Proof ausführen, volle Referral-Zuordnung und kanonische tägliche Reward-Automatik. Bestehende 5-Minuten-Cronjobs bleiben technische Evidence-Jobs.
+

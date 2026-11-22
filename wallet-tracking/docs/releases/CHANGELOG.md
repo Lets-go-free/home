@@ -276,3 +276,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.51 · 22.11.2026 10:56:02 CET · Build 20261122-105602
 - TLN/VOW: Neue read-only Edge-Mode `known-topup-storage-replay` liest die tatsächlichen historischen Storage-Slots eines bereits im manuellen Browser verifizierten Top-ups über gesonderten `NODEREAL_BSC_RPC_URL`-Secret. Die Slot-Berechnung ist EVM-Keccak/ABI-kompatibel und der Verdict nutzt die identische geteilte Browser-Regel. Maximal 8 Offsets und 32 Archive-Reads, kein unbekannter Root-Scan, keine Position-/Claim-/Cursor-/Cron-Schreibvorgänge. Optionaler Secret erforderlich, sonst 503 statt falschem Proof.
 
+## 9.52 · 22.11.2026 11:14:48 CET · Build 20261122-111448
+- TLN/VOW: Browser-`archiveStorageScan`-Reihenfolge A1 (Roots 0–16), bei Bedarf A2 (17–64), B (Offsets 0–8), C (Offsets 9–16) als begrenzte serverseitige Archiv-RPC-Vorschau `known-stake-root-discovery` übernommen. Bekannter historischer Stake aus Snapshot; Mapping-Root/Timestamp-Offset werden aus echten Before-/After-Werten bestimmt. Maximal 512 Reads, keine Speicherung oder automatische Freigabe. Neues Mock-RPC-Testmuster findet Root 3/Offset 2 mit 52 historischen Reads. Keine SQL-/Cron-/Reward-Änderung.
+
