@@ -7056,6 +7056,8 @@ function isStakeCallCandidate(c){
   // Nicht-Staking-Aktionen (z. B. TLN Rebound) dürfen in keiner späteren Stufe erneut
   // als eigene Position des gesuchten Wallets auftauchen. Diese Funktion wird sowohl
   // von der normalen Step-2-Discovery als auch von Team-/Recovery-Pfaden verwendet.
+  const shared=window.WT_TLN_REWARD_VERIFICATION_CORE?.manualPositionCallIntent;
+  if(shared)return shared(c)==='stake';
   if(c?._teamPositionExcluded===true||isVerifiedNonStakingCall(c))return false;
   const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
   const decoded=METHOD_SELECTORS.get(selector);

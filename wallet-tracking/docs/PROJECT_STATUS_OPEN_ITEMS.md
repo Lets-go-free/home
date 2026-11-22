@@ -934,3 +934,7 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - **Getestet:** 250 / 45’000 / 5’500 TLN+ als repräsentative, bereits bekannte Stake-/Top-up-Mengen; Browser-Pfad und Edge-Abgleich mit demselben Core; alle TLN/VOW-Tests bestanden.
 - **Offen:** Für eine echte tägliche autonome Neuentdeckung muss der Server auch neue Staking-Positionen mitsamt Schritt-2-/3-Lifecycle-Proofs und die Referral-Referenzengine ohne Browserlauf erhalten. Der geteilte Stake-Selector kann keine neuen Lots erzeugen. `docs/releases/9.47-tln-vow-manual-stake-reward-parity.md`.
 
+### Phase 9.48 – Gemeinsamer Browser-Step-2-Selector-Gate im Receipt-Stage (20261122-102615)
+- Stake/Unstake-Intent und der verifizierte TLN-Rebound-Ausschluss werden im Browser und Edge über dieselbe pure Funktion geprüft. Technische Receipt-Evidenz hält gegebenenfalls die Anzahl tatsächlicher Principal-Bewegungen zum registrierten Staking-Contract fest.
+- **Nicht erledigt:** Neues Lot und exakte Lockdauer werden weiterhin nur durch die vorhandene manuelle Discovery samt Token/LP-Verifikation und On-chain-Lifecycle-/Storage-Proof ermittelt; Browser-Step-3 und Referral-Engine sind noch nicht autonom portiert. Keine automatische Reward-Commit-Freigabe.
+
