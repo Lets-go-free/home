@@ -10,7 +10,7 @@ assert.equal(core.manualBonusEvidenceForClaim({selector:core.keccakSelector('cla
 assert.equal(core.knownClaimMethodIntent(core.keccakSelector('claimReferralReward()')),'referral');
 assert.equal(core.manualBonusEvidenceForClaim({selector:core.keccakSelector('claimReferralReward()')}),null);
 assert.equal(core.manualBonusEvidenceForClaim({selector:'0x12345678'}),null);
-assert.ok(edge.includes("supportedModes.push('historical-bonus-referral-evidence')"));
+assert.ok(edge.includes("supportedModes.push('historical-bonus-referral-evidence'"));
 assert.ok(edge.includes("if(mode==='historical-bonus-referral-evidence')"));
 assert.ok(edge.includes('verificationCore.manualBonusEvidenceForClaim(row)'));
 assert.ok(edge.includes("verificationCore.knownClaimMethodIntent(row?.selector)==='referral'"));

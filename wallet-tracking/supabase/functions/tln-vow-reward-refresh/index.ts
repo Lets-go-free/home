@@ -25,6 +25,20 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       return {verified:false,reason:'invalid-referral-count'};
     return {verified:true,reason:'reference-engine-completed',strongCount:input.strongCount};
   }
+  // Exact final strong/candidate decision from the manual Step-5 engine.
+  // Inputs are independently collected mint/stake evidence, not arbitrary transfers.
+  function manualReferralMintVerdict(row,wallet){
+    const sender=String(row?.sender||'').toLowerCase(),owner=String(wallet||'').toLowerCase();
+    const stakeEvidence=(Array.isArray(row?.principalTransfers)&&row.principalTransfers.length>0)||
+      (Array.isArray(row?.stakeEvents)&&row.stakeEvents.length>0);
+    const stakingRecognized=!!row?.staking||
+      (Array.isArray(row?.stakeEvents)&&row.stakeEvents.length>0);
+    const foreignSender=/^0x[0-9a-f]{40}$/.test(sender)&&
+      /^0x[0-9a-f]{40}$/.test(owner)&&sender!==owner;
+    return {stakeEvidence,stakingRecognized,
+      strong:foreignSender&&stakingRecognized&&stakeEvidence,
+      candidate:foreignSender&&stakingRecognized};
+  }
   function scanBlockEvidence(input){
     const lastEventBlock=nonnegativeInteger(input?.lastEventBlock);
     const from=nonnegativeInteger(input?.completeFromBlock);
@@ -822,7 +836,7 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,manualReferralMintVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
@@ -1652,7 +1666,7 @@ Deno.serve(async (req) => {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('historical-bonus-referral-evidence')
+    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1678,6 +1692,43 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='historical-referral-step5-parity'){
+      // Replay the exact manual final strong/candidate decision, using ONLY
+      // cached manual Step-5 rows. No chain data or new referral attribution.
+      const summary={snapshots:0,withReference:0,missingReference:0,
+        referenceErrors:0,rows:0,matchingRows:0,mismatchingRows:0,
+        storedStrong:0,replayedStrong:0,missingRowEvidence:0}
+      const details:any[]=[]
+      for(const item of byWallet.values()){
+        const p=item.payload,wallet=evmAddress(p?.wallet),ref=p?.globals?.claimReferenceResult
+        if(p?.kind!=='verified_discovery_results'||!wallet)continue
+        summary.snapshots++
+        if(!ref){summary.missingReference++;continue}
+        if(ref.error){summary.referenceErrors++;continue}
+        if(!Array.isArray(ref.rows)||ref.rows.length>2000){summary.missingReference++;continue}
+        summary.withReference++
+        const row={ordinal:details.length+1,rows:ref.rows.length,
+          matchingRows:0,mismatchingRows:0,storedStrong:0,replayedStrong:0,missingRowEvidence:0}
+        for(const x of ref.rows){
+          if(!Array.isArray(x?.principalTransfers)||!Array.isArray(x?.stakeEvents)){
+            row.missingRowEvidence++;continue
+          }
+          const result=verificationCore.manualReferralMintVerdict(x,wallet)
+          if(x?.strong===result.strong&&x?.candidate===result.candidate)row.matchingRows++
+          else row.mismatchingRows++
+          if(x?.strong===true)row.storedStrong++
+          if(result.strong)row.replayedStrong++
+        }
+        for(const k of ['rows','matchingRows','mismatchingRows','storedStrong','replayedStrong','missingRowEvidence'])
+          (summary as any)[k]+=(row as any)[k]
+        details.push(row)
+      }
+      return reply({ok:true,mode,day:dayCH(),summary,details,
+        allStoredRowsMatch:summary.referenceErrors===0&&summary.missingReference===0&&
+          summary.mismatchingRows===0&&summary.missingRowEvidence===0,
+        independentReferralCoverageVerified:false,classificationCommitted:false,persisted:false,
+        notice:'Read-only cached manual Step-5 final strong/candidate decision replay. Does not rerun mint discovery, receipts, stake recognition, SmartNode/graph/level verification or prove completeness. No RPC, writes or cron.'})
     }
     if(mode==='historical-bonus-referral-evidence'){
       // Reuse manual selector rules only on previously proven payout rows.

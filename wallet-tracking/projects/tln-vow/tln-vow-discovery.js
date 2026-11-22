@@ -2128,10 +2128,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     rows.sort((a,b)=>a.timestamp-b.timestamp);
     // Exact final classification from the isolated referral test.
     for(const r of rows){
-      r.stakeEvidence=(r.principalTransfers?.length||0)>0||(r.stakeEvents?.length||0)>0;
-      r.stakingRecognized=!!r.staking||(r.stakeEvents?.length||0)>0;
-      r.strong=norm(r.sender)!==wallet&&r.stakingRecognized&&r.stakeEvidence;
-      r.candidate=norm(r.sender)!==wallet&&r.stakingRecognized;
+      Object.assign(r,globalThis.WT_TLN_REWARD_VERIFICATION_CORE.manualReferralMintVerdict(r,wallet));
     }
     const uniqueStakers=[...new Set(rows.map(r=>norm(r.sender)))];
     referralPhase('tln_identity');

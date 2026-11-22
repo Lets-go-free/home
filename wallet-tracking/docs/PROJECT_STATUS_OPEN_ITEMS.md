@@ -996,6 +996,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live-Test nach Edge-Deployment: autorisierter Aufruf `{"mode":"historical-manual-reward-parity"}`. Kein Commitment, keine neuen Claims, kein RPC. Abweichungen zuerst am bestehenden manuellen Snapshot auflösen.
 - Weiter offen: vollständige automatisierte Step-4-Flow-/Receipt-/Bonus-Rewards und Step-5-Referral-Klassifikation, historischer unabhängiger Vollständigkeitsbeleg sowie alle verschlüsselten Wallets. Tages-Direct-Claim-Cron 9.57 bleibt INAKTIV.
 
+### Phase 9.61 – Gemeinsame Step-5-Referral-Mint-Entscheidung (22.11.2026)
+
+- Der letzte Strong-/Candidate-Entscheid der manuellen Step-5-Referral-Mint-Engine verwendet jetzt gemeinsam im Browser und in der Edge Function `manualReferralMintVerdict`. Grundlage bleiben die bekannten, bereits geprüften Stake-/Mint-Fakten; keine neue Heuristik.
+- `historical-referral-step5-parity` vergleicht die gespeicherten Step-5-Referenzzeilen mit dieser Regel **read-only**. Der Modus prüft weder die eigenständige Mint-/Receipt-/SmartNode-Ermittlung noch alle verschlüsselten Wallets. Keine SQL-/Cron-Änderung; Direct-Claim-Tagescron inaktiv. Live-Test ausstehend. `docs/releases/9.61-tln-vow-shared-step5-referral-parity.md`.
+
 ### Phase 9.60 – Historischer Bonus-/Referral-Selector-Bestandsabgleich (22.11.2026)
 
 - Neuer rein lesender Edge-Modus `historical-bonus-referral-evidence` prüft die bereits im Browser nachgewiesenen `provenRewardRows` der TLN/VOW-Snapshots mit denselben gemeinsamen expliziten Bonus-/Referral-Selector-Regeln wie der automatische Receipt-Pfad. Nur anonyme Zähler pro Wallet; sonstige Fälle bleiben **ungeklärt**, keine neue Reward-Heuristik.

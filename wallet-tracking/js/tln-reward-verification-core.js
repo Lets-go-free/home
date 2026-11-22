@@ -21,6 +21,20 @@
       return {verified:false,reason:'invalid-referral-count'};
     return {verified:true,reason:'reference-engine-completed',strongCount:input.strongCount};
   }
+  // Exact final strong/candidate decision from the manual Step-5 engine.
+  // Inputs are independently collected mint/stake evidence, not arbitrary transfers.
+  function manualReferralMintVerdict(row,wallet){
+    const sender=String(row?.sender||'').toLowerCase(),owner=String(wallet||'').toLowerCase();
+    const stakeEvidence=(Array.isArray(row?.principalTransfers)&&row.principalTransfers.length>0)||
+      (Array.isArray(row?.stakeEvents)&&row.stakeEvents.length>0);
+    const stakingRecognized=!!row?.staking||
+      (Array.isArray(row?.stakeEvents)&&row.stakeEvents.length>0);
+    const foreignSender=/^0x[0-9a-f]{40}$/.test(sender)&&
+      /^0x[0-9a-f]{40}$/.test(owner)&&sender!==owner;
+    return {stakeEvidence,stakingRecognized,
+      strong:foreignSender&&stakingRecognized&&stakeEvidence,
+      candidate:foreignSender&&stakingRecognized};
+  }
   function scanBlockEvidence(input){
     const lastEventBlock=nonnegativeInteger(input?.lastEventBlock);
     const from=nonnegativeInteger(input?.completeFromBlock);
@@ -818,5 +832,5 @@
       principalReturnedFromContract:trusted&&intent==='unstake'?incoming.length:0,
       uniqueUnstakeLotIndex,candidateOnly:true,positionCreated:false,durationVerified:false};
   }
-  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
+  root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,manualReferralMintVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);

@@ -1,3 +1,6 @@
+## 9.61 · 22.11.2026 15:02:50 CET · Build 20261122-150250
+- Exakte manuelle Step-5-Strong-/Candidate-Entscheidung aus dem Browser in den gemeinsamen Browser-/Edge-Kern übernommen. Neuer rein lesender historischer Vergleich gegen gespeicherte Step-5-Referenzzeilen, ohne neue Reward-Zuordnung, Blockchain-Scan oder Cron. `9.61-tln-vow-shared-step5-referral-parity.md`.
+
 ## 9.60 · 22.11.2026 14:56:25 CET · Build 20261122-145625
 - Rein lesender historischer Bestandstest der gemeinsamen expliziten Bonus- und Referral-Selectoren auf bereits belegten TLN/VOW-Reward-Zeilen (`historical-bonus-referral-evidence`). Anonyme Summen statt neuer Klassifikationen. Keine kanonischen Claims, kein RPC, keine Writes und keine Cron-Änderung. `9.60-tln-vow-historical-bonus-referral-evidence.md`.
 
