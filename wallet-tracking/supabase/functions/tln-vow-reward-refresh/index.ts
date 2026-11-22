@@ -1635,7 +1635,7 @@ Deno.serve(async (req) => {
   try {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
-    const supportedModes=['cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
+    const supportedModes=['daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -1801,17 +1801,21 @@ Deno.serve(async (req) => {
           notice:'One cached historical top-up independently replayed using bounded archive storage reads and the exact manual verdict. No lot/claim/cursor writes or cron.'})
       }catch(e){return reply({ok:false,mode,error:e instanceof Error?e.message:'archive_rpc_unavailable',persisted:false},503)}
     }
-    if(mode==='direct-claim-finalize'){
+    if(mode==='direct-claim-finalize'||mode==='daily-direct-claim-cycle'){
       // Explicit opt-in only: no cron invokes this mode. Separate canonical
       // table preserves every manually verified discovery snapshot unchanged.
+      const daily=mode==='daily-direct-claim-cycle'
+      const commit=daily?body?.commit===true:true
       const offset=body?.offset??0
-      if(!Number.isSafeInteger(offset)||offset<0||offset>1000000)
+      if(!Number.isSafeInteger(offset)||offset<0||offset>1000000||(daily&&offset!==0))
         return reply({ok:false,mode,error:'offset must be an integer from 0 to 1000000'},400)
       const receiptRows=await sb.from('tln_vow_reward_receipt_stage')
         .select('user_id,wallet_id,chain_key,tx_hash,block_number,evidence')
         .eq('chain_key','bsc').order('created_at',{ascending:true}).order('tx_hash',{ascending:true})
-        .range(offset,offset+199)
+        .range(offset,offset+(daily?200:199))
       if(receiptRows.error)return reply({ok:false,mode,error:'Receipt staging unavailable'},503)
+      if(daily&&(receiptRows.data||[]).length>200)
+        return reply({ok:false,mode,error:'More than 200 receipts: daily batch requires paginated worker before activation; no claims saved',persisted:false},409)
       const contracts=await sb.from('defi_staking_contracts').select('contract_address')
         .eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true)
       if(contracts.error||(contracts.data||[]).some((r:any)=>!evmAddress(r.contract_address)))
@@ -1839,16 +1843,17 @@ Deno.serve(async (req) => {
       }
       // At most 200 independent candidate rows, duplicate commits ignored by
       // the stable (wallet, tx, token, receipt-log) primary key.
-      if(eligible.length){
+      if(commit&&eligible.length){
         const {error}=await sb.from('tln_vow_reward_direct_claims').upsert(eligible,{
           onConflict:'user_id,wallet_id,chain_key,tx_hash,token_address,log_index',ignoreDuplicates:true})
         if(error)return reply({ok:false,mode,error:'Direct claim save failed; no discovery snapshot modified'},503)
       }
-      return reply({ok:true,mode,day:dayCH(),offset,nextOffset:(receiptRows.data||[]).length===200?offset+200:null,
+      return reply({ok:true,mode,day:dayCH(),offset,nextOffset:daily?null:(receiptRows.data||[]).length===200?offset+200:null,
         inspectedReceipts:(receiptRows.data||[]).length,eligibleDirectClaims:eligible.length,
-        canonicalDirectClaimsCommitted:eligible.length>0,
+        canonicalDirectClaimsCommitted:commit&&eligible.length>0,
+        dryRun:!commit,completeReceiptBatch:daily?true:(receiptRows.data||[]).length<200,
         referralClassificationCompleted:false,fullRewardCoverageVerified:false,
-        notice:'Strict direct staking claims only; no indirect, bonus or referral claims and no legacy completeness certification.'})
+        notice:'Existing strict shared direct staking-claim rule only. Daily mode is read-only unless explicitly commit=true; fails closed above 200 staged receipts. No indirect, bonus or referral claims and no historical completeness certification.'})
     }
     if(mode==='delta-receipt-verify'){
       const staged:any[]=[],verified:any[]=[]

@@ -303,3 +303,11 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 - Die diagnostischen ursprünglichen LP-Unstake-Rohereignisse bleiben separat sichtbar. Vorhandene On-chain-Evidenz wird im Cache-Replay nicht neu unabhängig geprüft; keine eigenständige neue Discovery, neue Lots, Reward-/Referral-Claims, Cursor- oder Cache-Schreibzugriffe, kein Reward-Commit-Cron.
 - Tests: neuer Mehrfachpositionen-/LP-Return-/Pfad-Regressionstest und komplette TLN/VOW-Testserie bestanden.
 
+## 9.57 · 22.11.2026 11:57:01 CET · Build 20261122-115701
+
+- Neuer begrenzter Edge-Modus `daily-direct-claim-cycle` verwendet ausschliesslich die bereits vorhandene gemeinsame strenge `verifiedDirectStakingClaim`-Regel und die idempotente Tabelle `tln_vow_reward_direct_claims`. Bereits in manuellen Snapshots belegte Claims werden wie zuvor ausgeschlossen.
+- Standard ist **read-only** (`commit` nicht `true`); kanonisches Speichern erst mit explizitem `commit:true`. Strenger Fail-Closed-Guard bei mehr als 200 gespeicherten Receipt-Zeilen, kein stilles Überspringen weiterer Seiten. Der vorhandene `direct-claim-finalize` bleibt erhalten.
+- SQL-Migration legt `tln-vow-direct-claims-daily` für 03:10 UTC als **inaktiven** Job an. Erst autorisierten Read-only-Live-Test und Umfang prüfen, dann getrennt über Aktivierung entscheiden. Keine Secrets in Migration/Kommando; Vault-Auflösung bei Ausführung.
+- Erfasst nur direkte, belegte Staking-Claims mit eindeutigem Positionsbezug; **keine** indirekten Staking-Rewards, Mints, Bonus- oder Referral-Rewards, kein belegter historischer Vollständigkeits-Scan. Keine Änderung bestehender Evidence-Crons.
+- Alle TLN/VOW-Tests bestanden.
+

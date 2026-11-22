@@ -982,3 +982,10 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Edge `cached-lot-reconstruction-preview` zeigt dafür `recordedContractCalls`, `receiptBasedUnstakeClosures`, `uniqueCallUnstakeClosures`, `ambiguousUnstakeCalls`. Live-Test nach Deploy für `ordinal=2` mit bewährtem Vault-authentifiziertem SQL-Aufruf aus 9.55.
 - Weiter offen: serverseitige **neue** unabhängige Positionsevidenz inklusive Contract-Aufruf/Receipt-Discovery, automatische verifizierte Claim-/Referral-Ermittlung und Vollständigkeitsnachweis. Der Evidence-Cron läuft; Reward-Commit-Cron bleibt gesperrt.
 
+### Phase 9.57 – Begrenzter täglicher Direct-Claim-Worker (22.11.2026)
+
+- Die bisherige gemeinsame manuelle Direkt-Claim-Regel ist erstmals als separat täglich planbarer Edge-Modus `daily-direct-claim-cycle` erreichbar. Ohne `commit:true` vollständig read-only; mit Commit werden nur unabhängige verifizierte direkte Staking-Claims idempotent in `tln_vow_reward_direct_claims` gespeichert. Schema und `direct-claim-finalize` existieren seit 9.46.
+- Neue Migration `20261122115628_tln_vow_direct_claim_daily_disabled_957.sql` richtet `tln-vow-direct-claims-daily` (03:10 UTC) **inaktiv** ein. Nicht ohne kontrollierten Live-Preflight einschalten. Bei >200 Staging-Receipts bricht die neue Daily-Variante ab, statt still eine Teilmenge zu bearbeiten.
+- Nächster Test nach Installation/Migration/Edge-Deploy: autorisiert `{"mode":"daily-direct-claim-cycle"}` ohne Commit aufrufen. `inspectedReceipts`, `eligibleDirectClaims` und `completeReceiptBatch` auswerten. Auf keinen Fall `commit:true` zum Test setzen.
+- Offene Kernaufgabe: vollständige automatische Browser-Step-4-Rewards inklusive indirekten/mint-/top-up-/bonus- und Step-5-Referral-Nachweisen sowie Abdeckung aller verschlüsselten Wallets. Ein Direct-Claim-Cron ist **kein** vollständiger täglicher TLN/VOW-Rewards-Job. Kein Reward-Cron aktiv, keine automatische Buchung aktiviert.
+
