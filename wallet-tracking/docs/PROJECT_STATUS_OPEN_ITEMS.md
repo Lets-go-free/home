@@ -1066,3 +1066,8 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Neuer `daily-bonus-claim-cycle` nutzt den bestehenden gemeinsamen Browser-/Edge-Selektor für `claimBonus(address)` und `claimBonus()` plus receipt-verifizierte Auszahlung; isolierter Ledger mit Besitzer-RLS, historischer Zeit und Idempotenz. Default `commit:false` (read-only). Ohne SQL-Migration keine Commit-Nutzung.
 - Weiter offen: positives Live-Beispiel, Bonus-Ledger in der UI anzeigen, übrige indirekte Bonus-/Reward-Pfade und nachgewiesene historische Vollständigkeit. **Täglicher Reward-Cron bleibt inaktiv.** Siehe `docs/releases/9.71-tln-vow-bonus-claim-finalizer.md`.
 
+### Phase 9.72 – Bonus-Ledger in TLN/VOW-Projektansicht (22.11.2026)
+
+- Der 9.71-Bonus-Ledger wird owner-only aus Supabase geladen und in Bonus-Tab, Summen und Dashboard-Zeiträumen ohne doppelte Tx/Token-Zählung ergänzt. Kein positiver Auto-Bonus-Claim bisher live nachgewiesen (`inspectedReceipts:0` in 9.71-Dry-Run).
+- Indirekte Staking-Rewards: Browser nutzt auch interne Contract-Call-Verknüpfungen. Diese sind im 5-Minuten-Receipt-Staging noch nicht gleichwertig erfasst; bis zur identischen Beweiskette **keine** automatische Klassifikation/Buchung. Tages-Cron inaktiv. `docs/releases/9.72-tln-vow-bonus-ledger-ui.md`.
+

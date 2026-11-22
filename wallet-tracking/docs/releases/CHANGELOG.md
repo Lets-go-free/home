@@ -363,3 +363,6 @@ Detaillierte ursprüngliche Release-Berichte liegen hier zur Nachvollziehbarkeit
 ## 9.71 · 22.11.2026 22:21:06 CET · Build 20261122-222106
 - Eigener owner-isolierter, idempotenter Bonus-Claim-Ledger und `daily-bonus-claim-cycle`: wiederverwendete **exakte manuelle Step-4-claimBonus-Regel** plus bestätigte Receipts, Nettozufluss, Log-Identität, konfigurierte Staking-Contracts, historischer Blockzeitpunkt, Snapshot-Duplikatschutz. Standardmässig nur Vorschau, `commit:true` bewusst opt-in; kein Cron. Andere Bonus-/indirekte Rewards noch nicht vollständig automatisiert. `9.71-tln-vow-bonus-claim-finalizer.md`.
 
+## 9.72 · 22.11.2026 22:27:20 CET · Build 20261122-222720
+- Automatisch verifizierte Bonus-Claims aus dem owner-isolierten 9.71-Ledger werden jetzt im TLN/VOW-Projekt unter Bonus-Rewards sowie in den Dashboard-Bonuszeiträumen angezeigt. Gleiche Tx/Token-Paare aus manuellen Discovery-Snapshots werden nur einmal gezählt; unbekannte Token-Dezimalstellen werden nicht geraten, die Anzeige wartet auf verifizierte Metadaten. Fehlerhafte/unvollständige Ledger-Ladevorgänge werden nicht als vollständig dargestellt. UI-only, kein SQL-/Edge-/Cron-Update. `9.72-tln-vow-bonus-ledger-ui.md`.
+

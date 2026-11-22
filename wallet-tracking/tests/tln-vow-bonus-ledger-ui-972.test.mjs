@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const js=fs.readFileSync(new URL('../projects/tln-vow/tln-vow-discovery.js',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+assert.match(js,/const PROJECT_BONUS_LEDGER=new Map\(\)/);
+assert.match(js,/async function loadProjectBonusLedgerCacheOnly/);
+assert.match(js,/\.from\('tln_vow_reward_bonus_claims'\)/);
+assert.match(js,/\.eq\('user_id',currentUserId\)/);
+assert.match(js,/const key=`\$\{hash\}\|\$\{token\}`/);
+assert.match(js,/if\(seen\.has\(key\)\)continue/);
+assert.match(js,/const decimals=projectKnownTokenDecimals\(token\)/);
+assert.match(js,/if\(decimals==null\)continue/);
+assert.match(js,/projectBonusRowsForPayload\(payload,wallet\)/);
+assert.match(js,/loadProjectBonusLedgerCacheOnly\(wanted\)/);
+assert.match(html,/window\.APP_VERSION="9\.72"/);
+assert.match(html,/tln-vow-discovery\.js\?v=20261122-222720/);
+console.log('9.72 owner-scoped bonus ledger UI and dedup guards OK');

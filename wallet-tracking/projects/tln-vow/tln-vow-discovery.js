@@ -108,6 +108,8 @@ const PROJECT_WALLET_SNAPSHOTS=new Map();
 // Current user's independently verified, owner-only automatic referral payouts.
 // Never store them inside the manual Discovery snapshot.
 const PROJECT_REFERRAL_LEDGER=new Map();
+// Separate verified claimBonus payouts; never inserted into manual snapshots.
+const PROJECT_BONUS_LEDGER=new Map();
 let PROJECT_WALLET_SNAPSHOTS_LOADING=false;
 let PROJECT_REWARD_SUMMARY_FALLBACK=null;
 let PROJECT_REWARD_SUMMARY_FALLBACK_SCOPE='';
@@ -11534,12 +11536,33 @@ function projectRewardRowsForPayload(payload){
   const lots=payload?.process?.lots||[];
   return collectAllWalletRewardRows(lots);
 }
-function projectBonusRowsForPayload(payload){
+function projectBonusRowsForPayload(payload,wallet=payload?.wallet){
   const lots=payload?.process?.lots||[],assigned=new Set();
   for(const lot of lots)for(const claim of collectAssignedRewardRows(lot))assigned.add(assignedRewardIdentity(claim));
-  const rows=[];
+  const rows=[],seen=new Set();
   for(const claim of (payload?.globals?.provenRewardRows||[])){
-    const bonus=bonusEvidenceForClaim(claim);if(bonus)rows.push({claim,bonus,wasAssigned:assigned.has(assignedRewardIdentity(claim))});
+    const bonus=bonusEvidenceForClaim(claim);
+    if(bonus){
+      rows.push({claim,bonus,wasAssigned:assigned.has(assignedRewardIdentity(claim))});
+      seen.add(`${String(claim?.hash||'').toLowerCase()}|${norm(claim?.token||'')}`);
+    }
+  }
+  for(const item of PROJECT_BONUS_LEDGER.get(norm(wallet))||[]){
+    const hash=String(item.tx_hash||'').toLowerCase(),token=norm(item.token_address||'');
+    const key=`${hash}|${token}`;
+    if(seen.has(key))continue;
+    const decimals=projectKnownTokenDecimals(token);
+    if(decimals==null)continue; // Unknown token precision is never guessed.
+    let amount;
+    try{amount=Number(ethers.formatUnits(BigInt(String(item.wallet_net_raw)),decimals));}catch{continue;}
+    if(!Number.isFinite(amount)||amount<=0)continue;
+    const selector=String(item.claim_selector||'').toLowerCase();
+    const bonus=bonusEvidenceForClaim({selector});
+    if(!bonus)continue;
+    seen.add(key);
+    rows.push({claim:{hash,token,symbol:projectTokenSymbol(token),amount,
+      time:item.block_timestamp,selector,calledContract:norm(item.called_contract)},
+      bonus,wasAssigned:false,automaticVerified:true});
   }
   return rows;
 }
@@ -11709,7 +11732,7 @@ function projectDashboardRewardPeriods(entries=[...PROJECT_WALLET_SNAPSHOTS.entr
   for(const [wallet,payload] of entries){
     for(const row of projectRewardRowsForPayload(payload)){const c=row?.claim||{};add(rewards,periodKeys(rewardClaimTimestamp(c)),c.token,c.symbol||c.tokenSymbol,c.amount);}
     for(const row of projectReferralRowsForPayload(payload,wallet)){const m=row?.mint||{};add(referralRewards,periodKeys(row.timestamp),m.token,m.symbol,Number(m.amountHuman||projectReferralMintHumanAmount(m)));}
-    for(const row of projectBonusRowsForPayload(payload)){const c=row?.claim||{};add(bonusRewards,periodKeys(rewardClaimTimestamp(c)),c.token,c.symbol||c.tokenSymbol,c.amount);}
+    for(const row of projectBonusRowsForPayload(payload,wallet)){const c=row?.claim||{};add(bonusRewards,periodKeys(rewardClaimTimestamp(c)),c.token,c.symbol||c.tokenSymbol,c.amount);}
   }
   const finish=b=>Object.fromEntries(Object.entries(b).map(([k,map])=>[k,[...map.values()].filter(x=>Number.isFinite(x.amount)&&x.amount!==0).sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol)))]));
   return {rewards:finish(rewards),referralRewards:finish(referralRewards),bonusRewards:finish(bonusRewards)};
@@ -11734,7 +11757,7 @@ function projectAggregateData(){
       projectAddTokenTotal(referralByToken,m.token,m.symbol,m.amountHuman,1);
     }
     referralRows.push(...mergedReferralRows);
-    for(const row of projectBonusRowsForPayload(payload)){
+    for(const row of projectBonusRowsForPayload(payload,wallet)){
       const c=row.claim||{};projectAddTokenTotal(bonusByToken,c.token,c.symbol||c.tokenSymbol,c.amount,1);bonusClaims++;
       bonusRows.push({...row,wallet});
     }
@@ -12243,6 +12266,43 @@ async function loadProjectReferralLedgerCacheOnly(ownWallets=null){
     return 0;
   }
 }
+async function loadProjectBonusLedgerCacheOnly(ownWallets=null){
+  PROJECT_BONUS_LEDGER.clear();
+  const own=ownWallets||tlnWallets.map(w=>({wallet:norm(w.evm_address),
+    walletId:String(w?.id||w?.dbId||PRIVATE_WALLET_ID_BY_EVM.get(norm(w.evm_address))||'')}));
+  const byId=new Map(own.filter(x=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(x.walletId))&&
+    /^0x[0-9a-f]{40}$/.test(norm(x.wallet))).map(x=>[String(x.walletId),norm(x.wallet)]));
+  if(!currentUserId||!byId.size)return 0;
+  try{
+    const rows=[],pageSize=200,maxPages=25;let complete=false;
+    for(let page=0;page<maxPages;page++){
+      const {data,error}=await sb.from('tln_vow_reward_bonus_claims')
+        .select('wallet_id,tx_hash,token_address,wallet_net_raw,block_timestamp,called_contract,claim_selector')
+        .eq('user_id',currentUserId).eq('chain_key','bsc').in('wallet_id',[...byId.keys()])
+        .order('block_number',{ascending:true}).order('tx_hash',{ascending:true})
+        .range(page*pageSize,(page+1)*pageSize-1);
+      if(error)throw error;
+      rows.push(...(data||[]));
+      if((data||[]).length<pageSize){complete=true;break;}
+    }
+    if(!complete)throw new Error('Bonus-Ledger-Pagination unvollständig');
+    for(const row of rows){
+      const wallet=byId.get(String(row.wallet_id||''));
+      if(!wallet||!/^0x[0-9a-f]{64}$/i.test(String(row.tx_hash||''))||
+        !/^0x[0-9a-f]{40}$/.test(norm(row.token_address||''))||
+        !/^[1-9][0-9]*$/.test(String(row.wallet_net_raw||''))||
+        !Number.isFinite(Date.parse(row.block_timestamp||''))||
+        !bonusEvidenceForClaim({selector:row.claim_selector}))continue;
+      if(!PROJECT_BONUS_LEDGER.has(wallet))PROJECT_BONUS_LEDGER.set(wallet,[]);
+      PROJECT_BONUS_LEDGER.get(wallet).push(row);
+    }
+    return [...PROJECT_BONUS_LEDGER.values()].reduce((n,items)=>n+items.length,0);
+  }catch(e){
+    PROJECT_BONUS_LEDGER.clear();
+    console.warn('TLN Bonus-Ledger cache-only nicht verfügbar',e);
+    return 0;
+  }
+}
 async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
   if(PROJECT_WALLET_SNAPSHOTS_LOADING||!currentUserId)return;
   PROJECT_WALLET_SNAPSHOTS_LOADING=true;
@@ -12304,7 +12364,7 @@ async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
     if(withHistoricalValuation){
       await Promise.all([...PROJECT_WALLET_SNAPSHOTS.entries()].map(([wallet,payload])=>hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi())));
     }
-    await loadProjectReferralLedgerCacheOnly(wanted);
+    await Promise.all([loadProjectReferralLedgerCacheOnly(wanted),loadProjectBonusLedgerCacheOnly(wanted)]);
     log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) geladen${batched?' · private Batch-Read':''}${globalDetailHits?` · ${globalDetailHits} globaler Detailcache`:''}${edgeDetailBackfills?` · ${edgeDetailBackfills} serverseitiger Detail-Backfill`:''}.`,'ok');
   }finally{PROJECT_WALLET_SNAPSHOTS_LOADING=false;renderProjectUserView();void refreshProjectRewardSummaryFallback({force:true});}
 }
@@ -18943,6 +19003,8 @@ async function loadDashboardRewardPeriodsCacheOnly(walletAddresses=null){
   const byId=new Map(own.filter(w=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(w?.dbId||''))).map(w=>[String(w.dbId),norm(w?.evm||w?.evm_address||'')]));
   const byWallet=new Map(own.map(w=>[norm(w?.evm||w?.evm_address||''),w]));
   if(currentUserId===uid)await loadProjectReferralLedgerCacheOnly(own.map(w=>({
+    wallet:norm(w?.evm||w?.evm_address||''),walletId:String(w?.dbId||'')})));
+  if(currentUserId===uid)await loadProjectBonusLedgerCacheOnly(own.map(w=>({
     wallet:norm(w?.evm||w?.evm_address||''),walletId:String(w?.dbId||'')})));
   const directEntries=[],lifecycleEntries=[],summaryParts=[],covered=new Set();
 
