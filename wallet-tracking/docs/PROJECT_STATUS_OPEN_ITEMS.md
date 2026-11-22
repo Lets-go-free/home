@@ -996,6 +996,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live-Test nach Edge-Deployment: autorisierter Aufruf `{"mode":"historical-manual-reward-parity"}`. Kein Commitment, keine neuen Claims, kein RPC. Abweichungen zuerst am bestehenden manuellen Snapshot auflösen.
 - Weiter offen: vollständige automatisierte Step-4-Flow-/Receipt-/Bonus-Rewards und Step-5-Referral-Klassifikation, historischer unabhängiger Vollständigkeitsbeleg sowie alle verschlüsselten Wallets. Tages-Direct-Claim-Cron 9.57 bleibt INAKTIV.
 
+### Phase 9.63 – SmartNode-Upline und Identitäten für Referral-Kandidaten (22.11.2026)
+
+- Bereits starke Referral-Mint-Kandidaten aus dem bestehenden Receipt-Evidence-Staging erhalten jetzt automatisch eine **maximal 20-stufige**, gegen den verifizierten globalen SmartNode-Graph und den globalen TLN-Identity-Cache geprüfte Pfadzuordnung. Nur bei eindeutiger Parent-Kette zum untersuchten Wallet, verifiziertem Cache-Stand und eindeutig verifizierten TLN-IDs für sämtliche Pfad-Wallets wird `referralPathVerified=true` samt Level gespeichert. Fehlende/mehrdeutige/Cycle/Cachefehler bleiben `false`; keine Vermutung und keine Claim-Buchung.
+- Die manuellen Getter-/`join(address)`-Fallbacks für **neue, noch nicht im globalen Graph erfasste** Beziehungen werden serverseitig noch nicht gestartet. Dies ist ein verifizierter Cache-Pfad, **kein** aktueller unabhängiger On-Chain-Neunachweis. Live-Test offen, `referralMintPathVerified` im bestehenden Job; Daily-Direct-Claim-Cron weiterhin inaktiv. `docs/releases/9.63-tln-vow-cached-referral-upline.md`.
+
 ### Phase 9.62 – Automatische Referral-Mint-Evidence in den 5-Minuten-Jobs (22.11.2026)
 
 - Die bestehenden aktiven `delta-work-cycle`/`delta-receipt-verify`-Pfade erfassen jetzt zusätzlich die drei **manuell bereits festgelegten** Referral-Mint-Token TLN, TLN+ und TLNX. Bei Receipt-verifizierten fremden Transaktionen prüfen sie positive Zero-Mints an das Wallet, Principal-Transfers/Stake-Events und die gemeinsame Step-5-Strong-Entscheidung. Erforderliche Belege werden unter `referralMintCandidates` in den bisherigen Receipt-Staging-Zeilen persistiert, Zähler in der Jobantwort.

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const source=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.ok(source.includes('async function cachedReferralPathEvidence(sb:any,sender:string,owner:string)'));
+assert.ok(source.includes('for(let depth=1;depth<=20;depth++)'));
+assert.ok(source.includes(".from('tln_vow_smartnode_graph_cache')"));
+assert.ok(source.includes(".from('tln_vow_identity_global_cache')"));
+assert.ok(source.includes("reason:'missing_or_ambiguous_parent'"));
+assert.ok(source.includes("reason:'identity_missing_or_ambiguous'"));
+assert.ok(source.includes("reason:'cycle'"));
+assert.ok(source.includes('referralMintPathVerifiedCount:'));
+assert.ok(source.includes('referralMintPathVerified+=receipts.reduce('));
+assert.ok(source.includes('referralMintPathVerified:evidence.reduce('));
+assert.ok(source.includes('events[0].block,sb)'));
+assert.ok(source.includes('item.block,sb)'));
+console.log('9.63 bounded fail-closed SmartNode global-cache path evidence linked to both jobs');

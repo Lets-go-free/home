@@ -1,3 +1,6 @@
+## 9.63 · 22.11.2026 18:14:05 CET · Build 20261122-181405
+- Für bereits belegte automatische Referral-Mint-Kandidaten wird nun die im manuellen Step 5 genutzte SmartNode-Upline-Struktur **cache-first**, strikt begrenzt und fail-closed geprüft: verifizierter globaler Graph, eindeutige Identity-Cache-TLN-IDs, maximal 20 Parent-Schritte, kein Kreis/Mehrdeutigkeit. `referralMintPathVerified` in Receipt-Evidence und 5-Minuten-Job. Keine neuen Claims, keine SQL-/Cron-Änderung; ungecachte On-Chain-Getter-/Join-Fallbacks bleiben offen. `9.63-tln-vow-cached-referral-upline.md`.
+
 ## 9.62 · 22.11.2026 15:11:58 CET · Build 20261122-151158
 - Bestehender 5-Minuten-Scanner erfasst die drei manuell festgelegten Referral-Mint-Contracts und verwendet Receipt-/Stake-Belege mit dem gemeinsamen Step-5-Strong-Entscheid. Neue starke Kandidaten werden nur in bestehendem Receipt-Evidence-Staging gespeichert; Zähler `referralMintCandidates` in Jobantworten. Kein neues Cron, kein Claim-/Reward-Commit. `9.62-tln-vow-automatic-referral-mint-evidence.md`.
 

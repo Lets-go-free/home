@@ -1442,7 +1442,48 @@ async function probeHistoricalRewardState(wallet:string,receipt:any,block:number
   }
   return {attempted:true,paired,deltas}
 }
-async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any,stakingContracts:string[],block:number){
+// Cache-first part of the manual SmartNode Upline traversal (max 20 levels).
+// Missing global edges/identities do not establish a negative or positive level.
+async function cachedReferralPathEvidence(sb:any,sender:string,owner:string){
+  const child=evmAddress(sender),target=evmAddress(owner),path:string[]=[]
+  if(!child||!target||child===target)return {verified:false,level:null,reason:'invalid_or_self'}
+  const seen=new Set<string>(),proofs:any[]=[]
+  let cursor=child
+  for(let depth=1;depth<=20;depth++){
+    if(seen.has(cursor))return {verified:false,level:null,reason:'cycle'}
+    seen.add(cursor);path.push(cursor)
+    const {data,error}=await sb.from('tln_vow_smartnode_graph_cache')
+      .select('parent_wallet,join_tx_hash,verified_at')
+      .eq('chain_key','bsc').eq('child_wallet',cursor).limit(2)
+    if(error)return {verified:false,level:null,reason:'graph_unavailable'}
+    if(!Array.isArray(data)||data.length!==1)return {verified:false,level:null,reason:'missing_or_ambiguous_parent'}
+    const edge=data[0],parent=evmAddress(edge?.parent_wallet)
+    if(!parent||parent===cursor||!edge?.verified_at)return {verified:false,level:null,reason:'unverified_parent'}
+    proofs.push({child:cursor,parent,source:'verified_global_graph',hash:edge.join_tx_hash||null})
+    if(parent===target){
+      path.push(parent)
+      const {data:identities,error:identityError}=await sb.from('tln_vow_identity_global_cache')
+        .select('wallet_address,node_id,verified_at').eq('chain_key','bsc')
+        .in('wallet_address',path)
+      if(identityError)return {verified:false,level:null,reason:'identity_cache_unavailable'}
+      const byWallet=new Map<string,Set<string>>()
+      for(const item of identities||[]){
+        const address=evmAddress(item.wallet_address),node=String(item.node_id||'')
+        if(!address||!item.verified_at||!/^\d+$/.test(node)||node==='0')continue
+        if(!byWallet.has(address))byWallet.set(address,new Set())
+        byWallet.get(address)!.add(node)
+      }
+      if(path.some(w=>byWallet.get(w)?.size!==1))
+        return {verified:false,level:null,reason:'identity_missing_or_ambiguous'}
+      return {verified:true,level:depth,source:'verified_global_graph',path,proofs,
+        identityProof:'verified_global_identity_cache'}
+    }
+    if(seen.has(parent))return {verified:false,level:null,reason:'cycle'}
+    cursor=parent
+  }
+  return {verified:false,level:null,reason:'max_depth'}
+}
+async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:any,snapshot:any,stakingContracts:string[],block:number,sb?:any){
   const referralFinal=verificationCore.manualReferralMintVerdict({
     sender:receipt?.transactionSender,
     staking:stakingContracts.includes(receipt?.calledContract)?{address:receipt.calledContract}:null,
@@ -1453,6 +1494,14 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     receipt.referralMintTokens.length>0&&referralFinal.strong?
     receipt.referralMintTokens.map((token:string)=>({token,kind:'referral_mint_strong',
       storedEvidenceOnly:true})):[]
+  const referralPath=referralMintCandidates.length&&sb
+    ?await cachedReferralPathEvidence(sb,receipt.transactionSender,wallet)
+    :{verified:false,level:null,reason:'no_candidate_or_cache'}
+  for(const candidate of referralMintCandidates){
+    candidate.referralPathVerified=referralPath.verified===true
+    candidate.referralLevel=referralPath.level
+    candidate.referralPathEvidence=referralPath
+  }
   const positionEvidence=verificationCore.manualPositionReceiptEvidence({wallet,receipt,stakingContracts,
     lots:snapshot?.process?.lots||[],block})
   // A historical snapshot may still contain two independent lots with full
@@ -1501,6 +1550,7 @@ async function attachManualRewardProofMatches(wallet:string,hash:string,receipt:
     bonusClaimCandidates,bonusClaimCandidateCount:bonusClaimCandidates.length,
     referralClaimCandidates,referralClaimCandidateCount:referralClaimCandidates.length,
     referralMintCandidates,referralMintCandidateCount:referralMintCandidates.length,
+    referralMintPathVerifiedCount:referralMintCandidates.filter((c:any)=>c.referralPathVerified).length,
     stateProbeAttempted:stateProbe.attempted,stateProbePaired:stateProbe.paired,
     stateChangeCandidates:stateCandidates,stateChangeCandidateCount:stateCandidates.length,
     uniqueLotAssignmentCandidates:lotAssignments,uniqueLotAssignmentCandidateCount:lotAssignments.length,
@@ -2083,7 +2133,7 @@ Deno.serve(async (req) => {
       const evidence:any[]=[]
       try{
         for(const item of batch)evidence.push(await attachManualRewardProofMatches(item.wallet,item.hash,
-          await verifyStagedReceipt(item.wallet,item.hash,item.block,item.events,item.lots),item.snapshot,stakingContracts,item.block))
+          await verifyStagedReceipt(item.wallet,item.hash,item.block,item.events,item.lots),item.snapshot,stakingContracts,item.block,sb))
       }catch(e){console.error('TLN receipt evidence failed',safeRpcDiagnostic(e))
         return reply({ok:false,mode,error:'Receipt or staged transfer mismatch; no receipt evidence saved',
           rpcDiagnostic:safeRpcDiagnostic(e),persisted:false},503)}
@@ -2105,6 +2155,7 @@ Deno.serve(async (req) => {
         bonusClaimCandidates:evidence.reduce((n,e)=>n+e.bonusClaimCandidateCount,0),
         referralClaimCandidates:evidence.reduce((n,e)=>n+e.referralClaimCandidateCount,0),
         referralMintCandidates:evidence.reduce((n,e)=>n+e.referralMintCandidateCount,0),
+        referralMintPathVerified:evidence.reduce((n,e)=>n+e.referralMintPathVerifiedCount,0),
         stateChangeCandidates:evidence.reduce((n,e)=>n+e.stateChangeCandidateCount,0),
         uniqueLotAssignmentCandidates:evidence.reduce((n,e)=>n+e.uniqueLotAssignmentCandidateCount,0),
         matchedLifecycleTransactions:evidence.filter(e=>e.lifecycleLotMatches>0).length,
@@ -2189,7 +2240,7 @@ Deno.serve(async (req) => {
       // contiguous, independently committed chunks. Each chunk is durable even
       // if a later scan fails; the next invocation resumes from persisted rows.
       const limit=workCycle?3:1,start=Date.now(),chunks:any[]=[]
-      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,bonusClaimCandidates=0,referralClaimCandidates=0,referralMintCandidates=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
+      let cursor=target.next,receiptVerified=0,receiptDeferred=0,manualProofMatches=0,newUnverifiedMintCandidates=0,explicitClaimCandidates=0,bonusClaimCandidates=0,referralClaimCandidates=0,referralMintCandidates=0,referralMintPathVerified=0,stateChangeCandidates=0,uniqueLotAssignmentCandidates=0,stopReason='max_chunks'
       for(let i=0;i<limit&&cursor<=head;i++){
         if(workCycle&&i>0&&Date.now()-start>16000){stopReason='time_budget';break}
         let chunkSize=maxBlocks,inspection:any=null,toBlock=cursor
@@ -2250,7 +2301,7 @@ Deno.serve(async (req) => {
           try{
             for(const [hash,events] of txs)receipts.push({hash,block:events[0].block,
               evidence:await attachManualRewardProofMatches(target.wallet,hash,
-                await verifyStagedReceipt(target.wallet,hash,events[0].block,events,matchingLots),targetSnapshot,stakingContracts,events[0].block)})
+                await verifyStagedReceipt(target.wallet,hash,events[0].block,events,matchingLots),targetSnapshot,stakingContracts,events[0].block,sb)})
           }catch(e){
             console.error('TLN immediate receipt verification failed',safeRpcDiagnostic(e))
             return reply({ok:false,mode,error:'Transfer chunk staged; receipt proof failed and is retryable',
@@ -2272,13 +2323,14 @@ Deno.serve(async (req) => {
           bonusClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.bonusClaimCandidateCount,0)
           referralClaimCandidates+=receipts.reduce((n,r)=>n+r.evidence.referralClaimCandidateCount,0)
           referralMintCandidates+=receipts.reduce((n,r)=>n+r.evidence.referralMintCandidateCount,0)
+          referralMintPathVerified+=receipts.reduce((n,r)=>n+r.evidence.referralMintPathVerifiedCount,0)
           stateChangeCandidates+=receipts.reduce((n,r)=>n+r.evidence.stateChangeCandidateCount,0)
           uniqueLotAssignmentCandidates+=receipts.reduce((n,r)=>n+r.evidence.uniqueLotAssignmentCandidateCount,0)
         }
       }
       if(cursor>head)stopReason='chain_head'
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,referralMintCandidates,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,referralMintCandidates,referralMintPathVerified,stateChangeCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,
