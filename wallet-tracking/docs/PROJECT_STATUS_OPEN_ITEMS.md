@@ -1111,3 +1111,12 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - `encrypted-wallet-scan-batch-plan-preview` plant mit dem bereits bestehenden Wallet-Auswahl-Audit pro Wallet Start/Resume, 24-Block-Overlap und 250’000er Haupt-Chunks; Aggregat ohne Adressen/User-IDs. Er führt keine Kettenabfragen für Transfers, keine Writes und keine Cron-Änderungen aus.
 - Die manuelle `alchemyErc20RangeChunked`-Funktion ist Browser-Code, nicht direkt serverseitig aufrufbar. Vor einem Schreib-Worker nötig: derselbe RPC/Pagination-Algorithmus, adaptive Split-Logik, Cursor-/Payload-Schutz, kollisionsfreie Fortschrittsreservierung, vollständiger Erfolgsnachweis und Idempotenz. Bloße Cache-Grenzen sind kein Vollständigkeitsbeleg.
 - **TODO:** Batch-Plan live prüfen; danach gemeinsamen Extraktions-/Worker-Weg entwerfen und strikt begrenzt zuerst trocken testen. Tägliche Buchungsjobs bleiben deaktiviert.
+
+
+### Phase 9.84 – Geschützter Einzelabschnitt-RPC-Dry-Run (23.11.2026 15:09:17 CET, Build 20261123-150917)
+
+- Live 9.83: 10 relevante Wallets, 3 ohne Cache, 7 mit Scan-Rückstand; 1’694 geplante Haupt-Chunks, 421’806’935 aufsummierte Blockbereiche; keinerlei Schreibfreigabe.
+- Neuer Read-only-Modus `encrypted-wallet-scan-chunk-dry-run`: bestehende Wallet-Auswahl + bestehende `inspectWalletTransfers()`-Pagination, maximal eine Wallet und 100 Blöcke (Fortsetzung mit 24-Block-Overlap). Er fasst Transfers für aktive Projekt-Token zusammen, gibt keine Identitäten aus und speichert keine Daten.
+- Lokale Tests (9.80–9.84) erfolgreich. **Live-RPC-Test noch offen**. Dieser Test ist weder 250’000er Batch-Scan noch Beweis vollständiger Rewards.
+- **TODO:** Live-Dry-Run prüfen; danach kollisionsfreien, wiederaufnehmbaren Scan-Worker mit gesicherter Pagination und atomarem Fortschritt entwickeln. Vor Tages-Reward-Jobs unabhängigen Vollständigkeitsnachweis für alle vier Reward-Arten.
+- Cron 7/8 unverändert aktiv; tägliche Reward-Buchungsjobs bleiben deaktiviert. Siehe `docs/releases/9.84-tln-guarded-single-chunk-rpc-dry-run.md`.
