@@ -1,4 +1,4 @@
-// WalletTracking 9.77 – read-only combined daily preview across four existing TLN/VOW finalizers.
+// WalletTracking 9.80 – read-only encrypted wallet coverage including current balanceOf gate.
 // Uses configured archive-state RPC for storage, Alchemy for transfers. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -924,6 +924,48 @@ async function coverageRows(sb:any,table:string,columns:string,filters:(q:any)=>
   }
   throw Error('Wallet coverage pagination limit: '+table)
 }
+// Same membership predicate and ERC-20 balanceOf(address) selector as the manual
+// selectTlnVowProjectWallets() gate. Only the RPC transport differs (bounded JSON-RPC
+// batch instead of the browser's ethers Multicall3). Failed reads are UNKNOWN.
+function coverageProjectTokens(rows:any[]):string[]{
+  return [...new Set(rows.filter(r=>r?.enabled!==false&&!r?.historical_only&&r?.address&&
+    String(r?.tln_vow_category||r?.defi_category||'').trim())
+    .map(r=>String(r.address).toLowerCase())
+    .filter(a=>/^0x[0-9a-f]{40}$/.test(a)))]
+}
+async function coverageCurrentBalances(addresses:string[],tokens:string[]):Promise<{hits:Set<string>,unknown:Set<string>,checked:boolean}> {
+  const hits=new Set<string>(),unknown=new Set<string>()
+  if(!addresses.length)return {hits,unknown,checked:true}
+  if(!tokens.length){addresses.forEach(a=>unknown.add(a));return {hits,unknown,checked:false}}
+  if(!ALCHEMY_API_KEY){addresses.forEach(a=>unknown.add(a));return {hits,unknown,checked:false}}
+  // One bounded request per wallet. Provider batch failure must never mean zero balance.
+  const endpoint=`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`
+  for(const address of addresses){
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000)
+    try{
+      const data='0x70a08231'+address.slice(2).padStart(64,'0')
+      const calls=tokens.map((token,i)=>({jsonrpc:'2.0',id:i+1,method:'eth_call',params:[{to:token,data},'latest']}))
+      const response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify(calls),signal:controller.signal})
+      if(!response.ok)throw Error('BSC balance batch HTTP failure')
+      const body=await response.json()
+      if(!Array.isArray(body)||body.length!==calls.length)throw Error('BSC balance batch unsupported or incomplete')
+      const byId=new Map(body.map((r:any)=>[r.id,r]))
+      let failed=false,positive=false
+      for(let i=0;i<calls.length;i++){
+        const row:any=byId.get(i+1)
+        if(!row||row.error||typeof row.result!=='string'||!/^0x[0-9a-f]+$/i.test(row.result)){
+          failed=true;continue
+        }
+        try{if(BigInt(row.result)>0n)positive=true}catch{failed=true}
+      }
+      if(positive)hits.add(address)
+      else if(failed)unknown.add(address)
+    }catch{unknown.add(address)}
+    finally{clearTimeout(timer)}
+  }
+  return {hits,unknown,checked:unknown.size===0}
+}
 async function encryptedTlnWalletCoveragePreview(sb:any){
   if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
     error:'Encryption service not configured',canEnableWritingCron:false}
@@ -949,6 +991,7 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
     return (graph||[]).length>0
   }
   const userKeys=new Map<string,CryptoKey>()
+  const unknownAddresses:string[]=[]
   const result={encryptedEvmWallets:wallets.length, historicalProjectMatch:0,
     historicalCacheMatch:0,historicalIdentityOrGraphMatch:0,
     noHistoricalMatchCurrentBalanceUnchecked:0,withBscHistoryCache:0,
@@ -963,14 +1006,29 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
     if(fromCache)result.historicalCacheMatch++
     if(fromIdentity)result.historicalIdentityOrGraphMatch++
     if(fromCache||fromIdentity)result.historicalProjectMatch++
-    else result.noHistoricalMatchCurrentBalanceUnchecked++
+    else unknownAddresses.push(address)
     if(bscScanned.has(k))result.withBscHistoryCache++
     else if(fromCache||fromIdentity)result.historicalMatchWithoutBscHistoryCache++
   }
+  // Mirror the manual selection's eligible-token predicate, without classifying
+  // failed RPC reads as zero balances. The result is an aggregate only.
+  const projectRows=await coverageRows(sb,'predefined_tokens',
+    'address,enabled,historical_only,tln_vow_category,defi_category',
+    q=>q.eq('chain','bsc').eq('defi_project_key','tln_vow'))
+  const eligibleTokens=coverageProjectTokens(projectRows)
+  const balances=await coverageCurrentBalances(unknownAddresses,eligibleTokens)
+  const currentMatches=balances.hits.size
+  result.noHistoricalMatchCurrentBalanceUnchecked=balances.unknown.size
+  const complete=balances.checked&&eligibleTokens.length>0
   return {ok:true,mode:'encrypted-wallet-coverage-preview',day:dayCH(),dryRun:true,
-    ...result,currentBalanceGateExecuted:false,historicalScanCoverageVerified:false,
-    fullWalletSelectionVerified:false,canEnableWritingCron:false,persisted:false,
-    notice:'Only historical manual-selection criteria checked. Current TLN/VOW token balance gate NOT run; unclassified wallets are unknown, not irrelevant. No addresses, keys, user IDs, wallet IDs, writes or cron changes.'}
+    ...result,currentBalanceGateExecuted:complete,currentProjectTokenMatch:currentMatches,
+    currentBalanceUnknown:balances.unknown.size,
+    currentBalanceConfirmedNoMatch:complete?unknownAddresses.length-currentMatches:0,
+    currentProjectTokensChecked:eligibleTokens.length,
+    totalProjectRelevantWallets:result.historicalProjectMatch+currentMatches,
+    fullWalletSelectionVerified:complete,historicalScanCoverageVerified:false,
+    canEnableWritingCron:false,persisted:false,
+    notice:'Historical project evidence plus current BSC ERC20 balanceOf gate. Any RPC failure remains unknown, not irrelevant. No addresses, keys, user IDs, wallet IDs, writes or cron changes. Historical scan completeness is NOT proven.'}
 }
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
 const URL = Deno.env.get('SUPABASE_URL') || ''
