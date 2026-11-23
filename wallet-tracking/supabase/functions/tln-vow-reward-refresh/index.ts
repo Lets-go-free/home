@@ -966,7 +966,7 @@ async function coverageCurrentBalances(addresses:string[],tokens:string[]):Promi
   }
   return {hits,unknown,checked:unknown.size===0}
 }
-async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false,scanEvidenceRun=false){
+async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false,scanEvidenceRun=false,scanWritePlan=false){
   if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
     error:'Encryption service not configured',canEnableWritingCron:false}
   const wallets=await coverageRows(sb,'wallets',
@@ -1085,6 +1085,67 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
       scanCoverageClassificationComplete:complete&&head!==null,
       scanCoverageStatus:'raw-cache-boundaries-only',
       historicalScanCoverageVerified:false}
+    if(scanWritePlan){
+      // Read-only preflight for a future atomic, DB-owned merge. This does NOT
+      // build a write payload or grant permission to write. The existing browser
+      // performs a read-then-upsert, which cannot protect against concurrent writers.
+      const candidateKeys=[...relevant].sort()
+      const nextPlans:{cached:boolean,from:number,to:number,existingRows:number,duplicateKeys:number,unkeyedRows:number}[]=[]
+      let missingRaw=0,invalidRaw=0,cacheDuplicateEntries=0,unkeyedExistingEntries=0
+      for(const k of candidateKeys){
+        const rows=rawByKey.get(k)||[]
+        if(rows.length===0){
+          missingRaw++
+          if(head!==null)nextPlans.push({cached:false,from:0,to:Math.min(head,99),existingRows:0,duplicateKeys:0,unkeyedRows:0})
+          continue
+        }
+        if(rows.length!==1){invalidRaw++;continue}
+        const r=rows[0],from=Number(r.complete_from_block),to=Number(r.last_scanned_block)
+        if(r.scanner_version!=='erc20-raw-v1'||!Array.isArray(r.payload)||
+          !Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from!==0||to<from||
+          (head!==null&&to>head)){invalidRaw++;continue}
+        const seen=new Set<string>()
+        let duplicateKeys=0,unkeyedRows=0
+        for(const transfer of r.payload){
+          const hash=typeof transfer?.hash==='string'?transfer.hash.toLowerCase():''
+          const token=evmAddress(transfer?.rawContract?.address)
+          const unique=typeof transfer?.uniqueId==='string'?transfer.uniqueId:''
+          const block=typeof transfer?.blockNum==='string'?transfer.blockNum.toLowerCase():''
+          if(!/^0x[0-9a-f]{64}$/.test(hash)||!token||!/^0x[0-9a-f]+$/.test(block)||!unique){unkeyedRows++;continue}
+          const id=[hash,token,unique].join('|')
+          if(seen.has(id))duplicateKeys++
+          seen.add(id)
+        }
+        cacheDuplicateEntries+=duplicateKeys
+        unkeyedExistingEntries+=unkeyedRows
+        if(head!==null&&to<head){
+          const start=Math.max(0,to-24+1)
+          nextPlans.push({cached:true,from:start,to:Math.min(head,start+99),existingRows:r.payload.length,duplicateKeys,unkeyedRows})
+        }
+      }
+      const selected=nextPlans.sort((a,b)=>Number(b.cached)-Number(a.cached)||a.from-b.from)[0]||null
+      return {ok:complete&&head!==null&&invalidRaw===0,
+        mode:'encrypted-wallet-scan-write-plan-preview',day:dayCH(),dryRun:true,
+        persisted:false,executed:true,canEnableWritingCron:false,
+        fullWalletSelectionVerified:complete,relevantWallets:relevant.size,
+        cachedWalletsWithCandidateChunks:nextPlans.filter(x=>x.cached).length,
+        walletsWithoutRawCache:missingRaw,invalidRawCaches:invalidRaw,
+        cachedDuplicateTransferKeys:cacheDuplicateEntries,
+        cachedTransfersMissingRequiredIdentity:unkeyedExistingEntries,
+        selectedChunk:selected?{fromBlock:selected.from,toBlock:selected.to,
+          blocks:selected.to-selected.from+1,overlapBlocks:selected.cached?24:0,
+          existingCachedTransfers:selected.existingRows}:null,
+        currentChainHeadAvailable:head!==null,
+        writePreconditions:{completeRpcPaginationRequired:true,
+          existingTransfersMustBePreserved:true,
+          stableTransferDeduplicationRequired:true,
+          singleDatabaseTransactionRequired:true,
+          staleCursorCompareAndSwapRequired:true,
+          atomicMergeProcedureAvailable:false},
+        safeToWrite:false,blocker:'No verified atomic database merge/compare-and-swap procedure; browser read-then-upsert is not concurrency-safe',
+        rewardClassificationVerified:false,historicalScanCoverageVerified:false,
+        notice:'Planning only. No chain scan, no cache/transaction/cursor/claim/reward writes, no IDs, addresses, transaction hashes or keys returned.'}
+    }
     if(scanEvidenceRun){
       // Guarded positive-evidence replay: pick exactly one previously cached,
       // project-token-matching transfer, then independently fetch its block
@@ -2366,7 +2427,7 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('encrypted-wallet-scan-transfer-evidence-preview','encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('encrypted-wallet-scan-write-plan-preview','encrypted-wallet-scan-transfer-evidence-preview','encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2393,8 +2454,8 @@ async function handleRewardRequest(req: Request): Promise<Response> {
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
     }
-    if(mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'||mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview'||mode==='encrypted-wallet-scan-chunk-dry-run'||mode==='encrypted-wallet-scan-transfer-evidence-preview'){
-      const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-chunk-dry-run',mode==='encrypted-wallet-scan-transfer-evidence-preview')
+    if(mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'||mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview'||mode==='encrypted-wallet-scan-chunk-dry-run'||mode==='encrypted-wallet-scan-transfer-evidence-preview'||mode==='encrypted-wallet-scan-write-plan-preview'){
+      const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-chunk-dry-run',mode==='encrypted-wallet-scan-transfer-evidence-preview',mode==='encrypted-wallet-scan-write-plan-preview')
       return reply(preview,preview.ok?200:503)
     }
     if(mode==='daily-all-rewards-preview'){
