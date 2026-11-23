@@ -966,7 +966,7 @@ async function coverageCurrentBalances(addresses:string[],tokens:string[]):Promi
   }
   return {hits,unknown,checked:unknown.size===0}
 }
-async function encryptedTlnWalletCoveragePreview(sb:any){
+async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false){
   if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
     error:'Encryption service not configured',canEnableWritingCron:false}
   const wallets=await coverageRows(sb,'wallets',
@@ -974,7 +974,8 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
     q=>q.not('evm_address_ciphertext','is',null).order('id'))
   // Never enumerate the potentially unbounded global SmartNode graph.
   // Resolve evidence only against decrypted wallet addresses, on the server.
-  const scanRows=await coverageRows(sb,'tln_vow_staking_scan_cache','user_id,wallet_id,cache_key',
+  const scanRows=await coverageRows(sb,'tln_vow_staking_scan_cache',
+    scanAudit?'user_id,wallet_id,cache_key,scanner_version,complete_from_block,last_scanned_block,payload':'user_id,wallet_id,cache_key',
     q=>q.eq('project_key','tln_vow').eq('chain_key','bsc'))
   const scanKeys=new Set(scanRows.filter(r=>r.wallet_id&&r.user_id).map(r=>`${r.user_id}|${r.wallet_id}`))
   const bscScanned=new Set(scanRows.filter(r=>r.cache_key==='erc20-history-v1'&&r.wallet_id&&r.user_id)
@@ -992,6 +993,8 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
   }
   const userKeys=new Map<string,CryptoKey>()
   const unknownAddresses:string[]=[]
+  const historicalRelevantKeys=new Set<string>()
+  const addressToKey=new Map<string,string>()
   const result={encryptedEvmWallets:wallets.length, historicalProjectMatch:0,
     historicalCacheMatch:0,historicalIdentityOrGraphMatch:0,
     noHistoricalMatchCurrentBalanceUnchecked:0,withBscHistoryCache:0,
@@ -1002,10 +1005,11 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
     if(!userKeys.has(w.user_id))userKeys.set(w.user_id,await walletUserDecryptionKey(w.user_id))
     const address=await decryptOwnEvmAddress(userKeys.get(w.user_id)!,w.user_id,w.id,w.evm_address_ciphertext)
     const k=`${w.user_id}|${w.id}`
+    addressToKey.set(address,k)
     const fromCache=scanKeys.has(k),fromIdentity=await hasHistoricalAddressEvidence(address)
     if(fromCache)result.historicalCacheMatch++
     if(fromIdentity)result.historicalIdentityOrGraphMatch++
-    if(fromCache||fromIdentity)result.historicalProjectMatch++
+    if(fromCache||fromIdentity){result.historicalProjectMatch++;historicalRelevantKeys.add(k)}
     else unknownAddresses.push(address)
     if(bscScanned.has(k))result.withBscHistoryCache++
     else if(fromCache||fromIdentity)result.historicalMatchWithoutBscHistoryCache++
@@ -1020,13 +1024,50 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
   const currentMatches=balances.hits.size
   result.noHistoricalMatchCurrentBalanceUnchecked=balances.unknown.size
   const complete=balances.checked&&eligibleTokens.length>0
-  return {ok:true,mode:'encrypted-wallet-coverage-preview',day:dayCH(),dryRun:true,
+  // Audit the very same selected wallet set; no second relevance algorithm.
+  // Raw cache boundaries alone cannot prove all historical reward paths.
+  let scanCoverage:any={}
+  if(scanAudit){
+    const relevant=new Set(historicalRelevantKeys)
+    for(const address of balances.hits){const key=addressToKey.get(address);if(key)relevant.add(key)}
+    const rawByKey=new Map<string,any[]>()
+    for(const r of scanRows){
+      if(r.cache_key!=='erc20-history-v1'||!r.user_id||!r.wallet_id)continue
+      const k=`${r.user_id}|${r.wallet_id}`
+      if(!rawByKey.has(k))rawByKey.set(k,[])
+      rawByKey.get(k)!.push(r)
+    }
+    let head:number|null=null
+    try{head=await bscHead()}catch{/* Lack of chain head must not imply a fresh scan. */}
+    let missing=0,invalid=0,partial=0,genesisToHead=0,validRange=0
+    for(const k of relevant){
+      const rows=rawByKey.get(k)||[]
+      if(!rows.length){missing++;continue}
+      if(rows.length!==1){invalid++;continue}
+      const r=rows[0],from=Number(r.complete_from_block),to=Number(r.last_scanned_block)
+      if(r.scanner_version!=='erc20-raw-v1'||!Array.isArray(r.payload)||
+        !Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from<0||to<from||to<=0||
+        (head!==null&&to>head)) {invalid++;continue}
+      validRange++
+      if(head!==null&&from===0&&to>=head)genesisToHead++
+      else partial++
+    }
+    scanCoverage={scanCoverageAuditExecuted:true,scanCoverageChainHeadAvailable:head!==null,
+      scanCoverageRelevantWalletsChecked:relevant.size,scanCoverageMissingRawCache:missing,
+      scanCoverageInvalidRawCache:invalid,scanCoveragePartialOrUnverifiedRange:partial,
+      scanCoverageValidRawCacheRanges:validRange,
+      scanCoverageGenesisToHeadRanges:genesisToHead,
+      scanCoverageClassificationComplete:complete&&head!==null,
+      scanCoverageStatus:'raw-cache-boundaries-only',
+      historicalScanCoverageVerified:false}
+  }
+  return {ok:true,mode:scanAudit?'encrypted-wallet-scan-coverage-preview':'encrypted-wallet-coverage-preview',day:dayCH(),dryRun:true,
     ...result,currentBalanceGateExecuted:complete,currentProjectTokenMatch:currentMatches,
     currentBalanceUnknown:balances.unknown.size,
     currentBalanceConfirmedNoMatch:complete?unknownAddresses.length-currentMatches:0,
     currentProjectTokensChecked:eligibleTokens.length,
     totalProjectRelevantWallets:result.historicalProjectMatch+currentMatches,
-    fullWalletSelectionVerified:complete,historicalScanCoverageVerified:false,
+    fullWalletSelectionVerified:complete,historicalScanCoverageVerified:false,...scanCoverage,
     canEnableWritingCron:false,persisted:false,
     notice:'Historical project evidence plus current BSC ERC20 balanceOf gate. Any RPC failure remains unknown, not irrelevant. No addresses, keys, user IDs, wallet IDs, writes or cron changes. Historical scan completeness is NOT proven.'}
 }
@@ -2147,7 +2188,7 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2174,8 +2215,8 @@ async function handleRewardRequest(req: Request): Promise<Response> {
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
     }
-    if(mode==='encrypted-wallet-coverage-preview'){
-      const preview=await encryptedTlnWalletCoveragePreview(sb)
+    if(mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'){
+      const preview=await encryptedTlnWalletCoveragePreview(sb,mode==='encrypted-wallet-scan-coverage-preview')
       return reply(preview,preview.ok?200:503)
     }
     if(mode==='daily-all-rewards-preview'){
