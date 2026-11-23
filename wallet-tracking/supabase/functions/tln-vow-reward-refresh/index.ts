@@ -878,6 +878,96 @@ import { createClient } from 'npm:@supabase/supabase-js@^2'
   root.WT_TLN_REWARD_VERIFICATION_CORE=Object.freeze({rewardCoverageVerdict,referralVerdict,manualReferralMintVerdict,scanBlockEvidence,auditSnapshot,legacySnapshotEvidence,verifiedTopUpMintCandidates,verifiedStakeTxRewardClaims,reconcileVerifiedStakeReceipt,legacyUnmatchedProofRows,legacyStakeLifecycleEvidence,classifyRewardTransferFlow,reconcileVerifiedTopUpReceipt,discoverNewMintRewardCandidates,keccakSelector,keccak256Hex,manualWalletMappingSlot,knownClaimMethodIntent,manualBonusEvidenceForClaim,classifyExplicitClaimReceipt,rewardStateProbeSignatures,classifyStateDeltaReceipt,assignReceiptCandidatesToUniqueLots,verifiedDirectStakingClaim,verifiedIndirectStakingClaim,manualPositionCallIntent,manualPositionReceiptEvidence,manualBuildDiagnosticLots,manualMergeProvenTopUpPosition,manualReplayRecordedTopUps,manualReconcileUnstakeContractCalls,manualUniqueUnstakeLotIndex,manualTopUpStorageContinuity});
 })(globalThis);
 // END GENERATED TLN VERIFICATION CORE
+// Phase 9.78: protected, read-only own-wallet coverage inventory.
+// Crypto format and AAD match the existing dao-reward-refresh server implementation.
+const WALLET_MASTER_V1 = Deno.env.get('WALLET_ENCRYPTION_MASTER_KEY_V1') || ''
+const walletTextEncoder = new TextEncoder()
+function walletB64url(input:string):Uint8Array {
+  const normalized=input.replace(/-/g,'+').replace(/_/g,'/')
+  return Uint8Array.from(atob(normalized+'='.repeat((4-normalized.length%4)%4)),c=>c.charCodeAt(0))
+}
+async function walletUserDecryptionKey(user:string):Promise<CryptoKey> {
+  const raw=WALLET_MASTER_V1.trim()
+  const bytes=/^[0-9a-f]{64}$/i.test(raw)
+    ? Uint8Array.from(raw.match(/../g)!,h=>parseInt(h,16)) : walletB64url(raw)
+  if(bytes.length!==32)throw Error('Wallet encryption key unavailable')
+  const base=await crypto.subtle.importKey('raw',bytes,'HKDF',false,['deriveKey'])
+  return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',
+    salt:walletTextEncoder.encode('wallet-tracking/private-data/hkdf-salt/v1'),
+    info:walletTextEncoder.encode(`wallet-tracking:user:${user}:key-version:1`)},
+    base,{name:'AES-GCM',length:256},false,['decrypt'])
+}
+async function decryptOwnEvmAddress(key:CryptoKey,user:string,id:string,ciphertext:unknown):Promise<string> {
+  if(typeof ciphertext!=='string')throw Error('Invalid encrypted EVM address')
+  const parts=ciphertext.split('.')
+  if(parts.length!==4||parts[0]!=='wt1'||parts[1]!=='k1')throw Error('Unsupported wallet ciphertext')
+  for(const field of ['wallets.evm_address_ciphertext','wallets.evm_address']){
+    try{
+      const clear=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',
+        iv:walletB64url(parts[2]),additionalData:walletTextEncoder.encode(
+          `wallet-tracking|enc=1|key=1|user=${user}|record=${id}|field=${field}`),
+        tagLength:128},key,walletB64url(parts[3]))).toLowerCase()
+      if(!/^0x[0-9a-f]{40}$/.test(clear))throw Error('Invalid decrypted address')
+      return clear
+    }catch{/* Old AAD naming may be in use; try the other documented variant. */}
+  }
+  throw Error('Could not decrypt an EVM wallet')
+}
+// All pages must be present; never assert coverage when a database page failed.
+async function coverageRows(sb:any,table:string,columns:string,filters:(q:any)=>any=(q:any)=>q):Promise<any[]> {
+  const out:any[]=[],limit=500,maxPages=20
+  for(let i=0;i<maxPages;i++){
+    const {data,error}=await filters(sb.from(table).select(columns)).range(i*limit,(i+1)*limit-1)
+    if(error)throw Error('Wallet coverage source unavailable: '+table)
+    out.push(...(data||[]))
+    if((data||[]).length<limit)return out
+  }
+  throw Error('Wallet coverage pagination limit: '+table)
+}
+async function encryptedTlnWalletCoveragePreview(sb:any){
+  if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
+    error:'Encryption service not configured',canEnableWritingCron:false}
+  const wallets=await coverageRows(sb,'wallets',
+    'id,user_id,evm_address_ciphertext,encryption_version,key_version',
+    q=>q.not('evm_address_ciphertext','is',null).order('id'))
+  const [scanRows,identityRows,graphRows]=await Promise.all([
+    coverageRows(sb,'tln_vow_staking_scan_cache','user_id,wallet_id,cache_key',
+      q=>q.eq('project_key','tln_vow').eq('chain_key','bsc')),
+    coverageRows(sb,'tln_vow_identity_global_cache','wallet_address',q=>q.eq('chain_key','bsc')),
+    coverageRows(sb,'tln_vow_smartnode_graph_cache','child_wallet,parent_wallet',q=>q.eq('chain_key','bsc'))
+  ])
+  const scanKeys=new Set(scanRows.filter(r=>r.wallet_id&&r.user_id).map(r=>`${r.user_id}|${r.wallet_id}`))
+  const bscScanned=new Set(scanRows.filter(r=>r.cache_key==='erc20-history-v1'&&r.wallet_id&&r.user_id)
+    .map(r=>`${r.user_id}|${r.wallet_id}`))
+  const addresses=new Set<string>()
+  for(const r of identityRows){const a=evmAddress(r.wallet_address);if(a)addresses.add(a)}
+  for(const r of graphRows){for(const value of [r.child_wallet,r.parent_wallet]){
+    const a=evmAddress(value);if(a)addresses.add(a)
+  }}
+  const userKeys=new Map<string,CryptoKey>()
+  const result={encryptedEvmWallets:wallets.length, historicalProjectMatch:0,
+    historicalCacheMatch:0,historicalIdentityOrGraphMatch:0,
+    noHistoricalMatchCurrentBalanceUnchecked:0,withBscHistoryCache:0,
+    historicalMatchWithoutBscHistoryCache:0}
+  for(const w of wallets){
+    if(w.encryption_version!==1||w.key_version!==1||!w.user_id||!w.id)
+      throw Error('Unsupported encrypted EVM wallet metadata')
+    if(!userKeys.has(w.user_id))userKeys.set(w.user_id,await walletUserDecryptionKey(w.user_id))
+    const address=await decryptOwnEvmAddress(userKeys.get(w.user_id)!,w.user_id,w.id,w.evm_address_ciphertext)
+    const k=`${w.user_id}|${w.id}`
+    const fromCache=scanKeys.has(k),fromIdentity=addresses.has(address)
+    if(fromCache)result.historicalCacheMatch++
+    if(fromIdentity)result.historicalIdentityOrGraphMatch++
+    if(fromCache||fromIdentity)result.historicalProjectMatch++
+    else result.noHistoricalMatchCurrentBalanceUnchecked++
+    if(bscScanned.has(k))result.withBscHistoryCache++
+    else if(fromCache||fromIdentity)result.historicalMatchWithoutBscHistoryCache++
+  }
+  return {ok:true,mode:'encrypted-wallet-coverage-preview',day:dayCH(),dryRun:true,
+    ...result,currentBalanceGateExecuted:false,historicalScanCoverageVerified:false,
+    fullWalletSelectionVerified:false,canEnableWritingCron:false,persisted:false,
+    notice:'Only historical manual-selection criteria checked. Current TLN/VOW token balance gate NOT run; unclassified wallets are unknown, not irrelevant. No addresses, keys, user IDs, wallet IDs, writes or cron changes.'}
+}
 const verificationCore=(globalThis as any).WT_TLN_REWARD_VERIFICATION_CORE
 const URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -1995,7 +2085,7 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2021,6 +2111,10 @@ async function handleRewardRequest(req: Request): Promise<Response> {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='encrypted-wallet-coverage-preview'){
+      const preview=await encryptedTlnWalletCoveragePreview(sb)
+      return reply(preview,preview.ok?200:503)
     }
     if(mode==='daily-all-rewards-preview'){
       // Read-only orchestrator. Re-run the existing FOUR finalizers in-process
