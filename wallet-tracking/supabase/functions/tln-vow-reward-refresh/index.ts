@@ -930,20 +930,24 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
   const wallets=await coverageRows(sb,'wallets',
     'id,user_id,evm_address_ciphertext,encryption_version,key_version',
     q=>q.not('evm_address_ciphertext','is',null).order('id'))
-  const [scanRows,identityRows,graphRows]=await Promise.all([
-    coverageRows(sb,'tln_vow_staking_scan_cache','user_id,wallet_id,cache_key',
-      q=>q.eq('project_key','tln_vow').eq('chain_key','bsc')),
-    coverageRows(sb,'tln_vow_identity_global_cache','wallet_address',q=>q.eq('chain_key','bsc')),
-    coverageRows(sb,'tln_vow_smartnode_graph_cache','child_wallet,parent_wallet',q=>q.eq('chain_key','bsc'))
-  ])
+  // Never enumerate the potentially unbounded global SmartNode graph.
+  // Resolve evidence only against decrypted wallet addresses, on the server.
+  const scanRows=await coverageRows(sb,'tln_vow_staking_scan_cache','user_id,wallet_id,cache_key',
+    q=>q.eq('project_key','tln_vow').eq('chain_key','bsc'))
   const scanKeys=new Set(scanRows.filter(r=>r.wallet_id&&r.user_id).map(r=>`${r.user_id}|${r.wallet_id}`))
   const bscScanned=new Set(scanRows.filter(r=>r.cache_key==='erc20-history-v1'&&r.wallet_id&&r.user_id)
     .map(r=>`${r.user_id}|${r.wallet_id}`))
-  const addresses=new Set<string>()
-  for(const r of identityRows){const a=evmAddress(r.wallet_address);if(a)addresses.add(a)}
-  for(const r of graphRows){for(const value of [r.child_wallet,r.parent_wallet]){
-    const a=evmAddress(value);if(a)addresses.add(a)
-  }}
+  async function hasHistoricalAddressEvidence(address:string):Promise<boolean>{
+    const {data:identity,error:identityError}=await sb.from('tln_vow_identity_global_cache')
+      .select('wallet_address').eq('chain_key','bsc').ilike('wallet_address',address).limit(1)
+    if(identityError)throw Error('Wallet coverage source unavailable: tln_vow_identity_global_cache')
+    if((identity||[]).length>0)return true
+    const {data:graph,error:graphError}=await sb.from('tln_vow_smartnode_graph_cache')
+      .select('child_wallet,parent_wallet').eq('chain_key','bsc')
+      .or(`child_wallet.ilike.${address},parent_wallet.ilike.${address}`).limit(1)
+    if(graphError)throw Error('Wallet coverage source unavailable: tln_vow_smartnode_graph_cache')
+    return (graph||[]).length>0
+  }
   const userKeys=new Map<string,CryptoKey>()
   const result={encryptedEvmWallets:wallets.length, historicalProjectMatch:0,
     historicalCacheMatch:0,historicalIdentityOrGraphMatch:0,
@@ -955,7 +959,7 @@ async function encryptedTlnWalletCoveragePreview(sb:any){
     if(!userKeys.has(w.user_id))userKeys.set(w.user_id,await walletUserDecryptionKey(w.user_id))
     const address=await decryptOwnEvmAddress(userKeys.get(w.user_id)!,w.user_id,w.id,w.evm_address_ciphertext)
     const k=`${w.user_id}|${w.id}`
-    const fromCache=scanKeys.has(k),fromIdentity=addresses.has(address)
+    const fromCache=scanKeys.has(k),fromIdentity=await hasHistoricalAddressEvidence(address)
     if(fromCache)result.historicalCacheMatch++
     if(fromIdentity)result.historicalIdentityOrGraphMatch++
     if(fromCache||fromIdentity)result.historicalProjectMatch++
