@@ -1094,3 +1094,12 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 
 > **9.76 (22.11.2026 23:03 CET):** TLN/VOW: Strenger indirekter Staking-Claim-Finalizer mit derselben gemeinsamen Step-4-Flow-/Positionsregel, unabhängiger Trace-Wiederholung bei bewusstem `commit=true`, separatem nutzergebundenem Ledger und Dashboard-Anzeige ohne Doppelerfassung. Standardmässig read-only. Keine historischen Vollständigkeitsnachweise; drei tägliche Reward-Jobs bleiben **inaktiv**. Siehe `docs/releases/9.76-tln-indirect-claim-finalizer.md`.
 
+
+
+### Phase 9.82 – Rohscan-Startblock/Head-Rückstand (23.11.2026, 20261123-144458)
+
+- Manuelle ERC-20-Discovery: Initial-Start Block 0, bei Cache 24-Block-Overlap ab letztem Scanblock; keine allgemeine fachliche spätere Startblock-Regel.
+- Neuer Auth-geschützter Read-only-Modus `encrypted-wallet-scan-start-audit-preview` zählt für die 10 relevanten Wallets Genesis-/spätere Starts, Rückstände zum BSC-Head, aktuell bis Head reichende Caches sowie maximalen Head-Lag. Keine personenbezogenen Details.
+- Live 9.81: 3 fehlende Rohcaches, 7 gültige aber zum Head nicht bestätigte Bereiche; neuer Modus noch nicht live getestet.
+- **TODO:** Live-Resultat bewerten, vorhandene manuelle inkrementelle ERC-20-Scanlogik serverseitig sicher anbinden, drei fehlende Caches und tatsächliche Range-Lücken gezielt behandeln; danach alle vier Reward-Pfade mit Vollständigkeitsbelegen abgleichen.
+- Tages-Buchungsjobs bleiben deaktiviert; Evidence-Jobs bleiben unverändert. Siehe `docs/releases/9.82-tln-wallet-scan-start-and-head-audit.md`.

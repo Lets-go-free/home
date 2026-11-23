@@ -966,7 +966,7 @@ async function coverageCurrentBalances(addresses:string[],tokens:string[]):Promi
   }
   return {hits,unknown,checked:unknown.size===0}
 }
-async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false){
+async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false){
   if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
     error:'Encryption service not configured',canEnableWritingCron:false}
   const wallets=await coverageRows(sb,'wallets',
@@ -1040,6 +1040,7 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false){
     let head:number|null=null
     try{head=await bscHead()}catch{/* Lack of chain head must not imply a fresh scan. */}
     let missing=0,invalid=0,partial=0,genesisToHead=0,validRange=0
+    let fromGenesis=0,nonzeroStart=0,behindHead=0,atHead=0,maxHeadLag=0
     for(const k of relevant){
       const rows=rawByKey.get(k)||[]
       if(!rows.length){missing++;continue}
@@ -1049,6 +1050,13 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false){
         !Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from<0||to<from||to<=0||
         (head!==null&&to>head)) {invalid++;continue}
       validRange++
+      if(from===0)fromGenesis++
+      else nonzeroStart++
+      if(head!==null){
+        const lag=head-to
+        if(lag>0){behindHead++;maxHeadLag=Math.max(maxHeadLag,lag)}
+        else atHead++
+      }
       if(head!==null&&from===0&&to>=head)genesisToHead++
       else partial++
     }
@@ -1060,8 +1068,15 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false){
       scanCoverageClassificationComplete:complete&&head!==null,
       scanCoverageStatus:'raw-cache-boundaries-only',
       historicalScanCoverageVerified:false}
+    if(scanStartAudit)Object.assign(scanCoverage,{
+      scanStartAuditExecuted:true,manualErc20InitialStartBlock:0,manualErc20ResumeOverlapBlocks:24,
+      scanRangesStartingAtGenesis:fromGenesis,scanRangesStartingAfterGenesis:nonzeroStart,
+      scanRangesBehindChainHead:behindHead,scanRangesAtChainHead:atHead,
+      scanMaxHeadLagBlocks:head!==null?maxHeadLag:null,
+      scanStartAuditStatus:'raw-cache-boundaries-only-not-reward-completeness'
+    })
   }
-  return {ok:true,mode:scanAudit?'encrypted-wallet-scan-coverage-preview':'encrypted-wallet-coverage-preview',day:dayCH(),dryRun:true,
+  return {ok:true,mode:scanStartAudit?'encrypted-wallet-scan-start-audit-preview':scanAudit?'encrypted-wallet-scan-coverage-preview':'encrypted-wallet-coverage-preview',day:dayCH(),dryRun:true,
     ...result,currentBalanceGateExecuted:complete,currentProjectTokenMatch:currentMatches,
     currentBalanceUnknown:balances.unknown.size,
     currentBalanceConfirmedNoMatch:complete?unknownAddresses.length-currentMatches:0,
@@ -2188,7 +2203,7 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2215,8 +2230,8 @@ async function handleRewardRequest(req: Request): Promise<Response> {
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
     }
-    if(mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'){
-      const preview=await encryptedTlnWalletCoveragePreview(sb,mode==='encrypted-wallet-scan-coverage-preview')
+    if(mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'||mode==='encrypted-wallet-scan-start-audit-preview'){
+      const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview')
       return reply(preview,preview.ok?200:503)
     }
     if(mode==='daily-all-rewards-preview'){
