@@ -966,7 +966,7 @@ async function coverageCurrentBalances(addresses:string[],tokens:string[]):Promi
   }
   return {hits,unknown,checked:unknown.size===0}
 }
-async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false){
+async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false,scanEvidenceRun=false){
   if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
     error:'Encryption service not configured',canEnableWritingCron:false}
   const wallets=await coverageRows(sb,'wallets',
@@ -1085,6 +1085,84 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
       scanCoverageClassificationComplete:complete&&head!==null,
       scanCoverageStatus:'raw-cache-boundaries-only',
       historicalScanCoverageVerified:false}
+    if(scanEvidenceRun){
+      // Guarded positive-evidence replay: pick exactly one previously cached,
+      // project-token-matching transfer, then independently fetch its block
+      // from Alchemy. The cache chooses a test location, not a proven result.
+      if(!complete||head===null||invalid>0||!ALCHEMY_API_KEY)
+        return {ok:false,mode:'encrypted-wallet-scan-transfer-evidence-preview',dryRun:true,
+          error:'Wallet selection, raw-cache bounds or BSC RPC not ready',
+          persisted:false,canEnableWritingCron:false}
+      const registry=new Set(eligibleTokens)
+      const candidates:{key:string,block:number,hash:string,token:string,direction:string}[]=[]
+      for(const k of relevant){
+        const rows=rawByKey.get(k)||[]
+        if(rows.length!==1)continue
+        const r=rows[0]
+        const from=Number(r.complete_from_block),to=Number(r.last_scanned_block)
+        if(r.scanner_version!=='erc20-raw-v1'||!Array.isArray(r.payload)||
+          !Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from<0||to<from||to>head)continue
+        const address=[...addressToKey].find(([,key])=>key===k)?.[0]
+        if(!address)throw Error('Internal wallet selection mismatch')
+        for(const transfer of r.payload){
+          if(!transfer||typeof transfer!=='object')continue
+          const token=evmAddress(transfer.rawContract?.address)
+          const hash=typeof transfer.hash==='string'?transfer.hash.toLowerCase():''
+          let block=NaN
+          try{if(typeof transfer.blockNum==='string'&&/^0x[0-9a-f]+$/i.test(transfer.blockNum))
+            block=Number(BigInt(transfer.blockNum))}catch{/* malformed historical cache event */}
+          const incoming=evmAddress(transfer.to)===address
+          const outgoing=evmAddress(transfer.from)===address
+          if(!token||!registry.has(token)||!/^0x[0-9a-f]{64}$/.test(hash)||
+            !Number.isSafeInteger(block)||block<from||block>to||(!incoming&&!outgoing))continue
+          // A self-transfer has both directions; match either independently.
+          candidates.push({key:k,block,hash,token,direction:incoming?'incoming':'outgoing'})
+          if(candidates.length>=1000)break
+        }
+        if(candidates.length>=1000)break
+      }
+      candidates.sort((a,b)=>a.block-b.block||a.key.localeCompare(b.key)||a.hash.localeCompare(b.hash))
+      const candidate=candidates[0]
+      if(!candidate)return {ok:true,mode:'encrypted-wallet-scan-transfer-evidence-preview',day:dayCH(),
+        dryRun:true,executed:false,persisted:false,canEnableWritingCron:false,
+        status:'no-suitable-cached-project-token-transfer',relevantWallets:relevant.size,
+        candidateTransfers:0,independentTransferMatchVerified:false,
+        historicalScanCoverageVerified:false,rewardClassificationVerified:false,
+        notice:'No eligible cached project-token transfer anchor. No RPC transfer replay, writes or reward assertions.'}
+      const address=[...addressToKey].find(([,k])=>k===candidate.key)?.[0]
+      if(!address)throw Error('Internal wallet selection mismatch')
+      const fromBlock=Math.max(0,candidate.block-49)
+      const toBlock=Math.min(head,fromBlock+99)
+      try{
+        const inspection=await inspectWalletTransfers(address,fromBlock,toBlock,100,eligibleTokens,true)
+        const finished=inspection.complete===true
+        const matched=finished&&(inspection.capturedEvents||[]).some((event:any)=>
+          event.hash===candidate.hash&&event.token===candidate.token&&
+          event.direction===candidate.direction&&event.block===candidate.block)
+        return {ok:finished,mode:'encrypted-wallet-scan-transfer-evidence-preview',day:dayCH(),
+          dryRun:true,executed:true,persisted:false,canEnableWritingCron:false,
+          status:matched?'cached-transfer-independently-confirmed':'cached-transfer-not-confirmed',
+          selectedWallets:1,relevantWallets:relevant.size,candidateTransfers:candidates.length,
+          selectionVerified:true,source:'existing-erc20-raw-cache-project-token-transfer',
+          chunk:{fromBlock,toBlock,blocks:toBlock-fromBlock+1,persisted:false},
+          provider:inspection.provider,method:inspection.method,
+          incomingComplete:inspection.directions[0]?.complete===true,
+          outgoingComplete:inspection.directions[1]?.complete===true,
+          complete:finished,paginationPages:inspection.directions.reduce((n:number,d:any)=>n+d.pages,0),
+          totalObservedProjectTokenTransfers:inspection.events,
+          matchedProjectTokenTransfers:inspection.directions.reduce((n:number,d:any)=>n+d.matchedKnownContracts,0),
+          independentTransferMatchVerified:matched,
+          historicalScanCoverageVerified:false,rewardClassificationVerified:false,
+          notice:'One cached ERC20 project-token transfer anchor independently checked on chain. No transaction, token, address or user identifiers returned; no writes. This is not reward classification or global scan coverage.'}
+      }catch(e){
+        const diagnostic=safeRpcDiagnostic(e)
+        console.error('TLN guarded historical transfer evidence RPC failed',diagnostic)
+        return {ok:false,mode:'encrypted-wallet-scan-transfer-evidence-preview',day:dayCH(),
+          dryRun:true,executed:false,persisted:false,canEnableWritingCron:false,
+          error:'Historical transfer replay RPC failed; no progress saved',rpcDiagnostic:diagnostic,
+          independentTransferMatchVerified:false,historicalScanCoverageVerified:false}
+      }
+    }
     if(scanDryRun){
       // Use the EXACT selected wallet set above. Never accept a caller-provided
       // address, wallet ID, token registry, block range or provider endpoint.
@@ -2288,7 +2366,7 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('encrypted-wallet-scan-transfer-evidence-preview','encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2315,8 +2393,8 @@ async function handleRewardRequest(req: Request): Promise<Response> {
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
     }
-    if(mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'||mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview'||mode==='encrypted-wallet-scan-chunk-dry-run'){
-      const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-chunk-dry-run')
+    if(mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'||mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview'||mode==='encrypted-wallet-scan-chunk-dry-run'||mode==='encrypted-wallet-scan-transfer-evidence-preview'){
+      const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-chunk-dry-run',mode==='encrypted-wallet-scan-transfer-evidence-preview')
       return reply(preview,preview.ok?200:503)
     }
     if(mode==='daily-all-rewards-preview'){

@@ -1117,6 +1117,17 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 
 - Live 9.83: 10 relevante Wallets, 3 ohne Cache, 7 mit Scan-Rückstand; 1’694 geplante Haupt-Chunks, 421’806’935 aufsummierte Blockbereiche; keinerlei Schreibfreigabe.
 - Neuer Read-only-Modus `encrypted-wallet-scan-chunk-dry-run`: bestehende Wallet-Auswahl + bestehende `inspectWalletTransfers()`-Pagination, maximal eine Wallet und 100 Blöcke (Fortsetzung mit 24-Block-Overlap). Er fasst Transfers für aktive Projekt-Token zusammen, gibt keine Identitäten aus und speichert keine Daten.
-- Lokale Tests (9.80–9.84) erfolgreich. **Live-RPC-Test noch offen**. Dieser Test ist weder 250’000er Batch-Scan noch Beweis vollständiger Rewards.
+- Lokale Tests (9.80–9.84) erfolgreich. **Live-RPC-Test erfolgreich (Request 9731, HTTP 200): 100 Blöcke, 2 RPC-Seiten, 0 Transfers; beide Richtungen vollständig.** Dieser Test ist weder 250’000er Batch-Scan noch Beweis vollständiger Rewards.
 - **TODO:** Live-Dry-Run prüfen; danach kollisionsfreien, wiederaufnehmbaren Scan-Worker mit gesicherter Pagination und atomarem Fortschritt entwickeln. Vor Tages-Reward-Jobs unabhängigen Vollständigkeitsnachweis für alle vier Reward-Arten.
 - Cron 7/8 unverändert aktiv; tägliche Reward-Buchungsjobs bleiben deaktiviert. Siehe `docs/releases/9.84-tln-guarded-single-chunk-rpc-dry-run.md`.
+
+
+### Phase 9.85 – Historischer Projekt-Token-Transfer, unabhängiger RPC-Gegencheck (23.11.2026 15:55:23 CET, Build 20261123-155523)
+
+- **Referenz 9.84:** Live-Scan Request 9731 erfolgreich, aber leerer 100-Block-Ausschnitt. Diese Nullfund-Probe belegt nicht die Event-Validierung bei vorhandenen Transfers.
+- Neuer geschützter Read-only-Modus `encrypted-wallet-scan-transfer-evidence-preview` nimmt **einen bereits im gültigen `erc20-history-v1`-Cache gespeicherten Transfer** eines aktuell aktiven TLN/VOW-Projekt-Tokens als Testanker. Nur relevante entschlüsselte Wallets; keine frei eingebbaren Wallets, Adressen oder Bereiche.
+- Die bestehende `inspectWalletTransfers()`-Funktion fragt unabhängig einen auf maximal 100 Blöcke begrenzten historischen Ausschnitt in beiden Richtungen über `alchemy_getAssetTransfers` samt Pagination ab. Ein positiver Treffer erfordert identische Transaktion, Projekt-Token-Adresse, Blocknummer und Transferrichtung.
+- **Kein geeigneter Cache-Beleg** wird mit `no-suitable-cached-project-token-transfer` gemeldet und darf weder als positiv noch als Negativnachweis für die Reward-Historie gewertet werden. Ein nicht bestätigter Cache-Anker wird ausdrücklich als `cached-transfer-not-confirmed` gemeldet. Provider- und Pagination-Fehler sind nicht erfolgreich.
+- Nur aggregierte Zähler; keine Wallet-/User-/Token-/Transaktions-IDs in Antworten. **Keine Writes**, keine Cron-, Cursor- oder Reward-Veränderung. Kein Beweis für vollständige Staking-, Bonus-, Referral- oder indirekte Rewards.
+- Lokale Tests 9.80–9.85 und 9.38: gültiger Match, fehlender Gegenfund, fehlender Cache-Anker, Providerfehler, Paging/Privacy und Null Writes. **Live-Test 9.85 ausstehend.**
+- **TODO:** 9.85 deployen und Read-only-Live-Test; bei vorhandenen Transfers Gegenfund überprüfen. Erst danach einen begrenzten transaktionssicheren Scan-Worker mit atomaren Cursorn/Idempotenz ausarbeiten. Cron 7/8 bleiben aktiv, tägliche Reward-Buchungsjobs deaktiviert.
