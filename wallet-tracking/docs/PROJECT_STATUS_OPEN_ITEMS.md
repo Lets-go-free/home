@@ -1103,3 +1103,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Live 9.81: 3 fehlende Rohcaches, 7 gültige aber zum Head nicht bestätigte Bereiche; neuer Modus noch nicht live getestet.
 - **TODO:** Live-Resultat bewerten, vorhandene manuelle inkrementelle ERC-20-Scanlogik serverseitig sicher anbinden, drei fehlende Caches und tatsächliche Range-Lücken gezielt behandeln; danach alle vier Reward-Pfade mit Vollständigkeitsbelegen abgleichen.
 - Tages-Buchungsjobs bleiben deaktiviert; Evidence-Jobs bleiben unverändert. Siehe `docs/releases/9.82-tln-wallet-scan-start-and-head-audit.md`.
+
+
+### Phase 9.83 – Serverseitiger Rohscan-Batch-Plan (23.11.2026, 20261123-145918)
+
+- Live 9.82: 10 relevante Wallets; 7 gültige ERC20-Caches alle ab Block 0, aber alle mit Head-Rückstand (Maximum 10’768’561 Blöcke); 3 ohne Rohcache. 0 ungültige Caches.
+- `encrypted-wallet-scan-batch-plan-preview` plant mit dem bereits bestehenden Wallet-Auswahl-Audit pro Wallet Start/Resume, 24-Block-Overlap und 250’000er Haupt-Chunks; Aggregat ohne Adressen/User-IDs. Er führt keine Kettenabfragen für Transfers, keine Writes und keine Cron-Änderungen aus.
+- Die manuelle `alchemyErc20RangeChunked`-Funktion ist Browser-Code, nicht direkt serverseitig aufrufbar. Vor einem Schreib-Worker nötig: derselbe RPC/Pagination-Algorithmus, adaptive Split-Logik, Cursor-/Payload-Schutz, kollisionsfreie Fortschrittsreservierung, vollständiger Erfolgsnachweis und Idempotenz. Bloße Cache-Grenzen sind kein Vollständigkeitsbeleg.
+- **TODO:** Batch-Plan live prüfen; danach gemeinsamen Extraktions-/Worker-Weg entwerfen und strikt begrenzt zuerst trocken testen. Tägliche Buchungsjobs bleiben deaktiviert.
