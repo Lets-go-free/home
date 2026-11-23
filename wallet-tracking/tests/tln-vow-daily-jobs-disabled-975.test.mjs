@@ -19,5 +19,5 @@ assert.match(sql,/"mode":"referral-claim-finalize","commit":true/);
 assert.match(edge,/if\(mode==='daily-bonus-claim-cycle'\)/);
 assert.match(edge,/if\(mode==='referral-claim-finalize'\)/);
 assert.match(edge,/if\(mode==='direct-claim-finalize'\|\|mode==='daily-direct-claim-cycle'\)/);
-assert.match(html,/window\.APP_VERSION="9\.76"/);
+assert.ok(Number(html.match(/window\.APP_VERSION="([0-9.]+)"/)?.[1])>=9.75);
 console.log('9.75 daily schedule is off and uses three existing finalizers');

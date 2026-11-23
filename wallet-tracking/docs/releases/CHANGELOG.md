@@ -1,3 +1,10 @@
+## 9.77 · 23.11.2026 07:43:34 CET · Build 20261123-074334
+
+- Gemeinsame, strikt lesende Vorschau für alle vier bestehenden TLN/VOW-Finalizer. Kein neuer Reward-Entscheid.
+- Untermodus-Fehler stoppen den gesamten Vorschauablauf; `commit=true` wird abgewiesen.
+- Neuer separater, inaktiver täglicher Vorschau-Cron; drei bestehende Schreib-Crons bleiben inaktiv.
+- Keine Freigabe von kanonischen Claims oder historischer/Wallettyp-Vollständigkeit.
+
 ## 9.70 · 22.11.2026 22:05:23 CET · Build 20261122-220523
 - Staking-Zähler «x Position(en) gefunden» verwendet neu die Theme-Schriftfarbe `var(--text)` statt des fest verdrahteten sehr hellen `#d8e9ff`. Dadurch kontrastreich im Hellmodus und weiterhin hell im Dunkelmodus. CSS-Cache-Busting aktualisiert. Nur UI, kein SQL/Edge/Cron. `9.70-tln-vow-staking-count-contrast.md`.
 

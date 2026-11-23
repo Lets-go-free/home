@@ -1,4 +1,4 @@
-// WalletTracking 9.53 – verified new stake receipt -> archive block -> A1/A2/B/C root discovery.
+// WalletTracking 9.77 – read-only combined daily preview across four existing TLN/VOW finalizers.
 // Uses configured archive-state RPC for storage, Alchemy for transfers. No verified reward cursor.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 // BEGIN GENERATED TLN VERIFICATION CORE – regenerate using tools/build-tln-reward-edge.mjs
@@ -1982,7 +1982,7 @@ function reply(body: unknown, code = 200) {
   return new Response(JSON.stringify(body), {status:code,headers:{'content-type':'application/json','cache-control':'no-store'}})
 }
 function dayCH() { return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Zurich',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) }
-Deno.serve(async (req) => {
+async function handleRewardRequest(req: Request): Promise<Response> {
   if(req.method !== 'POST') return reply({ok:false,error:'Method not allowed'},405)
   if(!SECRET || !URL || !SERVICE) return reply({ok:false,error:'Worker not configured'},503)
   const provided = req.headers.get('x-tln-reward-secret') || ''
@@ -1995,7 +1995,7 @@ Deno.serve(async (req) => {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
@@ -2021,6 +2021,54 @@ Deno.serve(async (req) => {
       if(!r.user_id || !r.wallet_id) continue
       const k=String(r.user_id)+'|'+String(r.wallet_id)
       if(!byWallet.has(k))byWallet.set(k,r)
+    }
+    if(mode==='daily-all-rewards-preview'){
+      // Read-only orchestrator. Re-run the existing FOUR finalizers in-process
+      // with commit=false; never infer safety from empty caches or successful HTTP.
+      // Do not call a writing mode, cron, or update any snapshots/cursors.
+      if(body?.commit===true) return reply({ok:false,mode,error:'Combined daily preview never accepts commit=true'},400)
+      const checks=[
+        {name:'direct',mode:'daily-direct-claim-cycle',eligibleKey:'eligibleDirectClaims'},
+        {name:'bonus',mode:'daily-bonus-claim-cycle',eligibleKey:'eligibleBonusClaims'},
+        {name:'referral',mode:'referral-claim-finalize',eligibleKey:'eligibleReferralClaims'},
+        {name:'indirect',mode:'indirect-claim-finalize',eligibleKey:'eligibleIndirectClaims'}
+      ] as const
+      const results:any[]=[]
+      for(const check of checks){
+        // Same authenticated request context, but an explicitly hardcoded
+        // read-only body; never forward user-controlled write parameters.
+        const inner=new Request(req.url,{
+          method:'POST',headers:req.headers,
+          body:JSON.stringify({mode:check.mode,commit:false})
+        })
+        const response=await handleRewardRequest(inner)
+        let value:any
+        try{value=await response.json()}catch{
+          return reply({ok:false,mode,status:'blocked',failedAt:check.name,
+            completedChecks:results,canEnableWritingCron:false,
+            error:'Invalid sub-finalizer response; no writes performed'},503)
+        }
+        const count=value?.[check.eligibleKey]
+        const complete=value?.receiptInventoryComplete===true
+        if(!response.ok||value?.ok!==true||value?.dryRun!==true||
+          !complete||!Number.isSafeInteger(count)||count<0){
+          return reply({ok:false,mode,status:'blocked',failedAt:check.name,
+            completedChecks:results,canEnableWritingCron:false,
+            subStatus:response.status,
+            error:'One sub-finalizer could not complete its read-only inspection; no writes performed'},409)
+        }
+        results.push({name:check.name,inspectedReceipts:value.inspectedReceipts,
+          eligibleClaims:count,receiptInventoryComplete:true,dryRun:true})
+      }
+      return reply({ok:true,mode,day:dayCH(),status:'preview_only',dryRun:true,
+        pathsChecked:results.length,results,
+        receiptInventoriesComplete:true,
+        historicalCoverageVerified:false,
+        allEncryptedWalletsCovered:false,
+        indirectRewardCoverageVerified:false,
+        fullRewardCoverageVerified:false,
+        canEnableWritingCron:false,claimsCreated:0,persisted:false,
+        notice:'Four existing claim finalizers inspected read-only, sequentially. No atomic write and no cross-ledger commitment. Receipt inventory is NOT historical or wallet coverage. Daily writing jobs remain disabled.'})
     }
     if(mode==='historical-smartnode-parent-rpc-check'){
       // One existing verified graph edge, independently checked against the
@@ -3703,4 +3751,5 @@ Deno.serve(async (req) => {
     return reply({ok:true,mode:'read-only-preflight',day:dayCH(),wallets:byWallet.size,snapshots:rows.length,summary:result,
       notice:'Read-only. No RPC, discovery, reward, cursor, queue or cache writes. This does not refresh rewards or prove completeness of eligible encrypted wallets.'})
   }catch(e){console.error('TLN preflight failed',e);return reply({ok:false,mode:'read-only-preflight',error:'Database preflight failed'},500)}
-})
+}
+Deno.serve(handleRewardRequest)
