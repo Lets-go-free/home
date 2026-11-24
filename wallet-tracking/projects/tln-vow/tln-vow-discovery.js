@@ -4608,22 +4608,59 @@ async function loadPersistentErc20Cache(wallet){
 }
 async function savePersistentErc20Cache(wallet,cache){
   if(!currentUserId||!stakingScanDbCacheAvailable||!cache?.rows)return false;
-  const walletId=await privateWalletIdForAddress(wallet);if(!walletId){log(`Staking-Cache ${short(wallet)} nicht gespeichert: keine private wallet_id gefunden.`,'warn');return false}
+  const walletId=await privateWalletIdForAddress(wallet);
+  if(!walletId){log(`Staking-Cache ${short(wallet)} nicht gespeichert: keine private wallet_id gefunden.`,'warn');return false}
   const requestedBlock=Number(cache.latestBlock||0);
-  // P9: Ein älterer/offener Browser-Tab darf einen bereits weiter gescannten
-  // persistenten Cache nicht wieder auf einen kleineren Block zurücksetzen.
-  if(requestedBlock>0){
-    const {data:existing,error:readError}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',walletId).eq('cache_key',STAKING_SCAN_CACHE_KEY).maybeSingle();
+  if(!Number.isSafeInteger(requestedBlock)||requestedBlock<0)return false;
+  const scope={user_id:currentUserId,chain_key:'bsc',wallet_id:walletId,cache_key:STAKING_SCAN_CACHE_KEY};
+  // Compare-and-swap on the existing updated_at column. Every contender must use
+  // this same guarded path: a stale browser or an automated writer may not replace
+  // a newer row between read and write. No new SQL function or table is needed.
+  for(let attempt=0;attempt<3;attempt++){
+    const {data:existing,error:readError}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+      .select('scanner_version,last_scanned_block,complete_from_block,payload,updated_at')
+      .eq('user_id',scope.user_id).eq('chain_key',scope.chain_key)
+      .eq('wallet_id',scope.wallet_id).eq('cache_key',scope.cache_key).maybeSingle();
     if(readError){log(`Supabase Staking-Chain-Cache Versionsprüfung fehlgeschlagen: ${readError.message||readError}`,'warn');return false}
-    if(existing?.scanner_version==='erc20-raw-v1'&&Number(existing.last_scanned_block||0)>requestedBlock){
-      log(`Staking-Cache ${short(wallet)} nicht zurückgeschrieben: DB ist bereits bis Block ${Number(existing.last_scanned_block).toLocaleString('de-CH')} neuer als lokaler Stand ${requestedBlock.toLocaleString('de-CH')}.`,'muted');
+    if(existing&&(existing.scanner_version!=='erc20-raw-v1'||!Array.isArray(existing.payload)||!existing.updated_at)){
+      log('Supabase Staking-Chain-Cache hat ein unerwartetes Format; keine Änderung.','warn');return false;
+    }
+    const merged=new Map();
+    for(const t of [...(existing?.payload||[]),...(cache.rows||[])]){
+      if(!norm(t?.rawContract?.address))continue;
+      merged.set(transferIdentity(t),compactTransferForCache(t));
+    }
+    const mergedBlock=Math.max(requestedBlock,Number(existing?.last_scanned_block||0));
+    const previousTimestamp=existing?Date.parse(existing.updated_at):0;
+    if(existing&&!Number.isFinite(previousTimestamp))return false;
+    // A strictly newer value is needed even for two writes in the same ms.
+    const updatedAt=new Date(Math.max(Date.now(),previousTimestamp+1)).toISOString();
+    const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:walletId,
+      wallet_address:null,cache_key:STAKING_SCAN_CACHE_KEY,scanner_version:'erc20-raw-v1',
+      complete_from_block:existing?Number(existing.complete_from_block||0):Number(cache.completeFromBlock||0),
+      last_scanned_block:mergedBlock,payload:[...merged.values()],updated_at:updatedAt};
+    let changed,error;
+    if(existing){
+      const result=await sb.from(STAKING_SCAN_CACHE_TABLE).update(row)
+        .eq('user_id',scope.user_id).eq('chain_key',scope.chain_key)
+        .eq('wallet_id',scope.wallet_id).eq('cache_key',scope.cache_key)
+        .eq('updated_at',existing.updated_at).select('wallet_id');
+      changed=result.data;error=result.error;
+    }else{
+      // Primary key guarantees that only one simultaneous initial insert wins.
+      const result=await sb.from(STAKING_SCAN_CACHE_TABLE).insert(row).select('wallet_id');
+      if(result.error?.code==='23505')continue;
+      changed=result.data;error=result.error;
+    }
+    if(error){log(`Supabase Staking-Chain-Cache Speichern fehlgeschlagen: ${error.message||error}`,'warn');return false}
+    if(Array.isArray(changed)&&changed.length===1){
+      log(`Supabase Staking-Chain-Cache aktualisiert: ${merged.size} Transfers · wallet_id-basiert (geschützt).`,'ok');
       return true;
     }
+    // Concurrent writer won; re-read its row and merge rather than overwrite.
   }
-  const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:walletId,wallet_address:null,cache_key:STAKING_SCAN_CACHE_KEY,scanner_version:'erc20-raw-v1',complete_from_block:Number(cache.completeFromBlock||0),last_scanned_block:requestedBlock,payload:cache.rows.map(compactTransferForCache),updated_at:new Date().toISOString()};
-  const {error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_id,cache_key'});
-  if(error){log(`Supabase Staking-Chain-Cache Speichern fehlgeschlagen: ${error.message||error}`,'warn');return false}
-  log(`Supabase Staking-Chain-Cache aktualisiert: ${cache.rows.length} Transfers · wallet_id-basiert.`,'ok');return true;
+  log(`Staking-Cache ${short(wallet)}: paralleler Schreibzugriff; keine ungeschützte Änderung. Erneuter Scan möglich.`,'warn');
+  return false;
 }
 
 const TECHNICAL_PROCESS_SESSION_CACHE=new Map();
