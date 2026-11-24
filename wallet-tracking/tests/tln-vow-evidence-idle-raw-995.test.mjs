@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const src=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const branch=src.slice(src.indexOf('if(!candidates.length){'),src.indexOf('const target=candidates[0]',src.indexOf('if(!candidates.length){')));
+assert.ok(branch.includes('if(workCycle&&body?.rawCatchupOnIdle===true)'));
+assert.ok(branch.includes('body?.commit===true'));
+assert.ok(branch.includes('commit:false,chunkBlocks:scanBlocks'));
+assert.ok(branch.includes('encrypted-wallet-scan-guarded-stage-preview'));
+assert.ok(branch.includes('await handleRewardRequest(subRequest)'));
+assert.ok(branch.includes("status:'nothing_to_stage'"));
+assert.ok(src.includes("if(mode==='delta-transfer-stage'||workCycle)"));
+assert.ok(src.includes('rawCatchupChunkBlocks must be 1..5000'));
+console.log('9.95 opt-in idle read-only delegation: static guards passed');

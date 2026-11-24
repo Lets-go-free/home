@@ -1163,3 +1163,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Nur aggregierte Zähler; keine Wallet-/User-/Token-/Transaktions-IDs in Antworten. **Keine Writes**, keine Cron-, Cursor- oder Reward-Veränderung. Kein Beweis für vollständige Staking-, Bonus-, Referral- oder indirekte Rewards.
 - Lokale Tests 9.80–9.85 und 9.38: gültiger Match, fehlender Gegenfund, fehlender Cache-Anker, Providerfehler, Paging/Privacy und Null Writes. **Live-Test 9.85 ausstehend.**
 - **TODO:** 9.85 deployen und Read-only-Live-Test; bei vorhandenen Transfers Gegenfund überprüfen. Erst danach einen begrenzten transaktionssicheren Scan-Worker mit atomaren Cursorn/Idempotenz ausarbeiten. Cron 7/8 bleiben aktiv, tägliche Reward-Buchungsjobs deaktiviert.
+
+
+### Phase 9.95 – Read-only Rohscan-Probe nur bei Evidence-Leerlauf (24.11.2026 17:02:31 CET, Build 20261124-170231)
+
+- 9.94 Live bestätigt: 10 ERC20-Caches, 3’419 Transfers; 5’000-Blöcke-Commit einmalig erfolgreich, ohne neue Transfers; keine historischen Reward-Vollständigkeitsnachweise.
+- Im bestehenden `delta-work-cycle` optionale `rawCatchupOnIdle:true`-Vorschau: **nur wenn kein Evidence-Staging-Kandidat vorhanden ist**, interner Aufruf des bestehenden `encrypted-wallet-scan-guarded-stage-preview` mit `commit:false`; maximal 5’000 Blöcke. `commit:true` abgewiesen. Kein neuer Scanner/SQL/Cron, kein Rohdaten-Write.
+- Beide bestehenden 5-Minuten-Cron-Kommandos **unverändert**, deshalb kein zusätzliches Scan-RPC im aktiven Dauerbetrieb.
+- **TODO:** Opt-in-Live-Aufruf überprüfen, dann Last und Wiedereintritt/Concurrency testen, bevor unbeaufsichtigter Rohdaten-Commit im bestehenden 5-Minuten-Ablauf überhaupt freigegeben wird. Tages-Reward-Claims weiterhin deaktiviert. Siehe `docs/releases/9.95-tln-evidence-idle-raw-preview.md`.

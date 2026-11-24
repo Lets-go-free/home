@@ -3498,8 +3498,30 @@ async function handleRewardRequest(req: Request): Promise<Response> {
           wallet,next:continuity.next,anchor:continuity.anchor})
       }
       candidates.sort((a,b)=>a.next-b.next)
-      if(!candidates.length)return reply({ok:true,mode,day:dayCH(),status:'nothing_to_stage',persisted:false,
-        notice:'No known cached wallet with a valid forward range. Encrypted-wallet eligibility remains separate.'})
+      if(!candidates.length){
+        // 9.95: Optional, read-only raw history catch-up probe ONLY when the
+        // existing evidence cycle has no staging candidate. Existing cron
+        // requests never pass this flag and therefore remain unchanged.
+        // Dispatch to the existing authenticated raw scanner instead of
+        // duplicating wallet eligibility, RPC, or cache logic.
+        if(workCycle&&body?.rawCatchupOnIdle===true){
+          if(body?.commit===true)return reply({ok:false,mode,
+            error:'Idle catch-up probe is read-only; commit is forbidden'},400)
+          const scanBlocks=body?.rawCatchupChunkBlocks??5000
+          if(!Number.isSafeInteger(scanBlocks)||scanBlocks<1||scanBlocks>5000)
+            return reply({ok:false,mode,error:'rawCatchupChunkBlocks must be 1..5000'},400)
+          const subRequest=new Request(req.url,{method:'POST',headers:req.headers,
+            body:JSON.stringify({mode:'encrypted-wallet-scan-guarded-stage-preview',
+              commit:false,chunkBlocks:scanBlocks})})
+          const subResponse=await handleRewardRequest(subRequest)
+          const subResult=await subResponse.json()
+          return reply({...subResult,mode,rawCatchupSubMode:'encrypted-wallet-scan-guarded-stage-preview',
+            evidenceCycleIdle:true,rawCatchupOnIdle:true,persisted:false,
+            canEnableWritingCron:false},subResponse.status)
+        }
+        return reply({ok:true,mode,day:dayCH(),status:'nothing_to_stage',persisted:false,
+          notice:'No known cached wallet with a valid forward range. Encrypted-wallet eligibility remains separate.'})
+      }
       const target=candidates[0]
       const [stakingResult,tokenResult]=await Promise.all([
         sb.from('defi_staking_contracts').select('contract_address').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
