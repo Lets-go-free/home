@@ -1,3 +1,10 @@
+## Version 9.88 – Positiver historischer ERC-20-Rohdatenbeleg ohne Tokenfilter (20261124-064944)
+
+- `encrypted-wallet-scan-raw-evidence-preview` bestätigt einen existierenden Rohdaten-Transfer über denselben bestehenden Alchemy-Scanner, möglichst mit nicht vordefiniertem Token. Maximal 100 Blöcke, strikt Read-only.
+- Lokale Tests 9.80–9.88 + Work-Cycle 9.38 bestanden; **Live-Test ausstehend**. Keine neuen DB-Funktionen oder Schreibzugriffe.
+- TODO: Live-Gegentreffer beurteilen; danach bestehende manuelle Pagination/Bereichsteilung und Speicherschutz prüfen. Tägliche Reward-Buchungsjobs bleiben deaktiviert.
+- Siehe `docs/releases/9.88-tln-raw-erc20-positive-evidence-readonly.md`.
+
 ## Version 9.87 – ERC-20-Rohdaten-Scan lesend an manuelle Token-Auswahl angeglichen (20261123-221719)
 
 - `encrypted-wallet-scan-raw-parity-preview`: bestehender serverseitiger Scanner zählt im 100-Block-Test auch ERC-20-Transfers **ausserhalb** der Projekt-Token-Liste; Transferidentität nach manueller Discovery, keine IDs in Antwort. Bestehende Reward-Filter unverändert.
