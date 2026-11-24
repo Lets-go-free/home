@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+const sql=fs.readFileSync(path.join(import.meta.dirname,'../supabase/migrations/20261124200835_tln_vow_raw_catchup_pilot_999.sql'), 'utf8');
+assert.match(sql,/jobid = 7 AND jobname = 'tln-vow-evidence-stage-5m' AND active/);
+assert.match(sql,/interval '30 minutes'/);
+assert.match(sql,/rawCatchupAfterEvidence/);
+assert.match(sql,/rawCatchupWrite/);
+assert.match(sql,/rawCatchupChunkBlocks/);
+assert.match(sql,/evidence-and-one-raw-chunk/);
+assert.match(sql,/ELSE .*delta-work-cycle.*::jsonb END/);
+assert.match(sql,/cron.alter_job\(7, command := v_new\)/);
+assert.doesNotMatch(sql,/cron.schedule\(/);
+assert.doesNotMatch(sql,/CREATE (TABLE|FUNCTION)/i);
+const edge=fs.readFileSync(path.join(import.meta.dirname,'../supabase/functions/tln-vow-reward-refresh/index.ts'),'utf8');
+assert.match(edge,/rawCatchupAfterEvidence===true/);
+assert.match(edge,/rawCatchupWrite===true/);
+console.log('9.99 guarded 30-minute pilot: passed');
