@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const s=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.match(s,/guardedChunkBlocks=100\)\{/);
+assert.match(s,/selected\.start\+guardedChunkBlocks-1/);
+assert.match(s,/selected\.start,end,guardedChunkBlocks,/);
+assert.match(s,/chunkBlocks>5000/);
+assert.match(s,/body\?\.commit===true&&chunkBlocks!==100/);
+assert.match(s,/!\['mode','commit','confirm'\]\.includes\(k\)/);
+assert.match(s,/if\(!commitGuardedStage\)return/);
+assert.match(s,/if\(!inspected\.complete\|\|!inspected\.directions\.every/);
+assert.match(s,/\.eq\('updated_at',existing\.updated_at\)/);
+console.log('9.93: opt-in 1..5000 read-only capacity, legacy 100-block commit, full pagination and guarded CAS checks passed');

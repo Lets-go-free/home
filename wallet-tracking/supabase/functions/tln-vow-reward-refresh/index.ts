@@ -966,7 +966,7 @@ async function coverageCurrentBalances(addresses:string[],tokens:string[]):Promi
   }
   return {hits,unknown,checked:unknown.size===0}
 }
-async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false,scanEvidenceRun=false,scanWritePlan=false,scanRawParity=false,scanRawEvidence=false,scanAdaptiveParity=false,scanGuardedStage=false,commitGuardedStage=false){
+async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false,scanEvidenceRun=false,scanWritePlan=false,scanRawParity=false,scanRawEvidence=false,scanAdaptiveParity=false,scanGuardedStage=false,commitGuardedStage=false,guardedChunkBlocks=100){
   if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
     error:'Encryption service not configured',canEnableWritingCron:false}
   const wallets=await coverageRows(sb,'wallets',
@@ -1257,11 +1257,11 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
         status:'no_pending_scan_range',canEnableWritingCron:false}
       const address=[...addressToKey].find(([,key])=>key===selected.key)?.[0]
       if(!address)throw Error('Internal wallet selection mismatch')
-      const end=Math.min(head,selected.start+99)
+      const end=Math.min(head,selected.start+guardedChunkBlocks-1)
       try{
         // Reuse same Alchemy function and manual 24-block overlap. Capture
         // complete compact raw transfer objects privately, never in response.
-        const inspected=await inspectWalletTransfers(address,selected.start,end,100,
+        const inspected=await inspectWalletTransfers(address,selected.start,end,guardedChunkBlocks,
           eligibleTokens,false,true,true,0,true)
         if(!inspected.complete||!inspected.directions.every((d:any)=>d.complete)||
           !Array.isArray(inspected.cacheRows))throw Error('Incomplete raw ERC20 scan')
@@ -2654,7 +2654,14 @@ async function handleRewardRequest(req: Request): Promise<Response> {
       if(mode==='encrypted-wallet-scan-guarded-stage-preview'&&body?.commit===true&&
         (body?.confirm!=='single-raw-cache-chunk'||Object.keys(body).some((k:string)=>!['mode','commit','confirm'].includes(k))))
         return reply({ok:false,mode,error:'Explicit single-chunk confirmation required'},400)
-      const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-chunk-dry-run',mode==='encrypted-wallet-scan-transfer-evidence-preview',mode==='encrypted-wallet-scan-write-plan-preview',mode==='encrypted-wallet-scan-raw-parity-preview',mode==='encrypted-wallet-scan-raw-evidence-preview',mode==='encrypted-wallet-scan-adaptive-parity-preview',mode==='encrypted-wallet-scan-guarded-stage-preview',mode==='encrypted-wallet-scan-guarded-stage-preview'&&body?.commit===true)
+      // Read-only capacity probe only: larger historical chunks are NOT yet
+      // eligible for commit or unattended cron. Legacy commit stays at 100.
+      const chunkBlocks=body?.chunkBlocks===undefined?100:body.chunkBlocks
+      if(mode==='encrypted-wallet-scan-guarded-stage-preview'&&
+        (!Number.isSafeInteger(chunkBlocks)||chunkBlocks<1||chunkBlocks>5000||
+         (body?.commit===true&&chunkBlocks!==100)))
+        return reply({ok:false,mode,error:'Read-only chunkBlocks must be 1..5000; commit remains fixed at 100'},400)
+      const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-chunk-dry-run',mode==='encrypted-wallet-scan-transfer-evidence-preview',mode==='encrypted-wallet-scan-write-plan-preview',mode==='encrypted-wallet-scan-raw-parity-preview',mode==='encrypted-wallet-scan-raw-evidence-preview',mode==='encrypted-wallet-scan-adaptive-parity-preview',mode==='encrypted-wallet-scan-guarded-stage-preview',mode==='encrypted-wallet-scan-guarded-stage-preview'&&body?.commit===true,mode==='encrypted-wallet-scan-guarded-stage-preview'?chunkBlocks:100)
       return reply(preview,preview.ok?200:503)
     }
     if(mode==='daily-all-rewards-preview'){
