@@ -26,5 +26,5 @@ assert.ok(!picked.some(c=>c.key==='wallet-c'),'up-to-date wallet not scheduled')
 rows.set('wallet-b',cache(90,'not a timestamp'));
 picked=select(['wallet-a','wallet-b','wallet-c'],rows);
 assert.ok(!picked.some(c=>c.key==='wallet-b'),'invalid cache timestamp not silently scheduled');
-assert.ok(source.includes("body?.commit===true") && source.includes("body?.confirm!=='single-raw-cache-chunk'"),'explicit write authorization remains');
+assert.ok(source.includes("body?.commit===true") && source.includes("body?.confirm==='single-raw-cache-chunk'") && source.includes("body?.confirm==='single-raw-cache-large-chunk'"),'explicit write authorization remains');
 console.log('9.92: no-cache bootstrap, fair rotation, 24-block overlap, no re-scan at head, invalid cache protection, gated writing passed');

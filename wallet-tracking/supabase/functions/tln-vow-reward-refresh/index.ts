@@ -1229,8 +1229,9 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
     }
     if(scanGuardedStage){
       const mode='encrypted-wallet-scan-guarded-stage-preview'
-      // A caller cannot select a wallet, cursor, range or chain. In commit mode
-      // still only ONE 100-block chunk is possible and no claims are booked.
+      // A caller cannot select a wallet, cursor, range or chain. Each call
+      // still scans only ONE selected wallet. Larger commits require a separate
+      // exact confirmation; no job invokes this writing path automatically.
       if(!complete||head===null||invalid>0||!ALCHEMY_API_KEY||eligibleTokens.length===0)
         return {ok:false,mode,error:'Wallet selection, cache validation or RPC incomplete',
           persisted:false,canEnableWritingCron:false}
@@ -1286,6 +1287,7 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
           status:'staged-full-raw-payload-preview',notice:'Complete manual-compatible raw rows staged in memory. NO writes; server commit still requires a separate explicit call.'}
         // The same cooperative updated_at compare-and-swap protocol as the
         // existing manual savePersistentErc20Cache(), no extra SQL function.
+        // No writes until both RPC directions and every adaptive leaf complete.
         const [userId,walletId]=selected.key.split('|')
         if(!userId||!walletId)throw Error('Invalid selected encrypted wallet')
         let retryCount=0
@@ -1336,7 +1338,7 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
           if(Array.isArray(saved.data)&&saved.data.length===1)
             return {ok:true,...summary,dryRun:false,persisted:true,storedTransferCount:merged.size,
               conflictRetries:retryCount,status:'guarded-raw-cache-chunk-saved',
-              notice:'One 100-block raw cache chunk persisted by guarded CAS. No reward/claim/cron writes. Full historical reward coverage NOT proven.'}
+              notice:'One explicitly confirmed raw cache chunk persisted by guarded CAS. No reward/claim/cron writes. Full historical reward coverage NOT proven.'}
         }
         throw Error('Raw cache concurrent update retry limit')
       }catch(error){
@@ -2651,16 +2653,21 @@ async function handleRewardRequest(req: Request): Promise<Response> {
       if(!byWallet.has(k))byWallet.set(k,r)
     }
     if(mode==='encrypted-wallet-scan-guarded-stage-preview'||mode==='encrypted-wallet-scan-adaptive-parity-preview'||mode==='encrypted-wallet-scan-raw-evidence-preview'||mode==='encrypted-wallet-scan-raw-parity-preview'||mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'||mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview'||mode==='encrypted-wallet-scan-chunk-dry-run'||mode==='encrypted-wallet-scan-transfer-evidence-preview'||mode==='encrypted-wallet-scan-write-plan-preview'){
-      if(mode==='encrypted-wallet-scan-guarded-stage-preview'&&body?.commit===true&&
-        (body?.confirm!=='single-raw-cache-chunk'||Object.keys(body).some((k:string)=>!['mode','commit','confirm'].includes(k))))
-        return reply({ok:false,mode,error:'Explicit single-chunk confirmation required'},400)
-      // Read-only capacity probe only: larger historical chunks are NOT yet
-      // eligible for commit or unattended cron. Legacy commit stays at 100.
       const chunkBlocks=body?.chunkBlocks===undefined?100:body.chunkBlocks
-      if(mode==='encrypted-wallet-scan-guarded-stage-preview'&&
-        (!Number.isSafeInteger(chunkBlocks)||chunkBlocks<1||chunkBlocks>5000||
-         (body?.commit===true&&chunkBlocks!==100)))
-        return reply({ok:false,mode,error:'Read-only chunkBlocks must be 1..5000; commit remains fixed at 100'},400)
+      if(mode==='encrypted-wallet-scan-guarded-stage-preview'){
+        if(!Number.isSafeInteger(chunkBlocks)||chunkBlocks<1||chunkBlocks>5000)
+          return reply({ok:false,mode,error:'chunkBlocks must be an integer in 1..5000'},400)
+        if(body?.commit===true){
+          // Backward-compatible 100-block commit. Larger single-wallet chunks
+          // require a distinct confirmation and explicit size; no cron writes.
+          const legacy=chunkBlocks===100&&body?.confirm==='single-raw-cache-chunk'&&
+            Object.keys(body).every((k:string)=>['mode','commit','confirm'].includes(k))
+          const large=chunkBlocks>100&&body?.confirm==='single-raw-cache-large-chunk'&&
+            Object.keys(body).every((k:string)=>['mode','commit','confirm','chunkBlocks'].includes(k))
+          if(!legacy&&!large)
+            return reply({ok:false,mode,error:'Explicit size-matched single-chunk confirmation required'},400)
+        }
+      }
       const preview=await encryptedTlnWalletCoveragePreview(sb,mode!=='encrypted-wallet-coverage-preview',mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-batch-plan-preview',mode==='encrypted-wallet-scan-chunk-dry-run',mode==='encrypted-wallet-scan-transfer-evidence-preview',mode==='encrypted-wallet-scan-write-plan-preview',mode==='encrypted-wallet-scan-raw-parity-preview',mode==='encrypted-wallet-scan-raw-evidence-preview',mode==='encrypted-wallet-scan-adaptive-parity-preview',mode==='encrypted-wallet-scan-guarded-stage-preview',mode==='encrypted-wallet-scan-guarded-stage-preview'&&body?.commit===true,mode==='encrypted-wallet-scan-guarded-stage-preview'?chunkBlocks:100)
       return reply(preview,preview.ok?200:503)
     }
