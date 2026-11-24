@@ -1,3 +1,6 @@
+> **10.00 (24.11.2026 20:50:36 CET, Build 20261124-205036):** DAO-Tagespilot vom 24.11.2026 dokumentiert: 16/16 Raw Staging, 2/16 Rewards `completed`, 14 `staged`, 19 Schritte, 0 Fehler (letzter gemeldeter Stand). Temporärer Cron 13, Live-Worker aus, produktiver Cron nicht freigegeben. Gateway-JWT-Einstellung im Repo nachgeführt; keine Änderung der Worker-Logik. wUSDT-/Claim-/Coverage-Audit, negative Authentifizierungstests und Pilotbereinigung offen. Details: `docs/releases/10.00-dao-daily-pilot-status.md`.
+> Frühere Einträge sind historische Entwicklungsstände; für DAO gilt der obige Zwischenstand. TLN/VOW bleibt unverändert.
+
 ## Phase 8.40 – Nullbestands-Token in Snapshot-Spalten ausblenden (14.11.2026 12:07:26 CET)
 - Zeilen werden nur angezeigt, wenn ein aktueller positiver Bestand, ein positiver gestakter LP-Bestand oder ein positiver Bestand in einem geladenen angezeigten Snapshot vorliegt.
 - Historische Token-Zeilen und zusätzliche Chain-Karten werden nicht länger durch ausschliessliche Nullbestände und gespeicherte Kurse erzeugt.

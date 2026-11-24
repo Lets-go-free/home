@@ -1,3 +1,6 @@
+> **10.00 (24.11.2026 20:50:36 CET, Build 20261124-205036):** DAO-Tagespilot vom 24.11.2026 dokumentiert: 16/16 Raw Staging, 2/16 Rewards `completed`, 14 `staged`, 19 Schritte, 0 Fehler (letzter gemeldeter Stand). Temporärer Cron 13, Live-Worker aus, produktiver Cron nicht freigegeben. Gateway-JWT-Einstellung im Repo nachgeführt; keine Änderung der Worker-Logik. wUSDT-/Claim-/Coverage-Audit, negative Authentifizierungstests und Pilotbereinigung offen. Details: `docs/releases/10.00-dao-daily-pilot-status.md`.
+> Frühere Einträge sind historische Entwicklungsstände; für DAO gilt der obige Zwischenstand. TLN/VOW bleibt unverändert.
+
 ### 8.82 – Dauerhafter manueller 1–5 Legacy-Claim-Stapel (Installation offen)
 - 8.81 live 5/5 per DB abgenommen, 16/76 kanonisch; 56 priced und 4 pre-price offen. Nächster 5er-Satz live read-only verified. 8.82 ersetzt fixe Einmal-Hashlisten durch eine wiederverwendbare manuelle 1–5-Verarbeitung derselben Wallet mit frischem Live-Proof, SQL-oldest-five-Reihenfolge, zentralem Finalizer, Wallet-Advisory-Locks und atomarem Rollback. Keine neuen ZIPs pro Stapel. Admin-Preview → Bestätigung → SQL-Abnahme je Batch; kein Cron, Worker oder anderer Wallet-Scope. Details `docs/releases/8.82-dao-legacy-reusable-bounded-commit.md`.
 
