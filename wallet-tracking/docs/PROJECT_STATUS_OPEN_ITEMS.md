@@ -1,3 +1,5 @@
+> **9.89 (24.11.2026 07:57:54 CET, Build 20261124-075754):** Read-only `encrypted-wallet-scan-adaptive-parity-preview` prüft einen belegten historischen ERC-20-Transfer über den vorhandenen `inspectWalletTransfers()`-Scanner. Nur im neuen Diagnosemodus: vollständige Pagination oder begrenzte adaptive Halbierung (max. 100 Blöcke, 4 Teilungsstufen), sonst sicherer Abbruch. Produktive Reward-Pfade unverändert; keine Writes. Lokale Regressionstests 9.80–9.89 bestanden; Live-Test offen. Keine globale Rohdaten-/Reward-Vollständigkeit, tägliche Buchungsjobs aus. Siehe `docs/releases/9.89-tln-erc20-adaptive-pagination-readonly.md`.
+
 ## Version 9.88 – Positiver historischer ERC-20-Rohdatenbeleg ohne Tokenfilter (20261124-064944)
 
 - `encrypted-wallet-scan-raw-evidence-preview` bestätigt einen existierenden Rohdaten-Transfer über denselben bestehenden Alchemy-Scanner, möglichst mit nicht vordefiniertem Token. Maximal 100 Blöcke, strikt Read-only.
