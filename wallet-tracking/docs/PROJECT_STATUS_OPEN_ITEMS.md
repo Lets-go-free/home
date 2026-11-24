@@ -1,3 +1,10 @@
+## Version 9.87 – ERC-20-Rohdaten-Scan lesend an manuelle Token-Auswahl angeglichen (20261123-221719)
+
+- `encrypted-wallet-scan-raw-parity-preview`: bestehender serverseitiger Scanner zählt im 100-Block-Test auch ERC-20-Transfers **ausserhalb** der Projekt-Token-Liste; Transferidentität nach manueller Discovery, keine IDs in Antwort. Bestehende Reward-Filter unverändert.
+- Keine neuen Datenbankfunktionen, SQL-Migrationen, Cron-Jobs oder Schreibzugriffe. Pagination weiterhin strikt auf acht Seiten pro Richtung begrenzt; adaptive Teilung und sichere konkurrierende Speicherung offen.
+- Lokale Tests 9.80–9.87 bestanden. **Live-Test noch offen**. Tägliche Reward-Buchungsjobs bleiben deaktiviert.
+- Details: `docs/releases/9.87-tln-server-raw-erc20-parity-readonly.md`.
+
 ## Version 9.86 – Read-only-Schreibplan für ERC-20-Rohcache (20261123-220217)
 
 - Neuer geschützter Modus `encrypted-wallet-scan-write-plan-preview`. Bewertet vorhandene Rohcache-Einträge, Duplikatschlüssel und fehlende Transferidentitäten, wählt maximal einen künftigen 100-Block-Abschnitt als Simulation; kein RPC-Scan, keine Datenbankschreibzugriffe.
