@@ -2629,6 +2629,10 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
+    // Explicit contention preview is separate from the writing Evidence path.
+    if(workCycle && body?.rawCatchupBudgetPreview===true &&
+       (body?.commit===true || body?.rawCatchupOnIdle===true))
+      return reply({ok:false,mode,error:'Budget preview is read-only and exclusive'},400)
     // Reject the previously misstated flag instead of silently running the writing Evidence cycle.
     if(workCycle && body?.rawScanIdlePreview!==undefined)
       return reply({ok:false,mode,error:'Unknown preview option; use rawCatchupOnIdle'},400)
@@ -3501,6 +3505,27 @@ async function handleRewardRequest(req: Request): Promise<Response> {
           wallet,next:continuity.next,anchor:continuity.anchor})
       }
       candidates.sort((a,b)=>a.next-b.next)
+      // 9.97: Measure the existing raw scanner even while Evidence candidates
+      // exist, WITHOUT running the writing Evidence branch. This is an explicit
+      // read-only capacity test, not an automatic catch-up or cron change.
+      if(workCycle && body?.rawCatchupBudgetPreview===true){
+        const scanBlocks=body?.rawCatchupChunkBlocks??5000
+        if(!Number.isSafeInteger(scanBlocks)||scanBlocks<1||scanBlocks>5000)
+          return reply({ok:false,mode,error:'rawCatchupChunkBlocks must be 1..5000'},400)
+        const started=Date.now()
+        const subRequest=new Request(req.url,{method:'POST',headers:req.headers,
+          body:JSON.stringify({mode:'encrypted-wallet-scan-guarded-stage-preview',
+            commit:false,chunkBlocks:scanBlocks})})
+        const subResponse=await handleRewardRequest(subRequest)
+        const subResult=await subResponse.json()
+        return reply({...subResult,mode,
+          rawCatchupSubMode:'encrypted-wallet-scan-guarded-stage-preview',
+          rawCatchupBudgetPreview:true,evidenceCandidatesAvailable:candidates.length,
+          evidenceCycleExecuted:false,rawScanExecuted:subResult.executed===true,
+          previewElapsedMs:Date.now()-started,persisted:false,
+          canEnableWritingCron:false,
+          notice:'Explicit read-only raw capacity preview despite Evidence backlog. Evidence was not executed; no cache, Evidence, reward or cron writes. No unattended scheduling enabled.'},subResponse.status)
+      }
       // 9.96: Explicit preview requests must never fall through to the
       // normal, writing Evidence cycle when Evidence still has candidates.
       // Existing cron calls omit the flag and are completely unchanged.

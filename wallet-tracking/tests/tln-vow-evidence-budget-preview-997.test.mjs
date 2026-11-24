@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const s=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const begin=s.indexOf('candidates.sort((a,b)=>a.next-b.next)');
+const end=s.indexOf('const target=candidates[0]',begin);
+const segment=s.slice(begin,end);
+assert.ok(begin>=0 && end>begin);
+assert.ok(segment.includes('if(workCycle && body?.rawCatchupBudgetPreview===true)'));
+assert.ok(segment.includes('evidenceCycleExecuted:false'));
+assert.ok(segment.includes('commit:false,chunkBlocks:scanBlocks'));
+assert.ok(segment.includes('evidenceCandidatesAvailable:candidates.length'));
+assert.ok(segment.includes('previewElapsedMs:Date.now()-started'));
+assert.ok(segment.indexOf('rawCatchupBudgetPreview===true')<segment.indexOf('if(!candidates.length){'));
+assert.ok(s.includes("error:'Budget preview is read-only and exclusive'"));
+assert.ok(s.includes("if(mode==='delta-transfer-stage'||workCycle)"));
+console.log('9.97 budget preview is opt-in, read-only and separate from writing Evidence: passed');
