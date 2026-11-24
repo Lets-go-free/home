@@ -1171,3 +1171,11 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Im bestehenden `delta-work-cycle` optionale `rawCatchupOnIdle:true`-Vorschau: **nur wenn kein Evidence-Staging-Kandidat vorhanden ist**, interner Aufruf des bestehenden `encrypted-wallet-scan-guarded-stage-preview` mit `commit:false`; maximal 5’000 Blöcke. `commit:true` abgewiesen. Kein neuer Scanner/SQL/Cron, kein Rohdaten-Write.
 - Beide bestehenden 5-Minuten-Cron-Kommandos **unverändert**, deshalb kein zusätzliches Scan-RPC im aktiven Dauerbetrieb.
 - **TODO:** Opt-in-Live-Aufruf überprüfen, dann Last und Wiedereintritt/Concurrency testen, bevor unbeaufsichtigter Rohdaten-Commit im bestehenden 5-Minuten-Ablauf überhaupt freigegeben wird. Tages-Reward-Claims weiterhin deaktiviert. Siehe `docs/releases/9.95-tln-evidence-idle-raw-preview.md`.
+
+
+### Phase 9.96 – Opt-in Leerlaufprobe strikt read-only (24.11.2026 17:08:07 CET, Build 20261124-170807)
+
+- Live 9.95 Request 10692 führte wegen falschem Parameter `rawScanIdlePreview` einen normalen, schreibenden Evidence-Job aus. Der korrekte Parameter lautet `rawCatchupOnIdle`. `commit:false` schützt den regulären Work-Cycle **nicht** vor Staging-Writes.
+- Bei `rawCatchupOnIdle:true` und vorhandenen Evidence-Kandidaten liefert 9.96 jetzt `evidence_busy_raw_scan_skipped`, ohne Evidence- oder Rohcache-Schreibung; bei Leerlauf wird der vorhandene, rein lesende Rohscan-Unteraufruf wiederverwendet. Falscher Parameter wird HTTP 400 statt unbemerkt ignoriert.
+- Aktive Cron-Aufrufe ohne Flag, bestehende Reward-Erkennung und Datenbank bleiben unverändert.
+- **TODO:** Read-only-Live-Aufruf prüfen; anschliessend erst Laufzeit, Abdeckung und Unbeaufsichtigt-Sicherheit nachweisen. Tägliche Reward-Buchungsjobs bleiben deaktiviert. Siehe `docs/releases/9.96-tln-evidence-idle-optin-write-guard.md`.

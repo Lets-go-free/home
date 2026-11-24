@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const s=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+const begin=s.indexOf('candidates.sort((a,b)=>a.next-b.next)');
+const target=s.indexOf('const target=candidates[0]',begin);
+const segment=s.slice(begin,target);
+assert.ok(begin>0&&target>begin);
+assert.ok(segment.includes('if(workCycle && body?.rawCatchupOnIdle===true)'));
+assert.ok(segment.includes("status:'evidence_busy_raw_scan_skipped'"));
+assert.ok(segment.indexOf("status:'evidence_busy_raw_scan_skipped'")<segment.indexOf('if(!candidates.length){'));
+assert.ok(segment.includes('persisted:false'));
+assert.ok(segment.includes('commit:false,chunkBlocks:scanBlocks'));
+assert.ok(segment.includes('body?.commit===true'));
+assert.ok(s.includes("error:'Unknown preview option; use rawCatchupOnIdle'"));
+assert.ok(s.includes("if(mode==='delta-transfer-stage'||workCycle)"));
+console.log('9.96 read-only opt-in busy guard and typo rejection: passed');

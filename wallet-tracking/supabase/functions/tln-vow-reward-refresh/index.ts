@@ -2629,6 +2629,9 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
     const workCycle=mode==='delta-work-cycle'
+    // Reject the previously misstated flag instead of silently running the writing Evidence cycle.
+    if(workCycle && body?.rawScanIdlePreview!==undefined)
+      return reply({ok:false,mode,error:'Unknown preview option; use rawCatchupOnIdle'},400)
     const maxBlocks=workCycle?(body?.maxBlocks??50000):previewBlockBudget(body?.maxBlocks)
     if(maxBlocks===null||!Number.isSafeInteger(maxBlocks)||maxBlocks<1||maxBlocks>(workCycle?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS))
       return reply({ok:false,mode,error:`maxBlocks must be an integer from 1 to ${workCycle?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS}`},400)
@@ -3498,6 +3501,18 @@ async function handleRewardRequest(req: Request): Promise<Response> {
           wallet,next:continuity.next,anchor:continuity.anchor})
       }
       candidates.sort((a,b)=>a.next-b.next)
+      // 9.96: Explicit preview requests must never fall through to the
+      // normal, writing Evidence cycle when Evidence still has candidates.
+      // Existing cron calls omit the flag and are completely unchanged.
+      if(workCycle && body?.rawCatchupOnIdle===true){
+        if(body?.commit===true)return reply({ok:false,mode,
+          error:'Idle catch-up probe is read-only; commit is forbidden'},400)
+        if(candidates.length)return reply({ok:true,mode,day:dayCH(),
+          status:'evidence_busy_raw_scan_skipped',evidenceCycleIdle:false,
+          rawCatchupOnIdle:true,evidenceCandidatesAvailable:candidates.length,
+          rawScanExecuted:false,persisted:false,canEnableWritingCron:false,
+          notice:'Read-only opt-in skipped because normal Evidence candidates exist. No Evidence staging, raw cache or reward writes.'})
+      }
       if(!candidates.length){
         // 9.95: Optional, read-only raw history catch-up probe ONLY when the
         // existing evidence cycle has no staging candidate. Existing cron
