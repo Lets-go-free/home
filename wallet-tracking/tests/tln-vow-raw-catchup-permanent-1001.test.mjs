@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../supabase/migrations/20261124205807_tln_vow_raw_catchup_permanent_1001.sql',import.meta.url),'utf8');
+const pilot=fs.readFileSync(new URL('../supabase/migrations/20261124200835_tln_vow_raw_catchup_pilot_999.sql',import.meta.url),'utf8');
+const expr=pilot.split('$expr$')[1];
+const [prefix,suffix]=expr.split('%L');
+assert.equal(sql.split('$prefix$')[1],prefix);
+assert.equal(sql.split('$suffix$')[1],suffix);
+assert.equal(sql.split('$body$')[1],expr.split('THEN ')[1].split('\n      ELSE')[0]);
+assert.match(sql,/clock_timestamp\(\) < v_until/);
+assert.match(sql,/jobid BETWEEN 9 AND 12 AND active/);
+assert.match(sql,/cron.alter_job\(7, command := v_new\)/);
+assert.doesNotMatch(sql,/cron.schedule\(|CREATE (TABLE|FUNCTION)/i);
+console.log('10.01 pilot replacement static checks passed');

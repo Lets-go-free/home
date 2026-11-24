@@ -1,3 +1,5 @@
+> **10.01 (24.11.2026 20:58:07 CET, Build 20261124-205807):** TLN/VOW-Pilot 6/6 HTTP-200-Rohscans, 10 Caches/3’419 Transfers, 0 Duplikate/ungültige Grenzen/CAS-Konflikte; automatischer Rückfall bestätigt. Dauerbetrieb vorbereitet, nur Cron 7 nach Migration geändert; keine Reward-Buchungen. **Offen:** Installation, Live-Abnahme, Receipt-HTTP-Nachweis, historische Abdeckung und Reward-Klassifizierung. Details: `docs/releases/10.01-tln-vow-raw-catchup-permanent.md`. DAO-Stand 10.00 unverändert.
+
 ## 9.77 · 23.11.2026 07:43:34 CET · Build 20261123-074334
 
 - Gemeinsame, strikt lesende Vorschau für alle vier bestehenden TLN/VOW-Finalizer. Kein neuer Reward-Entscheid.

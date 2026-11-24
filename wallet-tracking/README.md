@@ -1,3 +1,5 @@
+> **10.01 (24.11.2026 20:58:07 CET, Build 20261124-205807):** TLN/VOW-Pilot 6/6 HTTP-200-Rohscans, 10 Caches/3’419 Transfers, 0 Duplikate/ungültige Grenzen/CAS-Konflikte; automatischer Rückfall bestätigt. Dauerbetrieb vorbereitet, nur Cron 7 nach Migration geändert; keine Reward-Buchungen. **Offen:** Installation, Live-Abnahme, Receipt-HTTP-Nachweis, historische Abdeckung und Reward-Klassifizierung. Details: `docs/releases/10.01-tln-vow-raw-catchup-permanent.md`. DAO-Stand 10.00 unverändert.
+
 > **10.00 (24.11.2026 20:50:36 CET, Build 20261124-205036):** DAO-Tagespilot vom 24.11.2026 dokumentiert: 16/16 Raw Staging, 2/16 Rewards `completed`, 14 `staged`, 19 Schritte, 0 Fehler (letzter gemeldeter Stand). Temporärer Cron 13, Live-Worker aus, produktiver Cron nicht freigegeben. Gateway-JWT-Einstellung im Repo nachgeführt; keine Änderung der Worker-Logik. wUSDT-/Claim-/Coverage-Audit, negative Authentifizierungstests und Pilotbereinigung offen. Details: `docs/releases/10.00-dao-daily-pilot-status.md`.
 > Frühere Einträge sind historische Entwicklungsstände; für DAO gilt der obige Zwischenstand. TLN/VOW bleibt unverändert.
 
