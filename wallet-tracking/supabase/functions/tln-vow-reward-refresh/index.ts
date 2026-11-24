@@ -2633,6 +2633,21 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     if(workCycle && body?.rawCatchupBudgetPreview===true &&
        (body?.commit===true || body?.rawCatchupOnIdle===true))
       return reply({ok:false,mode,error:'Budget preview is read-only and exclusive'},400)
+    // 9.98: Explicit post-Evidence raw catch-up. Existing cron requests omit
+    // these flags. Evidence itself IS WRITING even when the raw part is preview.
+    if(workCycle && body?.rawCatchupAfterEvidence===true){
+      const rawWrite=body?.rawCatchupWrite===true
+      const expected=rawWrite?'evidence-and-one-raw-chunk':'evidence-writes-raw-preview'
+      if(body?.confirm!==expected || (rawWrite&&body?.commit!==true))
+        return reply({ok:false,mode,error:'Explicit Evidence-writing confirmation required for post-Evidence catch-up'},400)
+      if(body?.rawCatchupOnIdle===true||body?.rawCatchupBudgetPreview===true)
+        return reply({ok:false,mode,error:'Post-Evidence catch-up cannot be combined with read-only previews'},400)
+      const scanBlocks=body?.rawCatchupChunkBlocks??5000
+      if(!Number.isSafeInteger(scanBlocks)||scanBlocks<1||scanBlocks>5000 || (rawWrite&&scanBlocks<100))
+        return reply({ok:false,mode,error:'rawCatchupChunkBlocks must be 1..5000 (write: 100..5000)'},400)
+    }
+    if(workCycle && body?.rawCatchupWrite===true && body?.rawCatchupAfterEvidence!==true)
+      return reply({ok:false,mode,error:'Raw write requires explicit post-Evidence option'},400)
     // Reject the previously misstated flag instead of silently running the writing Evidence cycle.
     if(workCycle && body?.rawScanIdlePreview!==undefined)
       return reply({ok:false,mode,error:'Unknown preview option; use rawCatchupOnIdle'},400)
@@ -3539,6 +3554,32 @@ async function handleRewardRequest(req: Request): Promise<Response> {
           notice:'Read-only opt-in skipped because normal Evidence candidates exist. No Evidence staging, raw cache or reward writes.'})
       }
       if(!candidates.length){
+        // 9.98: No Evidence candidates means the optional post-Evidence raw
+        // path can run directly. It still requires explicit confirmation and
+        // is never invoked by the existing 5-minute cron request.
+        if(workCycle&&body?.rawCatchupAfterEvidence===true){
+          const rawWrite=body?.rawCatchupWrite===true
+          const scanBlocks=body?.rawCatchupChunkBlocks??5000
+          const startedRaw=Date.now()
+          const subRequest=new Request(req.url,{method:'POST',headers:req.headers,
+            body:JSON.stringify({mode:'encrypted-wallet-scan-guarded-stage-preview',
+              commit:rawWrite,
+              ...(!rawWrite||scanBlocks>100?{chunkBlocks:scanBlocks}:{}),
+              ...(rawWrite?{confirm:scanBlocks>100?'single-raw-cache-large-chunk':'single-raw-cache-chunk'}:{})})})
+          const subResponse=await handleRewardRequest(subRequest)
+          const subResult=await subResponse.json()
+          return reply({ok:subResponse.ok&&subResult.ok===true,mode,day:dayCH(),
+            status:'evidence_idle_raw_catchup',evidenceCycleExecuted:false,
+            evidencePersisted:false,rawCatchupAfterEvidence:true,
+            rawCatchup:{executed:subResult.executed===true,
+              persisted:subResult.persisted===true,status:subResult.status||'raw_scan_failed',
+              httpStatus:subResponse.status,chunk:subResult.chunk||null,
+              rawRowsCaptured:subResult.rawRowsCaptured??null,
+              conflictRetries:subResult.conflictRetries??null,
+              elapsedMs:Date.now()-startedRaw,writeRequested:rawWrite},
+            canEnableWritingCron:false,
+            notice:'No Evidence candidate. Optional single raw scan only; reward finalizers remain disabled.'},subResponse.status)
+        }
         // 9.95: Optional, read-only raw history catch-up probe ONLY when the
         // existing evidence cycle has no staging candidate. Existing cron
         // requests never pass this flag and therefore remain unchanged.
@@ -3669,8 +3710,46 @@ async function handleRewardRequest(req: Request): Promise<Response> {
         }
       }
       if(cursor>head)stopReason='chain_head'
+      // 9.98: Existing Evidence always runs first. A raw subscan is strictly
+      // opt-in, at most one, and only with remaining measured wall-clock budget.
+      // This is a dispatch guard, NOT a hard RPC deadline; keep cron disabled
+      // until an end-to-end time-budget test proves safe under load.
+      let rawCatchup:any=undefined
+      if(workCycle && body?.rawCatchupAfterEvidence===true){
+        const evidenceElapsedMs=Date.now()-start
+        const budgetMs=8000
+        if(evidenceElapsedMs>=budgetMs ||
+          !['chain_head','max_chunks'].includes(stopReason)){
+          rawCatchup={executed:false,persisted:false,status:'skipped_evidence_priority',
+            evidenceElapsedMs,budgetMs,stopReason}
+        }else{
+          const rawWrite=body?.rawCatchupWrite===true
+          const scanBlocks=body?.rawCatchupChunkBlocks??5000
+          const startedRaw=Date.now()
+          const subRequest=new Request(req.url,{method:'POST',headers:req.headers,
+            body:JSON.stringify({mode:'encrypted-wallet-scan-guarded-stage-preview',
+              commit:rawWrite,
+              ...(!rawWrite||scanBlocks>100?{chunkBlocks:scanBlocks}:{}),
+              ...(rawWrite?{confirm:scanBlocks>100?'single-raw-cache-large-chunk':'single-raw-cache-chunk'}:{})})})
+          const subResponse=await handleRewardRequest(subRequest)
+          const subResult=await subResponse.json()
+          rawCatchup={executed:subResult.executed===true,
+            persisted:subResult.persisted===true,
+            status:subResult.status||'raw_scan_failed',
+            ok:subResponse.ok&&subResult.ok===true,
+            httpStatus:subResponse.status,
+            chunk:subResult.chunk||null,
+            rawRowsCaptured:subResult.rawRowsCaptured??null,
+            conflictRetries:subResult.conflictRetries??null,
+            elapsedMs:Date.now()-startedRaw,
+            evidenceElapsedMs,budgetMs,
+            writeRequested:rawWrite}
+        }
+      }
       return reply({ok:true,mode,day:dayCH(),status:workCycle?'work_cycle_staged':'staged_transfer_evidence',
-        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,referralMintCandidates,referralMintPathVerified,stateChangeCandidates,indirectTraceVerified,indirectRewardCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start}:
+        ...(workCycle?{chunks,receiptVerified,receiptDeferred,manualProofMatches,newUnverifiedMintCandidates,explicitClaimCandidates,bonusClaimCandidates,referralClaimCandidates,referralMintCandidates,referralMintPathVerified,stateChangeCandidates,indirectTraceVerified,indirectRewardCandidates,uniqueLotAssignmentCandidates,stopReason,elapsedMs:Date.now()-start,
+          ...(body?.rawCatchupAfterEvidence===true?{rawCatchup,rawCatchupAfterEvidence:true,
+            evidencePersisted:chunks.length>0,canEnableWritingCron:false}: {})}:
           {chunk:chunks[0]}),scopedContracts:contracts.length,selectedWallets:1,
         historicalCompletenessVerified:false,rewardClassificationCompleted:false,
         referralClassificationCompleted:false,claimsCreated:0,
