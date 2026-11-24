@@ -1234,17 +1234,24 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
       if(!complete||head===null||invalid>0||!ALCHEMY_API_KEY||eligibleTokens.length===0)
         return {ok:false,mode,error:'Wallet selection, cache validation or RPC incomplete',
           persisted:false,canEnableWritingCron:false}
-      const candidates:{key:string,start:number,cached:boolean}[]=[]
+      // For unattended catch-up, bootstrap wallets without raw cache before
+      // resuming existing cursors. Then select the oldest successfully updated
+      // cache first, so one wallet cannot monopolise all future requests.
+      // Selection is deterministic; it does not create a new queue or table.
+      const candidates:{key:string,start:number,cached:boolean,lastUpdatedMs:number}[]=[]
       for(const k of relevant){
         const rows=rawByKey.get(k)||[]
-        if(!rows.length){candidates.push({key:k,start:0,cached:false});continue}
+        if(!rows.length){candidates.push({key:k,start:0,cached:false,lastUpdatedMs:-1});continue}
         if(rows.length!==1)continue
         const r=rows[0],from=Number(r.complete_from_block),to=Number(r.last_scanned_block)
-        if(r.scanner_version!=='erc20-raw-v1'||!Array.isArray(r.payload)||!r.updated_at||
-          !Number.isSafeInteger(from)||from!==0||!Number.isSafeInteger(to)||to<from||to>head)continue
-        if(to<head)candidates.push({key:k,start:Math.max(0,to-23),cached:true})
+        const updatedMs=Date.parse(r.updated_at||'')
+        if(r.scanner_version!=='erc20-raw-v1'||!Array.isArray(r.payload)||
+          !Number.isFinite(updatedMs)||!Number.isSafeInteger(from)||from!==0||
+          !Number.isSafeInteger(to)||to<from||to>head)continue
+        if(to<head)candidates.push({key:k,start:Math.max(0,to-23),cached:true,lastUpdatedMs:updatedMs})
       }
-      candidates.sort((a,b)=>Number(b.cached)-Number(a.cached)||a.start-b.start||a.key.localeCompare(b.key))
+      candidates.sort((a,b)=>Number(a.cached)-Number(b.cached)||
+        a.lastUpdatedMs-b.lastUpdatedMs||a.start-b.start||a.key.localeCompare(b.key))
       const selected=candidates[0]
       if(!selected)return {ok:true,mode,dryRun:!commitGuardedStage,executed:false,persisted:false,
         status:'no_pending_scan_range',canEnableWritingCron:false}
