@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../supabase/migrations/20261125125323_tln_vow_separate_raw_catchup_pilot_1004.sql',import.meta.url),'utf8');
+const old=fs.readFileSync(new URL('../supabase/migrations/20261124205807_tln_vow_raw_catchup_permanent_1001.sql',import.meta.url),'utf8');
+const edge=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
+assert.equal(sql.split('$body$')[1],old.split('$body$')[1]);
+assert.match(sql,/interval '30 minutes'/);
+assert.match(sql,/THEN '{"mode":"delta-work-cycle"}'::jsonb ELSE %s END/);
+const body=JSON.parse(sql.match(/body := '(.*)'::jsonb/)[1]);
+assert.deepEqual(body,{mode:'encrypted-wallet-scan-guarded-stage-preview',commit:true,confirm:'single-raw-cache-large-chunk',chunkBlocks:5000});
+assert.ok(edge.includes("body?.confirm==='single-raw-cache-large-chunk'"));
+assert.ok(edge.includes('chunkBlocks>5000'));
+assert.match(sql,/cron.schedule\('tln-vow-raw-catchup-1m','\* \* \* \* \*'/);
+assert.match(sql,/cron.alter_job\(7, command := v_evidence\)/);
+assert.doesNotMatch(sql,/cron.alter_job\(13|UPDATE public\./i);
+console.log('10.04 separation static checks passed');
