@@ -27,4 +27,24 @@ class Test(unittest.TestCase):
         self.assertEqual(self.run_pilot({b.UTA_INFO:('HTTP 400, Bitget 40009',None)}),(False,[b.UTA_INFO]))
     def test_allowlist(self):
         with self.assertRaises(ValueError): b.request('/bad','x','x','x')
+    def test_extended(self):
+        now=1760000000000
+        r={b.UTA_INFO:('HTTP 400, Bitget 40084',None),b.CLASSIC_INFO:('00000',{'authorities':['coor']})}
+        r.update({p:('00000',[]) for _,p in b.CLASSIC_PROBES})
+        r[b.CLASSIC_PROBES[-1][1]]=('00000',[{'symbol':'BTCUSDT'}])
+        specs=b.detail_probes(now,['BTCUSDT'])
+        r.update({p:('00000',{k:[]} if k else []) for _,p,k,_ in specs})
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(b.pilot(r.__getitem__,extended=True,now=now))
+            r[specs[0][1]]=('00000',{})
+            self.assertFalse(b.pilot(r.__getitem__,extended=True,now=now))
+    def test_details_privacy(self):
+        buf=io.StringIO()
+        with contextlib.redirect_stdout(buf): b.show_rows([{'symbol':'BTCUSDT','apiKey':'secret','orderId':'private','feeDetail':{'totalFee':'1','secret':'private'}}],b.FILL_FIELDS)
+        self.assertIn('totalFee',buf.getvalue()); self.assertNotIn('private',buf.getvalue()); self.assertNotIn('secret',buf.getvalue())
+    def test_extended_guard(self):
+        calls=[]
+        def call(p): calls.append(p); return '00000',{'permType':'read_and_write','permissions':['uta_mgt']}
+        with contextlib.redirect_stdout(io.StringIO()): self.assertFalse(b.pilot(call,extended=True,now=1))
+        self.assertEqual(calls,[b.UTA_INFO])
 if __name__=='__main__': unittest.main()
