@@ -20,7 +20,7 @@ function priceFromRaw(data:string,aptmIs0:boolean,d0:number,d1:number){
  if(!(aptm>0&&usdt>0&&price>0&&Number.isFinite(price)))throw Error('Invalid positive pool reserve ratio');
  return price;
 }
-async function rpcFactory(sb:SupabaseLike){
+async function rpcFactory(sb:SupabaseLike,deadline=Infinity){
  const {data:chain,error}=await sb.from('chains').select('rpc_url,archive_rpc_url,evm_chain_id').eq('chain_key','apertum').single();
  if(error||!chain)throw Error('Apertum chain configuration missing');
  if(Number(chain.evm_chain_id)!==2786)throw Error('Apertum chain-ID configuration mismatch');
@@ -29,7 +29,9 @@ async function rpcFactory(sb:SupabaseLike){
  if(url.protocol!=='https:'||url.hostname!=='rpc.apertum.io')throw Error('Unsupported Apertum price RPC endpoint');
  let sequence=0;
  async function rpc(method:string,params:unknown[]){
-  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),11000);
+  const remaining=deadline-Date.now();
+  if(remaining<=0)throw Error('Historical price proof time budget exhausted');
+  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),Math.min(11000,remaining));
   try{
    const id=++sequence;
    const response=await fetch(url.toString(),{method:'POST',signal:controller.signal,headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method,params})});
@@ -119,8 +121,20 @@ export async function processExactPriceTargets(sb:SupabaseLike,{preview=false,ma
  if(error)throw Error('Global DAO price candidate selection: '+error.message);
  const selected=targets||[];
  if(preview)return {selected:selected.length,targets:selected.map((x:any)=>({block:x.claim_block,walletId:x.wallet_id})),processed:0,remaining:'not_counted'};
+ return processSelectedPriceTargets(sb,selected);
+}
+// A leased claim may request only its own verified price-blocked transaction.
+export async function processClaimExactPrice1003(sb:SupabaseLike,job:{user_id:string,wallet_id:string},tx:string){
+ const {data,error}=await sb.rpc('wallettracking_dao_reserve_exact_price_target_1003',{p_user:job.user_id,p_wallet:job.wallet_id,p_tx:tx});
+ if(error)throw Error('Scoped DAO price reservation: '+error.message);
+ const targets=data||[];
+ if(targets.length>1)throw Error('Non-unique scoped price target');
+ return processSelectedPriceTargets(sb,targets,Date.now()+20000);
+}
+async function processSelectedPriceTargets(sb:SupabaseLike,selected:any[],deadline=Infinity){
  if(!selected.length)return {selected:0,processed:0,pricedFlows:0,stopped:'no_pending'};
- const rpc=await rpcFactory(sb);const meta=await poolMetadata(rpc);
+ let rpc:Awaited<ReturnType<typeof rpcFactory>>|undefined;
+ let meta:Awaited<ReturnType<typeof poolMetadata>>|undefined;
  let pricedFlows=0,anchorsInserted=0;
  const results:any[]=[];
  // Limited to 4 globally selected verified unpriced target blocks per invocation.
@@ -132,11 +146,12 @@ export async function processExactPriceTargets(sb:SupabaseLike,{preview=false,ma
     .eq('project_key','dao1').eq('chain_key','apertum').eq('pool_address',PAIR).eq('parser_version',1).eq('target_block',block).maybeSingle();
    if(cacheError)throw cacheError;
    if(!cached){
-    const row=await exactAnchor(block,rpc,meta);
+    if(!rpc){rpc=await rpcFactory(sb,deadline);meta=await poolMetadata(rpc);}
+    const row=await exactAnchor(block,rpc,meta!);
     const {error:saveError}=await sb.from('aptm_price_anchors').upsert(row,{onConflict:'pool_address,parser_version,target_block',ignoreDuplicates:true});
     if(saveError)throw saveError;
     anchorsInserted++;
-   }else if(!(Number(cached.aptm_usd)>0 && cached.sync_block!==null && Number(cached.sync_block)<=block && Number(cached.scanned_from_block)>=0)){
+   }else if(!(Number(cached.aptm_usd)>0 && cached.sync_block!==null && Number(cached.sync_block)<=block && cached.scanned_from_block!==null && Number(cached.scanned_from_block)>=0 && Number(cached.scanned_from_block)<=block && Number.isFinite(Number(cached.aptm_usd)))){
     throw Error('Existing invalid/empty anchor; manual audit required, not overwritten');
    }
    const {data:updated,error:applyError}=await sb.rpc('wallettracking_dao_apply_exact_target_anchors_scoped',{

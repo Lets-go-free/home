@@ -5,7 +5,7 @@
 // durable and incremental; confirmed claims and prices still need canonical enrichment.
 import { createClient } from 'npm:@supabase/supabase-js@^2'
 import { inspectClaimPayoutCoverage, noPayoutEvidenceAllowed } from './payout-coverage.ts'
-import { processExactPriceTargets, previewExactPriceAtBlock873 } from './price-target-worker.ts'
+import { processExactPriceTargets, previewExactPriceAtBlock873, processClaimExactPrice1003 } from './price-target-worker.ts'
 import './asset-policy.js'
 import { rewardFlowCounterparty } from './counterparty-policy.js'
 import { uniqueMinerRewardEvent853 } from './miner-event-853.js'
@@ -1058,9 +1058,18 @@ async function processSingleNativeClaim(job:any,retryBlocked=false,includeErc20=
  const params:any={p_user:job.user_id,p_wallet:job.wallet_id,p_tx:candidate.tx_hash};
  if(includeErc20)Object.assign(params,{p_verified_token:assetEvidence?.token??null,
   p_verified_decimals:assetEvidence?.decimals??null,p_metadata_source:assetEvidence?.source??null,p_fixed_price:fixedQuote?.price??null,p_include_erc20:true});
- const {data:finalized,error:finalizeError}=await sb.rpc(rpcName,params);
+ let {data:finalized,error:finalizeError}=await sb.rpc(rpcName,params);
  if(finalizeError)throw finalizeError;
- return {...(finalized||{}),imported,payout,candidateTxHash:candidate.tx_hash,ownershipProofReason,
+ let priceProof:any=null;
+ if(skipImport && finalized?.status==='blocked' && finalized?.reason==='canonical-price-missing'){
+  priceProof=await processClaimExactPrice1003(sb,job,candidate.tx_hash);
+  if(priceProof.pricedFlows>0){
+   const retry=await sb.rpc(rpcName,params);
+   if(retry.error)throw retry.error;
+   finalized=retry.data;
+  }
+ }
+ return {...(finalized||{}),priceProof,imported,payout,candidateTxHash:candidate.tx_hash,ownershipProofReason,
   payoutReason:payout?.results?.[0]?.reason??(candidate.payout_status==='verified'?'already-verified':null),
   ...(includeErc20?{assetEvidence}:{})};
 }
@@ -1388,7 +1397,7 @@ async function runOneStagedReward(){
    p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:state,p_error:queueError});
   if(transition.error)throw transition.error;
   return {statusCode:200,walletId:job.wallet_id,body:{ok:true,mode:'cron-staged-one',status:state,queueStep:job.step_count,
-   claimStatus:one.status||'unknown',claimTxHash:one.candidateTxHash??null,claimReason:one.reason??null,
+   priceProof:one.priceProof??null,claimStatus:one.status||'unknown',claimTxHash:one.candidateTxHash??null,claimReason:one.reason??null,
    ownershipProofReason:one.ownershipProofReason??null,payoutReason:one.payoutReason??null,
    blockReason,claimsCreated:created,readiness,
    referralFlowsVerified:referral?.verifiedFlows??null,unreviewedWusdt:referral?referral.unverifiedIncomingWusdt:null,
@@ -2860,7 +2869,7 @@ Deno.serve(async request=>{
   }
   return Response.json({ok:true,mode:'cron-daily-step-899',day,phase:'reward',walletId:reward.walletId,
    status:reward.body.status,queueStep:reward.body.queueStep,claimStatus:reward.body.claimStatus,
-   claimTxHash:reward.body.claimTxHash,claimReason:reward.body.claimReason,
+   claimTxHash:reward.body.claimTxHash,claimReason:reward.body.claimReason,priceProof:reward.body.priceProof??null,
    ownershipProofReason:reward.body.ownershipProofReason,payoutReason:reward.body.payoutReason,
    blockReason:reward.body.blockReason,claimsCreated:reward.body.claimsCreated,readiness:reward.body.readiness,
    referralCoverage:reward.body.referralCoverage,referralFlowsVerified:reward.body.referralFlowsVerified,
