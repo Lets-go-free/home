@@ -1025,8 +1025,10 @@ async function processSingleNativeClaim(job:any,retryBlocked=false,includeErc20=
  const address=await loadAddress(job);
  // Current NFT inventory was only a candidate. Reuse historical owner proof;
  // incomplete evidence never manufactures an NFT or a positive owner decision.
+ let ownershipProofReason=candidate.proof_reason??null;
  if(['pending','needs_review'].includes(candidate.status)&&candidate.nft_contract&&candidate.nft_id!=null){
   const proof=await historicalNftOwnership({_contract:candidate.nft_contract,tokenId:candidate.nft_id},address,Number(candidate.claim_block));
+  ownershipProofReason=proof.reason;
   const temporary=['pagination-incomplete','missing-history','history-out-of-order'].includes(proof.reason);
   if(!temporary){
    const {error}=await sb.from('dao_reward_claim_candidates').update({
@@ -1058,7 +1060,9 @@ async function processSingleNativeClaim(job:any,retryBlocked=false,includeErc20=
   p_verified_decimals:assetEvidence?.decimals??null,p_metadata_source:assetEvidence?.source??null,p_fixed_price:fixedQuote?.price??null,p_include_erc20:true});
  const {data:finalized,error:finalizeError}=await sb.rpc(rpcName,params);
  if(finalizeError)throw finalizeError;
- return {...(finalized||{}),imported,payout,...(includeErc20?{assetEvidence}:{})};
+ return {...(finalized||{}),imported,payout,candidateTxHash:candidate.tx_hash,ownershipProofReason,
+  payoutReason:payout?.results?.[0]?.reason??(candidate.payout_status==='verified'?'already-verified':null),
+  ...(includeErc20?{assetEvidence}:{})};
 }
 
 // Read-only, manually enabled single-address readiness check. It never claims a
@@ -1359,12 +1363,34 @@ async function runOneStagedReward(){
   const exceptionCount=Number(readiness?.unrecognizedExceptions??-1);
   const complete=created===0&&one.status==='no_eligible_claim'&&unresolved===0
    &&exceptionCount===0&&referralCoverage;
-  const state=complete?'completed':'staged';
+  let blockReason:string|null=null;
+  if(!complete){
+   if(job.step_count>=32)blockReason='daily-step-budget-exhausted';
+   else if(one.status==='no_eligible_claim')blockReason='no-eligible-claim-with-open-readiness';
+   else if(!['completed','blocked','skipped'].includes(one.status)||!one.candidateTxHash)
+    blockReason='unexpected-claim-result';
+   else{
+    const {data:current,error:currentError}=await sb.from('dao_reward_claim_candidates')
+     .select('claim_pipeline_status,claim_pipeline_checked_at,audit_classification,canonical_existing_verified,payout_status')
+     .eq('user_id',job.user_id).eq('wallet_id',job.wallet_id).eq('project_key',PROJECT)
+     .eq('chain_key',CHAIN).eq('tx_hash',one.candidateTxHash).maybeSingle();
+    if(currentError)throw currentError;
+    if(current&&current.canonical_existing_verified!==true&&current.audit_classification==null&&
+       current.payout_status!=='no_payout_evidence'&&current.claim_pipeline_status!=='completed'&&
+       !(current.claim_pipeline_status==='blocked'&&current.claim_pipeline_checked_at))
+     blockReason='candidate-result-not-persisted';
+   }
+  }
+  const state=complete?'completed':blockReason?'blocked':'staged';
+  const queueError=blockReason?JSON.stringify({reason:blockReason,claimReason:one.reason??null,
+   txHash:one.candidateTxHash??null,unresolved,unrecognizedExceptions:exceptionCount,referralCoverage}):null;
   const transition=await sb.rpc('wallettracking_dao_reward_finish_staged_v3',{
-   p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:state,p_error:null});
+   p_day:day,p_user:job.user_id,p_wallet:job.wallet_id,p_lease:job.lease_token,p_state:state,p_error:queueError});
   if(transition.error)throw transition.error;
   return {statusCode:200,walletId:job.wallet_id,body:{ok:true,mode:'cron-staged-one',status:state,queueStep:job.step_count,
-   claimStatus:one.status||'unknown',claimsCreated:created,readiness,
+   claimStatus:one.status||'unknown',claimTxHash:one.candidateTxHash??null,claimReason:one.reason??null,
+   ownershipProofReason:one.ownershipProofReason??null,payoutReason:one.payoutReason??null,
+   blockReason,claimsCreated:created,readiness,
    referralFlowsVerified:referral?.verifiedFlows??null,unreviewedWusdt:referral?referral.unverifiedIncomingWusdt:null,
    referralCoverage,notice:'One previously staged wallet. At most one canonical claim with existing strict guards. No new referral postings or raw cursor updates. Completed only after conservative candidate and referral checks.'}};
  }catch(e){
@@ -2760,7 +2786,9 @@ Deno.serve(async request=>{
    const row=result.body;
    if(row.status==='no_staged_wallet'){stopped='no_staged_wallet';break;}
    const step={walletId:result.walletId,status:row.status??'failed',queueStep:row.queueStep??null,
-    claimStatus:row.claimStatus??null,claimsCreated:row.claimsCreated??0,
+    claimStatus:row.claimStatus??null,claimTxHash:row.claimTxHash??null,claimReason:row.claimReason??null,
+    ownershipProofReason:row.ownershipProofReason??null,payoutReason:row.payoutReason??null,
+    blockReason:row.blockReason??null,claimsCreated:row.claimsCreated??0,
     readiness:row.readiness??null,referralCoverage:row.referralCoverage??null,
     referralFlowsVerified:row.referralFlowsVerified??null,unreviewedWusdt:row.unreviewedWusdt??null,
     ...(row.error?{error:row.error}:{})};
@@ -2820,12 +2848,21 @@ Deno.serve(async request=>{
   const reward=await runOneStagedReward();
   if(!reward.body.ok||reward.statusCode!==200)return Response.json({ok:false,mode:'cron-daily-step-899',day,
    phase:'reward',walletId:reward.walletId,error:reward.body.error||'Reward processing failed',leaseError:reward.body.leaseError??null},{status:reward.statusCode});
-  if(reward.body.status==='no_staged_wallet')return Response.json({ok:true,mode:'cron-daily-step-899',day,
-   phase:'idle',status:'no_eligible_wallet',claimsCreated:0,
-   notice:'No pending raw or staged reward wallet. This is not an independent completeness audit.'});
+  if(reward.body.status==='no_staged_wallet'){
+   const {data:rows,error}=await sb.from('wallet_reward_refresh_attempts').select('state')
+    .eq('project_key',PROJECT).eq('scan_day',day).neq('state','completed').limit(1000);
+   if(error)return Response.json({ok:false,mode:'cron-daily-step-899',day,phase:'idle',error:daoErrorSummary(error)},{status:500});
+   const incompleteByState:Record<string,number>={};
+   for(const row of rows||[])incompleteByState[row.state]=(incompleteByState[row.state]||0)+1;
+   return Response.json({ok:true,mode:'cron-daily-step-899',day,phase:'idle',
+    status:rows?.length?'incomplete_queue':'no_eligible_wallet',incompleteByState,claimsCreated:0,
+    notice:'No eligible raw or staged reward wallet. Incomplete rows require review; this is not a completeness audit.'});
+  }
   return Response.json({ok:true,mode:'cron-daily-step-899',day,phase:'reward',walletId:reward.walletId,
    status:reward.body.status,queueStep:reward.body.queueStep,claimStatus:reward.body.claimStatus,
-   claimsCreated:reward.body.claimsCreated,readiness:reward.body.readiness,
+   claimTxHash:reward.body.claimTxHash,claimReason:reward.body.claimReason,
+   ownershipProofReason:reward.body.ownershipProofReason,payoutReason:reward.body.payoutReason,
+   blockReason:reward.body.blockReason,claimsCreated:reward.body.claimsCreated,readiness:reward.body.readiness,
    referralCoverage:reward.body.referralCoverage,referralFlowsVerified:reward.body.referralFlowsVerified,
    unreviewedWusdt:reward.body.unreviewedWusdt,
    notice:'One guarded reward step. No independent referral posting, scheduler activation or automatic retries.'});
