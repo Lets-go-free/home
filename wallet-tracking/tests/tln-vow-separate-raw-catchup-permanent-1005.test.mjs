@@ -14,5 +14,6 @@ assert.match(sql,/Unexpected raw pilot command/);
 assert.match(sql,/cron.alter_job\(7, command := v_new_evidence\)/);
 assert.match(sql,/cron.alter_job\(v_id, command := v_new_raw\)/);
 assert.doesNotMatch(sql,/cron\.schedule\(|cron.alter_job\(13|UPDATE public\./i);
-assert.match(read('index.html'),/APP_VERSION="10.05"/);
+assert.ok(Number(read('index.html').match(/APP_VERSION="([0-9.]+)"/)[1])>=10.05);
+assert.doesNotMatch(sql,/FOR UPDATE/);
 console.log('10.05 permanent separation static checks passed');

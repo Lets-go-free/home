@@ -40,10 +40,10 @@ DECLARE
 BEGIN
   SELECT command INTO STRICT v_command FROM cron.job
     WHERE jobid=7 AND jobname='tln-vow-evidence-stage-5m' AND active
-      AND schedule='3-59/5 * * * *' FOR UPDATE;
+      AND schedule='3-59/5 * * * *';
   SELECT jobid, command INTO STRICT v_id, v_raw_command FROM cron.job
     WHERE jobname='tln-vow-raw-catchup-1m' AND active
-      AND schedule='* * * * *' FOR UPDATE;
+      AND schedule='* * * * *';
   IF EXISTS (SELECT 1 FROM cron.job WHERE jobid BETWEEN 9 AND 12 AND active) THEN
     RAISE EXCEPTION 'Unexpected active TLN reward job';
   END IF;

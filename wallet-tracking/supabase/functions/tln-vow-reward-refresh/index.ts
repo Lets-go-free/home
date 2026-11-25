@@ -1258,12 +1258,38 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
         status:'no_pending_scan_range',canEnableWritingCron:false}
       const address=[...addressToKey].find(([,key])=>key===selected.key)?.[0]
       if(!address)throw Error('Internal wallet selection mismatch')
-      const end=Math.min(head,selected.start+guardedChunkBlocks-1)
+      let end=Math.min(head,selected.start+guardedChunkBlocks-1)
+      const adaptive=guardedChunkBlocks>5000
+      let adaptiveAttempts=0
       try{
         // Reuse same Alchemy function and manual 24-block overlap. Capture
         // complete compact raw transfer objects privately, never in response.
-        const inspected=await inspectWalletTransfers(address,selected.start,end,guardedChunkBlocks,
-          eligibleTokens,false,true,true,0,true)
+        let inspected
+        if(!adaptive){
+          inspected=await inspectWalletTransfers(address,selected.start,end,guardedChunkBlocks,
+            eligibleTokens,false,true,true,0,true)
+        }else{
+          // Only commit a fully verified contiguous prefix. Discard failed attempts.
+          const deadline=Date.now()+25000
+          while(true){
+            adaptiveAttempts++
+            try{
+              inspected=await inspectWalletTransfers(address,selected.start,end,end-selected.start+1,
+                eligibleTokens,false,true,false,0,true,deadline)
+              if(!inspected.complete||!inspected.directions.every((d:any)=>d.complete))
+                throw new RpcDiagnosticError('alchemy_getAssetTransfers','incomplete_pagination')
+              break
+            }catch(error){
+              const size=end-selected.start+1
+              const diagnostic=safeRpcDiagnostic(error)
+              const retryable=['raw_cache_row_budget_exceeded','too_many_transfers','incomplete_pagination','rpc_error','timeout'].includes(diagnostic.category)||
+                (diagnostic.category==='http_error'&&[413,504].includes(diagnostic.httpStatus??0))
+              if(!retryable||size<=100||adaptiveAttempts>=5||Date.now()+3000>=deadline)throw error
+              end=selected.start+Math.max(100,Math.floor(size/2))-1
+            }
+          }
+          if(Date.now()>=deadline)throw new RpcDiagnosticError('alchemy_getAssetTransfers','adaptive_deadline')
+        }
         if(!inspected.complete||!inspected.directions.every((d:any)=>d.complete)||
           !Array.isArray(inspected.cacheRows))throw Error('Incomplete raw ERC20 scan')
         const incoming=inspected.cacheRows as any[]
@@ -1282,6 +1308,7 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
           incomingComplete:true,outgoingComplete:true,
           paginationPages:inspected.directions.reduce((n:number,d:any)=>n+d.pages,0),
           adaptiveSplitCount:inspected.adaptiveSplitCount||0,
+          ...(adaptive?{adaptiveRequestedBlocks:guardedChunkBlocks,adaptiveAttempts,adaptiveReduced:adaptiveAttempts>1}:{}),
           historicalScanCoverageVerified:false,rewardClassificationVerified:false,canEnableWritingCron:false}
         if(!commitGuardedStage)return {ok:true,...summary,dryRun:true,persisted:false,
           status:'staged-full-raw-payload-preview',notice:'Complete manual-compatible raw rows staged in memory. NO writes; server commit still requires a separate explicit call.'}
@@ -1575,12 +1602,12 @@ async function rpcRangeLimitDiagnosis(fromBlock:number, head:number) {
 const evmAddress = (v:unknown) => typeof v==='string' && /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : null
 const hexBlock = (n:number)=>'0x'+n.toString(16)
 async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number,
-  contractOverrides?:string[],collectEvents=false,rawParity=false,adaptiveReadOnly=false,depth=0,captureCacheRows=false) {
+  contractOverrides?:string[],collectEvents=false,rawParity=false,adaptiveReadOnly=false,depth=0,captureCacheRows=false,deadline?:number) {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
   const address=evmAddress(wallet)
   if(!address)throw new Error('Invalid verified snapshot wallet address')
   if(!Number.isSafeInteger(fromBlock)||!Number.isSafeInteger(toBlock)||fromBlock<0||toBlock<fromBlock||toBlock-fromBlock+1>maxBlocks||
-    maxBlocks>(collectEvents?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS))
+    maxBlocks>(deadline!==undefined&&captureCacheRows&&rawParity&&!collectEvents?100000:(collectEvents?MAX_WORK_CYCLE_BLOCKS:DELTA_CHUNK_BLOCKS)))
     throw new Error('Unsafe scan window')
   const contracts=contractOverrides||Object.keys(SCAN_CONTRACTS)
   if(contracts.length===0||contracts.length>100||contracts.some(c=>evmAddress(c)!==c)||new Set(contracts).size!==contracts.length)
@@ -1604,8 +1631,10 @@ async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:n
     const seenKeys=new Set<string>()
     let pages=0, total=0, matched=0, complete=false
     while(pages<MAX_TRANSFER_PAGES_PER_DIRECTION){
+      const remaining=deadline===undefined?15000:deadline-Date.now()
+      if(remaining<=0)throw new RpcDiagnosticError('alchemy_getAssetTransfers','adaptive_deadline')
       const controller=new AbortController()
-      const timer=setTimeout(()=>controller.abort(),15000)
+      const timer=setTimeout(()=>controller.abort(),Math.min(15000,remaining))
       try {
         const q:Record<string,unknown>={fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock),
           category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',
@@ -2677,16 +2706,20 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     if(mode==='encrypted-wallet-scan-guarded-stage-preview'||mode==='encrypted-wallet-scan-adaptive-parity-preview'||mode==='encrypted-wallet-scan-raw-evidence-preview'||mode==='encrypted-wallet-scan-raw-parity-preview'||mode==='encrypted-wallet-coverage-preview'||mode==='encrypted-wallet-scan-coverage-preview'||mode==='encrypted-wallet-scan-start-audit-preview'||mode==='encrypted-wallet-scan-batch-plan-preview'||mode==='encrypted-wallet-scan-chunk-dry-run'||mode==='encrypted-wallet-scan-transfer-evidence-preview'||mode==='encrypted-wallet-scan-write-plan-preview'){
       const chunkBlocks=body?.chunkBlocks===undefined?100:body.chunkBlocks
       if(mode==='encrypted-wallet-scan-guarded-stage-preview'){
-        if(!Number.isSafeInteger(chunkBlocks)||chunkBlocks<1||chunkBlocks>5000)
-          return reply({ok:false,mode,error:'chunkBlocks must be an integer in 1..5000'},400)
+        if(!Number.isSafeInteger(chunkBlocks)||chunkBlocks<1||chunkBlocks>100000)
+          return reply({ok:false,mode,error:'chunkBlocks must be an integer in 1..100000'},400)
+        if(chunkBlocks>5000&&body?.confirm!=='single-raw-cache-adaptive-chunk')
+          return reply({ok:false,mode,error:'Adaptive confirmation required above 5000 blocks'},400)
         if(body?.commit===true){
           // Backward-compatible 100-block commit. Larger single-wallet chunks
           // require a distinct confirmation and explicit size; no cron writes.
           const legacy=chunkBlocks===100&&body?.confirm==='single-raw-cache-chunk'&&
             Object.keys(body).every((k:string)=>['mode','commit','confirm'].includes(k))
-          const large=chunkBlocks>100&&body?.confirm==='single-raw-cache-large-chunk'&&
+          const large=chunkBlocks>100&&body?.confirm==='single-raw-cache-large-chunk'&&chunkBlocks<=5000&&
             Object.keys(body).every((k:string)=>['mode','commit','confirm','chunkBlocks'].includes(k))
-          if(!legacy&&!large)
+          const adaptive=chunkBlocks>5000&&body?.confirm==='single-raw-cache-adaptive-chunk'&&
+            Object.keys(body).every((k:string)=>['mode','commit','confirm','chunkBlocks'].includes(k))
+          if(!legacy&&!large&&!adaptive)
             return reply({ok:false,mode,error:'Explicit size-matched single-chunk confirmation required'},400)
         }
       }
