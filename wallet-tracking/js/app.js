@@ -245,6 +245,8 @@ window.toggleUiTheme=toggleUiTheme;
 const MAIN_SECTION_TABS={
   dashboard:["dashboard","projects-overview","tlnvow","dao1","tracking","tax"],
   wallets:["wallets"],
+  trading:["trading"],
+  settings:["exchange-accounts"],
   tokens:["predefined","custom","discovery"],
   analysis:["fees","liquidity","nfts","approvals"],
   support:["chat","help","account-data"],
@@ -3134,7 +3136,7 @@ const WT_DATA_STATUS = window.WT_DATA_STATUS || (window.WT_DATA_STATUS = {});
 function wtFormatDataStamp(v){if(!v)return null;const d=new Date(v);if(Number.isNaN(d.getTime()))return null;return d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});}
 function setWtDataStatus(key,{updatedAt=null,cacheAt=null,source=null,label=null}={}){const prev=WT_DATA_STATUS[key]||{},next={...prev,updatedAt,cacheAt,source,label};if(JSON.stringify(prev)===JSON.stringify(next))return;WT_DATA_STATUS[key]=next;document.dispatchEvent(new CustomEvent("wallettracking:data-status",{detail:{key,...next}}));}
 function wtDataStatusText(key){const x=WT_DATA_STATUS[key];if(!x)return "Aktualisierungszeitpunkt noch nicht verfügbar";const u=wtFormatDataStamp(x.updatedAt),c=wtFormatDataStamp(x.cacheAt);if(c&&x.source==="cache")return `aus Cache vom ${c}`;if(u)return `Daten aktualisiert am ${u}`;if(c)return `aus Cache vom ${c}`;return "Aktualisierungszeitpunkt noch nicht verfügbar";}
-function ensureTabDataStatus(panel,name){if(!panel||name==="admin")return;let el=panel.querySelector(":scope > .wt-tab-data-status");if(!el){el=document.createElement("div");el.className="wt-tab-data-status";panel.insertBefore(el,panel.firstChild);}const key=name==="tlnvow"?"tln":name==="dao1"?"dao":name;el.innerHTML=`<strong>Datenstand:</strong> ${escapeAttr(wtDataStatusText(key).replace(/^Datenstand:\s*/,""))}`;}
+function ensureTabDataStatus(panel,name){if(!panel||["admin","trading","exchange-accounts"].includes(name))return;let el=panel.querySelector(":scope > .wt-tab-data-status");if(!el){el=document.createElement("div");el.className="wt-tab-data-status";panel.insertBefore(el,panel.firstChild);}const key=name==="tlnvow"?"tln":name==="dao1"?"dao":name;el.innerHTML=`<strong>Datenstand:</strong> ${escapeAttr(wtDataStatusText(key).replace(/^Datenstand:\s*/,""))}`;}
 function toggleSidebarCollapsed(force){const shell=document.querySelector(".app-shell");if(!shell)return;const next=typeof force==="boolean"?force:!shell.classList.contains("sidebar-collapsed");shell.classList.toggle("sidebar-collapsed",next);try{localStorage.setItem("wt-sidebar-collapsed",next?"1":"0")}catch{};const b=document.getElementById("sidebarCollapseBtn");if(b)b.setAttribute("aria-expanded",next?"false":"true");}
 window.setWtDataStatus=setWtDataStatus;window.toggleSidebarCollapsed=toggleSidebarCollapsed;
 document.addEventListener("DOMContentLoaded",()=>{try{toggleSidebarCollapsed(localStorage.getItem("wt-sidebar-collapsed")==="1")}catch{}
