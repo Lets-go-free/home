@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const read = p => fs.readFileSync(new URL('../'+p, import.meta.url),'utf8');
+const sql=read('supabase/migrations/20261125141434_tln_vow_separate_raw_catchup_permanent_1005.sql');
+const pilot=read('supabase/migrations/20261125125323_tln_vow_separate_raw_catchup_pilot_1004.sql');
+const raw=sql.split('$job$')[1];
+assert.equal(sql.split('$body$')[1],pilot.split('$body$')[1]);
+assert.equal(sql.split('$job$')[3],pilot.split('$job$')[1]);
+assert.deepEqual(JSON.parse(raw.match(/body := '(.*)'::jsonb/)[1]),JSON.parse(pilot.match(/body := '(.*)'::jsonb/)[1]));
+assert.match(raw,/timeout_milliseconds := 45000/);
+assert.doesNotMatch(raw,/clock_timestamp|%L/);
+assert.match(sql,/Pilot still running/);
+assert.match(sql,/Unexpected raw pilot command/);
+assert.match(sql,/cron.alter_job\(7, command := v_new_evidence\)/);
+assert.match(sql,/cron.alter_job\(v_id, command := v_new_raw\)/);
+assert.doesNotMatch(sql,/cron\.schedule\(|cron.alter_job\(13|UPDATE public\./i);
+assert.match(read('index.html'),/APP_VERSION="10.05"/);
+console.log('10.05 permanent separation static checks passed');
