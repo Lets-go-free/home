@@ -4,7 +4,15 @@ import base64, hashlib, hmac, json, time, getpass, re, warnings
 from urllib.request import Request, build_opener, HTTPRedirectHandler, ProxyHandler
 from urllib.error import HTTPError, URLError
 
-PATHS = ('/api/v3/account/info', '/api/v3/account/assets', '/api/v2/spot/account/assets?assetType=hold_only')
+UTA_INFO = '/api/v3/account/info'
+UTA_ASSETS = '/api/v3/account/assets'
+CLASSIC_INFO = '/api/v2/spot/account/info'
+CLASSIC_PROBES = [('Classic Spot', '/api/v2/spot/account/assets?assetType=hold_only')]
+CLASSIC_PROBES += [('Classic '+kind, '/api/v2/mix/account/accounts?productType='+kind) for kind in ('USDT-FUTURES','USDC-FUTURES','COIN-FUTURES')]
+CLASSIC_PROBES += [('Classic Margin Cross', '/api/v2/margin/crossed/account/assets'), ('Classic Margin Isolated', '/api/v2/margin/isolated/account/assets')]
+PATHS = (UTA_INFO, UTA_ASSETS, CLASSIC_INFO) + tuple(path for _,path in CLASSIC_PROBES)
+CLASSIC_READ = {'coor','cpor','stor','smor','ttor'}
+UTA_READ = {'uta_mgt','uta_trade','copy_futures_position','copy_futures_order'}
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -33,33 +41,49 @@ def request(path, key, secret, phrase):
     except (ValueError, AttributeError):
         return f'HTTP {status}, invalid_response',None
 
+def allowed(values, whitelist):
+    return isinstance(values,list) and bool(values) and all(isinstance(v,str) and v in whitelist for v in values)
+
 def pilot(call):
-    code, info=call(PATHS[0])
-    print('API-Info:',code)
-    if code != '00000' or not isinstance(info,dict):
-        print('Leseberechtigung nicht automatisch verifizierbar; Test gestoppt.'); return False
-    perm=re.sub(r'[^a-z]','',str(info.get('permType','')).lower())
-    perms=info.get('permissions')
-    if perm != 'readonly' or not isinstance(perms,list) or any('withdraw' in str(p).lower() or 'transfer' in str(p).lower() for p in perms):
-        print('Leseberechtigung nicht eindeutig oder Transfer-/Auszahlungsrecht vorhanden; Test gestoppt.'); return False
-    print('Read-only: bestätigt')
-    success=False
-    for label,path in [('UTA',PATHS[1]),('Classic Spot',PATHS[2])]:
-        code,data=call(path)
-        valid=code=='00000' and (isinstance(data,dict) if label=='UTA' else isinstance(data,list))
-        print(label+':',code if valid or code!='00000' else 'invalid_response')
+    code, info = call(UTA_INFO)
+    print('UTA API-Info:', code)
+    if code == 'HTTP 400, Bitget 40084':
+        print('Classic-Fallback (Kontotyp noch zu bestätigen)')
+        code, info = call(CLASSIC_INFO)
+        print('Classic API-Info:', code)
+        if code != '00000' or not isinstance(info,dict) or not allowed(info.get('authorities'), CLASSIC_READ):
+            print('Classic Read-only nicht eindeutig oder unerlaubte Berechtigung; Test gestoppt.')
+            return False
+        print('Kontotyp: Classic (V2 erreichbar)')
+        print('Read-only: bestätigt')
+        probes = CLASSIC_PROBES
+    elif code == '00000' and isinstance(info,dict):
+        perm = re.sub(r'[^a-z]','',str(info.get('permType','')).lower())
+        if perm != 'readonly' or not allowed(info.get('permissions'), UTA_READ):
+            print('UTA Read-only nicht eindeutig oder unerlaubte Berechtigung; Test gestoppt.')
+            return False
+        print('Kontotyp: UTA')
+        print('Read-only: bestätigt')
+        probes = [('UTA', UTA_ASSETS)]
+    else:
+        print('Leseberechtigung nicht automatisch verifizierbar; Test gestoppt.')
+        return False
+    successes = 0
+    for label,path in probes:
+        code,data = call(path)
+        rows = data.get('assets') if label == 'UTA' and isinstance(data,dict) else data if label != 'UTA' else None
+        valid = code == '00000' and isinstance(rows,list) and all(isinstance(row,dict) for row in rows)
+        print(label+':', code if valid or code != '00000' else 'invalid_response')
         if valid:
-            success=True
-            if label=='UTA':
-                print('  Asset-Anzahl:',len(data['assets']) if isinstance(data.get('assets'),list) else 'unbekannt')
-            else: print('  Asset-Anzahl:',len(data))
-    print('Verbindung:', 'PASS' if success else 'FAIL')
-    return success
+            successes += 1
+            print('  Datensätze:',len(rows))
+    print('Verbindung:', 'PASS' if successes == len(probes) else 'PARTIAL' if successes else 'FAIL', f'({successes}/{len(probes)})')
+    return successes == len(probes)
 
 def main():
     warnings.simplefilter('error',getpass.GetPassWarning)
     try:
-        print('WalletTracking 10.09 – lokaler Bitget-Verbindungstest')
+        print('WalletTracking 10.10 – lokaler Bitget-Verbindungstest')
         key=getpass.getpass('API Key: '); secret=getpass.getpass('API Secret: '); phrase=getpass.getpass('API Passphrase: ')
         if not all((key,secret,phrase)) or any('\n' in s or '\r' in s for s in (key,secret,phrase)): return 1
         return 0 if pilot(lambda path:request(path,key,secret,phrase)) else 1
