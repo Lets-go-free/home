@@ -373,3 +373,12 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 
 ## 10.15 · 20261126-094413 – Bitget Browser-Pilot
 10.14 Server-Erreichbarkeit PASS; 40037 mit Platzhaltern. Neuer separater bitget-relay: feste GET-Endpunkte, interne Auth-Prüfung, Browser-HMAC, keine dauerhafte Schlüsselhaltung im Anwendungscode. API-Key, Passphrase und Signatur passieren den Edge-Dienst; Secret nicht. Keine echten Keys bis zur Klärung der Bitget-Freigabe und Plattform-Protokollierung. Offen: JWT-Negativtest, Live-Test, IP-Bindung, Speicherung, Synchronisierung, UTA-Live-Test, Trading-Daten und Dashboard. Keine SQL-/Cron-Änderungen.
+
+
+# Phase 10.16 · Build 20261126-100358
+
+10.15 live: Classic 6/6, Read-only bestätigt, JWT ohne/ungültig jeweils 401. Browser-HMAC und Relay mit echten Zugangsdaten technisch erfolgreich. Bitget-Freigabe, IP-Bindung und Hosting-Protokollierung noch offen.
+
+10.16: lokales IndexedDB-Depot pro Supabase-UID und Konto-ID; AES-256-GCM, PBKDF2-SHA256 600000 Iterationen, zufälliger Salt/IV und UID/Konto-ID als AAD. Kontoname und IDs sind lokale Klartext-Metadaten. Passwort mindestens 12 Zeichen, keine Wiederherstellung. Mehrere Konten separat entsperrbar, Löschung lokal, alle sperren, Sessionwechsel sperrt. Synchronisierung bei sichtbarer App alle fünf Minuten und manuell; erneute Read-only-Prüfung pro Abruf; unvollständiger Abruf überschreibt letzten vollständigen Stand nicht. Anzeige im Arbeitsspeicher, Nullbestände ausgeblendet, keine Summierung oder USD-Bewertung. Kein Supabase-Finanzdatenimport. Freigabe und Protokollierungsprüfung vor echten Anfragen; separater Testmodus nur für fest definierte Dummy-Zugangsdaten. Keine Edge-, DB- oder Cron-Änderungen.
+
+Tests: 8 neue Kryptotests + 4 bestehende Relay-Tests bestanden; JS-Syntax geprüft. IndexedDB, Safari, UI, Timer, Sessionwechsel und mehrere Konten noch nicht live geprüft. Browser-Vault schützt nicht vor kompromittiertem JavaScript, XSS, Browser-Erweiterungen oder kompromittiertem Gerät; Browserdaten können gelöscht werden. Keine Garantie gegen Browser-/OS-Backups. Kein autonomer Hintergrunddienst. Offen: Bitget-Supportantwort, IP, Hosting-Logs, UTA-Live, Sicherheitsreview, Datenmodell, Historie/Positionen, Dashboard und Journal. TLN/VOW und DAO unverändert.

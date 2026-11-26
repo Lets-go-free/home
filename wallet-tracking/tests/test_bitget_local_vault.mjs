@@ -1,0 +1,15 @@
+import {webcrypto} from 'node:crypto';
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+if(!globalThis.crypto)globalThis.crypto=webcrypto;
+await import('../js/bitget-local-vault.js');
+const v=globalThis.WTBitgetVault,p='long-test-password',c={key:'test-key',secret:'test-secret',phrase:'test-passphrase'};
+const r=await v.seal('user-a','account-a',p,c);
+test('round trip',async()=>assert.deepEqual(await v.open('user-a','account-a',p,r),c));
+test('wrong password rejected',async()=>assert.rejects(v.open('user-a','account-a','wrong-password',r)));
+test('different user rejected',async()=>assert.rejects(v.open('user-b','account-a',p,r)));
+test('different account rejected',async()=>assert.rejects(v.open('user-a','account-b',p,r)));
+test('tampered ciphertext rejected',async()=>{const cipher=r.cipher.slice(0);new Uint8Array(cipher)[0]^=1;await assert.rejects(v.open('user-a','account-a',p,{...r,cipher}));});
+test('fresh IV and salt',async()=>{const r2=await v.seal('user-a','account-a',p,c);assert.notDeepEqual(r2.iv,r.iv);assert.notDeepEqual(r2.salt,r.salt);});
+test('short password rejected',async()=>assert.rejects(v.seal('a','b','short',c)));
+test('no plaintext credentials in record',()=>{assert.deepEqual(Object.keys(r).sort(),['cipher','iv','salt','version']);assert(!Buffer.from(r.cipher).includes(Buffer.from(c.secret)));});

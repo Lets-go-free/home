@@ -282,7 +282,7 @@
       <div class="custom-token-card"><h3>Trading</h3><p class="note">Bitget-Integration in Vorbereitung. Noch keine Börsendaten synchronisiert; Performance und Kontostände sind nicht verfügbar.</p><button type="button" class="secondary" onclick="showMainSection('settings')">Börsenkonten</button></div>
     </div>
     <div id="tab-exchange-accounts" class="tab-panel">
-      <div class="custom-token-card"><h3>Börsenkonten</h3><p><strong>Bitget</strong> – Classic Account / Unified Trading Account</p><p class="note">Browser-Pilot: Prüft die direkte Erreichbarkeit der Bitget-API ohne echte Zugangsdaten. Keine Installation erforderlich.</p><button type="button" id="bitgetBrowserProbe">Browser-Verbindung testen</button><pre id="bitgetBrowserProbeResult" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" id="bitgetProxyProbe">Server-Verbindung testen</button><pre id="bitgetProxyProbeResult" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" id="bitgetLiveOpen">Mit Bitget verbinden</button><form id="bitgetLiveForm" hidden autocomplete="off"><p class="note">Einmaliger Pilot: Secret bleibt im Browser; API-Key, Passphrase und Signatur werden kurzfristig über Supabase weitergeleitet. Keine dauerhafte Speicherung vorgesehen. Bitget-Freigabe und Plattform-Protokollierung noch ungeklärt. Bis zur Klärung keine echten Schlüssel verwenden.</p><label>API Key <input type="password" name="apiKey" required autocomplete="off" maxlength="256"></label><label>Secret Key <input type="password" name="apiSecret" required autocomplete="off"></label><label>Passphrase <input type="password" name="apiPhrase" required autocomplete="off" pattern="[A-Za-z0-9]{8,32}"></label><label><input type="checkbox" required> Freigabe zur vorübergehenden Weiterleitung liegt vor.</label><button type="submit">Einmalig verbinden</button></form><pre id="bitgetLiveResult" role="status" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></div>
+      <div class="custom-token-card"><h3>Börsenkonten</h3><p><strong>Bitget</strong> – Classic Account / Unified Trading Account</p><p class="note">Browser-Pilot: Prüft die direkte Erreichbarkeit der Bitget-API ohne echte Zugangsdaten. Keine Installation erforderlich.</p><button type="button" id="bitgetBrowserProbe">Browser-Verbindung testen</button><pre id="bitgetBrowserProbeResult" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" id="bitgetProxyProbe">Server-Verbindung testen</button><pre id="bitgetProxyProbeResult" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><section style="max-width:660px;display:grid;gap:10px"><button type="button" id="bitgetLiveOpen">Börsenkonto hinzufügen</button><form id="bitgetLiveForm" hidden autocomplete="off"><p class="note">Zugangsdaten werden nur lokal verschlüsselt gespeichert. Bis zur Klärung mit Bitget und Supabase bitte nur Testdaten verwenden. Das lokale Passwort ist nicht wiederherstellbar.</p><label>Kontoname<input name="alias" required maxlength="80"></label><label>API Key<input type="password" name="apiKey" required maxlength="256" autocomplete="off"></label><label>Secret Key<input type="password" name="apiSecret" required maxlength="256" autocomplete="off"></label><label>Passphrase<input type="password" name="apiPhrase" required pattern="[A-Za-z0-9]{8,32}" autocomplete="off"></label><label>Lokales Passwort (mind. 12 Zeichen)<input type="password" name="vaultPassword" required minlength="12" autocomplete="new-password"></label><label>Passwort wiederholen<input type="password" name="confirmPassword" required minlength="12" autocomplete="new-password"></label><button type="submit">Lokal speichern</button></form><label>Gespeichertes Börsenkonto<select id="bitgetAccounts"></select></label><label>Lokales Passwort<input type="password" id="bitgetUnlockPassword" autocomplete="off"></label><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="bitgetUnlock">Entsperren</button><button type="button" id="bitgetLock">Alle sperren</button><button type="button" id="bitgetRemove">Lokal entfernen</button></div><label style="display:flex;align-items:flex-start;gap:8px"><input style="width:auto;margin-top:4px" type="checkbox" id="bitgetPermission">Bitget-Freigabe und Protokollierungsprüfung liegen tatsächlich vor. API-Key, Passphrase und Signatur werden vorübergehend an Supabase übermittelt.</label><label style="display:flex;align-items:flex-start;gap:8px"><input style="width:auto;margin-top:4px" type="checkbox" id="bitgetTestMode">Nur fiktive Testdaten (test-api-key / test-secret-key / test-passphrase) weiterleiten.</label><button type="button" id="bitgetSync">Jetzt synchronisieren</button><p id="bitgetAccountStatus" class="note"></p><p id="bitgetLiveResult" role="status" style="overflow-wrap:anywhere"></p></section><div id="bitgetBalanceTable" style="overflow-x:auto"></div></div>
     </div>
     <div id="tab-dashboard" class="tab-panel">
       <div id="dashboardContent"><div class="empty">Dashboard-Cache wird geladen…</div></div>
@@ -1468,7 +1468,7 @@
   </div>
 
   <footer>
-          <span id="footerVersionLine">Version: 26.11.2026 09:44:13 CET · Phase 10.15 · Build 20261126-094413</span><br>
+          <span id="footerVersionLine">Version: 26.11.2026 10:03:58 CET · Phase 10.16 · Build 20261126-100358</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1494,8 +1494,8 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="10.15";window.BUILD_ID="20261126-094413";</script>
-<script src="./js/app.js?v=20261126-094413"></script>
+<script>window.APP_VERSION="10.16";window.BUILD_ID="20261126-100358";</script>
+<script src="./js/app.js?v=20261126-100358"></script>
 <script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
 <script src="./admin/dao-historical-flow-preview-886.js?v=20261117-886"></script>
 <script src="./admin/dao-historical-flow-commit-889.js?v=20261117-890"></script>
@@ -1518,9 +1518,10 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 26.11.2026 09:44:13 CET · Phase 10.15 · Build 20261126-094413</div>
-<script src="./js/bitget-browser-probe.js?v=20261126-094413"></script>
-<script src="./js/bitget-proxy-probe.js?v=20261126-094413"></script>
-<script src="./js/bitget-live-pilot.js?v=20261126-094413"></script>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 26.11.2026 10:03:58 CET · Phase 10.16 · Build 20261126-100358</div>
+<script src="./js/bitget-browser-probe.js?v=20261126-100358"></script>
+<script src="./js/bitget-proxy-probe.js?v=20261126-100358"></script>
+<script src="./js/bitget-local-vault.js?v=20261126-100358"></script>
+<script src="./js/bitget-live-pilot.js?v=20261126-100358"></script>
 </body>
 </html>
