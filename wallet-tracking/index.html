@@ -282,7 +282,7 @@
       <div class="custom-token-card"><h3>Trading</h3><p class="note">Bitget-Integration in Vorbereitung. Noch keine Börsendaten synchronisiert; Performance und Kontostände sind nicht verfügbar.</p><button type="button" class="secondary" onclick="showMainSection('settings')">Börsenkonten</button></div>
     </div>
     <div id="tab-exchange-accounts" class="tab-panel">
-      <div class="custom-token-card"><h3>Börsenkonten</h3><p><strong>Bitget</strong> – Classic Account / Unified Trading Account</p><p class="note">Lokaler Read-only-Verbindungstest verfügbar (tools/bitget-connection-test.command im Update-ZIP). Keine Zugangsdaten hier eingeben. Automatische Synchronisierung noch nicht freigegeben.</p><button type="button" disabled>Mit Bitget verbinden</button></div>
+      <div class="custom-token-card"><h3>Börsenkonten</h3><p><strong>Bitget</strong> – Classic Account / Unified Trading Account</p><p class="note">Browser-Pilot: Prüft die direkte Erreichbarkeit der Bitget-API ohne echte Zugangsdaten. Keine Installation erforderlich.</p><button type="button" id="bitgetBrowserProbe">Browser-Verbindung testen</button><pre id="bitgetBrowserProbeResult" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" disabled>Mit Bitget verbinden</button></div>
     </div>
     <div id="tab-dashboard" class="tab-panel">
       <div id="dashboardContent"><div class="empty">Dashboard-Cache wird geladen…</div></div>
@@ -1468,7 +1468,7 @@
   </div>
 
   <footer>
-          <span id="footerVersionLine">Version: 25.11.2026 23:27:03 CET · Phase 10.11 · Build 20261125-232703</span><br>
+          <span id="footerVersionLine">Version: 26.11.2026 08:10:17 CET · Phase 10.13 · Build 20261126-081017</span><br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, CoinGecko via Supabase Edge Proxy + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende Spezialfunktionen (Token-Discovery, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1494,8 +1494,8 @@
 <script src="./projects/dao1/help.js?v=20261112-100513"></script>
 <script src="./admin/exports.js?v=20261009-014029"></script>
 <script src="./js/current-price-comparison.js?v=20261009-014029"></script>
-<script>window.APP_VERSION="10.11";window.BUILD_ID="20261125-232703";</script>
-<script src="./js/app.js?v=20261125-232703"></script>
+<script>window.APP_VERSION="10.13";window.BUILD_ID="20261126-081017";</script>
+<script src="./js/app.js?v=20261126-081017"></script>
 <script src="./admin/dao-native-verification-846.js?v=20261114-161405"></script>
 <script src="./admin/dao-historical-flow-preview-886.js?v=20261117-886"></script>
 <script src="./admin/dao-historical-flow-commit-889.js?v=20261117-890"></script>
@@ -1518,6 +1518,7 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 25.11.2026 23:27:03 CET · Phase 10.11 · Build 20261125-232703</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border:1px solid rgba(128,128,128,.25)">Version: 26.11.2026 08:10:17 CET · Phase 10.13 · Build 20261126-081017</div>
+<script src="./js/bitget-browser-probe.js?v=20261126-081017"></script>
 </body>
 </html>
