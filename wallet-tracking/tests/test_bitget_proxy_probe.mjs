@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {runProbe,validBody} from '../supabase/functions/bitget-probe/probe.mjs';
+assert(validBody({mode:'synthetic-probe'}));
+for(const b of [null,[],{}, {mode:'synthetic-probe',key:'secret'},{mode:'other'}])assert(!validBody(b));
+const calls=[];
+const result=await runProbe(async(url,opts)=>{calls.push([url,opts]);return new Response(JSON.stringify({code:'40001',data:{secret:'never return'}}),{status:400});});
+assert.equal(calls.length,3);assert(calls.every(([u,o])=>u.startsWith('https://api.bitget.com/api/')&&o.method==='GET'&&o.redirect==='error'));
+assert.equal(calls[1][1].headers['ACCESS-KEY'],'wallettracking-invalid-test-key');assert.deepEqual(result[1],{name:'classic',http:400,code:'40001'});
+assert((await runProbe(async()=>{throw Error('secret')})).every(r=>r.http===null));
+console.log('Probe tests PASS');

@@ -418,3 +418,7 @@ enabled = true
 # Match the hosted setting changed on 2026-11-24. No production cron authorization.
 [functions.dao-reward-refresh]
 verify_jwt = false
+
+# Synthetic Bitget test; verifies user token via Auth getUser in function.
+[functions.bitget-probe]
+verify_jwt = false
