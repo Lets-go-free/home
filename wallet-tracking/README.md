@@ -375,3 +375,7 @@ Diese README.md wird künftig aktualisiert. Ältere README-7.xx.md sind Release-
 - Guarded, wiederholbare Migration: nur vier fest benannte Transaktionen, Abbruch bei unerwartetem Datenzustand. Keine Reward-Neuberechnung.
 - Drei Null-Reward-Calls ohne erfasste Asset-Flows bleiben ungeklärt; erst Belegabgleich, keine vorschnelle Aussage „keine Auszahlung“.
 - DAO-Live-Worker und Cron bleiben deaktiviert. Chrome/Apple-Passwörter-Autofill bleibt offen.
+
+
+## 10.15 · 20261126-094413 – Bitget Browser-Pilot
+10.14 Server-Erreichbarkeit PASS; 40037 mit Platzhaltern. Neuer separater bitget-relay: feste GET-Endpunkte, interne Auth-Prüfung, Browser-HMAC, keine dauerhafte Schlüsselhaltung im Anwendungscode. API-Key, Passphrase und Signatur passieren den Edge-Dienst; Secret nicht. Keine echten Keys bis zur Klärung der Bitget-Freigabe und Plattform-Protokollierung. Offen: JWT-Negativtest, Live-Test, IP-Bindung, Speicherung, Synchronisierung, UTA-Live-Test, Trading-Daten und Dashboard. Keine SQL-/Cron-Änderungen.

@@ -369,3 +369,7 @@ DAO-Referenz zuletzt unverändert 395/388/4/3/0/0. Echte native/ERC20-Neuanlage,
 
 > **Aktuell 8.91 (17.11.2026, vorbereitet):** 8.90 **vollständig live abgenommen**: 164/164 historische Claims mit je 1 Flow, APTM/USD/Kandidatenstatus korrekt. Offen bleiben 1'706 pending/pending/pending canonical false, alle kanonisch vorhanden: 1'690 mit Native-Flow, 16 ohne; alle 1'690 fachlich konsistent in 5 Prüfkategorien, 1 legitimer Prelaunch USD NULL. 8.91 neue SQL-only Funktion `wallettracking_dao_reconcile_existing_native_891(boolean DEFAULT false)`: prüft atomar und ohne Write die feste 1706/1690/16/1-Kohorte, optional späterer expliziter Commit markiert **nur** canonical_existing_verified/checked_at auf 1'690; 16 und Preis-/Pipeline-/Claim-Daten bleiben unberührt. ZIP/SQL-Installation und **nur lesende Vorschau** stehen an, kein Edge-Deploy, DAO-Cron/Live-Worker weiterhin AUS. Details `docs/releases/8.91-dao-existing-native-reconciliation.md`.
 
+
+
+## 10.15 · 20261126-094413 – Bitget Browser-Pilot
+10.14 Server-Erreichbarkeit PASS; 40037 mit Platzhaltern. Neuer separater bitget-relay: feste GET-Endpunkte, interne Auth-Prüfung, Browser-HMAC, keine dauerhafte Schlüsselhaltung im Anwendungscode. API-Key, Passphrase und Signatur passieren den Edge-Dienst; Secret nicht. Keine echten Keys bis zur Klärung der Bitget-Freigabe und Plattform-Protokollierung. Offen: JWT-Negativtest, Live-Test, IP-Bindung, Speicherung, Synchronisierung, UTA-Live-Test, Trading-Daten und Dashboard. Keine SQL-/Cron-Änderungen.

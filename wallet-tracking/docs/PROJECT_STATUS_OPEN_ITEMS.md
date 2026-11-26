@@ -1214,3 +1214,7 @@ Erwartungen des historischen Docs-Cleanup-Tests und veralteter Snapshot-Testmock
 - Bei `rawCatchupOnIdle:true` und vorhandenen Evidence-Kandidaten liefert 9.96 jetzt `evidence_busy_raw_scan_skipped`, ohne Evidence- oder Rohcache-Schreibung; bei Leerlauf wird der vorhandene, rein lesende Rohscan-Unteraufruf wiederverwendet. Falscher Parameter wird HTTP 400 statt unbemerkt ignoriert.
 - Aktive Cron-Aufrufe ohne Flag, bestehende Reward-Erkennung und Datenbank bleiben unverändert.
 - **TODO:** Read-only-Live-Aufruf prüfen; anschliessend erst Laufzeit, Abdeckung und Unbeaufsichtigt-Sicherheit nachweisen. Tägliche Reward-Buchungsjobs bleiben deaktiviert. Siehe `docs/releases/9.96-tln-evidence-idle-optin-write-guard.md`.
+
+
+## 10.15 · 20261126-094413 – Bitget Browser-Pilot
+10.14 Server-Erreichbarkeit PASS; 40037 mit Platzhaltern. Neuer separater bitget-relay: feste GET-Endpunkte, interne Auth-Prüfung, Browser-HMAC, keine dauerhafte Schlüsselhaltung im Anwendungscode. API-Key, Passphrase und Signatur passieren den Edge-Dienst; Secret nicht. Keine echten Keys bis zur Klärung der Bitget-Freigabe und Plattform-Protokollierung. Offen: JWT-Negativtest, Live-Test, IP-Bindung, Speicherung, Synchronisierung, UTA-Live-Test, Trading-Daten und Dashboard. Keine SQL-/Cron-Änderungen.

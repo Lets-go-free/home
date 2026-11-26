@@ -422,3 +422,6 @@ verify_jwt = false
 # Synthetic Bitget test; verifies user token via Auth getUser in function.
 [functions.bitget-probe]
 verify_jwt = false
+
+[functions.bitget-relay]
+verify_jwt = false
