@@ -1,0 +1,15 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const source=readFileSync(new URL('../js/bitget-live-pilot.js',import.meta.url),'utf8');
+const section=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b));
+const flags={bitgetTestMode:{checked:false},bitgetPermission:{checked:false}};
+const ctx={document:{hidden:false},active:new Map(),$:id=>flags[id],TextEncoder};
+vm.createContext(ctx);
+vm.runInContext(section('const dummy=','const interval=')+section('function permitted(a)','function blocked()')+';globalThis.api={isDummy,normalizeDummy,permitted,dummy};',ctx);
+const {isDummy,normalizeDummy,permitted,dummy}=ctx.api;
+test('canonical dummy satisfies input and relay pattern',()=>{assert.match(dummy.phrase,/^[A-Za-z0-9]{8,32}$/);assert(isDummy(dummy));});
+test('legacy exact triple normalized',()=>assert(isDummy(normalizeDummy({...dummy,phrase:'test-passphrase'}))));
+test('other credentials never normalized',()=>assert(!isDummy(normalizeDummy({...dummy,key:'real-key',phrase:'test-passphrase'}))));
+test('no consent denies all; test mode denies real; real mode denies dummy; both deny',()=>{const a={test:true},b={test:false};ctx.active.set('a',a);ctx.active.set('b',b);assert(!permitted());flags.bitgetTestMode.checked=true;assert(permitted(a));assert(!permitted(b));flags.bitgetPermission.checked=true;assert(!permitted());flags.bitgetTestMode.checked=false;assert(!permitted(a));assert(permitted(b));ctx.document.hidden=true;assert(!permitted());});
