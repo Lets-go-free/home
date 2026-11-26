@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../supabase/migrations/20261126220004_tln_vow_persistent_raw_audit_1018.sql',import.meta.url),'utf8');
+assert.match(sql,/BEGIN;/); assert.match(sql,/COMMIT;/);
+assert.match(sql,/ENABLE ROW LEVEL SECURITY/); assert.match(sql,/FROM PUBLIC, anon, authenticated, service_role/);
+assert.match(sql,/JOIN net\._http_response r ON r.id=a.request_id/);
+assert.match(sql,/INSERT INTO wallettracking_internal\.tln_raw_scan_audit\(request_id,queued_at,pilot_end,requested_blocks\)/);
+assert.match(sql,/THEN 25000 ELSE 10000 END/); assert.match(sql,/timeout_milliseconds := 45000/);
+assert.match(sql,/s.blocks=s.hi-s.lo\+1/); assert.match(sql,/response_missing/);
+assert.doesNotMatch(sql,/FOR UPDATE/i); assert.doesNotMatch(sql,/CREATE TABLE public\./i);
+assert.equal([...sql.matchAll(/cron\.alter_job\(/g)].length,1);
+assert.match(sql,/cron\.alter_job\(14,/); assert.match(sql,/cron\.schedule\('tln-vow-raw-audit-1m'/);
+console.log('10.18 static SQL contract checks passed');
