@@ -1722,9 +1722,9 @@ async function firstErc20Activity(address:string,head:number,direction:'incoming
   }finally{clearTimeout(timer)}
 }
 // 10.25: explicitly scoped dry-run only. No database mutation or authorization token.
-async function previewEmptyPrefixCursor(sb:any,userId:string,walletId:string,observedFirstBlock:number){
-  const mode='encrypted-wallet-scan-empty-prefix-cursor-preview'
-  const base={mode,dryRun:true,persisted:false,canEnableWritingCron:false,cursorAdvanceAuthorized:false,historicalScanCoverageVerified:false}
+async function previewEmptyPrefixCursor(sb:any,userId:string,walletId:string,observedFirstBlock:number,commit=false){
+  const mode=commit?'encrypted-wallet-scan-empty-prefix-cursor-commit':'encrypted-wallet-scan-empty-prefix-cursor-preview'
+  const base={mode,dryRun:!commit,persisted:false,canEnableWritingCron:false,cursorAdvanceAuthorized:false,historicalScanCoverageVerified:false}
   const readCache=()=>sb.from('tln_vow_staking_scan_cache')
     .select('scanner_version,complete_from_block,last_scanned_block,payload,updated_at')
     .eq('user_id',userId).eq('wallet_id',walletId).eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1').maybeSingle()
@@ -1759,6 +1759,17 @@ async function previewEmptyPrefixCursor(sb:any,userId:string,walletId:string,obs
       .eq('id',walletId).eq('user_id',userId).maybeSingle()
     const walletUnchanged=!ownerAfter.error&&!!ownerAfter.data&&['id','user_id','evm_address_ciphertext','encryption_version','key_version'].every(k=>ownerAfter.data[k]===owner.data[k])
     const ready=prefixEmpty&&boundaryMatches&&cacheUnchanged&&walletUnchanged
+    if(commit&&ready){
+      const {data,error}=await sb.rpc('wallettracking_tln_prefix_commit_1026',{
+        p_user:userId,p_wallet:walletId,p_first:observedFirstBlock,
+        p_cursor:Number(before.data.last_scanned_block),p_updated:before.data.updated_at,
+        p_cipher:owner.data.evm_address_ciphertext})
+      if(error||data?.ok!==true||data?.persisted!==true||data?.auditPersisted!==true)
+        return {ok:false,...base,error:'Atomic commit not confirmed; inspect audit before retry',commitOutcomeUnknown:true}
+      return {ok:true,...base,persisted:true,auditPersisted:true,cursorAdvanceAuthorized:true,executed:true,
+        previousCursor:Number(before.data.last_scanned_block),newCursor:observedFirstBlock-1,
+        firstBlock,manualObservationUserSupplied:true,manualExplorerSource:'bscscan',source:'alchemy_bnb_mainnet'}
+    }
     return {ok:ready,...base,executed:true,source:'alchemy_bnb_mainnet',manualExplorerSource:'bscscan',manualObservationUserSupplied:true,
       observedFirstBlock,firstBlock,prefixEmpty,boundaryMatches,cacheUnchanged,walletUnchanged,
       currentCursor:Number(before.data.last_scanned_block),proposedCursor:ready?observedFirstBlock-1:null,
@@ -2820,15 +2831,16 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     supportedModes.push('encrypted-wallet-scan-empty-prefix-preview','encrypted-wallet-scan-first-activity-preview','encrypted-wallet-scan-exact-parity-preview','encrypted-wallet-scan-guarded-stage-preview','encrypted-wallet-scan-adaptive-parity-preview','encrypted-wallet-scan-raw-evidence-preview','encrypted-wallet-scan-raw-parity-preview','encrypted-wallet-scan-write-plan-preview','encrypted-wallet-scan-transfer-evidence-preview','encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
-    supportedModes.push('encrypted-wallet-scan-empty-prefix-cursor-preview')
+    supportedModes.push('encrypted-wallet-scan-empty-prefix-cursor-preview','encrypted-wallet-scan-empty-prefix-cursor-commit')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
-    if(mode==='encrypted-wallet-scan-empty-prefix-cursor-preview'){
+    if(mode==='encrypted-wallet-scan-empty-prefix-cursor-preview'||mode==='encrypted-wallet-scan-empty-prefix-cursor-commit'){
+      const commit=mode==='encrypted-wallet-scan-empty-prefix-cursor-commit'
       const uuid=(v:any)=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
       if(Object.keys(body).some(k=>!['mode','userId','walletId','observedFirstBlock','confirm'].includes(k))||
         !uuid(body.userId)||!uuid(body.walletId)||!Number.isSafeInteger(body.observedFirstBlock)||body.observedFirstBlock<2||
-        body.confirm!=='manual-bscscan-observation-preview-only')return reply({ok:false,mode,error:'Exact wallet scope and explicit preview confirmation required'},400)
-      const preview=await previewEmptyPrefixCursor(sb,body.userId,body.walletId,body.observedFirstBlock)
+        body.confirm!==(commit?'manual-bscscan-observation-atomic-commit':'manual-bscscan-observation-preview-only'))return reply({ok:false,mode,error:'Exact wallet scope and explicit preview confirmation required'},400)
+      const preview=await previewEmptyPrefixCursor(sb,body.userId,body.walletId,body.observedFirstBlock,commit)
       return reply(preview,preview.ok?200:409)
     }
     if(mode==='encrypted-wallet-scan-first-activity-preview'||mode==='encrypted-wallet-scan-empty-prefix-preview'){
