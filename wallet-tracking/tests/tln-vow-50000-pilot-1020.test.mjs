@@ -1,0 +1,10 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const s=readFileSync(new URL('../supabase/migrations/20261127155034_tln_vow_50000_pilot_1020.sql',import.meta.url),'utf8');
+assert.match(s,/CHECK \(requested_blocks IN \(10000,25000,50000\)\)/);
+assert.match(s,/THEN 50000 ELSE 25000/);
+assert.match(s,/cron\.alter_job\(14,command:=v_next\)/);
+assert.match(s,/interval '31 minutes'/);
+assert.match(s,/Unexpected job 14 command/);
+assert.doesNotMatch(s,/FOR UPDATE|DELETE FROM|TRUNCATE|cron\.schedule\(/i);
+console.log('static migration checks passed');
