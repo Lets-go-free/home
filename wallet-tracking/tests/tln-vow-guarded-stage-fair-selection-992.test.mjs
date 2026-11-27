@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
 const source=fs.readFileSync(new URL('../supabase/functions/tln-vow-reward-refresh/index.ts',import.meta.url),'utf8');
 const start=source.indexOf('      const candidates:{key:string,start:number,cached:boolean,lastUpdatedMs:number}[]=[]');
 const stop=source.indexOf('      const selected=candidates[0]',start);
 assert.ok(start>0 && stop>start,'actual guarded scanner selection found');
-const extracted=source.slice(start,stop).replace('const candidates:{key:string,start:number,cached:boolean,lastUpdatedMs:number}[]=[]','const candidates=[]');
-const select=(keys,rawByKey,head=200)=>vm.runInNewContext(`(()=>{const relevant=new Set(${JSON.stringify(keys)});const rawByKey=new Map(${JSON.stringify([...rawByKey])});const head=${head};${extracted};return candidates.map(c=>({key:c.key,cached:c.cached,start:c.start}))})()`);
+const extracted=stripTypeScriptTypes(source.slice(start,stop),{mode:'strip'});
+const select=(keys,rawByKey,head=200)=>vm.runInNewContext(`(()=>{const relevant=new Set(${JSON.stringify(keys)});const rawByKey=new Map(${JSON.stringify([...rawByKey])});const head=${head};const guardedChunkBlocks=100;${extracted};return candidates.map(c=>({key:c.key,cached:c.cached,start:c.start}))})()`);
 const cache=(cursor,time)=>[{scanner_version:'erc20-raw-v1',payload:[],complete_from_block:0,last_scanned_block:cursor,updated_at:time}];
 const old='2026-11-23T09:00:00.000Z',newer='2026-11-24T09:00:00.000Z';
 let rows=new Map([['wallet-a',cache(100,old)],['wallet-b',[]],['wallet-c',cache(150,newer)]]);

@@ -1235,10 +1235,10 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
       if(!complete||head===null||invalid>0||!ALCHEMY_API_KEY||eligibleTokens.length===0)
         return {ok:false,mode,error:'Wallet selection, cache validation or RPC incomplete',
           persisted:false,canEnableWritingCron:false}
-      // For unattended catch-up, bootstrap wallets without raw cache before
-      // resuming existing cursors. Then select the oldest successfully updated
-      // cache first, so one wallet cannot monopolise all future requests.
-      // Selection is deterministic; it does not create a new queue or table.
+      // Bootstrap missing caches, then prefer full-sized historical chunks.
+      // A one-hour age guard restores oldest-first priority for overdue caches.
+      // No range is skipped; when no full chunk is available use oldest-first.
+      // This changes ordering only, not the eligibility or CAS protocol.
       const candidates:{key:string,start:number,cached:boolean,lastUpdatedMs:number}[]=[]
       for(const k of relevant){
         const rows=rawByKey.get(k)||[]
@@ -1251,7 +1251,10 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
           !Number.isSafeInteger(to)||to<from||to>head)continue
         if(to<head)candidates.push({key:k,start:Math.max(0,to-23),cached:true,lastUpdatedMs:updatedMs})
       }
-      candidates.sort((a,b)=>Number(a.cached)-Number(b.cached)||
+      const overdueBefore=Date.now()-60*60*1000
+      const selectionRank=(c:{start:number,cached:boolean,lastUpdatedMs:number})=>
+        !c.cached?0:c.lastUpdatedMs<=overdueBefore?1:head!-c.start+1>=guardedChunkBlocks?2:3
+      candidates.sort((a,b)=>selectionRank(a)-selectionRank(b)||
         a.lastUpdatedMs-b.lastUpdatedMs||a.start-b.start||a.key.localeCompare(b.key))
       const selected=candidates[0]
       if(!selected)return {ok:true,mode,dryRun:!commitGuardedStage,executed:false,persisted:false,
