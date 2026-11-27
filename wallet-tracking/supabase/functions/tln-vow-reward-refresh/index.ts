@@ -966,7 +966,7 @@ async function coverageCurrentBalances(addresses:string[],tokens:string[]):Promi
   }
   return {hits,unknown,checked:unknown.size===0}
 }
-async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false,scanEvidenceRun=false,scanWritePlan=false,scanRawParity=false,scanRawEvidence=false,scanAdaptiveParity=false,scanGuardedStage=false,commitGuardedStage=false,guardedChunkBlocks=100,exactRange?:{from:number,to:number},firstActivity=false){
+async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStartAudit=false,scanBatchPlan=false,scanDryRun=false,scanEvidenceRun=false,scanWritePlan=false,scanRawParity=false,scanRawEvidence=false,scanAdaptiveParity=false,scanGuardedStage=false,commitGuardedStage=false,guardedChunkBlocks=100,exactRange?:{from:number,to:number},firstActivity=false,verifyEmptyPrefix=false){
   if(!WALLET_MASTER_V1)return {ok:false,mode:'encrypted-wallet-coverage-preview',
     error:'Encryption service not configured',canEnableWritingCron:false}
   const wallets=await coverageRows(sb,'wallets',
@@ -1228,7 +1228,7 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
       }
     }
     if(firstActivity){
-      const mode='encrypted-wallet-scan-first-activity-preview'
+      const mode=verifyEmptyPrefix?'encrypted-wallet-scan-empty-prefix-preview':'encrypted-wallet-scan-first-activity-preview'
       const base={mode,dryRun:true,persisted:false,canEnableWritingCron:false,historicalScanCoverageVerified:false,cursorAdvanceAuthorized:false}
       if(!complete||head===null||invalid>0||!ALCHEMY_API_KEY)
         return {ok:false,...base,error:'Wallet selection, cache validation or BSC head incomplete'}
@@ -1247,13 +1247,32 @@ async function encryptedTlnWalletCoveragePreview(sb:any,scanAudit=false,scanStar
             firstErc20Activity(address,head,'incoming',deadline),firstErc20Activity(address,head,'outgoing',deadline)])
           const blocks=[incoming.firstBlock,outgoing.firstBlock].filter((n):n is number=>n!==null)
           const firstBlock=blocks.length?Math.min(...blocks):null
-          results.push({cursor:Number(row.last_scanned_block),incoming,outgoing,firstBlock,
+          let verification={}
+          if(verifyEmptyPrefix){
+            if(firstBlock===null||firstBlock===0){
+              verification={prefixChecked:false,boundaryChecked:false,providerPrefixConfirmed:false}
+            }else{
+              const [prefixIn,prefixOut,boundaryIn,boundaryOut]=await Promise.all([
+                firstErc20Activity(address,firstBlock-1,'incoming',deadline),
+                firstErc20Activity(address,firstBlock-1,'outgoing',deadline),
+                firstErc20Activity(address,firstBlock,'incoming',deadline,firstBlock),
+                firstErc20Activity(address,firstBlock,'outgoing',deadline,firstBlock)])
+              const prefixEmpty=prefixIn.firstBlock===null&&prefixOut.firstBlock===null
+              const boundaryMatches=boundaryIn.firstBlock===(incoming.firstBlock===firstBlock?firstBlock:null)&&
+                boundaryOut.firstBlock===(outgoing.firstBlock===firstBlock?firstBlock:null)
+              verification={prefixChecked:true,boundaryChecked:true,prefixEmpty,boundaryMatches,
+                providerPrefixConfirmed:prefixEmpty&&boundaryMatches&&firstBlock>Number(row.last_scanned_block),
+                prefixIncomingBlock:prefixIn.firstBlock,prefixOutgoingBlock:prefixOut.firstBlock,
+                boundaryIncomingBlock:boundaryIn.firstBlock,boundaryOutgoingBlock:boundaryOut.firstBlock}
+            }
+          }
+          results.push({...verification,cursor:Number(row.last_scanned_block),incoming,outgoing,firstBlock,
             contradictsEmptyCache:firstBlock!==null&&firstBlock<=Number(row.last_scanned_block),
             candidateEmptyThrough:firstBlock===null?head:firstBlock-1})
         }catch(e){return {ok:false,...base,error:'First activity lookup incomplete',diagnostic:safeRpcDiagnostic(e)}}
       }
       return {ok:true,...base,executed:results.length>0,selectedWallets:results.length,fromBlock:0,toBlock:head,
-        provider:'alchemy_bnb_mainnet',results,notice:'Provider-index candidates only; no independent coverage proof and no writes.'}
+        provider:'alchemy_bnb_mainnet',results,notice:verifyEmptyPrefix?'Same-provider prefix and boundary checks only; no independent coverage proof and no writes.':'Provider-index candidates only; no independent coverage proof and no writes.'}
     }
     if(exactRange){
       const mode='encrypted-wallet-scan-exact-parity-preview'
@@ -1675,15 +1694,15 @@ const evmAddress = (v:unknown) => typeof v==='string' && /^0x[0-9a-fA-F]{40}$/.t
 const hexBlock = (n:number)=>'0x'+n.toString(16)
 // One ascending, unfiltered ERC20 page per direction; includes zero-value transfers.
 // A valid nonempty first page is sufficient for a candidate minimum, not coverage proof.
-async function firstErc20Activity(address:string,head:number,direction:'incoming'|'outgoing',deadline:number):Promise<{firstBlock:number|null,moreResults:boolean}> {
+async function firstErc20Activity(address:string,head:number,direction:'incoming'|'outgoing',deadline:number,start=0):Promise<{firstBlock:number|null,moreResults:boolean}> {
   const phase='alchemy_getAssetTransfers'
-  if(!ALCHEMY_API_KEY||evmAddress(address)!==address||!Number.isSafeInteger(head)||head<0)
+  if(!ALCHEMY_API_KEY||evmAddress(address)!==address||!Number.isSafeInteger(head)||!Number.isSafeInteger(start)||start<0||head<start)
     throw new RpcDiagnosticError(phase,'invalid_scope')
   const remaining=deadline-Date.now()
   if(remaining<=0)throw new RpcDiagnosticError(phase,'adaptive_deadline')
   const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),Math.min(15000,remaining))
   try{
-    const q={fromBlock:'0x0',toBlock:hexBlock(head),category:['erc20'],order:'asc',withMetadata:false,excludeZeroValue:false,maxCount:'0x1',
+    const q={fromBlock:hexBlock(start),toBlock:hexBlock(head),category:['erc20'],order:'asc',withMetadata:false,excludeZeroValue:false,maxCount:'0x1',
       [direction==='incoming'?'toAddress':'fromAddress']:address}
     const res=await fetch(`https://bnb-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`,{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,
       body:JSON.stringify({jsonrpc:'2.0',id:direction==='incoming'?2:3,method:phase,params:[q]})})
@@ -1696,7 +1715,7 @@ async function firstErc20Activity(address:string,head:number,direction:'incoming
       throw new RpcDiagnosticError(phase,'invalid_response')
     if(!rows.length)return {firstBlock:null,moreResults:false}
     const t=rows[0], block=typeof t?.blockNum==='string'&&/^0x[0-9a-f]{1,13}$/i.test(t.blockNum)?Number(BigInt(t.blockNum)):NaN
-    if(!Number.isSafeInteger(block)||block<0||block>head||evmAddress(direction==='incoming'?t?.to:t?.from)!==address||
+    if(!Number.isSafeInteger(block)||block<start||block>head||evmAddress(direction==='incoming'?t?.to:t?.from)!==address||
       !evmAddress(t?.rawContract?.address)||t?.category!=='erc20'||typeof t?.hash!=='string'||!/^0x[0-9a-f]{64}$/i.test(t.hash))
       throw new RpcDiagnosticError(phase,'invalid_transfer')
     return {firstBlock:block,moreResults:page!=null}
@@ -2755,12 +2774,12 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const sb=createClient(URL,SERVICE,{auth:{persistSession:false,autoRefreshToken:false}})
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
-    supportedModes.push('encrypted-wallet-scan-first-activity-preview','encrypted-wallet-scan-exact-parity-preview','encrypted-wallet-scan-guarded-stage-preview','encrypted-wallet-scan-adaptive-parity-preview','encrypted-wallet-scan-raw-evidence-preview','encrypted-wallet-scan-raw-parity-preview','encrypted-wallet-scan-write-plan-preview','encrypted-wallet-scan-transfer-evidence-preview','encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('encrypted-wallet-scan-empty-prefix-preview','encrypted-wallet-scan-first-activity-preview','encrypted-wallet-scan-exact-parity-preview','encrypted-wallet-scan-guarded-stage-preview','encrypted-wallet-scan-adaptive-parity-preview','encrypted-wallet-scan-raw-evidence-preview','encrypted-wallet-scan-raw-parity-preview','encrypted-wallet-scan-write-plan-preview','encrypted-wallet-scan-transfer-evidence-preview','encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
-    if(mode==='encrypted-wallet-scan-first-activity-preview'){
+    if(mode==='encrypted-wallet-scan-first-activity-preview'||mode==='encrypted-wallet-scan-empty-prefix-preview'){
       if(Object.keys(body).some(k=>k!=='mode'))return reply({ok:false,mode,error:'Read-only mode accepts no options'},400)
-      const preview=await encryptedTlnWalletCoveragePreview(sb,true,false,false,false,false,false,false,false,false,false,false,100,undefined,true)
+      const preview=await encryptedTlnWalletCoveragePreview(sb,true,false,false,false,false,false,false,false,false,false,false,100,undefined,true,mode==='encrypted-wallet-scan-empty-prefix-preview')
       return reply(preview,preview.ok?200:503)
     }
     const workCycle=mode==='delta-work-cycle'
