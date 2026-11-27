@@ -1721,6 +1721,51 @@ async function firstErc20Activity(address:string,head:number,direction:'incoming
     return {firstBlock:block,moreResults:page!=null}
   }finally{clearTimeout(timer)}
 }
+// 10.25: explicitly scoped dry-run only. No database mutation or authorization token.
+async function previewEmptyPrefixCursor(sb:any,userId:string,walletId:string,observedFirstBlock:number){
+  const mode='encrypted-wallet-scan-empty-prefix-cursor-preview'
+  const base={mode,dryRun:true,persisted:false,canEnableWritingCron:false,cursorAdvanceAuthorized:false,historicalScanCoverageVerified:false}
+  const readCache=()=>sb.from('tln_vow_staking_scan_cache')
+    .select('scanner_version,complete_from_block,last_scanned_block,payload,updated_at')
+    .eq('user_id',userId).eq('wallet_id',walletId).eq('project_key','tln_vow').eq('chain_key','bsc').eq('cache_key','erc20-history-v1').maybeSingle()
+  const valid=(r:any)=>r&&r.scanner_version==='erc20-raw-v1'&&Number(r.complete_from_block)===0&&
+    Array.isArray(r.payload)&&r.payload.length===0&&Number.isSafeInteger(Number(r.last_scanned_block))&&
+    Number(r.last_scanned_block)>0&&Number(r.last_scanned_block)<observedFirstBlock-1&&Number.isFinite(Date.parse(r.updated_at))
+  try{
+    const owner=await sb.from('wallets').select('id,user_id,evm_address_ciphertext,encryption_version,key_version')
+      .eq('id',walletId).eq('user_id',userId).maybeSingle()
+    if(owner.error||!owner.data||owner.data.encryption_version!==1||owner.data.key_version!==1)
+      return {ok:false,...base,error:'Wallet scope or encryption metadata invalid'}
+    const before=await readCache()
+    if(before.error||!valid(before.data))return {ok:false,...base,error:'Empty genesis cache precondition failed'}
+    const address=await decryptOwnEvmAddress(await walletUserDecryptionKey(userId),userId,walletId,owner.data.evm_address_ciphertext)
+    const head=await bscHead()
+    if(observedFirstBlock>head) return {ok:false,...base,error:'Observed block beyond BSC head'}
+    const deadline=Date.now()+25000
+    const [incoming,outgoing,prefixIn,prefixOut,boundaryIn,boundaryOut]=await Promise.all([
+      firstErc20Activity(address,head,'incoming',deadline),firstErc20Activity(address,head,'outgoing',deadline),
+      firstErc20Activity(address,observedFirstBlock-1,'incoming',deadline),firstErc20Activity(address,observedFirstBlock-1,'outgoing',deadline),
+      firstErc20Activity(address,observedFirstBlock,'incoming',deadline,observedFirstBlock),firstErc20Activity(address,observedFirstBlock,'outgoing',deadline,observedFirstBlock)])
+    const blocks=[incoming.firstBlock,outgoing.firstBlock].filter((n):n is number=>n!==null)
+    const firstBlock=blocks.length?Math.min(...blocks):null
+    const prefixEmpty=prefixIn.firstBlock===null&&prefixOut.firstBlock===null
+    const boundaryMatches=firstBlock===observedFirstBlock&&
+      boundaryIn.firstBlock===(incoming.firstBlock===observedFirstBlock?observedFirstBlock:null)&&
+      boundaryOut.firstBlock===(outgoing.firstBlock===observedFirstBlock?observedFirstBlock:null)
+    const after=await readCache()
+    const cacheUnchanged=!after.error&&valid(after.data)&&after.data.updated_at===before.data.updated_at&&
+      Number(after.data.last_scanned_block)===Number(before.data.last_scanned_block)
+    const ownerAfter=await sb.from('wallets').select('id,user_id,evm_address_ciphertext,encryption_version,key_version')
+      .eq('id',walletId).eq('user_id',userId).maybeSingle()
+    const walletUnchanged=!ownerAfter.error&&!!ownerAfter.data&&['id','user_id','evm_address_ciphertext','encryption_version','key_version'].every(k=>ownerAfter.data[k]===owner.data[k])
+    const ready=prefixEmpty&&boundaryMatches&&cacheUnchanged&&walletUnchanged
+    return {ok:ready,...base,executed:true,source:'alchemy_bnb_mainnet',manualExplorerSource:'bscscan',manualObservationUserSupplied:true,
+      observedFirstBlock,firstBlock,prefixEmpty,boundaryMatches,cacheUnchanged,walletUnchanged,
+      currentCursor:Number(before.data.last_scanned_block),proposedCursor:ready?observedFirstBlock-1:null,
+      potentialSkippedBlocks:ready?observedFirstBlock-1-Number(before.data.last_scanned_block):0,
+      auditPersisted:false,notice:'Manual explorer observation is supplied by operator, not independently verified by worker. Preview only; future atomic audit and CAS required.'}
+  }catch(e){return {ok:false,...base,error:'Scoped prefix preview failed',diagnostic:safeRpcDiagnostic(e)}}
+}
 async function inspectWalletTransfers(wallet:string, fromBlock:number, toBlock:number, maxBlocks:number,
   contractOverrides?:string[],collectEvents=false,rawParity=false,adaptiveReadOnly=false,depth=0,captureCacheRows=false,deadline?:number) {
   if (!ALCHEMY_API_KEY) throw new Error('BSC RPC not configured')
@@ -2775,8 +2820,17 @@ async function handleRewardRequest(req: Request): Promise<Response> {
     const body=await req.json().catch(()=>({}))
     const supportedModes=['historical-manual-reward-parity','daily-direct-claim-cycle','cached-lot-reconstruction-preview','staged-new-stake-root-preview','known-stake-root-discovery','known-topup-storage-replay','delta-work-cycle','delta-receipt-verify','delta-transfer-stage','delta-preview','delta-scan-preview','rpc-diagnostic','rpc-range-diagnostic','snapshot-verification-audit','legacy-evidence-audit','legacy-proof-gaps','cached-range-integrity','delta-bootstrap-preview','legacy-first-chunk-scan-preview','registry-first-chunk-scan-preview','staking-call-receipt-preview','historical-topup-rpc-regression','cached-topup-mint-rpc-preview','historical-inflow-candidate-preview','historical-inflow-triage-preview','reward-source-parity-audit','legacy-unmatched-detail','legacy-stake-lifecycle','verified-topup-mint-preview','multi-wallet-readiness','read-only-preflight']
     supportedModes.push('encrypted-wallet-scan-empty-prefix-preview','encrypted-wallet-scan-first-activity-preview','encrypted-wallet-scan-exact-parity-preview','encrypted-wallet-scan-guarded-stage-preview','encrypted-wallet-scan-adaptive-parity-preview','encrypted-wallet-scan-raw-evidence-preview','encrypted-wallet-scan-raw-parity-preview','encrypted-wallet-scan-write-plan-preview','encrypted-wallet-scan-transfer-evidence-preview','encrypted-wallet-scan-chunk-dry-run','encrypted-wallet-scan-batch-plan-preview','encrypted-wallet-scan-start-audit-preview','encrypted-wallet-scan-coverage-preview','encrypted-wallet-coverage-preview','daily-all-rewards-preview','historical-bonus-referral-evidence','historical-referral-step5-parity','historical-smartnode-parent-rpc-check','referral-claim-finalize','daily-bonus-claim-cycle','indirect-claim-finalize')
+    supportedModes.push('encrypted-wallet-scan-empty-prefix-cursor-preview')
     const mode=body?.mode==='direct-claim-finalize'?'direct-claim-finalize':supportedModes.includes(body?.mode)?body.mode:'read-only-preflight'
     if(body?.mode && mode!==body.mode) return reply({ok:false,error:'Unsupported mode'},400)
+    if(mode==='encrypted-wallet-scan-empty-prefix-cursor-preview'){
+      const uuid=(v:any)=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+      if(Object.keys(body).some(k=>!['mode','userId','walletId','observedFirstBlock','confirm'].includes(k))||
+        !uuid(body.userId)||!uuid(body.walletId)||!Number.isSafeInteger(body.observedFirstBlock)||body.observedFirstBlock<2||
+        body.confirm!=='manual-bscscan-observation-preview-only')return reply({ok:false,mode,error:'Exact wallet scope and explicit preview confirmation required'},400)
+      const preview=await previewEmptyPrefixCursor(sb,body.userId,body.walletId,body.observedFirstBlock)
+      return reply(preview,preview.ok?200:409)
+    }
     if(mode==='encrypted-wallet-scan-first-activity-preview'||mode==='encrypted-wallet-scan-empty-prefix-preview'){
       if(Object.keys(body).some(k=>k!=='mode'))return reply({ok:false,mode,error:'Read-only mode accepts no options'},400)
       const preview=await encryptedTlnWalletCoveragePreview(sb,true,false,false,false,false,false,false,false,false,false,false,100,undefined,true,mode==='encrypted-wallet-scan-empty-prefix-preview')
