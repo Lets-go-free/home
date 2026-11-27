@@ -1,0 +1,12 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const s=readFileSync(new URL('../supabase/migrations/20261127233252_tln_vow_permanent_100000_1027.sql',import.meta.url),'utf8');
+const old=readFileSync(new URL('../supabase/migrations/20261127164256_tln_vow_100000_pilot_1021.sql',import.meta.url),'utf8');
+const template=x=>x.split('v_template constant text := $job$')[1].split('$job$;')[0];
+assert.equal(template(s),template(old).replace('THEN 50000 ELSE 25000','THEN 100000 ELSE 25000'));
+assert.ok(s.includes("replace(v_template,'CASE WHEN queued_at < pilot_end THEN 100000 ELSE 25000 END','100000')"));
+assert.ok(s.includes('cron.alter_job(14,command:=v_next)'));
+assert.ok(s.includes('Unexpected job 14 command'));
+assert.ok(s.includes('convalidated'));
+assert.doesNotMatch(s,/FOR UPDATE|DELETE FROM|TRUNCATE|ALTER TABLE|cron\.schedule\(/i);
+console.log('10.27 static migration checks passed');
