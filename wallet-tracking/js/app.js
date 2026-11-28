@@ -172,10 +172,24 @@ function wtAuditPush(entry){
   WT_REQUEST_AUDIT.entries.push(entry);
   if(WT_REQUEST_AUDIT.entries.length>WT_REQUEST_AUDIT_LIMIT)WT_REQUEST_AUDIT.entries.splice(0,WT_REQUEST_AUDIT.entries.length-WT_REQUEST_AUDIT_LIMIT);
 }
+let wtAlchemyBrowserHoldUntil=0;
+function wtAlchemyBrowserHost(input){
+  try{const h=new URL(typeof input==="string"?input:input?.url||String(input),location.href).hostname;return h==="alchemy.com"||h.endsWith(".alchemy.com")||h==="alchemyapi.io"||h.endsWith(".alchemyapi.io");}catch{return false;}
+}
 window.fetch=async function(input,init){
   const meta=wtAuditDescribe(input,init||{}),t0=performance.now(),startedAt=new Date().toISOString();
   try{
+    const guarded=wtAlchemyBrowserHost(input);
+    if(guarded){
+      if(Date.now()<wtAlchemyBrowserHoldUntil)throw Error("Alchemy vorübergehend gesperrt");
+      const {data,error}=await sb.rpc("wallettracking_alchemy_gate_1028");
+      if(error||data?.allowed!==true)throw Error("Alchemy gesperrt oder Schutzstatus nicht verfügbar");
+    }
     const res=await WT_NATIVE_FETCH(input,init);
+    if(guarded){
+      if([401,403,429,503].includes(res.status))wtAlchemyBrowserHoldUntil=Date.now()+120000;
+      else if(res.ok){try{const j=await res.clone().json();const rows=Array.isArray(j)?j:[j];if(rows.some(x=>[429,-32005].includes(Number(x?.error?.code))||/monthly capacity limit exceeded/i.test(String(x?.error?.message||""))))wtAlchemyBrowserHoldUntil=Date.now()+120000;}catch{}}
+    }
     wtAuditPush({...meta,startedAt,durationMs:Math.round((performance.now()-t0)*10)/10,status:res.status,ok:res.ok,bytes:Number(res.headers?.get?.("content-length")||0)||null,contentRange:res.headers?.get?.("content-range")||null});
     return res;
   }catch(e){

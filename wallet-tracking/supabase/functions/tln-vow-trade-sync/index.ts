@@ -1,6 +1,49 @@
 // WalletTracking 7.64 · DEX-trade indexer for Supabase scheduled invocation.
 // Deploy with JWT verification disabled, guarded by TRADE_SYNC_SECRET.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+// BEGIN WT 10.28 Alchemy guard (identical inline module in affected workers).
+const wtNativeFetch = globalThis.fetch.bind(globalThis);
+function wtAlchemyHost(input: RequestInfo | URL): boolean {
+  try { const u=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url); return u.hostname==='alchemy.com'||u.hostname.endsWith('.alchemy.com')||u.hostname==='alchemyapi.io'||u.hostname.endsWith('.alchemyapi.io'); } catch { return false; }
+}
+async function wtGuardRpc(name:string, body:Record<string,unknown>={}) {
+  const url=Deno.env.get('SUPABASE_URL'), key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if(!url||!key) throw Error('Alchemy guard unavailable');
+  const c=new AbortController(), timer=setTimeout(()=>c.abort(),5000);
+  try { const r=await wtNativeFetch(`${url.replace(/\/$/,'')}/rest/v1/rpc/${name}`,{method:'POST',headers:{apikey:key,Authorization:`Bearer ${key}`,'content-type':'application/json'},body:JSON.stringify(body),signal:c.signal}); if(!r.ok)throw Error('Alchemy guard unavailable'); return r.status===204?null:await r.json(); } finally {clearTimeout(timer);}
+}
+function wtAlchemyEvent(status:number,data:any):string|null {
+  const rows=Array.isArray(data)?data:[data];
+  const errors=rows.map(x=>x?.error).filter(Boolean);
+  const messages=errors.map(e=>String(e?.message||e)).join(' ')+(typeof data==='string'?' '+data:'');
+  if(/monthly capacity limit exceeded|monthly (?:compute unit |usage )?limit exceeded/i.test(messages))return 'monthly-limit';
+  if(status===429||errors.some(e=>Number(e?.code)===429||Number(e?.code)===-32005))return 'rate-limit';
+  if(status===401||status===403)return 'forbidden';
+  if(status>=500)return 'temporary';
+  if(status>=200&&status<300&&errors.length===0)return 'success';
+  return null;
+}
+let wtLocalHoldUntil=0;
+async function fetch(input:RequestInfo|URL,init?:RequestInit):Promise<Response>{
+  if(!wtAlchemyHost(input))return wtNativeFetch(input,init);
+  if(Date.now()<wtLocalHoldUntil)throw Error('Alchemy guard: local cooldown');
+  const gate=await wtGuardRpc('wallettracking_alchemy_gate_1028');
+  if(gate?.allowed!==true)throw Error('Alchemy guard: blocked');
+  let response:Response;
+  try { response=await wtNativeFetch(input,init); } catch(e) {
+    try { await wtGuardRpc('wallettracking_alchemy_event_1028',{p_event:'temporary'}); } catch { wtLocalHoldUntil=Date.now()+300000; }
+    throw e;
+  }
+  let data:any=null;
+  try { const copy=response.clone(); const raw=await copy.text(); try{data=JSON.parse(raw)}catch{data=raw;} } catch { /* HTTP status remains usable */ }
+  const event=wtAlchemyEvent(response.status,data);
+  if(event&&event!=='success'){
+    if(event==='monthly-limit'||event==='forbidden'||event==='rate-limit')wtLocalHoldUntil=Date.now()+120000;
+  }
+  if(event){try{await wtGuardRpc('wallettracking_alchemy_event_1028',{p_event:event});}catch{wtLocalHoldUntil=Date.now()+300000;throw Error('Alchemy guard: event persistence failed');}}
+  return response;
+}
+// END WT 10.28 Alchemy guard
 import { Interface, formatUnits, id } from 'npm:ethers@6';
 
 const contracts: Record<string, Record<string,string>> = {

@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';import vm from 'node:vm';import {stripTypeScriptTypes} from 'node:module';
+const read=n=>fs.readFileSync(new URL('../'+n,import.meta.url),'utf8');
+const paths=['tln-vow-reward-refresh','tln-vow-trade-sync','wallet-daily-refresh','token-metadata'];
+const block=n=>read('supabase/functions/'+n+'/index.ts').split('// BEGIN WT 10.28')[1].split('// END WT 10.28')[0].replace(/^.*\n/,'');
+for(const n of paths)assert.equal(block(n),block(paths[0]));
+let allowed=false,events=[],calls=0,status=200,payload={result:'0x1'},dbDown=false;
+const native=async(url,init)=>{if(url.includes('/rest/v1/rpc/')){if(dbDown)return new Response('{}',{status:500});if(url.endsWith('gate_1028'))return Response.json({allowed});events.push(JSON.parse(init.body).p_event);return new Response(null,{status:204});}calls++;return Response.json(payload,{status});};
+const ctx=vm.createContext({fetch:native,URL,Response,AbortController,setTimeout,clearTimeout,Deno:{env:{get:k=>k==='SUPABASE_URL'?'https://db.example':'secret'}}});
+// The wrapper is a lexical declaration in production; retain native fetch in this VM.
+vm.runInContext('(function(){'+stripTypeScriptTypes(block(paths[0]),{mode:'strip'}).replace('const wtNativeFetch = globalThis.fetch.bind(globalThis);','const wtNativeFetch = globalThis.fetch.bind(globalThis);')+';globalThis.wtTestFetch=fetch;globalThis.classify=wtAlchemyEvent;})()',ctx);
+const f=ctx.wtTestFetch,u='https://bnb-mainnet.g.alchemy.com/v2/test';
+await assert.rejects(f(u),/blocked/);assert.equal(calls,0);
+await f('https://public-rpc.example');assert.equal(calls,1);
+allowed=true;dbDown=true;await assert.rejects(f(u),/unavailable/);assert.equal(calls,1);dbDown=false;
+await f(u);assert.deepEqual(events,['success']);
+assert.equal(ctx.classify(403,{error:{message:'Monthly capacity limit exceeded.'}}),'monthly-limit');
+assert.equal(ctx.classify(403,{error:{message:'Forbidden'}}),'forbidden');
+assert.equal(ctx.classify(200,[{error:{code:429}}]),'rate-limit');assert.equal(ctx.classify(503,{}),'temporary');
+status=403;payload={error:{message:'Monthly capacity limit exceeded.'}};await f(u);assert.equal(events.at(-1),'monthly-limit');const before=calls;await assert.rejects(f(u),/cooldown/);assert.equal(calls,before);
+console.log('PASS: guard hold, fail-closed, unrelated RPC, event classification, local cooldown, identical workers');
